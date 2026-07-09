@@ -9,3 +9,13 @@ aithos-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+cucumber.workspace = true
+futures.workspace = true
+hex.workspace = true
+
+# BDD acceptance harness — features live at the repo root in features/.
+[[test]]
+name = "cucumber"
+harness = false

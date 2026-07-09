@@ -57,20 +57,36 @@ pub struct NodePath {
 
 impl NodePath {
     pub fn zone_root(zone: Zone) -> Self {
-        NodePath { zone, folders: vec![], leaf: Leaf::Folder }
+        NodePath {
+            zone,
+            folders: vec![],
+            leaf: Leaf::Folder,
+        }
     }
 
     pub fn folder(zone: Zone, folders: Vec<Sid>) -> Self {
-        NodePath { zone, folders, leaf: Leaf::Folder }
+        NodePath {
+            zone,
+            folders,
+            leaf: Leaf::Folder,
+        }
     }
 
     pub fn section(zone: Zone, folders: Vec<Sid>, sid: Sid) -> Self {
-        NodePath { zone, folders, leaf: Leaf::Section(sid) }
+        NodePath {
+            zone,
+            folders,
+            leaf: Leaf::Section(sid),
+        }
     }
 
     pub fn tag_view(zone: Zone, folders: Vec<Sid>, tag: &str) -> Result<Self> {
         validate_tag(tag)?;
-        Ok(NodePath { zone, folders, leaf: Leaf::TagView(tag.to_owned()) })
+        Ok(NodePath {
+            zone,
+            folders,
+            leaf: Leaf::TagView(tag.to_owned()),
+        })
     }
 
     /// Parse a canonical path like `/e/circle/d/<sid>/d/<sid>/s/<sid>`.
@@ -98,7 +114,11 @@ impl NodePath {
                 other => return Err(err(&format!("unknown marker '{other}'"))),
             }
         }
-        Ok(NodePath { zone, folders, leaf })
+        Ok(NodePath {
+            zone,
+            folders,
+            leaf,
+        })
     }
 
     /// True iff `self` is `other` or an ancestor of it (segment-list
@@ -151,12 +171,12 @@ mod tests {
     #[test]
     fn rejects_malformed_paths() {
         for raw in [
-            "/e/nowhere",                          // unknown zone
-            "/e/circle/x/abc",                     // unknown marker
-            "/e/circle/d",                         // dangling marker
+            "/e/nowhere",                                    // unknown zone
+            "/e/circle/x/abc",                               // unknown marker
+            "/e/circle/d",                                   // dangling marker
             &format!("/e/circle/s/{}/d/{}", sid(1), sid(2)), // segment after terminal
-            "/e/circle/t/Bad Tag",                 // invalid tag
-            "e/circle",                            // missing leading slash
+            "/e/circle/t/Bad Tag",                           // invalid tag
+            "e/circle",                                      // missing leading slash
         ] {
             assert!(NodePath::parse(raw).is_err(), "should reject: {raw}");
         }

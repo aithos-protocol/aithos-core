@@ -157,9 +157,9 @@ paquet npm `@aithos/core` (wasm-pack), conformance levels §09.4 documentés.
 
 | Étape | Statut |
 |---|---|
-| 0 Conventions | à faire |
-| A Genèse | scaffoldée, à valider |
-| B Dérivation | partiellement scaffoldée |
+| 0 Conventions | **faite** — wire multibase, JCS, schéma vecteurs, harnais cucumber |
+| A Genèse | **en cours** — A1 + feature identité verts (4 scénarios) ; reste : clé de succession, DID doc (A2) |
+| B Dérivation | partiellement scaffoldée (chemins + covers testés) |
 | C Scellés | à faire |
 | D Bundle | à faire |
 | E Mandats | à faire |

@@ -1,8 +1,7 @@
 //! Owner identity and key genesis (spec §01.1, §01.2).
 
 use crate::derive::{
-    derive_key, CTX_OWNER_KEX, CTX_ROOT_SIGN, CTX_SPHERE_CIRCLE, CTX_SPHERE_PUBLIC,
-    CTX_SPHERE_SELF,
+    derive_key, CTX_OWNER_KEX, CTX_ROOT_SIGN, CTX_SPHERE_CIRCLE, CTX_SPHERE_PUBLIC, CTX_SPHERE_SELF,
 };
 use crate::error::{Error, Result};
 use ed25519_dalek::{SigningKey, VerifyingKey};

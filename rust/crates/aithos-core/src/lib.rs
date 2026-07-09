@@ -20,7 +20,9 @@
 pub mod derive;
 pub mod error;
 pub mod ids;
+pub mod jcs;
 pub mod keys;
 pub mod path;
+pub mod wire;
 
 pub use error::{Error, Result};

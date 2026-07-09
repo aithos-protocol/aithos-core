@@ -14,6 +14,9 @@ struct A1 {
     sphere_self_pub_hex: String,
     owner_kex_pub_hex: String,
     root_sign_pub_ed2x_hex: String,
+    root_sign_pub_multibase: String,
+    owner_kex_pub_multibase: String,
+    did: String,
 }
 
 fn vector() -> A1 {
@@ -74,4 +77,29 @@ fn a1_normative_ed2x_conversion() {
 fn genesis_rejects_bad_seed_length() {
     assert!(MasterSeed::from_slice(&[0u8; 31]).is_err());
     assert!(MasterSeed::from_slice(&[0u8; 33]).is_err());
+}
+
+#[test]
+fn a1_wire_encodings_and_did() {
+    use aithos_core::wire;
+    let v = vector();
+    let seed = MasterSeed::from_slice(&hex::decode(&v.seed_hex).unwrap()).unwrap();
+    let keys = OwnerKeys::genesis(&seed);
+    let root_pub = keys.root_sign.verifying_key().to_bytes();
+
+    assert_eq!(
+        wire::ed25519_pub_to_multibase(&root_pub),
+        v.root_sign_pub_multibase,
+        "multibase cross-check vs Python base58"
+    );
+    assert_eq!(
+        wire::x25519_pub_to_multibase(&keys.owner_kex_pub().to_bytes()),
+        v.owner_kex_pub_multibase
+    );
+    assert_eq!(wire::did_aithos(&root_pub), v.did);
+    // round-trip back to raw bytes
+    assert_eq!(
+        wire::multibase_to_ed25519_pub(&v.root_sign_pub_multibase).unwrap(),
+        root_pub
+    );
 }

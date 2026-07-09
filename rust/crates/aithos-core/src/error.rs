@@ -19,6 +19,12 @@ pub enum Error {
 
     #[error("invalid node path: {0}")]
     InvalidPath(String),
+
+    #[error("invalid multibase key encoding: {0}")]
+    InvalidMultibase(String),
+
+    #[error("canonicalization failed: {0}")]
+    Canonicalization(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

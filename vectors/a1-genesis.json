@@ -7,5 +7,8 @@
   "sphere_circle_pub_hex": "6a5815414b5da03cfca4b142dd639d392f37348a66679ac41fb3f49f3b15bafa",
   "sphere_self_pub_hex": "c5a255a9876641486a83977ae2cf7c765a13aa656e72380cecf02f7cd330a043",
   "owner_kex_pub_hex": "2a87b432ae9c60cfb72e98be4987a2f820d1663a763048079f2cd447f5834165",
-  "root_sign_pub_ed2x_hex": "2a3b2aba347ffc8adb1cbaaa6a122a93698814f5dc8ca1f82598c228a85bec75"
+  "root_sign_pub_ed2x_hex": "2a3b2aba347ffc8adb1cbaaa6a122a93698814f5dc8ca1f82598c228a85bec75",
+  "root_sign_pub_multibase": "z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+  "owner_kex_pub_multibase": "z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS",
+  "did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
 }
