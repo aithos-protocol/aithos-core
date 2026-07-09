@@ -24,6 +24,63 @@ enum Command {
         /// DEV ONLY: fixed succession entropy as hex (deterministic).
         #[arg(long)]
         succession_seed_hex: Option<String>,
+        /// Also create a bundle (spec 02.3) in this directory.
+        #[arg(long)]
+        dir: Option<String>,
+    },
+    /// Create a folder (mkdir -p) in a zone of the bundle.
+    FolderAdd {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+        zone: String,
+        path: String,
+    },
+    /// Add a section. PATH is folder/…/name; body from --body.
+    SectionAdd {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+        zone: String,
+        path: String,
+        #[arg(long, default_value = "")]
+        title: String,
+        /// Comma-separated tags.
+        #[arg(long, default_value = "")]
+        tags: String,
+        #[arg(long)]
+        body: String,
+    },
+    /// Show a zone's display tree (owner-side for circle/self).
+    ZoneShow {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+        zone: String,
+    },
+    /// Read one section. Public needs NO key (omit --seed-hex).
+    SectionRead {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: Option<String>,
+        zone: String,
+        path: String,
+    },
+    /// Publish a new edition (height+1), signed by root.
+    EditionPublish {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+    },
+    /// Verify the whole edition chain and pinned files. No keys needed.
+    EditionVerify {
+        #[arg(long)]
+        dir: String,
     },
     /// DEV ONLY: derive a node key along a canonical sid-path (spec 02.5).
     /// Proves determinism by hand: same path, same key — every time.
@@ -61,12 +118,129 @@ enum Command {
     },
 }
 
+use aithos_bundle::bundle::Bundle;
+use aithos_bundle::entropy::OsEntropy;
+use aithos_bundle::FsStore;
+use aithos_core::path::Zone;
+
+fn now_string() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("unix:{secs}")
+}
+
+fn owner_from(seed_hex: &str) -> Result<OwnerKeys, Box<dyn std::error::Error>> {
+    eprintln!("WARNING: --seed-hex on the command line is DEV ONLY.");
+    let seed = MasterSeed::from_slice(&hex::decode(seed_hex)?)?;
+    Ok(OwnerKeys::genesis(&seed))
+}
+
+fn bundle_at(dir: &str) -> Result<Bundle<FsStore>, Box<dyn std::error::Error>> {
+    Ok(Bundle::open(FsStore::new(dir))?)
+}
+
+fn split_path(path: &str) -> (String, String) {
+    match path.rsplit_once('/') {
+        Some((folder, name)) => (folder.to_owned(), name.to_owned()),
+        None => (String::new(), path.to_owned()),
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     match Cli::parse().command {
         Command::Init {
             seed_hex,
             succession_seed_hex,
-        } => init(seed_hex, succession_seed_hex),
+            dir,
+        } => init(seed_hex, succession_seed_hex, dir),
+        Command::FolderAdd {
+            dir,
+            seed_hex,
+            zone,
+            path,
+        } => {
+            let owner = owner_from(&seed_hex)?;
+            let mut bundle = bundle_at(&dir)?;
+            bundle.ensure_folder(Zone::parse(&zone)?, &path, &owner, &mut OsEntropy)?;
+            println!("folder ready: {zone}/{path}");
+            Ok(())
+        }
+        Command::SectionAdd {
+            dir,
+            seed_hex,
+            zone,
+            path,
+            title,
+            tags,
+            body,
+        } => {
+            let owner = owner_from(&seed_hex)?;
+            let mut bundle = bundle_at(&dir)?;
+            let (folder, name) = split_path(&path);
+            let tags: Vec<String> = tags
+                .split(',')
+                .filter(|t| !t.is_empty())
+                .map(str::to_owned)
+                .collect();
+            bundle.section_add(
+                Zone::parse(&zone)?,
+                &folder,
+                &name,
+                &title,
+                &tags,
+                &body,
+                &owner,
+                &mut OsEntropy,
+            )?;
+            println!("section written: {zone}/{path}");
+            Ok(())
+        }
+        Command::ZoneShow {
+            dir,
+            seed_hex,
+            zone,
+        } => {
+            let owner = owner_from(&seed_hex)?;
+            let bundle = bundle_at(&dir)?;
+            for path in bundle.zone_tree(Zone::parse(&zone)?, &owner)? {
+                println!("{path}");
+            }
+            Ok(())
+        }
+        Command::SectionRead {
+            dir,
+            seed_hex,
+            zone,
+            path,
+        } => {
+            let zone = Zone::parse(&zone)?;
+            let body = match (zone, seed_hex) {
+                (Zone::Public, _) => {
+                    Bundle::<FsStore>::public_read(&bundle_at(&dir)?.store, &path)?
+                }
+                (_, Some(seed)) => {
+                    let owner = owner_from(&seed)?;
+                    bundle_at(&dir)?.read_section(zone, &path, &owner)?
+                }
+                _ => return Err("this zone needs --seed-hex".into()),
+            };
+            println!("{body}");
+            Ok(())
+        }
+        Command::EditionPublish { dir, seed_hex } => {
+            let owner = owner_from(&seed_hex)?;
+            let mut bundle = bundle_at(&dir)?;
+            bundle.publish(&owner, &now_string())?;
+            println!("edition published");
+            Ok(())
+        }
+        Command::EditionVerify { dir } => {
+            bundle_at(&dir)?.verify()?;
+            println!("edition chain: OK");
+            Ok(())
+        }
         Command::NodeKey { path, zone_dk_hex } => node_key_cmd(&path, &zone_dk_hex),
         Command::HeaderSeal {
             node,
@@ -179,6 +353,7 @@ fn seed32(
 fn init(
     seed_hex: Option<String>,
     succession_seed_hex: Option<String>,
+    dir: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let seed = MasterSeed::from_bytes(seed32(seed_hex, "seed-hex")?);
     let succession_entropy = seed32(succession_seed_hex, "succession-seed-hex")?;
@@ -191,6 +366,16 @@ fn init(
         "gamma/gamma.jsonl".to_owned(),
     )?;
     doc.verify()?;
+    if let Some(dir) = dir {
+        Bundle::init(
+            FsStore::new(&dir),
+            &keys,
+            &succession.verifying_key(),
+            &mut OsEntropy,
+            &now_string(),
+        )?;
+        eprintln!("bundle initialised in {dir}");
+    }
     let root_pub = keys.root_sign.verifying_key().to_bytes();
     let out = serde_json::json!({
         "did": doc.id,

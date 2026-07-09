@@ -6,15 +6,18 @@ description = "Aithos Core bundle layout and storage — the only crate that tou
 
 [dependencies]
 aithos-core.workspace = true
+blake3.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
+ulid.workspace = true
 
 [dev-dependencies]
 cucumber.workspace = true
 futures.workspace = true
-hex.workspace = true
-ulid.workspace = true
 x25519-dalek.workspace = true
 
 # BDD acceptance harness — features live at the repo root in features/.

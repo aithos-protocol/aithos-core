@@ -26,11 +26,14 @@ name = "aithos-bundle"
 version = "0.1.0"
 dependencies = [
  "aithos-core",
+ "blake3",
  "cucumber",
+ "ed25519-dalek",
  "futures",
  "hex",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "ulid",
  "x25519-dalek",

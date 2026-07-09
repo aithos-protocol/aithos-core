@@ -14,6 +14,7 @@ use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
 
 const PURPOSE_HEADER_LINE: &[u8] = b"aithos-core/v1/header-line";
 const PURPOSE_WRAP: &[u8] = b"aithos-core/v1/tagwrap";
+const PURPOSE_BLOB: &[u8] = b"aithos-core/v1/blob";
 const KEK_INFO: &[u8] = b"aithos-core/v1/hdr-kek";
 pub const CTX_WRAP_KEY: &str = "aithos-core/v1/wrap";
 
@@ -39,6 +40,44 @@ pub fn line_aad(subject_did: &str, node: &str, key_version: u64) -> Vec<u8> {
 #[must_use]
 pub fn wrap_aad(subject_did: &str, wrapped_node: &str, key_version: u64) -> Vec<u8> {
     aad(PURPOSE_WRAP, subject_did, wrapped_node, key_version)
+}
+
+/// AAD of a content blob (§02.4): purpose ‖ did ‖ canonical sid-path ‖ key_version.
+#[must_use]
+pub fn blob_aad(subject_did: &str, node: &str, key_version: u64) -> Vec<u8> {
+    aad(PURPOSE_BLOB, subject_did, node, key_version)
+}
+
+/// Seal a content blob under the node's key (§02.4).
+pub fn blob_seal(node_key: &[u8; 32], plaintext: &[u8], nonce: &[u8; 24], aad: &[u8]) -> Vec<u8> {
+    let cipher = XChaCha20Poly1305::new(node_key.into());
+    cipher
+        .encrypt(
+            XNonce::from_slice(nonce),
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .expect("encryption is infallible for these sizes")
+}
+
+pub fn blob_open(
+    node_key: &[u8; 32],
+    ciphertext: &[u8],
+    nonce: &[u8; 24],
+    aad: &[u8],
+) -> Result<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(node_key.into());
+    cipher
+        .decrypt(
+            XNonce::from_slice(nonce),
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .map_err(|_| Error::SealRejected("blob does not open".to_owned()))
 }
 
 fn kek(shared: &[u8; 32], epk: &XPublicKey, recipient: &XPublicKey) -> [u8; 32] {

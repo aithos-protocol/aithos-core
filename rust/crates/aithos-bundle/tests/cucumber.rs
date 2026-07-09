@@ -2,6 +2,10 @@
 //! root in `features/`; step definitions grow with each phase of
 //! docs/EXECUTION-PLAN.md and are never rewritten, only extended.
 
+use aithos_bundle::bundle::Bundle;
+use aithos_bundle::entropy::SeqEntropy;
+use aithos_bundle::manifest::{sha256_hex, Manifest};
+use aithos_bundle::{MemStore, Store};
 use aithos_core::derive::{derive_key, node_key, section_label};
 use aithos_core::did::{DidDocument, EpochTransition};
 use aithos_core::header::{Header, Line, Recipient, Wrap};
@@ -11,6 +15,12 @@ use aithos_core::path::{NodePath, Zone};
 use aithos_core::wire;
 use cucumber::{given, then, when, World};
 use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
+
+// --- step D fixtures ---
+const NOW: &str = "2026-07-09T00:00:00Z";
+const BODY: &str = "Le corps de la note, ephemere et precieux.";
+const PUB_BODY: &str = "Bio publique, lisible par le monde entier.";
+const SELF_BODY: &str = "Souvenir intime, jamais signe.";
 
 fn sid(n: u128) -> Sid {
     Sid(ulid::Ulid::from(n))
@@ -82,6 +92,66 @@ pub struct ProtocolWorld {
     saved_line: Option<Line>,
     opened: Vec<Result<[u8; 32], String>>,
     wrap_obj: Option<Wrap>,
+    // --- step D: bundle ---
+    bundle: Option<Bundle<MemStore>>,
+    ent: SeqEntropy,
+    read_body: Option<Result<String, String>>,
+    inspected: String,
+}
+
+impl ProtocolWorld {
+    fn init_bundle(&mut self) {
+        self.seeds.push((0u8..32).collect());
+        let owner = self.owner(0);
+        let succession = succession_from_entropy([9u8; 32]);
+        self.bundle = Some(
+            Bundle::init(
+                MemStore::default(),
+                &owner,
+                &succession.verifying_key(),
+                &mut self.ent,
+                NOW,
+            )
+            .expect("bundle init"),
+        );
+    }
+
+    fn add_circle_section(&mut self, folder: &str, name: &str, tag: &str) {
+        let owner = self.owner(0);
+        let bundle = self.bundle.as_mut().unwrap();
+        bundle
+            .ensure_folder(Zone::Circle, folder, &owner, &mut self.ent)
+            .unwrap();
+        bundle
+            .section_add(
+                Zone::Circle,
+                folder,
+                name,
+                "note",
+                &[tag.to_owned()],
+                BODY,
+                &owner,
+                &mut self.ent,
+            )
+            .unwrap();
+    }
+
+    fn publish_bundle(&mut self) {
+        let owner = self.owner(0);
+        self.bundle.as_mut().unwrap().publish(&owner, NOW).unwrap();
+    }
+
+    fn latest_manifest(&self) -> Manifest {
+        let bytes = self
+            .bundle
+            .as_ref()
+            .unwrap()
+            .store
+            .get("manifest.json")
+            .unwrap()
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
 }
 
 impl ProtocolWorld {
@@ -249,6 +319,73 @@ fn sealed_header_three(w: &mut ProtocolWorld) {
 #[given("a derived node rotated to a fresh random key")]
 fn derived_node_rotated(_w: &mut ProtocolWorld) {
     // Fixtures: parent key PARENT_KEY, child CHILD_NODE rotated to DK2 v2.
+}
+
+#[given("a fresh identity")]
+fn a_fresh_identity(w: &mut ProtocolWorld) {
+    w.seeds.push((0u8..32).collect());
+}
+
+#[given("an initialised bundle")]
+fn an_initialised_bundle(w: &mut ProtocolWorld) {
+    w.init_bundle();
+}
+
+#[given("a published bundle")]
+#[given("a bundle with two editions")]
+fn a_published_bundle(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_circle_section("projets/perso", "note1", "toto");
+    w.publish_bundle();
+}
+
+#[given(expr = "a published bundle with section {string} in circle {string}")]
+fn published_with_section(w: &mut ProtocolWorld, name: String, folder: String) {
+    w.init_bundle();
+    w.add_circle_section(&folder, &name, "toto");
+    w.publish_bundle();
+}
+
+#[given(expr = "a published bundle with a public section {string} in folder {string}")]
+fn published_public(w: &mut ProtocolWorld, name: String, folder: String) {
+    w.init_bundle();
+    let owner = w.owner(0);
+    w.bundle
+        .as_mut()
+        .unwrap()
+        .section_add(
+            Zone::Public,
+            &folder,
+            &name,
+            "bio",
+            &[],
+            PUB_BODY,
+            &owner,
+            &mut w.ent,
+        )
+        .unwrap();
+    w.publish_bundle();
+}
+
+#[given(expr = "a bundle with a self folder {string} containing section {string}")]
+fn bundle_with_self(w: &mut ProtocolWorld, folder: String, name: String) {
+    w.init_bundle();
+    let owner = w.owner(0);
+    w.bundle
+        .as_mut()
+        .unwrap()
+        .section_add(
+            Zone::Self_,
+            &folder,
+            &name,
+            "cicatrice au genou",
+            &["sante".to_owned()],
+            SELF_BODY,
+            &owner,
+            &mut w.ent,
+        )
+        .unwrap();
+    w.publish_bundle();
 }
 
 // ----------------------------------------------------------------- whens
@@ -473,6 +610,106 @@ fn post_uplink_wrap(w: &mut ProtocolWorld) {
         &DK2,
         non(9),
     ));
+}
+
+#[when("I initialise its bundle")]
+fn initialise_bundle(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let succession = succession_from_entropy([9u8; 32]);
+    w.bundle = Some(
+        Bundle::init(
+            MemStore::default(),
+            &owner,
+            &succession.verifying_key(),
+            &mut w.ent,
+            NOW,
+        )
+        .expect("bundle init"),
+    );
+}
+
+#[when(expr = "I create circle folder {string} with a section {string} tagged {string}")]
+fn create_circle_content(w: &mut ProtocolWorld, folder: String, name: String, tag: String) {
+    w.add_circle_section(&folder, &name, &tag);
+}
+
+#[when("I publish the edition")]
+#[when("the edition is republished")]
+fn publish_edition(w: &mut ProtocolWorld) {
+    w.publish_bundle();
+}
+
+#[when("one byte of a pinned file is altered")]
+fn alter_pinned_file(w: &mut ProtocolWorld) {
+    let bundle = w.bundle.as_mut().unwrap();
+    let mut bytes = bundle.store.get("e/circle/index.json").unwrap().unwrap();
+    bytes[10] ^= 1;
+    bundle.store.put("e/circle/index.json", &bytes).unwrap();
+}
+
+#[when("the newest manifest claims a wrong predecessor hash")]
+fn wrong_predecessor(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let latest = w.latest_manifest();
+    let forged = Manifest::build(
+        &owner.root_sign,
+        latest.edition.height + 1,
+        "0".repeat(64),
+        NOW.to_owned(),
+        latest.files.clone(),
+    )
+    .unwrap();
+    let bundle = w.bundle.as_mut().unwrap();
+    let bytes = serde_json::to_vec_pretty(&forged).unwrap();
+    bundle
+        .store
+        .put(&format!("manifests/{}.json", forged.edition.height), &bytes)
+        .unwrap();
+    bundle.store.put("manifest.json", &bytes).unwrap();
+}
+
+#[when(expr = "the owner reads {string} from circle")]
+fn owner_reads_circle(w: &mut ProtocolWorld, path: String) {
+    let owner = w.owner(0);
+    w.read_body = Some(
+        w.bundle
+            .as_ref()
+            .unwrap()
+            .read_section(Zone::Circle, &path, &owner)
+            .map_err(|e| e.to_string()),
+    );
+}
+
+#[when(expr = "the folder {string} is renamed to {string}")]
+fn rename_the_folder(w: &mut ProtocolWorld, name: String, new_name: String) {
+    let owner = w.owner(0);
+    let full = format!("projets/{name}");
+    w.bundle
+        .as_mut()
+        .unwrap()
+        .rename_folder(Zone::Circle, &full, &new_name, &owner, &mut w.ent)
+        .unwrap();
+}
+
+#[when(expr = "a stranger with no key reads {string} from public")]
+fn stranger_reads_public(w: &mut ProtocolWorld, path: String) {
+    // No owner keys anywhere in this step.
+    w.read_body = Some(
+        Bundle::<MemStore>::public_read(&w.bundle.as_ref().unwrap().store, &path)
+            .map_err(|e| e.to_string()),
+    );
+}
+
+#[when("I inspect every file of the self zone as a stranger")]
+fn inspect_self_zone(w: &mut ProtocolWorld) {
+    let store = &w.bundle.as_ref().unwrap().store;
+    let mut all = String::new();
+    for path in store.list("e/self/").unwrap() {
+        all.push_str(&String::from_utf8_lossy(
+            &store.get(&path).unwrap().unwrap(),
+        ));
+    }
+    w.inspected = all;
 }
 
 // ----------------------------------------------------------------- thens
@@ -716,6 +953,111 @@ fn parent_recovers_via_wrap(w: &mut ProtocolWorld) {
         .open(DID_C, &PARENT_KEY)
         .unwrap();
     assert_eq!(dk, DK2);
+}
+
+#[then("edition 1 verifies offline")]
+#[then("its integrity checks against the signed edition")]
+fn edition_verifies(w: &mut ProtocolWorld) {
+    w.bundle.as_ref().unwrap().verify().expect("edition valid");
+}
+
+#[then("the manifest pins the DID document")]
+fn manifest_pins_did(w: &mut ProtocolWorld) {
+    let manifest = w.latest_manifest();
+    let did_bytes = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .store
+        .get("did.json")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        manifest.files.get("did.json").unwrap(),
+        &sha256_hex(&did_bytes)
+    );
+}
+
+#[then("edition 2 verifies and pins edition 1 as its predecessor")]
+fn edition_two_verifies(w: &mut ProtocolWorld) {
+    w.bundle.as_ref().unwrap().verify().expect("edition valid");
+    let latest = w.latest_manifest();
+    assert_eq!(latest.edition.height, 2);
+    let first: Manifest = serde_json::from_slice(
+        &w.bundle
+            .as_ref()
+            .unwrap()
+            .store
+            .get("manifests/1.json")
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(latest.edition.prev_hash, first.chain_hash().unwrap());
+}
+
+#[then("edition verification is rejected")]
+fn edition_rejected(w: &mut ProtocolWorld) {
+    assert!(w.bundle.as_ref().unwrap().verify().is_err());
+}
+
+#[then("the section body comes back intact")]
+fn body_intact(w: &mut ProtocolWorld) {
+    assert_eq!(w.read_body.as_ref().unwrap().as_deref(), Ok(BODY));
+}
+
+#[then(expr = "the owner reads the same section at {string}")]
+fn reads_at_new_path(w: &mut ProtocolWorld, path: String) {
+    let owner = w.owner(0);
+    let body = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .read_section(Zone::Circle, &path, &owner)
+        .expect("readable at the renamed path");
+    assert_eq!(body, BODY);
+}
+
+#[then("the section body is readable in clear")]
+fn public_body_readable(w: &mut ProtocolWorld) {
+    assert_eq!(w.read_body.as_ref().unwrap().as_deref(), Ok(PUB_BODY));
+}
+
+#[then("no folder name, section name, title or tag appears anywhere")]
+fn self_leaks_nothing(w: &mut ProtocolWorld) {
+    for needle in [
+        "enfance",
+        "cicatrices",
+        "blessure",
+        "cicatrice au genou",
+        "sante",
+    ] {
+        assert!(
+            !w.inspected.contains(needle),
+            "self zone leaked the string '{needle}'"
+        );
+    }
+}
+
+#[then("the owner still reconstructs the full tree from sealed descriptors")]
+fn owner_reconstructs_tree(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let tree = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .zone_tree(Zone::Self_, &owner)
+        .unwrap();
+    for expected in [
+        "enfance",
+        "enfance/cicatrices",
+        "enfance/cicatrices/blessure",
+    ] {
+        assert!(
+            tree.contains(&expected.to_owned()),
+            "missing {expected} in {tree:?}"
+        );
+    }
 }
 
 #[then(expr = "genesis is rejected with {string}")]
