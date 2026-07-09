@@ -58,6 +58,11 @@ portable state is `{keypair, mandate file}`** (§08.4).
 The keypair is capability-bearing, not registered in the DID document; its authority
 is exactly its mandate chain, its lifetime exactly the chain's validity.
 
+Derived node keys belong to the **tree**, never to the grantee: a grant seals a
+*copy* of a node's DK to the grantee's single keypair (§03.3). An agent whose mandate
+lists N perimeter entries still holds exactly one keypair — it carries sealed
+copies, never keys of its own. One key, any number of perimeters.
+
 ## 1.3 Node keys
 
 Every protected node has a current **DK**: 32 CSPRNG bytes, random at node creation

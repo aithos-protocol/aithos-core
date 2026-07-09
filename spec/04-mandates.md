@@ -39,6 +39,13 @@ The mandate is a pure certificate: publishable, verifiable, revocable. (A conven
 delivery bundle MAY ship the mandate together with the header lines the grantee needs,
 but the lines are authoritative in the bundle, not in the certificate.)
 
+**Widening an existing agent.** Mandates are immutable (I2). To extend a grantee's
+perimeter, issue a **fresh mandate to the same keypair**, append the missing header
+lines (O(1) each, §03.3), and revoke the old certificate politically only (rung 1,
+§06) — no rotation: the same keypair legitimately keeps its existing lines. The gamma
+records the widening (`grant` + `revoke` entries). Multiple simultaneous mandates for
+one keypair are valid; a verifier evaluates whichever chain is presented.
+
 ## 4.2 Perimeter grammar
 
 ```
