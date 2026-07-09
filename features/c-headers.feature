@@ -1,0 +1,65 @@
+Feature: Headers — sealed node keys
+  The header is the only place a node key is ever stored, and it is stored
+  sealed: one line per authorized identity, always including the owner (I3).
+  Grant = append a line, O(1). Rotation = new key version without the
+  revoked, plus an up-link wrap restoring parent derivation. (spec 03)
+
+  Rule: A line seals the node key to exactly one recipient
+
+    @wip
+    Scenario: Owner and grantee each open their line
+      Given a node key and two recipients, the owner and a grantee
+      When the node key is sealed into a header
+      Then the owner opens the header and recovers the node key
+      And the grantee opens the header and recovers the node key
+
+    @wip
+    Scenario: A non-recipient opens nothing
+      Given a sealed header for the owner and a grantee
+      When a third keypair tries every line
+      Then it recovers nothing
+
+    @wip
+    Scenario: A corrupted line fails closed
+      Given a sealed header for the owner and a grantee
+      When one byte of a line's ciphertext is corrupted
+      Then opening that line is rejected
+
+    @wip
+    Scenario: A line is bound to its node and version
+      Given a sealed header for the owner on one node
+      When its owner line is replayed on a different node's header
+      Then opening it there is rejected
+
+  Rule: The owner line is mandatory (I3)
+
+    @wip
+    Scenario: A header without an owner line is invalid
+      Given a node key and a single grantee recipient
+      When a header is built without the owner line
+      Then the header is rejected as invalid
+
+  Rule: Grant is one appended line, touching nobody
+
+    @wip
+    Scenario: Granting a new reader leaves every other line untouched
+      Given a sealed header for the owner
+      When a line for a new grantee is appended
+      Then the new grantee opens the node key
+      And the owner line is byte-identical to before
+
+  Rule: Rotation cuts the revoked and re-links the parent
+
+    @wip
+    Scenario: The revoked gets no line in the new version
+      Given a sealed header for the owner and two grantees
+      When the node is rotated without the first grantee
+      Then the surviving grantee opens the new node key
+      And the first grantee cannot open the new version
+      And the owner opens the new version too
+
+    @wip
+    Scenario: An up-link wrap restores derivation for the parent holder
+      Given a derived node rotated to a fresh random key
+      When the rotator posts the up-link wrap under the parent key
+      Then a parent holder recovers the new node key through the wrap
