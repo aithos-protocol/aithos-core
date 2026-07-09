@@ -1,0 +1,157 @@
+# Plan d'exécution — implémentation de référence aithos-core
+
+> Document de travail (interne, FR). La spec `spec/` est la source de vérité ;
+> ce plan ordonne sa construction pour avancer **sans revenir en arrière**.
+
+## Principes
+
+1. **Vecteurs d'abord (TDD).** Chaque étape commence par ses vecteurs JSON dans
+   `vectors/`, valeurs attendues générées indépendamment du code Rust quand
+   c'est possible (Python blake3/PyNaCl, comme A1). Le test rouge précède le code.
+2. **Scénario e2e vivant.** À partir de l'étape D, un test d'intégration unique
+   (`rust/crates/aithos-bundle/tests/e2e_scenario.rs`) rejoue le scénario
+   end-to-end de la spec (section K) *jusqu'où le protocole existe*. Chaque
+   étape l'ÉTEND, aucune ne le réécrit : c'est notre garde-fou anti-régression
+   et le futur test K final.
+3. **Checkpoint manuel CLI par étape** (non bloquant). Chaque étape livre son
+   verbe CLI et une mini-checklist copier-coller « à la main » pour Mathieu.
+   La CI ne dépend jamais de ces checks ; ils servent à *sentir* le produit.
+4. **Une étape = une PR mentale.** Vecteurs verts (natif + wasm32 check),
+   e2e vert, clippy/fmt verts, commit(s), validation de Mathieu → étape suivante.
+
+## Décisions figées d'avance (anti-retour-arrière)
+
+Ces choix conditionnent les octets signés ; on les fige à l'étape 0 pour ne
+jamais avoir à re-signer/re-générer les vecteurs :
+
+- **Encodage wire des clés publiques** : multibase `z…` (base58btc,
+  multicodec ed25519-pub `0xed01` / x25519-pub `0xec01`), style `did:key` —
+  requis par les certs (§04.1) et le DID doc (§01.4). L'hex reste réservé aux
+  vecteurs internes.
+- **JCS RFC 8785** pour tout JSON signé/haché ; une seule implémentation
+  (crate `serde_jcs`), testée contre les exemples de la RFC.
+- **AAD** : convention §00.3 figée (labels NUL-séparés), constantes dans
+  `derive.rs`, jamais de littéraux épars.
+- **Horloge et RNG injectés** : toute fonction qui a besoin de `T` ou d'aléa
+  les prend en paramètre. Aucune exception, dès maintenant.
+- **Taxonomie d'erreurs fail-closed** : un variant nommé par rejet de la spec ;
+  les tests de fail-closed s'écrivent contre les variants, pas contre des strings.
+- **Schéma de vecteur** : `{vector, description, inputs…, expected…}` +
+  vecteurs négatifs `{…, must_fail: "<variant>"}`.
+
+## Les étapes
+
+### 0 — Conventions (½ étape)
+Figer les décisions ci-dessus : module `wire.rs` (multibase/multicodec),
+`serde_jcs` + tests RFC 8785, schéma des vecteurs documenté dans `vectors/README.md`.
+**Manuel :** —. **Done :** tests d'encodage verts.
+
+### A — Genèse & identité (spec 01)
+Déjà scaffoldé : valider A1 (`cargo test`), puis clé de succession (genèse,
+DID doc), DID doc complet (§01.4) signé root, format `did:aithos:z…`.
+**CLI :** `init` (existe), `did show`.
+**Manuel :** `aithos-core init --seed-hex 000102…1f` → comparer aux valeurs
+de `vectors/a1-genesis.json` ; `init` sans seed deux fois → clés différentes.
+**Done :** A1 + A2 (DID doc) verts, natif + wasm.
+
+### B — Dérivation & chemins (spec 02.1–02.5)
+Chemins canoniques sid (fait), labels `d/ s/ t/`, dérivation profonde,
+vecteur B2 (zone → dossier → dossier → section), clés de vues tag.
+**CLI :** `node key <path> --seed-hex` (debug) — prouve le déterminisme.
+**Manuel :** dériver deux fois le même chemin → même clé ; deux sids voisins
+→ clés sans rapport.
+**Done :** B2 vert ; propriété « a/b ne couvre jamais a/bc » testée (fait).
+
+### C — Scellés & headers (spec 03)
+ECIES multi-lignes X25519-HKDF-AEAD, purpose-AAD, header.json (key_versions,
+ligne owner I3), seal/open owner et grantee, wraps (tag + up-link : même
+primitive). Vecteur C1 seal/open, C2 wrap.
+**CLI :** `header seal|open` sur fichiers de test.
+**Manuel :** sceller vers deux destinataires, ouvrir avec chacun ; corrompre
+un octet → rejet.
+**Done :** C1–C2 verts ; I3 fail-closed (header sans ligne owner → invalide).
+
+### D — Bundle minimal & éditions (spec 02.3, 02.6–02.7) ← avancé exprès
+Layout disque §02.3, manifest JCS signé, chaîne d'éditions (height/prev_hash),
+`Store` fs, index circle clair / self opaque + descripteurs scellés.
+Pas encore : merge/fork (→ étape I).
+**e2e vivant démarre ici** : init → créer dossiers/sections → publier édition
+→ relire et vérifier.
+**CLI :** `folder add`, `section add|edit`, `zone show`, `edition publish|verify`.
+**Manuel :** créer `circle/projets/perso/note1` taguée `toto`, publier,
+`zone show circle`, vérifier l'édition ; inspecter `e/self/` à l'œil nu →
+aucun nom visible.
+**Done :** D1 (édition) vert ; e2e v1 vert ; le bundle d'un `self` ne fuit rien.
+
+### E — Mandats & verifier (spec 04, 05)
+Le gros morceau. Document de mandat (kex_pubkey = ed2x vérifié), grammaire
+`dir=/tag=/id=` + conjonctions, `covers()` complet (verbes, sélecteurs),
+atténuation par lien (§05.3), algorithme verifier §04.5 (T injecté), grant =
+cert + lignes (§04.3). Contraintes tier V structurelles (fenêtres, depth,
+max_children en forme — comptage réel en F).
+Vecteurs E1 (grant simple), E2 (chaîne profondeur 2), E3+ (tous les
+fail-closed : sur-large, splice, fenêtre, kex mismatch, wildcard binding…).
+**CLI :** `grant`, `delegate`, `verify`.
+**Manuel :** ton cas d'usage : grant `read.circle#dir=projets/perso&tag=toto`
+→ l'agent lit la section taguée, PAS la voisine non taguée ; `verify` avant/
+après expiration.
+**Done :** E1–E3 verts ; e2e étendu (grant + lecture déléguée).
+
+### F — Gamma (spec 07)
+Chaînage SHA-256, entrées (kinds), signatures owner/délégué, comptage
+sous-arbre `authorized_via` (max_actions), `grant` compté (max_children),
+heartbeat (§07.5), ancre de fraîcheur (§07.7). Pas encore : merge entries (→ I).
+**CLI :** `action`, `heartbeat`, `log show|verify`.
+**Manuel :** 3 actions avec `max_actions: 3` → la 4ᵉ rejetée ; owner silencieux
+au-delà de every+grace → mandat heartbeat suspendu.
+**Done :** F1–F3 verts ; e2e étendu (action comptée, budget épuisé).
+
+### G — Révocation (spec 06) — après F : les révocations sont des entrées gamma
+Échelle complète : cert (entrée gamma ancrée), rotation atomique + re-scellement
+survivants + up-link wrap (§03.4 2bis), re-chiffrement, cascade, ré-adoption,
+watchdog (verbe revoke sans clé), move-as-rotation (§02.9).
+**CLI :** `revoke [--mode]`, `adopt`, `folder move`.
+**Manuel :** révoquer l'agent de l'étape E → il ne lit plus rien de nouveau,
+le survivant ne remarque rien, le détenteur de zone lit encore via l'up-link.
+**Done :** G1–G4 verts (dont : rotation par non-autorisé → rejet) ; e2e étendu.
+
+### H — Merkle (spec 02.10)
+`H_leaf/H_node` domain-separated, hash de nœud (ligne ‖ header ‖ wraps ‖
+enfants), racines par zone dans le manifest, preuves d'inclusion, sous-arbre
+`dir=`, diff par descente.
+**CLI :** `prove`, `edition diff`.
+**Manuel :** `prove circle projets/perso/note1` → vérifier hors-ligne ;
+modifier une section → seul son chemin de racine change dans le diff.
+**Done :** H1–H3 verts (dont splice leaf/node → rejet) ; e2e étendu.
+
+### I — Concurrence (spec 02.6, 07.6)
+Merge déterministe d'éditions disjointes, fork same-node + résolution par plus
+proche gestionnaire commun, entrées gamma `merge` (prevs), reconstruction
+identique des racines Merkle par le mergeur et les vérificateurs.
+**CLI :** `edition merge` (ou automatique dans publish).
+**Manuel :** deux copies du bundle, deux écritures disjointes, merge → une
+édition, tout vérifie.
+**Done :** I1–I2 verts ; e2e étendu (deux agents concurrents).
+
+### K — Intégration finale & packaging
+Scénario K de la spec complet dans l'e2e (il l'est presque déjà par
+construction), vecteurs de perf §09.3 en bench, image Docker (`FROM scratch`),
+paquet npm `@aithos/core` (wasm-pack), conformance levels §09.4 documentés.
+**Manuel :** dérouler le scénario K entier au CLI, chronométrer les cibles.
+**Done :** tout vert, bench dans les cibles, image < 15 Mo, npm importable.
+
+## Suivi
+
+| Étape | Statut |
+|---|---|
+| 0 Conventions | à faire |
+| A Genèse | scaffoldée, à valider |
+| B Dérivation | partiellement scaffoldée |
+| C Scellés | à faire |
+| D Bundle | à faire |
+| E Mandats | à faire |
+| F Gamma | à faire |
+| G Révocation | à faire |
+| H Merkle | à faire |
+| I Concurrence | à faire |
+| K Intégration | à faire |
