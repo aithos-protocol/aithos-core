@@ -1,0 +1,11 @@
+{
+  "vector": "A1",
+  "description": "Deterministic genesis (spec 01.1): all owner keys derived from a fixed master seed S. root_sign_pub_ed2x_hex pins the normative Ed25519->X25519 map (spec 01.2). Expected values generated independently (Python: blake3 + PyNaCl) to cross-check the reference implementation.",
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "root_sign_pub_hex": "8b45ab41f7e0c170b709fdf9e978cdc6f7c844ab258af4019c373dc3cac5dc29",
+  "sphere_public_pub_hex": "c4393987da3e0c7b50aa44d59d71cb667e9b834531bab6dd736df9b2857b8b2d",
+  "sphere_circle_pub_hex": "6a5815414b5da03cfca4b142dd639d392f37348a66679ac41fb3f49f3b15bafa",
+  "sphere_self_pub_hex": "c5a255a9876641486a83977ae2cf7c765a13aa656e72380cecf02f7cd330a043",
+  "owner_kex_pub_hex": "2a87b432ae9c60cfb72e98be4987a2f820d1663a763048079f2cd447f5834165",
+  "root_sign_pub_ed2x_hex": "2a3b2aba347ffc8adb1cbaaa6a122a93698814f5dc8ca1f82598c228a85bec75"
+}

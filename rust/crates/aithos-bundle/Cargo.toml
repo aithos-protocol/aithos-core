@@ -1,0 +1,11 @@
+[package]
+name = "aithos-bundle"
+version.workspace = true
+edition.workspace = true
+description = "Aithos Core bundle layout and storage — the only crate that touches I/O."
+
+[dependencies]
+aithos-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

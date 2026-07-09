@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: fmt
+        run: cargo fmt --check --manifest-path rust/Cargo.toml
+      - name: clippy
+        run: cargo clippy --workspace --manifest-path rust/Cargo.toml -- -D warnings
+      - name: test (native, incl. conformance vectors)
+        run: cargo test --workspace --manifest-path rust/Cargo.toml
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: check wasm surface
+        run: cargo check -p aithos-wasm --target wasm32-unknown-unknown --manifest-path rust/Cargo.toml

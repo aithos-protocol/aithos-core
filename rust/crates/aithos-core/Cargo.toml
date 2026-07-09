@@ -1,0 +1,18 @@
+[package]
+name = "aithos-core"
+version.workspace = true
+edition.workspace = true
+description = "Aithos Core protocol — pure logic: no I/O, no clock, no network."
+
+[dependencies]
+blake3.workspace = true
+ed25519-dalek.workspace = true
+x25519-dalek.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true
+ulid.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+hex.workspace = true

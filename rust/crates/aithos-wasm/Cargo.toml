@@ -1,0 +1,14 @@
+[package]
+name = "aithos-wasm"
+version.workspace = true
+edition.workspace = true
+description = "WASM bindings over aithos-core — the same canonical core for provider, extension and Lambda."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+aithos-core.workspace = true
+wasm-bindgen.workspace = true
+hex.workspace = true
+serde_json.workspace = true

@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/aithos-core",
+    "crates/aithos-bundle",
+    "crates/aithos-cli",
+    "crates/aithos-wasm",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+# crypto — audited, spec §00.3
+blake3 = "1"
+ed25519-dalek = "2"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+zeroize = { version = "1", features = ["derive"] }
+
+# encoding / ids
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+ulid = "1"
+
+# surfaces
+thiserror = "1"
+clap = { version = "4", features = ["derive"] }
+wasm-bindgen = "0.2"
+
+# internal
+aithos-core = { path = "crates/aithos-core" }
+aithos-bundle = { path = "crates/aithos-bundle" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

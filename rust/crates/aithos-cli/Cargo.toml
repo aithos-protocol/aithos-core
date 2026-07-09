@@ -1,0 +1,16 @@
+[package]
+name = "aithos-cli"
+version.workspace = true
+edition.workspace = true
+description = "aithos-core CLI (spec §09.1) — everything local, no network needed."
+
+[[bin]]
+name = "aithos-core"
+path = "src/main.rs"
+
+[dependencies]
+aithos-core.workspace = true
+aithos-bundle.workspace = true
+clap.workspace = true
+hex.workspace = true
+serde_json.workspace = true
