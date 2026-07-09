@@ -1,0 +1,16 @@
+{
+  "vector": "E1",
+  "description": "Root mandate canonical JCS + root Ed25519 signature (spec 04.1). Generated independently (Python blake3+PyNaCl+base58); deterministic signature matches byte-for-byte. Proves the mandate wire format and kex_pubkey=ed2x(pubkey) binding.",
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "agent_sk_hex": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "mandate_id": "mandate_0000000000000000000000001A",
+  "dir_sids": [
+    "00000000000000000000000001",
+    "00000000000000000000000002"
+  ],
+  "nonce": "000102030405060708090a0b0c0d0e0f",
+  "not_before": "2026-07-01T00:00:00Z",
+  "not_after": "2026-07-08T00:00:00Z",
+  "mandate_jcs": "{\"aithos-mandate-core\":\"1.0.0-draft.1\",\"constraints\":{},\"grantee\":{\"id\":\"urn:aithos:agent:agent\",\"kex_pubkey\":\"z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn\",\"label\":\"agent\",\"pubkey\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\"},\"id\":\"mandate_0000000000000000000000001A\",\"issued_at\":\"2026-07-01T00:00:00Z\",\"issued_by\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root\",\"nonce\":\"000102030405060708090a0b0c0d0e0f\",\"not_after\":\"2026-07-08T00:00:00Z\",\"not_before\":\"2026-07-01T00:00:00Z\",\"parent\":null,\"perimeter\":[\"read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto\",\"issue#depth=1\"],\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009\"},\"subject\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"}",
+  "signature_hex": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+}

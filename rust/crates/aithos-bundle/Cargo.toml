@@ -14,11 +14,11 @@ serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 ulid.workspace = true
+x25519-dalek.workspace = true
 
 [dev-dependencies]
 cucumber.workspace = true
 futures.workspace = true
-x25519-dalek.workspace = true
 
 # BDD acceptance harness — features live at the repo root in features/.
 [[test]]

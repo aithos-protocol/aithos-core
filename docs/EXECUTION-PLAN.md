@@ -162,7 +162,7 @@ paquet npm `@aithos/core` (wasm-pack), conformance levels §09.4 documentés.
 | B Dérivation | **faite** — B2 vert (chaîne profonde + ancres tag), node_key(), 6 scénarios BDD (déterminisme, pas de portée latérale, rename sans re-clé, ancre locale ≠ racine), covers() par segments, CLI node-key |
 | C Scellés | **faite** — C1/C2 verts (ECIES cross-checké Python au byte près), header I3 fail-closed, grant O(1) byte-identique, rotation + up-link wrap, 8 scénarios BDD, CLI header-seal/open. Spec §3.8 (construction normative), éphémère par ligne |
 | D Bundle | **faite** — 8 scénarios e2e verts : chaîne d'éditions signée (manifest JCS #root, prev_hash, fail-closed tamper/chaîne), round-trip circle, rename sans re-clé, public lisible sans clé, self opaque vérifié en adversaire + reconstruction par descripteurs. FsStore + MemStore, CLI complet (init --dir, folder-add, section-add, zone-show, section-read, edition-publish/verify). Accroches prévues : pins plats → Merkle (H), gamma_ref (F) |
-| E Mandats | à faire |
+| E Mandats | **faite** — 11 scénarios verts : certificat pur (fenêtre à T injecté, kex vérifié pas cru), périmètre exact (sous-arbre, dir&tag fondateur, pas de latéral), multi-périmètres une clé (dont cross-branch), délégation atténuée + 3 fail-closed. mandate.rs (grammaire, covers(), verifier), grants.rs (grant = cert + lignes + vue tag + wraps, delegate offline). Vecteur E1 (JCS + signature cross-checkés Python). CLI grant/mandate-verify/section-read-agent |
 | F Gamma | à faire |
 | G Révocation | à faire |
 | H Merkle | à faire |

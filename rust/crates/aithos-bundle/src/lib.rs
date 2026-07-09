@@ -7,6 +7,7 @@
 
 pub mod bundle;
 pub mod entropy;
+pub mod grants;
 pub mod manifest;
 
 use std::collections::BTreeMap;

@@ -46,6 +46,7 @@ dependencies = [
  "aithos-bundle",
  "aithos-core",
  "clap",
+ "ed25519-dalek",
  "hex",
  "serde_json",
 ]

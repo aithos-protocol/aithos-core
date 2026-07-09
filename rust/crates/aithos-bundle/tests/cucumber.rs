@@ -4,16 +4,20 @@
 
 use aithos_bundle::bundle::Bundle;
 use aithos_bundle::entropy::SeqEntropy;
+use aithos_bundle::grants::GrantSpec;
 use aithos_bundle::manifest::{sha256_hex, Manifest};
 use aithos_bundle::{MemStore, Store};
 use aithos_core::derive::{derive_key, node_key, section_label};
 use aithos_core::did::{DidDocument, EpochTransition};
 use aithos_core::header::{Header, Line, Recipient, Wrap};
 use aithos_core::ids::Sid;
+use aithos_core::keys::ed2x;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
+use aithos_core::mandate::{verify_chain, Mandate};
 use aithos_core::path::{NodePath, Zone};
 use aithos_core::wire;
 use cucumber::{given, then, when, World};
+use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
 
 // --- step D fixtures ---
@@ -21,6 +25,36 @@ const NOW: &str = "2026-07-09T00:00:00Z";
 const BODY: &str = "Le corps de la note, ephemere et precieux.";
 const PUB_BODY: &str = "Bio publique, lisible par le monde entier.";
 const SELF_BODY: &str = "Souvenir intime, jamais signe.";
+
+// --- step E fixtures: mandates ---
+const NB: &str = "2026-07-01T00:00:00Z";
+const NA7: &str = "2026-07-08T00:00:00Z";
+const NA30: &str = "2026-07-31T00:00:00Z";
+const DAY1: &str = "2026-07-02T00:00:00Z";
+const DAY8: &str = "2026-07-09T00:00:00Z";
+
+fn agent_sk(b: u8) -> SigningKey {
+    SigningKey::from_bytes(&[b; 32])
+}
+const AGENT: u8 = 0xA1;
+const HELPER: u8 = 0xA2;
+const FOURTH: u8 = 0xA3;
+
+fn dir_spec(dir: &str) -> GrantSpec {
+    GrantSpec {
+        zone: Zone::Circle,
+        dir: dir.to_owned(),
+        tag: None,
+    }
+}
+
+fn tag_spec(dir: &str, tag: &str) -> GrantSpec {
+    GrantSpec {
+        zone: Zone::Circle,
+        dir: dir.to_owned(),
+        tag: Some(tag.to_owned()),
+    }
+}
 
 fn sid(n: u128) -> Sid {
     Sid(ulid::Ulid::from(n))
@@ -97,6 +131,75 @@ pub struct ProtocolWorld {
     ent: SeqEntropy,
     read_body: Option<Result<String, String>>,
     inspected: String,
+    // --- step E: mandates ---
+    chain: Vec<Mandate>,
+    helper_chain: Vec<Mandate>,
+    chain_result: Option<Result<(), String>>,
+    granted_folder: String,
+    e_folders: Vec<String>,
+}
+
+impl ProtocolWorld {
+    fn grant_to_agent(&mut self, specs: &[GrantSpec], na: &str, issue_depth: u32) {
+        let owner = self.owner(0);
+        let mandate = self
+            .bundle
+            .as_mut()
+            .unwrap()
+            .grant(
+                &owner,
+                "agent",
+                &agent_sk(AGENT).verifying_key(),
+                specs,
+                NB,
+                na,
+                issue_depth,
+                &mut self.ent,
+            )
+            .expect("grant succeeds");
+        self.chain = vec![mandate];
+    }
+
+    fn verify_chain_at(&self, chain: &[Mandate], at: &str) -> Result<(), String> {
+        let doc = self
+            .bundle
+            .as_ref()
+            .unwrap()
+            .store
+            .get("did.json")
+            .unwrap()
+            .unwrap();
+        let doc: aithos_core::did::DidDocument = serde_json::from_slice(&doc).unwrap();
+        verify_chain(chain, &doc, at).map_err(|e| e.to_string())
+    }
+
+    fn agent_reads(&self, chain: &[Mandate], sk_byte: u8, path: &str) -> Result<String, String> {
+        self.bundle
+            .as_ref()
+            .unwrap()
+            .read_section_as_agent(chain, &agent_sk(sk_byte), Zone::Circle, path, DAY1)
+            .map_err(|e| e.to_string())
+    }
+
+    fn add_named_section(&mut self, folder: &str, name: &str, tags: &[String]) {
+        let owner = self.owner(0);
+        let bundle = self.bundle.as_mut().unwrap();
+        bundle
+            .ensure_folder(Zone::Circle, folder, &owner, &mut self.ent)
+            .unwrap();
+        bundle
+            .section_add(
+                Zone::Circle,
+                folder,
+                name,
+                "note",
+                tags,
+                BODY,
+                &owner,
+                &mut self.ent,
+            )
+            .unwrap();
+    }
 }
 
 impl ProtocolWorld {
@@ -386,6 +489,100 @@ fn bundle_with_self(w: &mut ProtocolWorld, folder: String, name: String) {
         )
         .unwrap();
     w.publish_bundle();
+}
+
+// --- step E givens ---
+
+#[given("an owner and an agent keypair")]
+fn owner_and_agent(w: &mut ProtocolWorld) {
+    w.init_bundle();
+}
+
+#[given(expr = "a mandate whose kex_pubkey does not match its signing key")]
+fn mandate_bad_kex(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    let owner = w.owner(0);
+    w.bundle
+        .as_mut()
+        .unwrap()
+        .ensure_folder(Zone::Circle, "projets", &owner, &mut w.ent)
+        .unwrap();
+    w.grant_to_agent(&[dir_spec("projets")], NA7, 0);
+    let mut m = w.chain[0].clone();
+    // Wrong kex, then honestly re-signed by root: only the kex CHECK can catch it.
+    m.grantee.kex_pubkey = aithos_core::wire::x25519_pub_to_multibase(
+        &ed2x(&agent_sk(HELPER).verifying_key()).to_bytes(),
+    );
+    m.resign(&owner.root_sign).unwrap();
+    w.chain = vec![m];
+    w.chain_result = Some(w.verify_chain_at(&w.chain, DAY1));
+}
+
+#[given(expr = "circle sections {string} tagged {string} and {string} untagged in folder {string}")]
+fn tagged_and_untagged(
+    w: &mut ProtocolWorld,
+    tagged: String,
+    tag: String,
+    untagged: String,
+    folder: String,
+) {
+    w.init_bundle();
+    w.add_named_section(&folder, &tagged, &[tag]);
+    w.add_named_section(&folder, &untagged, &[]);
+    w.granted_folder = folder;
+}
+
+#[given(expr = "circle sections in sibling folders {string} and {string}")]
+#[given(expr = "circle sections in folders {string} and {string}")]
+fn sections_in_two_folders(w: &mut ProtocolWorld, f1: String, f2: String) {
+    w.init_bundle();
+    w.add_named_section(&f1, "note", &[]);
+    w.add_named_section(&f2, "note", &[]);
+    w.add_named_section("archives", "note", &[]);
+    w.e_folders = vec![f1, f2];
+}
+
+#[given(expr = "tagged {string} and untagged sections in both {string} and {string}")]
+fn tagged_in_both(w: &mut ProtocolWorld, tag: String, f1: String, f2: String) {
+    w.init_bundle();
+    for f in [&f1, &f2] {
+        w.add_named_section(f, "tagged", std::slice::from_ref(&tag));
+        w.add_named_section(f, "plain", &[]);
+    }
+    w.e_folders = vec![f1, f2];
+}
+
+#[given(expr = "an agent granted read on circle folder {string} with issue depth 1")]
+#[given(expr = "an agent granted read on circle folder {string} for 7 days with issue depth 1")]
+fn agent_with_issue(w: &mut ProtocolWorld, folder: String) {
+    w.init_bundle();
+    w.add_named_section(&folder, "note", &[]);
+    // A nested subfolder so delegation on "<folder>/perso" has a real target.
+    w.add_named_section(&format!("{folder}/perso"), "note", &[]);
+    w.add_named_section("archives", "note", &[]);
+    w.grant_to_agent(&[dir_spec(&folder)], NA7, 1);
+    w.granted_folder = folder;
+}
+
+#[given("a helper at the end of a depth-1 chain")]
+fn helper_end_of_chain(w: &mut ProtocolWorld) {
+    agent_with_issue(w, "projets".to_owned());
+    let sub = w
+        .bundle
+        .as_mut()
+        .unwrap()
+        .delegate(
+            &w.chain[0].clone(),
+            &agent_sk(AGENT),
+            "helper",
+            &agent_sk(HELPER).verifying_key(),
+            &[dir_spec("projets")],
+            NB,
+            NA7,
+            &mut w.ent,
+        )
+        .unwrap();
+    w.helper_chain = vec![w.chain[0].clone(), sub];
 }
 
 // ----------------------------------------------------------------- whens
@@ -710,6 +907,207 @@ fn inspect_self_zone(w: &mut ProtocolWorld) {
         ));
     }
     w.inspected = all;
+}
+
+// --- step E whens ---
+
+#[when(expr = "the owner grants the agent read on circle folder {string} for 7 days")]
+#[when(expr = "the owner grants the agent read on circle folder {string}")]
+fn grant_on_folder(w: &mut ProtocolWorld, folder: String) {
+    let owner = w.owner(0);
+    w.bundle
+        .as_mut()
+        .unwrap()
+        .ensure_folder(Zone::Circle, &folder, &owner, &mut w.ent)
+        .unwrap();
+    w.grant_to_agent(&[dir_spec(&folder)], NA7, 0);
+    w.granted_folder = folder;
+}
+
+#[when(expr = "the owner grants the agent read on folder {string} restricted to tag {string}")]
+fn grant_on_folder_tag(w: &mut ProtocolWorld, folder: String, tag: String) {
+    w.grant_to_agent(&[tag_spec(&folder, &tag)], NA7, 0);
+    w.granted_folder = folder;
+}
+
+#[when(expr = "the owner grants the agent read on folders {string} and {string} in one mandate")]
+fn grant_two_folders(w: &mut ProtocolWorld, f1: String, f2: String) {
+    w.grant_to_agent(&[dir_spec(&f1), dir_spec(&f2)], NA7, 0);
+}
+
+#[when(expr = "the owner grants read on both folders restricted to tag {string} in one mandate")]
+fn grant_two_folders_tagged(w: &mut ProtocolWorld, tag: String) {
+    let (f1, f2) = (w.e_folders[0].clone(), w.e_folders[1].clone());
+    w.grant_to_agent(&[tag_spec(&f1, &tag), tag_spec(&f2, &tag)], NA7, 0);
+}
+
+#[when(expr = "the agent delegates read on folder {string} to a helper")]
+fn agent_delegates(w: &mut ProtocolWorld, folder: String) {
+    let parent = w.chain[0].clone();
+    let sub = w
+        .bundle
+        .as_mut()
+        .unwrap()
+        .delegate(
+            &parent,
+            &agent_sk(AGENT),
+            "helper",
+            &agent_sk(HELPER).verifying_key(),
+            &[dir_spec(&folder)],
+            NB,
+            NA7,
+            &mut w.ent,
+        )
+        .unwrap();
+    w.helper_chain = vec![parent, sub];
+    w.chain_result = Some(w.verify_chain_at(&w.helper_chain, DAY1));
+}
+
+#[when("the agent delegates the same perimeter to a helper for 30 days")]
+fn agent_delegates_too_long(w: &mut ProtocolWorld) {
+    let parent = w.chain[0].clone();
+    let folder = w.granted_folder.clone();
+    let sub = w
+        .bundle
+        .as_mut()
+        .unwrap()
+        .delegate(
+            &parent,
+            &agent_sk(AGENT),
+            "helper",
+            &agent_sk(HELPER).verifying_key(),
+            &[dir_spec(&folder)],
+            NB,
+            NA30,
+            &mut w.ent,
+        )
+        .unwrap();
+    w.helper_chain = vec![parent, sub];
+    w.chain_result = Some(w.verify_chain_at(&w.helper_chain, DAY1));
+}
+
+#[when("the helper tries to delegate to a fourth key")]
+fn helper_delegates_further(w: &mut ProtocolWorld) {
+    let parent = w.helper_chain[1].clone();
+    let sub = w
+        .bundle
+        .as_mut()
+        .unwrap()
+        .delegate(
+            &parent,
+            &agent_sk(HELPER),
+            "fourth",
+            &agent_sk(FOURTH).verifying_key(),
+            &[dir_spec("projets")],
+            NB,
+            NA7,
+            &mut w.ent,
+        )
+        .unwrap();
+    let mut chain = w.helper_chain.clone();
+    chain.push(sub);
+    w.chain_result = Some(w.verify_chain_at(&chain, DAY1));
+}
+
+// --- step E thens ---
+
+#[then("the mandate verifies at day 1")]
+fn mandate_ok_day1(w: &mut ProtocolWorld) {
+    assert_eq!(w.verify_chain_at(&w.chain, DAY1), Ok(()));
+}
+
+#[then("the mandate is rejected at day 8")]
+fn mandate_dead_day8(w: &mut ProtocolWorld) {
+    assert!(w.verify_chain_at(&w.chain, DAY8).is_err());
+}
+
+#[then("mandate verification is rejected")]
+fn mandate_rejected(w: &mut ProtocolWorld) {
+    let res = w.chain_result.as_ref().unwrap();
+    assert!(res.is_err());
+    assert!(
+        res.as_ref().unwrap_err().contains("kex"),
+        "must be rejected FOR the kex binding: {res:?}"
+    );
+}
+
+#[then(expr = "the agent reads {string} with its own keypair")]
+fn agent_reads_path(w: &mut ProtocolWorld, path: String) {
+    assert_eq!(w.agent_reads(&w.chain, AGENT, &path).as_deref(), Ok(BODY));
+}
+
+#[then(expr = "the agent reads {string}")]
+fn agent_reads_in_folder(w: &mut ProtocolWorld, name: String) {
+    let path = format!("{}/{name}", w.granted_folder);
+    assert_eq!(w.agent_reads(&w.chain, AGENT, &path).as_deref(), Ok(BODY));
+}
+
+#[then(expr = "{string} stays out of the agent's reach")]
+fn name_out_of_reach(w: &mut ProtocolWorld, name: String) {
+    let path = format!("{}/{name}", w.granted_folder);
+    assert!(w.agent_reads(&w.chain, AGENT, &path).is_err());
+}
+
+#[then(expr = "the agent reads the section under {string}")]
+#[then(expr = "the agent reads the section under {string} with its single keypair")]
+#[then(expr = "the agent reads the section under {string} with the same keypair")]
+fn agent_reads_under(w: &mut ProtocolWorld, folder: String) {
+    assert_eq!(
+        w.agent_reads(&w.chain, AGENT, &format!("{folder}/note"))
+            .as_deref(),
+        Ok(BODY)
+    );
+}
+
+#[then(expr = "the agent cannot read the section under {string}")]
+#[then(expr = "a section under {string} stays out of the agent's reach")]
+fn agent_blocked_under(w: &mut ProtocolWorld, folder: String) {
+    assert!(w
+        .agent_reads(&w.chain, AGENT, &format!("{folder}/note"))
+        .is_err());
+}
+
+#[then("the agent reads the tagged section of each folder with one keypair")]
+fn agent_reads_tagged_both(w: &mut ProtocolWorld) {
+    for f in w.e_folders.clone() {
+        assert_eq!(
+            w.agent_reads(&w.chain, AGENT, &format!("{f}/tagged"))
+                .as_deref(),
+            Ok(BODY),
+            "tagged section of {f}"
+        );
+    }
+}
+
+#[then("every untagged section stays out of the agent's reach")]
+fn untagged_blocked_both(w: &mut ProtocolWorld) {
+    for f in w.e_folders.clone() {
+        assert!(
+            w.agent_reads(&w.chain, AGENT, &format!("{f}/plain"))
+                .is_err(),
+            "plain section of {f} must stay sealed"
+        );
+    }
+}
+
+#[then("the helper's chain verifies")]
+fn helper_chain_ok(w: &mut ProtocolWorld) {
+    assert_eq!(w.chain_result.clone().unwrap(), Ok(()));
+}
+
+#[then(expr = "the helper reads the section under {string}")]
+fn helper_reads_under(w: &mut ProtocolWorld, folder: String) {
+    assert_eq!(
+        w.agent_reads(&w.helper_chain, HELPER, &format!("{folder}/note"))
+            .as_deref(),
+        Ok(BODY)
+    );
+}
+
+#[then("the helper's chain is rejected")]
+#[then("the new chain is rejected")]
+fn helper_chain_rejected(w: &mut ProtocolWorld) {
+    assert!(w.chain_result.clone().unwrap().is_err());
 }
 
 // ----------------------------------------------------------------- thens

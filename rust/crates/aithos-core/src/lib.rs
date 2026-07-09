@@ -24,6 +24,7 @@ pub mod header;
 pub mod ids;
 pub mod jcs;
 pub mod keys;
+pub mod mandate;
 pub mod path;
 pub mod seal;
 pub mod wire;

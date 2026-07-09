@@ -7,34 +7,29 @@ Feature: Mandates and the offline verifier
 
   Rule: A mandate is a pure certificate, verifiable offline
 
-    @wip
     Scenario: A grant verifies inside its window and dies at expiry
       Given an owner and an agent keypair
       When the owner grants the agent read on circle folder "projets" for 7 days
       Then the mandate verifies at day 1
       And the mandate is rejected at day 8
 
-    @wip
     Scenario: The kex binding is checked, not trusted
       Given a mandate whose kex_pubkey does not match its signing key
       Then mandate verification is rejected
 
   Rule: A grant delivers exactly its perimeter — certificate AND key
 
-    @wip
     Scenario: A folder grant opens the subtree
       Given a published bundle with section "note1" in circle "projets/perso"
       When the owner grants the agent read on circle folder "projets"
       Then the agent reads "projets/perso/note1" with its own keypair
 
-    @wip
     Scenario: The founding use case — a folder-local tag view grant
       Given circle sections "note1" tagged "toto" and "note2" untagged in folder "projets/perso"
       When the owner grants the agent read on folder "projets/perso" restricted to tag "toto"
       Then the agent reads "note1"
       But "note2" stays out of the agent's reach
 
-    @wip
     Scenario: An agent never reads outside its perimeter
       Given circle sections in sibling folders "projets/perso" and "projets/pro"
       When the owner grants the agent read on circle folder "projets/perso"
@@ -43,7 +38,6 @@ Feature: Mandates and the offline verifier
 
   Rule: One keypair, one mandate, many perimeters
 
-    @wip
     Scenario: A single mandate grants several folders with no common root
       Given circle sections in folders "projets/perso" and "sante/dossiers"
       When the owner grants the agent read on folders "projets/perso" and "sante/dossiers" in one mandate
@@ -51,7 +45,6 @@ Feature: Mandates and the offline verifier
       And the agent reads the section under "sante/dossiers" with the same keypair
       But a section under "archives" stays out of the agent's reach
 
-    @wip
     Scenario: The original cross-branch grant — two folders, one tag, one key
       Given tagged "toto" and untagged sections in both "projets/perso" and "sante/dossiers"
       When the owner grants read on both folders restricted to tag "toto" in one mandate
@@ -60,26 +53,22 @@ Feature: Mandates and the offline verifier
 
   Rule: Delegation attenuates, offline, without the owner
 
-    @wip
     Scenario: A delegate re-grants a narrower perimeter on its own
       Given an agent granted read on circle folder "projets" with issue depth 1
       When the agent delegates read on folder "projets/perso" to a helper
       Then the helper's chain verifies
       And the helper reads the section under "projets/perso"
 
-    @wip
     Scenario: An over-wide sub-mandate is rejected
       Given an agent granted read on circle folder "projets/perso" with issue depth 1
       When the agent delegates read on folder "archives" to a helper
       Then the helper's chain is rejected
 
-    @wip
     Scenario: A sub-mandate cannot outlive its parent
       Given an agent granted read on circle folder "projets" for 7 days with issue depth 1
       When the agent delegates the same perimeter to a helper for 30 days
       Then the helper's chain is rejected
 
-    @wip
     Scenario: Exhausted depth cannot delegate further
       Given a helper at the end of a depth-1 chain
       When the helper tries to delegate to a fourth key

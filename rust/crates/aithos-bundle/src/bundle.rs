@@ -20,7 +20,7 @@ use ed25519_dalek::Signer;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-const KV: u64 = 1; // single key version until step G (revocation rotates)
+pub(crate) const KV: u64 = 1; // single key version until step G (revocation rotates)
 
 // ---------------------------------------------------------------- indexes
 
@@ -131,25 +131,25 @@ fn owner_content_sig(
 impl<S: Store> Bundle<S> {
     // ------------------------------------------------------------- io
 
-    fn get(&self, path: &str) -> Result<Vec<u8>> {
+    pub(crate) fn get(&self, path: &str) -> Result<Vec<u8>> {
         self.store
             .get(path)
             .map_err(io_err)?
             .ok_or_else(|| Error::SealRejected(format!("missing file: {path}")))
     }
 
-    fn get_json<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
+    pub(crate) fn get_json<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
         serde_json::from_slice(&self.get(path)?)
             .map_err(|e| Error::SealRejected(format!("{path}: {e}")))
     }
 
-    fn put_json<T: Serialize>(&mut self, path: &str, value: &T) -> Result<()> {
+    pub(crate) fn put_json<T: Serialize>(&mut self, path: &str, value: &T) -> Result<()> {
         let bytes = serde_json::to_vec_pretty(value)
             .map_err(|e| Error::SealRejected(format!("{path}: {e}")))?;
         self.store.put(path, &bytes).map_err(io_err)
     }
 
-    fn put_blob(
+    pub(crate) fn put_blob(
         &mut self,
         file: &str,
         key: &[u8; 32],
@@ -166,7 +166,7 @@ impl<S: Store> Bundle<S> {
         Ok(sha256_hex(&file_bytes))
     }
 
-    fn open_blob(&self, file: &str, key: &[u8; 32], node: &NodePath) -> Result<Vec<u8>> {
+    pub(crate) fn open_blob(&self, file: &str, key: &[u8; 32], node: &NodePath) -> Result<Vec<u8>> {
         let bytes = self.get(file)?;
         if bytes.len() < 25 {
             return Err(Error::SealRejected(format!("blob too short: {file}")));
@@ -527,7 +527,11 @@ impl<S: Store> Bundle<S> {
 
     // ---------------------------------------------------------- reading
 
-    fn resolve_clear(&self, zone: Zone, display_path: &str) -> Result<(SectionRow, Vec<Sid>)> {
+    pub(crate) fn resolve_clear(
+        &self,
+        zone: Zone,
+        display_path: &str,
+    ) -> Result<(SectionRow, Vec<Sid>)> {
         let index: ZoneIndex = self.get_json(&format!("e/{}/index.json", zone.as_str()))?;
         let mut segs: Vec<&str> = display_path.split('/').filter(|s| !s.is_empty()).collect();
         let name = segs

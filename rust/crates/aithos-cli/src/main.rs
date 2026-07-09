@@ -82,6 +82,47 @@ enum Command {
         #[arg(long)]
         dir: String,
     },
+    /// Grant an agent a circle perimeter: mints the cert AND delivers keys.
+    Grant {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+        /// DEV: the agent's Ed25519 seed (its single keypair).
+        #[arg(long)]
+        agent_seed_hex: String,
+        #[arg(long, default_value = "agent")]
+        label: String,
+        /// Display folder path in circle, e.g. projets/perso
+        folder: String,
+        #[arg(long)]
+        tag: Option<String>,
+        #[arg(long, default_value_t = 7)]
+        ttl_days: u32,
+        #[arg(long, default_value_t = 0)]
+        issue_depth: u32,
+    },
+    /// Verify a mandate chain (one cert file) at time T. No keys needed.
+    MandateVerify {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        cert: String,
+        #[arg(long)]
+        at: String,
+    },
+    /// Read a circle section AS an agent, gated by its mandate (spec 04.5).
+    SectionReadAgent {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        cert: String,
+        #[arg(long)]
+        agent_seed_hex: String,
+        #[arg(long)]
+        at: String,
+        path: String,
+    },
     /// DEV ONLY: derive a node key along a canonical sid-path (spec 02.5).
     /// Proves determinism by hand: same path, same key — every time.
     NodeKey {
@@ -123,12 +164,21 @@ use aithos_bundle::entropy::OsEntropy;
 use aithos_bundle::FsStore;
 use aithos_core::path::Zone;
 
-fn now_string() -> String {
-    let secs = std::time::SystemTime::now()
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0);
-    format!("unix:{secs}")
+        .unwrap_or(0)
+}
+
+/// Zero-padded seconds so lexicographic order == chronological order
+/// (the verifier compares time strings, §04.5).
+fn ts(secs: u64) -> String {
+    format!("{secs:020}")
+}
+
+fn now_string() -> String {
+    ts(now_secs())
 }
 
 fn owner_from(seed_hex: &str) -> Result<OwnerKeys, Box<dyn std::error::Error>> {
@@ -239,6 +289,74 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::EditionVerify { dir } => {
             bundle_at(&dir)?.verify()?;
             println!("edition chain: OK");
+            Ok(())
+        }
+        Command::Grant {
+            dir,
+            seed_hex,
+            agent_seed_hex,
+            label,
+            folder,
+            tag,
+            ttl_days,
+            issue_depth,
+        } => {
+            let owner = owner_from(&seed_hex)?;
+            let agent = ed25519_dalek::SigningKey::from_bytes(
+                &<[u8; 32]>::try_from(hex::decode(agent_seed_hex)?)
+                    .map_err(|_| "agent-seed-hex: 32 bytes")?,
+            );
+            let start = now_secs();
+            let (nb, na) = (ts(start), ts(start + u64::from(ttl_days) * 86_400));
+            eprintln!("window: not_before={nb} not_after={na}");
+            let mut bundle = bundle_at(&dir)?;
+            let spec = aithos_bundle::grants::GrantSpec {
+                zone: Zone::Circle,
+                dir: folder,
+                tag,
+            };
+            let m = bundle.grant(
+                &owner,
+                &label,
+                &agent.verifying_key(),
+                &[spec],
+                &nb,
+                &na,
+                issue_depth,
+                &mut OsEntropy,
+            )?;
+            std::fs::write(
+                format!("{dir}/certs/{}.json", m.id),
+                serde_json::to_vec_pretty(&m)?,
+            )?;
+            println!("granted; cert = certs/{}.json", m.id);
+            Ok(())
+        }
+        Command::MandateVerify { dir, cert, at } => {
+            let bundle = bundle_at(&dir)?;
+            let doc: DidDocument =
+                serde_json::from_slice(&std::fs::read(format!("{dir}/did.json"))?)?;
+            let m: aithos_core::mandate::Mandate = serde_json::from_slice(&std::fs::read(&cert)?)?;
+            let _ = &bundle;
+            aithos_core::mandate::verify_chain(&[m], &doc, &at)?;
+            println!("mandate: OK at {at}");
+            Ok(())
+        }
+        Command::SectionReadAgent {
+            dir,
+            cert,
+            agent_seed_hex,
+            at,
+            path,
+        } => {
+            let bundle = bundle_at(&dir)?;
+            let m: aithos_core::mandate::Mandate = serde_json::from_slice(&std::fs::read(&cert)?)?;
+            let agent = ed25519_dalek::SigningKey::from_bytes(
+                &<[u8; 32]>::try_from(hex::decode(agent_seed_hex)?)
+                    .map_err(|_| "agent-seed-hex: 32 bytes")?,
+            );
+            let body = bundle.read_section_as_agent(&[m], &agent, Zone::Circle, &path, &at)?;
+            println!("{body}");
             Ok(())
         }
         Command::NodeKey { path, zone_dk_hex } => node_key_cmd(&path, &zone_dk_hex),

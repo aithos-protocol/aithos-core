@@ -62,6 +62,15 @@ pub fn succession_from_entropy(entropy: [u8; 32]) -> SigningKey {
     SigningKey::from_bytes(&entropy)
 }
 
+/// Secret-side counterpart of [`ed2x`]: the grantee's X25519 secret derived
+/// from its single Ed25519 keypair (the clamped scalar), so that
+/// `XPublicKey::from(&grantee_kex_secret(sk)) == ed2x(sk.verifying_key())`.
+/// One keypair, both capabilities (§01.2).
+#[must_use]
+pub fn grantee_kex_secret(sk: &SigningKey) -> StaticSecret {
+    StaticSecret::from(sk.to_scalar_bytes())
+}
+
 /// Normative Ed25519 → X25519 conversion (§01.2, §04.1): the birational map
 /// to Montgomery form, byte-identical to libsodium's
 /// `crypto_sign_ed25519_pk_to_curve25519`. A mandate's `kex_pubkey` MUST

@@ -35,6 +35,9 @@ pub enum Error {
     #[error("seal rejected: {0}")]
     SealRejected(String),
 
+    #[error("invalid mandate: {0}")]
+    InvalidMandate(String),
+
     #[error("I3 violated — header without an owner line: {0}")]
     MissingOwnerLine(String),
 }
