@@ -12,7 +12,7 @@
   "id": "mandate_01JZ…",                     // mandate_<ULID>
   "subject": "did:aithos:z6Mkr…",            // whose ethos; constant along a chain
   "parent": null,                            // non-null ⇒ sub-mandate (§05)
-  "issued_by": "did:aithos:z6Mkr…#self",     // sphere DID URL (root) OR grantee pubkey (sub)
+  "issued_by": "did:aithos:z6Mkr…#root",     // root DID URL (root) OR grantee pubkey (sub)
   "grantee": { "id": "urn:aithos:agent:gmail@laptop",
                "label": "Gmail agent",
                "pubkey": "z6MkGrantee…",       // Ed25519 — REQUIRED
@@ -149,8 +149,9 @@ never a silent action (I5) — and that entry is what `max_children` counts.
 To verify grantee G may do `OP` on subject `DID` at time `T` from a presented chain:
 
 ```
-1. Resolve DID document; verify root signature; get sphere keys + revocation pointer.
-2. For the root mandate: issued_by is a sphere URL; verify signature; subject==DID.
+1. Resolve DID document; verify root signature; get the owner public keys +
+   revocation pointer.
+2. For the root mandate: issued_by is the root key URL; verify signature; subject==DID.
 3. not_before ≤ T ≤ not_after for every mandate in the chain.
 4. Revocation: none of the chain's ids is revoked at T (§06.5); freshness honored.
 5. Chain attenuation (§05.3) holds link by link.
@@ -167,7 +168,7 @@ included, §06.5); none needs a live server.
 ## 4.6 Counter-signature (binding actions)
 
 An action listed in `counter_sign`/`binding` is valid only if accompanied by a
-`co_sign`: the owner sphere key signing `{mandate_id, action, args_hash, at}`. The
+`co_sign`: the owner content key signing `{mandate_id, action, args_hash, at}`. The
 agent prepares the action, obtains the owner's live co-signature (out of band — the
 human approves), then emits it with the gamma entry. This is how "the AI may act, but
 a commitment needs me in the loop" is expressed. Counter-signatures are one-shot
@@ -198,8 +199,8 @@ profile, §00.5) — SHOULD carry a long-period heartbeat, default
 the tree with no present ancestor — nobody is watching it — and expiry/heartbeat are
 the only cuts that require nobody to show up. The dead-man bound turns a stolen or
 rogue head key from an unbounded impersonation into at most ~one period (§10.8).
-Beacons are owner-sphere-signed (§07.5) from an owner device: grantees never hold
-sphere keys, so a head agent can never beacon for itself. Suspension cuts *action*
+Beacons are owner-content-signed (§07.5) from an owner device: grantees never hold
+owner keys, so a head agent can never beacon for itself. Suspension cuts *action*
 only; the accompanying rotation is lazy hygiene (§06.8). Declining the heartbeat — a
 true "issue and vanish" head mandate — is permitted but MUST be treated as an
 assumed risk: revocation then waits on the owner's return or the succession key

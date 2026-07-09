@@ -77,10 +77,11 @@ here for clarity; it does not affect keys or headers.
 
 ## 2.4 Blob format
 
-Encrypted zones: blob plaintext is JCS of `{md}` for `circle` sections (name/title/
-tags already clear in the index), `{kind:"section", name, title, tags, md}` for
-`self` sections, or `{kind:"folder", name, children:[sids]}` for `self` folder
-descriptors (§2.8). Ciphertext = `XChaCha20-Poly1305(K_node, nonce, plaintext)`, AAD
+Encrypted zones: blob plaintext is JCS of `{md, sig?}` for `circle` sections
+(name/title/tags already clear in the index; `sig` present for owner-authored
+sections, §2.11), `{kind:"section", name, title, tags, md}` for `self` sections
+(never signed, §2.11), or `{kind:"folder", name, children:[sids]}` for `self`
+folder descriptors (§2.8). Ciphertext = `XChaCha20-Poly1305(K_node, nonce, plaintext)`, AAD
 purpose `blob`, bound to `subject_did ‖ canonical sid-path ‖ key_version`. Public:
 raw markdown file, integrity by `sha256` in the index.
 
@@ -222,3 +223,34 @@ sync in O(changed × log n).
 Limit (honest): a Merkle proof shows **inclusion in a signed edition**, never
 freshness. Staleness stays bounded by `freshness` (§04.4) and the edition + gamma
 chains (§2.6, §07); a mirror can withhold, not forge.
+
+## 2.11 Signature policy per zone (owner content)
+
+The owner signs with a single pen, `content_sign` (§01.1); the **audience lives in
+the signed payload, never in the key**. Owner content signatures always cover JCS of
+`{zone, path, sid, body_hash}` — stripping or altering the placement breaks the
+signature, so a detached artifact carries its own truth. A verifier rejects any
+owner signature whose embedded placement does not match where the object actually
+sits (fail-closed). What differs per zone is *where* the signature lives:
+
+- **`public` — signed, in the open.** The signature ships in the index row and MAY
+  travel as a sidecar with the raw markdown: public content is made to circulate
+  detached, carrying proof of authorship *and of publication intent*.
+- **`circle` — signed, inside the seal.** The signature is part of the sealed blob
+  plaintext: only readers of the section can verify it. Authenticity for the
+  audience — and a member who leaks the plaintext leaks the proof with it, a stated
+  limit (§10.7): audience authenticity and leak-deniability are mutually exclusive.
+- **`self` — never signed.** Integrity comes from AEAD + gamma anchoring (§2.7);
+  authorship attribution lives in the owner-signed gamma entry over the opaque sid.
+  A leaked plaintext alone proves nothing — **deniable by default**.
+
+**Selective disclosure (the official inverse).** The owner can convert deniability
+into proof, per section, at will: revealing one section key lets anyone verify
+ciphertext → signed gamma entry → edition chain, proving authorship and date for
+that section only. Scoped, irreversible for that section, and always the owner's
+move — never the thief's.
+
+Agent-authored content is never signed with owner keys, in any zone: the agent
+signs its gamma entry with its own keypair under its chain (§07.2). "I said it"
+versus "my agent said it in my name" is a cryptographic boundary that no mandate
+scoping error can blur.

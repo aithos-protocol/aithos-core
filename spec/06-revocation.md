@@ -58,7 +58,7 @@ small reach — least privilege buys cheap revocation.
 { "aithos-revocation-core": "1.0.0-draft.1",
   "mandate_id": "mandate_01JZ…",
   "subject": "did:aithos:z6Mkr…",
-  "revoked_by": "did:aithos:z6Mkr…#self",   // sphere URL, or an ancestor grantee pubkey
+  "revoked_by": "did:aithos:z6Mkr…#root",   // root DID URL, or an ancestor grantee pubkey
   "revoked_at": "2026-07-10T12:00:00Z",
   "reason": "device_lost",
   "signature": { … } }

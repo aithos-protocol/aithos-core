@@ -36,7 +36,8 @@ aithos-core edition diff <h1> <h2>                       # root-descent diff (§
 
 ## 9.2 Test vectors (normative at promotion)
 
-`vectors/` MUST cover, from a fixed `S`: DID doc; sphere/owner-kex keys; a node DK and
+`vectors/` MUST cover, from a fixed `S`: DID doc; the owner keys (root, content,
+kex); a node DK and
 a deep-path derivation (zone → folder → folder → section, one derive per segment); a
 header seal/open for owner and a grantee; a tag wrap open; a mandate sign/verify; a
 chain of depth 2 with attenuation;
@@ -56,6 +57,11 @@ Merkle vectors: a section inclusion proof verifying against the manifest roots; 
 sibling hashes only; a grant then a rotation each bumping the node's proof path; an
 edition diff located by root descent; a leaf spliced as interior node → rejected
 (domain separation); a proof against a stale root → rejected by freshness.
+Signature-policy vectors (§02.11): an owner public signature with embedded
+placement verifying detached; a placement-mismatched owner signature → rejected; a
+circle signature verifying only after unsealing; a self blob carrying no content
+signature, its authorship resolved via the gamma entry; a selective disclosure
+round (reveal one section key → authorship + date proven for that section only).
 Tree vectors: a folder grant opening its whole subtree by derivation; a folder-local
 `dir&tag` view where the tagged section opens, the untagged sibling does not, and a
 late-tagged section bridges in by wrap; `covers()` segment-boundary rejection

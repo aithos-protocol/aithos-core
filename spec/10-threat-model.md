@@ -85,6 +85,17 @@ is denial of service and equivocation up to the freshness window — the reason 
    each honor the N-th action of a budget (double counting, §07.7) and an off-log
    artifact can be dated anywhere within it (anti-backdating bound, §07.7) — the
    price the serverless design pays for its offline property, stated and bounded.
+8. **`self` deniability is bounded by key custody.** Unsigned `self` content
+   (§02.11) is cryptographically deniable when plaintext alone leaks; an attacker
+   who exfiltrates the section key AND the ciphertext can prove the link through
+   the owner-signed gamma anchoring — the price of a tamper-evident log. Such
+   full-custody compromise is identity-epoch territory anyway (§10.4). Selective
+   disclosure (§02.11) is the deliberate, per-section inverse.
+9. **Audience authenticity and leak-deniability are mutually exclusive** (`circle`,
+   §02.11): proving yourself to your circle means a leaking member carries that
+   proof out. Deniable authentication (MAC-style) was rejected: it would let any
+   perimeter-holding agent forge owner-indistinguishable content, erasing the
+   human/agent boundary.
 
 ## 10.8 What remains owner-only (assumed, kept minimal)
 
@@ -113,5 +124,7 @@ the freshness anchor (§07.7); heartbeat/session-bind against clock manipulation
 `dir` segment-list containment against prefix splice (`a/b` vs `a/bc`); `self`
 structure opacity across index, headers and gamma targets; move-as-rotation against
 stale-parent derivation (§02.9); Merkle leaf/node domain separation against splice
-and subtree substitution, and proof-of-inclusion verification (§02.10); and the
-succession-key / identity-epoch path (§10.4).
+and subtree substitution, and proof-of-inclusion verification (§02.10); the
+per-zone signature policy (§02.11) — placement↔payload binding, sealed circle
+signatures, unsigned self, selective disclosure; and the succession-key /
+identity-epoch path (§10.4).

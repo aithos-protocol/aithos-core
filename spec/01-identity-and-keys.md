@@ -8,16 +8,18 @@
 `S` — 32 CSPRNG bytes, generated at identity creation. From it, by derivation:
 
 ```
-root_sign   = ed25519_seed( derive("aithos-core/v1/root-sign", S) )    — identity root
-sphere_pub  = ed25519_seed( derive("aithos-core/v1/sphere/public", S) )
-sphere_cir  = ed25519_seed( derive("aithos-core/v1/sphere/circle", S) )
-sphere_self = ed25519_seed( derive("aithos-core/v1/sphere/self",   S) )
-owner_kex   = x25519_sk(    derive("aithos-core/v1/owner-kex", S) )
+root_sign    = ed25519_seed( derive("aithos-core/v1/root-sign", S) )     — identity root
+content_sign = ed25519_seed( derive("aithos-core/v1/content-sign", S) )  — the owner's pen
+owner_kex    = x25519_sk(    derive("aithos-core/v1/owner-kex", S) )
 ```
 
 - **root_sign** controls the DID document and issues/revokes first-level mandates.
-- **Sphere keys** sign zone content and gamma entries authored by the owner, one per
-  zone (accountability per audience, carried over from Aithos v0.x).
+  Reserved for structural acts; it never signs content.
+- **content_sign** is the owner's single pen: it signs owner-authored gamma entries
+  and content wherever the zone's signature policy says so (§02.11). The audience is
+  never in the key — it is embedded in the signed payload (`{zone, path}` travel
+  inside every owner signature), so a detached artifact carries its own context
+  while the key inventory stays minimal.
 - **owner_kex** is the recipient key of the owner's line in every header (I3).
 
 `S` is the only thing to back up. The **recovery artifact** contains `S` (mnemonic or
@@ -81,9 +83,10 @@ segment. Labels use **sids**, never names, so renaming re-keys nothing (§02.9).
 
 ## 1.4 DID document (minimal carry)
 
-`did:aithos:<multibase(root_sign.pub)>`. The DID document lists: root key, the three
-sphere public keys, `owner_kex` public, the **succession public key** (§1.1),
-revocation-state pointer (§06.5), and the bundle's canonical location(s). It is signed by root_sign and versioned by the same
+`did:aithos:<multibase(root_sign.pub)>`. The DID document lists: root key, the
+content signing key, `owner_kex` public, the **succession public key** (§1.1),
+revocation-state pointer (§06.5), and the bundle's canonical location(s). Key
+fragments: `#root`, `#content`, `#kex`, `#succession`. It is signed by root_sign and versioned by the same
 edition chain as the bundle. Grantee keys never appear in it.
 
 ## 1.5 Key inventory (complete)

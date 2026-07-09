@@ -16,10 +16,10 @@
         | "action" | "heartbeat" | "grant" | "revoke" | "rotate" | "merge",
   "target": "/e/circle/d/01J…G/s/01J…42",    // canonical sid-path, when applicable
                                              // (self targets thus leak no structure, §02.8)
-  "authorized_by": "mandate_01JZ…",          // omitted for owner-sphere-signed entries
+  "authorized_by": "mandate_01JZ…",          // omitted for owner-signed entries
   "authorized_via": ["mandate_root…","mandate_leaf…"],   // chain, for delegated/agentic
   "payload_enc": { "n": "…", "c": "…" } | "payload": { … },   // §7.3
-  "signature": { "alg": "ed25519", "key": "<sphere URL | grantee pubkey>", "value": "…" } }
+  "signature": { "alg": "ed25519", "key": "<owner key URL | grantee pubkey>", "value": "…" } }
 ```
 
 The manifest pins `gamma_head` (§02.7). Any past-entry alteration breaks `prev` and
@@ -28,7 +28,9 @@ every downstream signature — a write-once log. Redaction is the public, logged
 
 ## 7.2 Who may sign an entry
 
-- **Owner** entries: signed by the relevant sphere key; no `authorized_by`.
+- **Owner** entries: signed by `content_sign` (§01.1); no `authorized_by`. The
+  signed entry embeds its `target`, so placement is bound by the signature itself
+  (§02.11).
 - **Delegated** entries (mutations or actions by an agent): signed by the leaf grantee
   key (and the session key if `session_bind`), carrying `authorized_by` = leaf id and
   `authorized_via` = full chain. Verified by §04.5 + §05.3 at the entry's `at`.
@@ -72,7 +74,7 @@ without its entry is, by I5, unauthorized.
 
 ## 7.5 Heartbeat entries
 
-`kind:"heartbeat"` entries are owner-sphere-signed liveness beacons (§04.8), clear
+`kind:"heartbeat"` entries are owner-content-signed liveness beacons (§04.8), clear
 payload `{seq}`. Heartbeat-bound mandates are valid only while the latest beacon is
 within `every+grace` of `T`. Cheap (one tiny entry per period), and they double as a
 freshness anchor for offline verifiers.
