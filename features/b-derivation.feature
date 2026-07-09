@@ -5,14 +5,12 @@ Feature: Content-tree derivation
 
   Rule: Derivation is deterministic and per-segment
 
-    @wip
     Scenario: The same path always yields the same key
       Given a zone key
       And a path of three nested folders ending in a section
       When I derive the section key twice
       Then both derivations yield the same key
 
-    @wip
     Scenario: Sibling nodes get unrelated keys
       Given a zone key
       When I derive the keys of two sibling folders
@@ -20,21 +18,18 @@ Feature: Content-tree derivation
 
   Rule: Holding a folder yields its subtree, nothing else
 
-    @wip
     Scenario: A folder holder derives every descendant
       Given a zone key
       And a folder three levels deep containing a section
       When I derive the folder's key from the zone key
       Then the folder key alone derives the section beneath it
 
-    @wip
     Scenario: A folder holder cannot reach sideways
       Given a zone key
       And two sibling folders each containing a section
       When I hold only the first folder's key
       Then no derivation from it yields the second folder's section key
 
-    @wip
     Scenario: Renaming never re-keys
       Given a zone key and a folder containing a section
       When the folder is renamed
@@ -42,7 +37,6 @@ Feature: Content-tree derivation
 
   Rule: Tag views anchor at folders
 
-    @wip
     Scenario: A folder-local tag view is its own lock
       Given a zone key and a folder
       When I derive the tag view "toto" at the folder and at the zone root

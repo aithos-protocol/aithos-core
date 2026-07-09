@@ -14,6 +14,7 @@ thiserror.workspace = true
 cucumber.workspace = true
 futures.workspace = true
 hex.workspace = true
+ulid.workspace = true
 
 # BDD acceptance harness — features live at the repo root in features/.
 [[test]]

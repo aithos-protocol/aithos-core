@@ -1,0 +1,18 @@
+{
+  "vector": "B2",
+  "description": "Content-tree derivation (spec 01.3, 02.5): one BLAKE3 derive_key per path segment, labels d/<sid>, s/<sid>, t/<tag>. Deep chain zone -> d1 -> d2 -> d3 -> section, plus folder-local vs zone-root tag anchors. Expected values generated independently (Python blake3). Sids are ULIDs of small integers.",
+  "zone_dk_hex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+  "folder_sids": [
+    "00000000000000000000000001",
+    "00000000000000000000000002",
+    "00000000000000000000000003"
+  ],
+  "section_sid": "00000000000000000000000007",
+  "sibling_section_sid": "00000000000000000000000008",
+  "tag": "toto",
+  "folder1_key_hex": "f26a2d48bba677cf6e313be1c647434719f7847cb441952190348969709e388c",
+  "deep_section_key_hex": "8147bb7a4f8fb4d6608c15206a83c082ada108ed760025fe5421f758f79f987d",
+  "sibling_section_key_hex": "d625b5c0faf2d561433b2b137f473e08f6d8db389552d862dba91262b0b43df2",
+  "tag_anchor_folder1_hex": "a11d049c38e7cc2efbeb5d9ddc7edfe1d7995ccfb6096e5eacbb9d6812242ce6",
+  "tag_anchor_zone_root_hex": "646ee439e02001714ad213dd0d5e63d99eaae3778ab7df4e064ba74294ff73ac"
+}

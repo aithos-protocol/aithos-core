@@ -2,10 +2,17 @@
 //! root in `features/`; step definitions grow with each phase of
 //! docs/EXECUTION-PLAN.md and are never rewritten, only extended.
 
+use aithos_core::derive::{derive_key, node_key, section_label};
 use aithos_core::did::{DidDocument, EpochTransition};
+use aithos_core::ids::Sid;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
+use aithos_core::path::{NodePath, Zone};
 use aithos_core::wire;
 use cucumber::{given, then, when, World};
+
+fn sid(n: u128) -> Sid {
+    Sid(ulid::Ulid::from(n))
+}
 
 const BUNDLE: &str = "file://local";
 const REVOCATIONS: &str = "gamma/gamma.jsonl";
@@ -34,6 +41,11 @@ pub struct ProtocolWorld {
     prev_doc: Option<DidDocument>,
     next_doc: Option<DidDocument>,
     transition: Option<Result<(), String>>,
+    // --- step B: derivation ---
+    zone_dk: Option<[u8; 32]>,
+    deep_path: Option<NodePath>,
+    node_keys: Vec<[u8; 32]>,
+    folder_key: Option<[u8; 32]>,
 }
 
 impl ProtocolWorld {
@@ -99,6 +111,41 @@ fn identity_and_successor(w: &mut ProtocolWorld) {
     w.succession_entropy.push([11u8; 32]);
     w.prev_doc = Some(w.build_doc(0, 0));
     w.next_doc = Some(w.build_doc(1, 1));
+}
+
+#[given("a zone key")]
+fn a_zone_key(w: &mut ProtocolWorld) {
+    w.zone_dk = Some([0xAB; 32]);
+}
+
+#[given("a path of three nested folders ending in a section")]
+#[given("a folder three levels deep containing a section")]
+fn a_deep_path(w: &mut ProtocolWorld) {
+    w.deep_path = Some(NodePath::section(
+        Zone::Circle,
+        vec![sid(1), sid(2), sid(3)],
+        sid(7),
+    ));
+}
+
+#[given("two sibling folders each containing a section")]
+fn sibling_folders(_w: &mut ProtocolWorld) {
+    // Fixed sids (folder 1 / section 7, folder 2 / section 8), used below.
+}
+
+#[given("a zone key and a folder containing a section")]
+fn zone_folder_section(w: &mut ProtocolWorld) {
+    a_zone_key(w);
+    w.deep_path = Some(NodePath::section(Zone::Circle, vec![sid(1)], sid(7)));
+    // Key BEFORE the rename.
+    w.node_keys
+        .push(node_key(&w.zone_dk.unwrap(), w.deep_path.as_ref().unwrap()));
+}
+
+#[given("a zone key and a folder")]
+fn zone_and_folder(w: &mut ProtocolWorld) {
+    a_zone_key(w);
+    w.deep_path = Some(NodePath::folder(Zone::Circle, vec![sid(1)]));
 }
 
 // ----------------------------------------------------------------- whens
@@ -183,6 +230,61 @@ fn transition_by_root(w: &mut ProtocolWorld) {
     )
     .expect("transition signs");
     w.transition = Some(tr.verify(&prev).map_err(|e| e.to_string()));
+}
+
+#[when("I derive the section key twice")]
+fn derive_section_twice(w: &mut ProtocolWorld) {
+    let (zone, path) = (w.zone_dk.unwrap(), w.deep_path.clone().unwrap());
+    w.node_keys.push(node_key(&zone, &path));
+    w.node_keys.push(node_key(&zone, &path));
+}
+
+#[when("I derive the keys of two sibling folders")]
+fn derive_siblings(w: &mut ProtocolWorld) {
+    let zone = w.zone_dk.unwrap();
+    for n in [1u128, 2] {
+        w.node_keys.push(node_key(
+            &zone,
+            &NodePath::folder(Zone::Circle, vec![sid(n)]),
+        ));
+    }
+}
+
+#[when("I derive the folder's key from the zone key")]
+fn derive_folder_key(w: &mut ProtocolWorld) {
+    let folders = w.deep_path.as_ref().unwrap().folders.clone();
+    w.folder_key = Some(node_key(
+        &w.zone_dk.unwrap(),
+        &NodePath::folder(Zone::Circle, folders),
+    ));
+}
+
+#[when("I hold only the first folder's key")]
+fn hold_first_folder(w: &mut ProtocolWorld) {
+    w.folder_key = Some(node_key(
+        &w.zone_dk.unwrap(),
+        &NodePath::folder(Zone::Circle, vec![sid(1)]),
+    ));
+}
+
+#[when("the folder is renamed")]
+fn rename_folder(w: &mut ProtocolWorld) {
+    // Names are metadata (§02.2): they are not even an input of the key
+    // functions. Re-derive after the "rename" — sids unchanged.
+    w.node_keys
+        .push(node_key(&w.zone_dk.unwrap(), w.deep_path.as_ref().unwrap()));
+}
+
+#[when(expr = "I derive the tag view {string} at the folder and at the zone root")]
+fn derive_tag_anchors(w: &mut ProtocolWorld, tag: String) {
+    let zone = w.zone_dk.unwrap();
+    let folders = w.deep_path.as_ref().unwrap().folders.clone();
+    let local = NodePath::tag_view(Zone::Circle, folders.clone(), &tag).unwrap();
+    let root = NodePath::tag_view(Zone::Circle, vec![], &tag).unwrap();
+    w.node_keys.push(node_key(&zone, &local));
+    w.node_keys.push(node_key(&zone, &root));
+    w.node_keys
+        .push(node_key(&zone, &NodePath::folder(Zone::Circle, folders)));
 }
 
 // ----------------------------------------------------------------- thens
@@ -273,6 +375,64 @@ fn successor_accepted(w: &mut ProtocolWorld) {
 #[then("the transition is rejected")]
 fn transition_rejected(w: &mut ProtocolWorld) {
     assert!(w.transition.as_ref().unwrap().is_err());
+}
+
+#[then("both derivations yield the same key")]
+fn same_key(w: &mut ProtocolWorld) {
+    assert_eq!(w.node_keys[0], w.node_keys[1]);
+}
+
+#[then("the two folder keys are unrelated")]
+fn sibling_keys_unrelated(w: &mut ProtocolWorld) {
+    assert_ne!(w.node_keys[0], w.node_keys[1]);
+}
+
+#[then("the folder key alone derives the section beneath it")]
+fn folder_derives_section(w: &mut ProtocolWorld) {
+    let path = w.deep_path.as_ref().unwrap();
+    let via_zone = node_key(&w.zone_dk.unwrap(), path);
+    let aithos_core::path::Leaf::Section(section) = &path.leaf else {
+        panic!("path must end in a section");
+    };
+    let via_folder = derive_key(&section_label(section), &w.folder_key.unwrap());
+    assert_eq!(via_folder, via_zone, "no need to touch the zone key again");
+}
+
+#[then("no derivation from it yields the second folder's section key")]
+fn no_sideways_reach(w: &mut ProtocolWorld) {
+    let zone = w.zone_dk.unwrap();
+    let target = node_key(
+        &zone,
+        &NodePath::section(Zone::Circle, vec![sid(2)], sid(8)),
+    );
+    let from_f1 = w.folder_key.unwrap();
+    // Candidate derivations an attacker holding folder 1 could attempt:
+    let candidates = [
+        derive_key(&section_label(&sid(8)), &from_f1),
+        node_key(
+            &from_f1,
+            &NodePath::section(Zone::Circle, vec![sid(2)], sid(8)),
+        ),
+        derive_key(&aithos_core::derive::folder_label(&sid(2)), &from_f1),
+    ];
+    for c in candidates {
+        assert_ne!(c, target, "sideways derivation must never reach a sibling");
+    }
+}
+
+#[then("every derived key is unchanged")]
+fn keys_unchanged(w: &mut ProtocolWorld) {
+    assert_eq!(w.node_keys[0], w.node_keys[1], "rename must never re-key");
+}
+
+#[then("the two anchors differ from each other and from the folder key")]
+fn anchors_distinct(w: &mut ProtocolWorld) {
+    let unique: std::collections::BTreeSet<_> = w.node_keys.iter().collect();
+    assert_eq!(
+        unique.len(),
+        3,
+        "local anchor, root anchor, folder key all distinct"
+    );
 }
 
 #[then(expr = "genesis is rejected with {string}")]
