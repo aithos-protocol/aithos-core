@@ -104,9 +104,10 @@ under; the header carries every live version (§03.4) so readers resolve any of 
 
 ## 2.6 Editions and the fork rule (serverless integrity)
 
-The manifest carries `edition: {height, prev_hash, created_at}` and is signed by the
-owner root (or a delegate + `authorized_by`, §05). `prev_hash` = SHA-256 of the prior
-manifest's JCS with `signature=""`. Editions form a **linear chain**: height strictly
+The manifest carries `edition: {height, prev_hash, created_at}`, the state roots
+`roots: {public, circle, self, vault}` (§2.10), the log tip `gamma_head` (§2.7), and
+is signed by the owner root (or a delegate + `authorized_by`, §05). `prev_hash` =
+SHA-256 of the prior manifest's JCS with `signature=""`. Editions form a **linear chain**: height strictly
 increases, each pins its predecessor.
 
 Without a server, two authors could sign competing height-N editions. Resolution
@@ -174,3 +175,50 @@ therefore the rotation of M (fresh DK', §03.4) plus its up-link wrap posted und
 cryptographically, new-parent holders derive through the wrap. Cost ∝ M's granted
 headers (+ re-encryption of M's subtree if incident-grade); the lazy variant is
 tolerated as hygiene (§06.8).
+
+## 2.10 Merkle state roots (verifiable partial reads)
+
+Each edition's manifest pins one **state root** per zone, plus the vault, next to
+`gamma_head` (§2.6). A reader verifies any single row, header, or subtree against
+the signed manifest in O(log n) — without ever fetching an index — and any mirror
+can serve such proofs without being trusted.
+
+Hashing (BLAKE3, domain-separated so a leaf can never be spliced as an interior
+node):
+
+```
+H_leaf(p)      = BLAKE3("aithos-core/v1/mk-leaf" ‖ 0x00 ‖ p)
+H_node(l, r)   = BLAKE3("aithos-core/v1/mk-node" ‖ 0x00 ‖ l ‖ r)
+mroot(list)    = balanced binary H_node tree over the sorted list; 32×0x00 if empty
+header_hash(N) = BLAKE3(JCS(header.json)) if N was ever granted, else 32×0x00
+```
+
+Node hashes — `public`/`circle` mirror the folder tree (§2.1), children sorted by
+`(kind, sid|tag)`:
+
+```
+section:   H_leaf( JCS(index_row)  ‖ header_hash )
+tag view:  H_leaf( "t/"+tag        ‖ header_hash ‖ mroot(wraps, by section sid) )
+folder:    H_leaf( JCS(folder_row) ‖ header_hash ‖ mroot(children node hashes) )
+zone root: the node hash of the root folder
+```
+
+The header (and, for tag views, the wrap set) is **folded into its node's hash**:
+one proof attests the index row, the current header version, and the wraps at once;
+a grant or rotation naturally bumps the node's path to the root. `self` and the
+vault are **flat** (§2.8): leaves `H_leaf(JCS(index_row) ‖ header_hash)` sorted by
+sid — proofs reveal sibling hashes only, never structure.
+
+Proofs and costs. An inclusion proof interleaves sibling steps (inside a folder's
+balanced tree) with parent steps (the parent folder's own payload), ending at the
+zone root: size and verify time O(depth × log₂ fanout) — roughly 25 hashes, under a
+kilobyte, for a million sections at fanout 100. A `dir=` grantee checks its whole
+perimeter against its folder's children root plus one path to the signed root: it
+verifies everything it can see and nothing it cannot. Each edit recomputes only its
+own path (microseconds); a disjoint merge (§2.6) recomputes the two touched paths
+and every verifier reproduces identical roots. Two editions diff by root descent:
+sync in O(changed × log n).
+
+Limit (honest): a Merkle proof shows **inclusion in a signed edition**, never
+freshness. Staleness stays bounded by `freshness` (§04.4) and the edition + gamma
+chains (§2.6, §07); a mirror can withhold, not forge.

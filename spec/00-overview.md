@@ -21,6 +21,7 @@
 | **Head mandate** | A broad, long-lived mandate issued directly by the owner to run unattended; carries a dead-man heartbeat by default (§04.8). |
 | **Gamma** | The subject's hash-chained log of mutations and actions (§07). |
 | **Edition** | One signed state of the bundle; editions form a linear chain (§02). |
+| **State root** | Per-zone Merkle root over node hashes, pinned by each signed manifest; O(log n) inclusion proofs (§02.10). |
 | **Bundle** | The set of files: manifest, zone indexes, blobs, headers, certificates, gamma. |
 
 ## 0.2 The five normative invariants

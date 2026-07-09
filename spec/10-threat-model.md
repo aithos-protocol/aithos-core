@@ -17,7 +17,8 @@
 | Past cut | re-encryption + supersession (bounded by exfiltration) |
 | No silent action | I5 — every action is a signed gamma entry; counts are the meter |
 | Owner un-lockable-out | owner line mandatory in every header (I3); owner holds root of all authority |
-| Tamper evidence | edition chain + gamma hash-chain, owner-anchored fork resolution |
+| Tamper evidence | edition chain + gamma hash-chain, authority-anchored fork resolution |
+| Verifiable partial reads | per-zone Merkle state roots (§02.10): O(log n) inclusion proofs from any mirror; membership cannot be forged |
 | Serverless enforcement | every check reads files; a server is a mirror, never a trust party |
 
 ## 10.2 Attacker: holder of leaked ciphertext (no line, never had one)
@@ -55,9 +56,11 @@ Can withhold or delay files (availability, not confidentiality) and attempt to s
 stale revocation state or a fork. Mitigations: `freshness` constraints bound stale
 tolerance; fork resolution is authority-checked (§02.6 — nearest common manager, owner
 as last resort), so a mirror can never forge a winning branch (it holds no covering
-mandate); short TTLs bound offline exposure. A mirror
-never holds key material, so it cannot read content or forge authority. The residual
-power is denial of service and equivocation up to the freshness window — the reason a
+mandate); short TTLs bound offline exposure. A mirror never holds key material, so it
+cannot read content or forge authority; nor can it forge **membership** — every
+partial read is provable against the signed state roots (§02.10), so a mirror serving
+a wrong row, header, or listing is caught by the first verifier. The residual power
+is denial of service and equivocation up to the freshness window — the reason a
 2-of-N mirror or a periodic owner checkpoint is recommended operationally.
 
 ## 10.7 Honest limits (stated, not hidden)
@@ -109,5 +112,6 @@ action-count integrity against replay/omission (I5), including subtree counting 
 the freshness anchor (§07.7); heartbeat/session-bind against clock manipulation;
 `dir` segment-list containment against prefix splice (`a/b` vs `a/bc`); `self`
 structure opacity across index, headers and gamma targets; move-as-rotation against
-stale-parent derivation (§02.9); and the succession-key / identity-epoch path
-(§10.4).
+stale-parent derivation (§02.9); Merkle leaf/node domain separation against splice
+and subtree substitution, and proof-of-inclusion verification (§02.10); and the
+succession-key / identity-epoch path (§10.4).

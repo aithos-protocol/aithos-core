@@ -30,6 +30,8 @@ aithos-core heartbeat                                    # owner liveness beacon
 aithos-core verify <mandate|chain> [--at T]              # offline verifier (§04.5)
 aithos-core log show|verify                              # gamma chain
 aithos-core edition publish|verify                       # edition chain + fork rule
+aithos-core prove <zone> <path>                          # inclusion proof (§02.10)
+aithos-core edition diff <h1> <h2>                       # root-descent diff (§02.10)
 ```
 
 ## 9.2 Test vectors (normative at promotion)
@@ -49,6 +51,11 @@ revocation (no line, no read); a backdated artifact outside the freshness anchor
 rejected; a subtree `max_actions` count via `authorized_via` (child action consumes
 parent budget); a `max_children` count via `grant` entries; an unauthorized tag
 re-label not bridged by the repair pass; a `kex_pubkey` mismatch → invalid mandate.
+Merkle vectors: a section inclusion proof verifying against the manifest roots; a
+`dir=` subtree check against its folder's children root; a `self` proof revealing
+sibling hashes only; a grant then a rotation each bumping the node's proof path; an
+edition diff located by root descent; a leaf spliced as interior node → rejected
+(domain separation); a proof against a stale root → rejected by freshness.
 Tree vectors: a folder grant opening its whole subtree by derivation; a folder-local
 `dir&tag` view where the tagged section opens, the untagged sibling does not, and a
 late-tagged section bridges in by wrap; `covers()` segment-boundary rejection
@@ -71,6 +78,8 @@ Measured on a laptop, bundle on local disk:
 | revoke rung 3 on a 1000-section zone (re-encrypt) | < 5 s CPU, parallelizable |
 | read a section (open header → derive → decrypt) | < 2 ms |
 | gamma append + chain verify (10k entries) | < 200 ms full verify |
+| inclusion proof verify (1M sections) | < 1 ms |
+| state-root update on one edit (1M sections) | < 1 ms |
 
 ## 9.4 Conformance levels
 

@@ -109,3 +109,7 @@ Lines are unnamed beyond the routing `kid`; no scope, verb, or human label is st
 in the header (that lives in the public certificate). A header therefore leaks only
 the set of recipient public keys of that node — the same access-graph fact the
 certificates already state, and never more.
+
+The header's hash is folded into its node's Merkle hash (§02.10): appending a line or
+rotating bumps the node's proof path to the signed state root, so a reader proves it
+holds the **current** header without fetching any other header.
