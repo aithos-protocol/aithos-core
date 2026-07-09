@@ -47,6 +47,15 @@ Feature: Bundle and editions
       And the edition is republished
       Then the owner reads the same section at "projets/intime/note1"
 
+  Rule: The public zone reads without any key
+
+    @wip
+    Scenario: A stranger reads public content with no key at all
+      Given a published bundle with a public section "bio" in folder "profil"
+      When a stranger with no key reads "profil/bio" from public
+      Then the section body is readable in clear
+      And its integrity checks against the signed edition
+
   Rule: The self zone leaks no structure
 
     @wip
