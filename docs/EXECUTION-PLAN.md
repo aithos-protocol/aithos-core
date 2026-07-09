@@ -8,16 +8,27 @@
 1. **Vecteurs d'abord (TDD).** Chaque étape commence par ses vecteurs JSON dans
    `vectors/`, valeurs attendues générées indépendamment du code Rust quand
    c'est possible (Python blake3/PyNaCl, comme A1). Le test rouge précède le code.
-2. **Scénario e2e vivant.** À partir de l'étape D, un test d'intégration unique
-   (`rust/crates/aithos-bundle/tests/e2e_scenario.rs`) rejoue le scénario
-   end-to-end de la spec (section K) *jusqu'où le protocole existe*. Chaque
-   étape l'ÉTEND, aucune ne le réécrit : c'est notre garde-fou anti-régression
-   et le futur test K final.
-3. **Checkpoint manuel CLI par étape** (non bloquant). Chaque étape livre son
-   verbe CLI et une mini-checklist copier-coller « à la main » pour Mathieu.
-   La CI ne dépend jamais de ces checks ; ils servent à *sentir* le produit.
-4. **Une étape = une PR mentale.** Vecteurs verts (natif + wasm32 check),
-   e2e vert, clippy/fmt verts, commit(s), validation de Mathieu → étape suivante.
+2. **BDD — le contrat comportemental de chaque phase.** Avant le développement
+   de chaque phase, on co-écrit son fichier Gherkin (`features/*.feature`, en
+   anglais, exécuté par `cucumber-rs`) : c'est là qu'on définit *ce qu'on peut
+   attendre*, de manière flexible — un scénario s'amende en une ligne avant que
+   le code existe. Les phases suivantes ÉTENDENT les features, ne les
+   réécrivent jamais : le dossier `features/` est à la fois le garde-fou
+   anti-régression, la documentation vivante du protocole (lisible telle
+   quelle, atout build-in-public), et — accumulé — le test K final. Pyramide :
+   vecteurs = vérité au niveau des octets, unitaires au milieu, Gherkin =
+   acceptation comportementale. On ne gherkinise pas les unités.
+3. **DDD-lite.** La spec est le langage ubiquitaire : chaque type du code porte
+   exactement le nom de son concept dans la spec (Mandate, Perimeter, NodePath,
+   Edition, GammaEntry, …) ; les frontières de crates/modules suivent les
+   chapitres. Aucun concept de code sans concept de spec, et réciproquement.
+4. **Checkpoint manuel CLI par étape** (non bloquant). Chaque étape livre son
+   verbe CLI et une mini-checklist copier-coller « à la main » pour Mathieu —
+   idéalement dérivée des scénarios Gherkin de la phase. La CI ne dépend jamais
+   de ces checks ; ils servent à *sentir* le produit.
+5. **Une étape = une PR mentale.** Feature co-écrite → vecteurs verts (natif +
+   wasm32 check) → scénarios cucumber verts → clippy/fmt verts → commit(s) →
+   validation de Mathieu → étape suivante.
 
 ## Décisions figées d'avance (anti-retour-arrière)
 
@@ -43,8 +54,10 @@ jamais avoir à re-signer/re-générer les vecteurs :
 
 ### 0 — Conventions (½ étape)
 Figer les décisions ci-dessus : module `wire.rs` (multibase/multicodec),
-`serde_jcs` + tests RFC 8785, schéma des vecteurs documenté dans `vectors/README.md`.
-**Manuel :** —. **Done :** tests d'encodage verts.
+`serde_jcs` + tests RFC 8785, schéma des vecteurs documenté dans
+`vectors/README.md`, **harnais cucumber-rs** (runner + premières step defs
+vides, dossier `features/`).
+**Manuel :** —. **Done :** tests d'encodage verts, `cargo test` exécute cucumber.
 
 ### A — Genèse & identité (spec 01)
 Déjà scaffoldé : valider A1 (`cargo test`), puis clé de succession (genèse,
@@ -75,8 +88,8 @@ un octet → rejet.
 Layout disque §02.3, manifest JCS signé, chaîne d'éditions (height/prev_hash),
 `Store` fs, index circle clair / self opaque + descripteurs scellés.
 Pas encore : merge/fork (→ étape I).
-**e2e vivant démarre ici** : init → créer dossiers/sections → publier édition
-→ relire et vérifier.
+**Les features BDD deviennent end-to-end ici** (elles pilotaient le core pur
+en A–C) : init → créer dossiers/sections → publier édition → relire et vérifier.
 **CLI :** `folder add`, `section add|edit`, `zone show`, `edition publish|verify`.
 **Manuel :** créer `circle/projets/perso/note1` taguée `toto`, publier,
 `zone show circle`, vérifier l'édition ; inspecter `e/self/` à l'œil nu →
@@ -95,7 +108,7 @@ fail-closed : sur-large, splice, fenêtre, kex mismatch, wildcard binding…).
 **Manuel :** ton cas d'usage : grant `read.circle#dir=projets/perso&tag=toto`
 → l'agent lit la section taguée, PAS la voisine non taguée ; `verify` avant/
 après expiration.
-**Done :** E1–E3 verts ; e2e étendu (grant + lecture déléguée).
+**Done :** E1–E3 verts ; features étendues (grant + lecture déléguée).
 
 ### F — Gamma (spec 07)
 Chaînage SHA-256, entrées (kinds), signatures owner/délégué, comptage
@@ -104,7 +117,7 @@ heartbeat (§07.5), ancre de fraîcheur (§07.7). Pas encore : merge entries (�
 **CLI :** `action`, `heartbeat`, `log show|verify`.
 **Manuel :** 3 actions avec `max_actions: 3` → la 4ᵉ rejetée ; owner silencieux
 au-delà de every+grace → mandat heartbeat suspendu.
-**Done :** F1–F3 verts ; e2e étendu (action comptée, budget épuisé).
+**Done :** F1–F3 verts ; features étendues (action comptée, budget épuisé).
 
 ### G — Révocation (spec 06) — après F : les révocations sont des entrées gamma
 Échelle complète : cert (entrée gamma ancrée), rotation atomique + re-scellement
@@ -113,7 +126,7 @@ watchdog (verbe revoke sans clé), move-as-rotation (§02.9).
 **CLI :** `revoke [--mode]`, `adopt`, `folder move`.
 **Manuel :** révoquer l'agent de l'étape E → il ne lit plus rien de nouveau,
 le survivant ne remarque rien, le détenteur de zone lit encore via l'up-link.
-**Done :** G1–G4 verts (dont : rotation par non-autorisé → rejet) ; e2e étendu.
+**Done :** G1–G4 verts (dont : rotation par non-autorisé → rejet) ; features étendues.
 
 ### H — Merkle (spec 02.10)
 `H_leaf/H_node` domain-separated, hash de nœud (ligne ‖ header ‖ wraps ‖
@@ -122,7 +135,7 @@ enfants), racines par zone dans le manifest, preuves d'inclusion, sous-arbre
 **CLI :** `prove`, `edition diff`.
 **Manuel :** `prove circle projets/perso/note1` → vérifier hors-ligne ;
 modifier une section → seul son chemin de racine change dans le diff.
-**Done :** H1–H3 verts (dont splice leaf/node → rejet) ; e2e étendu.
+**Done :** H1–H3 verts (dont splice leaf/node → rejet) ; features étendues.
 
 ### I — Concurrence (spec 02.6, 07.6)
 Merge déterministe d'éditions disjointes, fork same-node + résolution par plus
@@ -131,11 +144,11 @@ identique des racines Merkle par le mergeur et les vérificateurs.
 **CLI :** `edition merge` (ou automatique dans publish).
 **Manuel :** deux copies du bundle, deux écritures disjointes, merge → une
 édition, tout vérifie.
-**Done :** I1–I2 verts ; e2e étendu (deux agents concurrents).
+**Done :** I1–I2 verts ; features étendues (deux agents concurrents).
 
 ### K — Intégration finale & packaging
-Scénario K de la spec complet dans l'e2e (il l'est presque déjà par
-construction), vecteurs de perf §09.3 en bench, image Docker (`FROM scratch`),
+Scénario K de la spec complet dans la suite de features (il l'est presque
+déjà par accumulation), vecteurs de perf §09.3 en bench, image Docker (`FROM scratch`),
 paquet npm `@aithos/core` (wasm-pack), conformance levels §09.4 documentés.
 **Manuel :** dérouler le scénario K entier au CLI, chronométrer les cibles.
 **Done :** tout vert, bench dans les cibles, image < 15 Mo, npm importable.
