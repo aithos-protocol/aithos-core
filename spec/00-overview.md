@@ -17,6 +17,7 @@
 | **Header** | Per granted node: the DK sealed one line per authorized identity (§03). |
 | **Mandate** | A signed certificate granting scopes to a grantee keypair (§04). |
 | **Chain** | A mandate plus its ancestors up to the owner's root (§05). |
+| **Head mandate** | A broad, long-lived mandate issued directly by the owner to run unattended; carries a dead-man heartbeat by default (§04.8). |
 | **Gamma** | The subject's hash-chained log of mutations and actions (§07). |
 | **Edition** | One signed state of the bundle; editions form a linear chain (§02). |
 | **Bundle** | The set of files: manifest, zone indexes, blobs, headers, certificates, gamma. |
@@ -79,7 +80,7 @@ The target profile is an owner who issues a broad mandate and then almost never
 returns. Every maintenance duty (rotation, wrap repair, lazy re-encryption) is
 therefore recursive: it falls on the manager of the node concerned — whoever holds a
 perimeter there and issues grants on it — never on the owner. What remains
-structurally owner-only is reduced to a minimum and listed in §10.9.
+structurally owner-only is reduced to a minimum and listed in §10.8.
 
 ## 0.6 Reading order
 

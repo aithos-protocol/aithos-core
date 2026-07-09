@@ -169,6 +169,20 @@ If the owner goes dark beyond `every+grace`, all heartbeat-bound mandates auto-s
 — agents stop acting without any explicit revocation. The owner's return (next beacon)
 resumes them. This bounds autonomous action to owner presence, a core agentic safety.
 
+**Head mandate — normative default (decided).** A *head mandate* — broad perimeter,
+long validity, issued directly by the owner to operate unattended (absentee-owner
+profile, §00.5) — SHOULD carry a long-period heartbeat, default
+`heartbeat: {every: "30d", grace: "72h"}`, configurable. It is the only mandate in
+the tree with no present ancestor — nobody is watching it — and expiry/heartbeat are
+the only cuts that require nobody to show up. The dead-man bound turns a stolen or
+rogue head key from an unbounded impersonation into at most ~one period (§10.8).
+Beacons are owner-sphere-signed (§07.5) from an owner device: grantees never hold
+sphere keys, so a head agent can never beacon for itself. Suspension cuts *action*
+only; the accompanying rotation is lazy hygiene (§06.8). Declining the heartbeat — a
+true "issue and vanish" head mandate — is permitted but MUST be treated as an
+assumed risk: revocation then waits on the owner's return or the succession key
+(§01.1).
+
 ## 4.9 Storage and transport
 
 Certificates live at `certs/<id>.json`, are world-readable, and MAY be transported

@@ -33,7 +33,7 @@ a device that runs agents. It is the **sole authority** for one act: declaring a
 master key, i.e. signing the identity-epoch transition (§10.4) that publishes a
 successor DID document when `S` is compromised or lost. Since `S` itself never
 rotates, the succession key is the only exit; in the absentee-owner profile it is
-also the last-resort cut for a compromised head mandate (§04.8, §10.9). It signs
+also the last-resort cut for a compromised head mandate (§04.8, §10.8). It signs
 nothing else, ever.
 
 **Confinement, stated plainly.** `S` never resides on a server; its wraps exist only

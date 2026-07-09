@@ -81,7 +81,21 @@ power is denial of service and equivocation up to the freshness window — the r
    artifact can be dated anywhere within it (anti-backdating bound, §07.7) — the
    price the serverless design pays for its offline property, stated and bounded.
 
-## 10.8 Pre-promotion review checklist
+## 10.8 What remains owner-only (assumed, kept minimal)
+
+Everything else is recursive-manager territory (§00.5). Exactly three acts stay
+structurally owner-anchored:
+
+1. **Fork resolution of last resort** — a conflict no delegate's authority covers
+   (§02.6).
+2. **The head mandate itself** — revoking or re-issuing it: no ancestor exists above
+   it but the root. Its default dead-man heartbeat (§04.8) is what bounds the damage
+   while the owner is away — a rogue or stolen head key runs at most ~one period
+   (default 30 d) instead of unbounded.
+3. **Declaring a new master key** after seed compromise or loss — reserved to the
+   cold succession key (§01.1), the single exit from a non-rotating `S`.
+
+## 10.9 Pre-promotion review checklist
 
 External review MUST cover: derivation label domain separation; header-line AAD
 binding and the owner-line invariant; the authority-to-rotate check (§05.5) against
