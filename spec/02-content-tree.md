@@ -28,6 +28,14 @@ namespaced id MUST derive through its `ns` node (§2.5) — this is what makes `
 grants and namespace-scoped authoring work. Titles/tags: `public`/`circle` store them
 clear in the index; `self` seals them inside the blob.
 
+Mutating a section's **tag set** is an edit of the section, never of the tag view: a
+`tag=` grant covers the sections currently carrying the tag, NOT re-labelling. Adding
+or removing a tag requires an `id=`, `ns=` or zone-level edit perimeter on the section
+itself. And when a repair pass creates a missing tag wrap for a section newly carrying
+a tag, it MUST first validate the author of that tag mutation (a covering edit
+perimeter at the mutation entry's `at`, per gamma) and fail closed: an unauthorized
+re-label is never bridged into a tag view.
+
 ## 2.3 Bundle layout
 
 ```
@@ -75,19 +83,29 @@ owner root (or a delegate + `authorized_by`, §05). `prev_hash` = SHA-256 of the
 manifest's JCS with `signature=""`. Editions form a **linear chain**: height strictly
 increases, each pins its predecessor.
 
-Without a server, two devices could sign competing height-N editions (a fork).
-Resolution rule, enforceable by any verifier:
+Without a server, two authors could sign competing height-N editions. Resolution
+rules, enforceable by any verifier:
 
 - An edition is valid only if it extends the longest chain the verifier has seen and
   its `prev_hash` matches.
-- A **fork** (two valid editions at the same height with different hashes) is resolved
-  by the next **owner-root-signed** edition naming the winning `prev_hash` in a
-  `resolves_fork` field. Delegates MUST NOT resolve forks.
+- **Disjoint merge (deterministic, arbiter-free).** Two competing editions at the
+  same height whose changesets touch **disjoint node sets** are not a conflict: any
+  party MAY publish the merge edition at height+1 — both changesets applied, parents
+  ordered by ascending edition hash, listed in a `merges: [hash_a, hash_b]` field —
+  and every verifier computes the same result. Multi-agent contention on different
+  nodes therefore never waits for anyone.
+- A **fork** proper (same-node conflict, or irreconcilable merges) is resolved by the
+  **nearest common manager**: the closest authority whose perimeter covers every node
+  touched by both branches. A delegate qualifies within its own authority; the owner
+  root always qualifies and is the last resort. The resolving edition names the
+  winning `prev_hash` in `resolves_fork`; verifiers accept it under the same
+  authority check as a write to those nodes.
 - Verifiers presented with an unresolved fork MUST refuse to treat either branch as
   canonical for delegated writes and surface the conflict.
 
-This keeps integrity owner-anchored without an online arbiter; a mirror that serializes
-writes is a convenience (§00), not a requirement.
+This keeps integrity authority-anchored without an online arbiter — and without an
+owner availability dependency (§00.5); a mirror that serializes writes is a
+convenience (§00), not a requirement.
 
 ## 2.7 Gamma anchoring
 

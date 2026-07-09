@@ -1,7 +1,8 @@
 # 10 — Threat model
 
 > **Status: DRAFT.** Properties, attackers, and the limits we state plainly rather than
-> paper over.
+> paper over. Target operating profile: the **absentee owner** (§00.5) — every
+> property below must hold with the owner absent for months.
 
 ## 10.1 Properties
 
@@ -34,9 +35,9 @@ the rotation is what cuts him). Cascade kills any sub-mandates he issued.
 ## 10.4 Attacker: compromised owner device
 
 Holds a wrap of `S` ⇒ total compromise (as in any root-holding design). Response: a
-**new identity epoch** — generate `S′`, publish a new DID doc signed by a recovery path
-(§01.1 recovery artifact / device quorum), re-issue mandates, rotate + re-encrypt nodes
-under the new tree, supersede old editions. Heavy and deliberate; `S` is a single
+**new identity epoch** — generate `S′`, publish a new DID doc signed by the cold
+**succession key** (§01.1), the sole authority for an epoch transition; re-issue
+mandates, rotate + re-encrypt nodes under the new tree, supersede old editions. Heavy and deliberate; `S` is a single
 object precisely so it can be placed in threshold/MPC custody to raise this bar. Old
 ciphertext the attacker copied stays his (physical limit).
 
@@ -50,9 +51,10 @@ verbs, and issue attenuated sub-mandates. Revoking it cascades its whole subtree
 ## 10.6 Attacker: dishonest mirror / server
 
 Can withhold or delay files (availability, not confidentiality) and attempt to serve a
-stale revocation list or a fork. Mitigations: `freshness` constraints bound stale
-tolerance; the owner-signed fork resolution (§02.6) is the only canonical selector, so
-a mirror cannot forge a winning branch; short TTLs bound offline exposure. A mirror
+stale revocation state or a fork. Mitigations: `freshness` constraints bound stale
+tolerance; fork resolution is authority-checked (§02.6 — nearest common manager, owner
+as last resort), so a mirror can never forge a winning branch (it holds no covering
+mandate); short TTLs bound offline exposure. A mirror
 never holds key material, so it cannot read content or forge authority. The residual
 power is denial of service and equivocation up to the freshness window — the reason a
 2-of-N mirror or a periodic owner checkpoint is recommended operationally.
@@ -74,12 +76,19 @@ power is denial of service and equivocation up to the freshness window — the r
    keys, not content) — the same access-graph fact the certificates already state.
 6. **`self` tag writes are read-only** (sealed tags aren't verifier-checkable); write
    perimeters on `self` use `id=`/`ns=`.
+7. **The freshness window is the unit of slack.** Inside it, distinct verifiers can
+   each honor the N-th action of a budget (double counting, §07.7) and an off-log
+   artifact can be dated anywhere within it (anti-backdating bound, §07.7) — the
+   price the serverless design pays for its offline property, stated and bounded.
 
 ## 10.8 Pre-promotion review checklist
 
 External review MUST cover: derivation label domain separation; header-line AAD
 binding and the owner-line invariant; the authority-to-rotate check (§05.5) against
-unauthorized revocation-by-omission; attenuation (policy + physical) against splice and
-downgrade; the fork-resolution rule against equivocation; gamma action-count integrity
-against replay/omission (I5); heartbeat/session-bind against clock manipulation; and
-the recovery / identity-epoch path (§10.4).
+unauthorized revocation-by-omission; the up-link wrap authority check (§03.4) against
+unauthorized re-linking; attenuation (policy + physical) against splice and downgrade;
+the disjoint-merge and nearest-common-manager rules (§02.6) against unauthorized
+resolution; watchdog `revoke` attenuation (§06.7) against revocation DoS; gamma
+action-count integrity against replay/omission (I5), including subtree counting and
+the freshness anchor (§07.7); heartbeat/session-bind against clock manipulation; and
+the succession-key / identity-epoch path (§10.4).

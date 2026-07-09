@@ -13,7 +13,7 @@
   "prev": "sha256:…",                        // hash of the previous entry's JCS
   "at": "2026-07-08T10:12:00Z",
   "kind": "section.add" | "section.modify" | "section.delete" | "section.redact"
-        | "action" | "heartbeat" | "grant" | "revoke" | "rotate",
+        | "action" | "heartbeat" | "grant" | "revoke" | "rotate" | "merge",
   "target": "/e/circle/s/gmail:0042",        // node path, when applicable
   "authorized_by": "mandate_01JZ…",          // omitted for owner-sphere-signed entries
   "authorized_via": ["mandate_root…","mandate_leaf…"],   // chain, for delegated/agentic
@@ -54,7 +54,12 @@ Every connector action taken under a mandate MUST append an `action` entry:
 
 Consequences, all verifier-checkable offline:
 
-- `max_actions: N` ⇒ count entries with this `authorized_by`; the N+1-th is invalid.
+- `max_actions: N` ⇒ count entries whose `authorized_via` **contains** this mandate id
+  (subtree count: a descendant's action consumes every ancestor's budget); the N+1-th
+  is invalid. A delegate can never multiply its parent's budget by issuing children.
+- `max_children: N` ⇒ count `grant` entries whose `authorized_by` is this mandate.
+  Minting a sub-mandate MUST append its `grant` entry — otherwise `issue` would be a
+  silent action, contradicting I5.
 - `max_actions_per/{rate_limit}` ⇒ windowed count over `at`.
 - `binding`/`counter_sign` ⇒ entry MUST carry a valid `co_sign` (§04.6) or it is
   invalid (and any effect it claims is unattributable).
@@ -74,7 +79,33 @@ freshness anchor for offline verifiers.
 ## 7.6 Ordering without a server
 
 Entries are appended in edition order; the manifest's `gamma_head` fixes the log's tip
-per edition, and the edition chain (§02.6) is what serializes concurrent authors. A
-fork in editions is a fork in the log; the owner-signed fork resolution (§02.6) selects
-the canonical log tip. Delegated authors never resolve forks, so a compromised delegate
-cannot rewrite log order — only append entries a later owner edition may orphan.
+per edition, and the edition chain (§02.6) is what serializes concurrent authors.
+
+Concurrent appends (two authors extending the same tip) produce two sub-chains; the
+disjoint-merge edition (§02.6) reconciles them with a `kind:"merge"` entry whose
+`prevs: [head_a, head_b]` references both tips — the only entry kind with two
+predecessors — signed by the merging party. Existing entries are never rewritten
+(their signatures pin them): the log is a chain that may briefly fork and re-join at
+explicit, signed merge points. Verifiers treat every entry reachable from the pinned
+`gamma_head` as canonical; counts (§7.4) tally over that reachable set.
+
+A fork in editions is a fork in the log; fork resolution (§02.6 — nearest common
+manager, owner as last resort) selects the canonical log tip. A delegate can resolve
+only forks entirely inside its own authority, so a compromised delegate cannot
+rewrite log order beyond its perimeter — and never past entries, which stay pinned by
+hash.
+
+## 7.7 Freshness anchor (anti-backdating)
+
+Chained entries cannot be backdated once published — `prev` pins their order. The
+residual trick is authoring an artifact *off-log* with an old `at` and presenting it
+later. To bound it, every opposable artifact presented outside the log — an action
+request, a co-signature, a chain presentation — MUST embed a recent `gamma_head` as
+its anchor; a verifier rejects an artifact whose anchor is older than its freshness
+tolerance (`freshness`, §04.4). Backdating is thereby bounded to the freshness
+window.
+
+**Honest limit — double counting inside the window.** Two verifiers can each honor
+the N-th action of a `max_actions` budget within the freshness window, before either
+entry propagates. Same bound as revocation propagation (§10.7): a stated limit of the
+serverless design, not a bug.

@@ -39,7 +39,14 @@ grantee; a tag wrap open; a mandate sign/verify; a chain of depth 2 with attenua
 a revocation rotation (old line absent, survivor line opens new DK); a gamma entry
 sign/verify and a `max_actions` count; an edition prev_hash and a fork resolution.
 Both success and every fail-closed case (unauthorized revocation, over-wide
-sub-mandate, N+1 action, expired heartbeat) get a vector.
+sub-mandate, N+1 action, expired heartbeat) get a vector. Session-2 additions MUST
+also be covered: an up-link wrap open after rotation (and rejection of a wrap by a
+non-holder of the parent); a disjoint-edition merge and a nearest-common-manager fork
+resolution (and rejection of an out-of-authority resolver); a watchdog cert-only
+revocation (no line, no read); a backdated artifact outside the freshness anchor →
+rejected; a subtree `max_actions` count via `authorized_via` (child action consumes
+parent budget); a `max_children` count via `grant` entries; an unauthorized tag
+re-label not bridged by the repair pass; a `kex_pubkey` mismatch → invalid mandate.
 
 ## 9.3 Performance targets
 
