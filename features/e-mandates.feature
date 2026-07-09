@@ -40,6 +40,23 @@ Feature: Mandates and the offline verifier
       When the owner grants the agent read on circle folder "projets/perso"
       Then the agent cannot read the section under "projets/pro"
 
+  Rule: One keypair, one mandate, many perimeters
+
+    @wip
+    Scenario: A single mandate grants several folders with no common root
+      Given circle sections in folders "projets/perso" and "sante/dossiers"
+      When the owner grants the agent read on folders "projets/perso" and "sante/dossiers" in one mandate
+      Then the agent reads the section under "projets/perso" with its single keypair
+      And the agent reads the section under "sante/dossiers" with the same keypair
+      But a section under "archives" stays out of the agent's reach
+
+    @wip
+    Scenario: The original cross-branch grant — two folders, one tag, one key
+      Given tagged "toto" and untagged sections in both "projets/perso" and "sante/dossiers"
+      When the owner grants read on both folders restricted to tag "toto" in one mandate
+      Then the agent reads the tagged section of each folder with one keypair
+      But every untagged section stays out of the agent's reach
+
   Rule: Delegation attenuates, offline, without the owner
 
     @wip
