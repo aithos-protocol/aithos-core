@@ -160,7 +160,7 @@ paquet npm `@aithos/core` (wasm-pack), conformance levels §09.4 documentés.
 | 0 Conventions | **faite** — wire multibase, JCS, schéma vecteurs, harnais cucumber |
 | A Genèse | **faite** — A1 + A2 verts, feature identité complète (9 scénarios) : genèse, clé de succession, DID doc, transition d'époque succession-only. Design amendé en cours de route : clé de contenu unique + politique de signature par zone (§02.11) |
 | B Dérivation | **faite** — B2 vert (chaîne profonde + ancres tag), node_key(), 6 scénarios BDD (déterminisme, pas de portée latérale, rename sans re-clé, ancre locale ≠ racine), covers() par segments, CLI node-key |
-| C Scellés | à faire |
+| C Scellés | **faite** — C1/C2 verts (ECIES cross-checké Python au byte près), header I3 fail-closed, grant O(1) byte-identique, rotation + up-link wrap, 8 scénarios BDD, CLI header-seal/open. Spec §3.8 (construction normative), éphémère par ligne |
 | D Bundle | à faire |
 | E Mandats | à faire |
 | F Gamma | à faire |

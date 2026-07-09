@@ -15,6 +15,7 @@ cucumber.workspace = true
 futures.workspace = true
 hex.workspace = true
 ulid.workspace = true
+x25519-dalek.workspace = true
 
 # BDD acceptance harness — features live at the repo root in features/.
 [[test]]

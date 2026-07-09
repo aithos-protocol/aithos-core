@@ -31,6 +31,12 @@ pub enum Error {
 
     #[error("invalid epoch transition: {0}")]
     InvalidEpochTransition(String),
+
+    #[error("seal rejected: {0}")]
+    SealRejected(String),
+
+    #[error("I3 violated — header without an owner line: {0}")]
+    MissingOwnerLine(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

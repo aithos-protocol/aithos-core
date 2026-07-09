@@ -1,0 +1,32 @@
+{
+  "vector": "C1+C2",
+  "description": "Header line seal/open (spec 03.8) and wrap (C2). ECIES X25519+HKDF-SHA256+XChaCha20-Poly1305, per-line ephemeral, AAD binds subject_did/node/key_version. All randomness (ephemerals, nonces) fixed as inputs. Generated independently (Python PyNaCl + manual RFC5869 HKDF + blake3).",
+  "subject_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+  "node": "/e/circle",
+  "key_version": 1,
+  "dk_hex": "c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7",
+  "owner_kex_sk_hex": "7d0871c180200133885f02800c7b57a1cb99ca8e16cab7e34913ffd65de68373",
+  "owner_pub_hex": "2a87b432ae9c60cfb72e98be4987a2f820d1663a763048079f2cd447f5834165",
+  "grantee_sk_hex": "2121212121212121212121212121212121212121212121212121212121212121",
+  "grantee_pub_hex": "7d34a4815fa6b982535e60af3bd9b49556816080f1641ff81d2b7c8ae8268a44",
+  "owner_line": {
+    "esk_hex": "78797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f9091929394959697",
+    "epk_hex": "7ea13ddfcbacd8a13542dece890886486fb8024d0d3cc7f95ed8bb4efad66b73",
+    "n_hex": "000102030405060708090a0b0c0d0e0f1011121314151617",
+    "c_hex": "5d87dc5a4ca26c2c27db027d6808046fd1cabc2a946e1ed24e0104eedacd479cfb0c4c0998fd0e6a639dde27fc4a2c7e"
+  },
+  "grantee_line": {
+    "esk_hex": "98999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7",
+    "epk_hex": "a10eafb0a4fb54b97ec8c0bf34dc8f4c2182453eac5c62e08ece8878f68aa20d",
+    "n_hex": "18191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+    "c_hex": "06ff35436d4b3cf614cf85782c10870c3e1741942039930760430879457503344a45d866ef9d259e3a5ef340252d3738"
+  },
+  "wrap": {
+    "via_key_hex": "5555555555555555555555555555555555555555555555555555555555555555",
+    "wrapped_node": "/e/circle/d/00000000000000000000000001",
+    "key_version": 2,
+    "dk_hex": "6666666666666666666666666666666666666666666666666666666666666666",
+    "n_hex": "303132333435363738393a3b3c3d3e3f4041424344454647",
+    "c_hex": "0ff0f716deb79dde50f090e1f30c1b8a7ebff4323f25a23aa1eb284ea36095e89828707ebcf4ee9c8115531cdf3d421d"
+  }
+}

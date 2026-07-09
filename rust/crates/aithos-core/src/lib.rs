@@ -20,10 +20,12 @@
 pub mod derive;
 pub mod did;
 pub mod error;
+pub mod header;
 pub mod ids;
 pub mod jcs;
 pub mod keys;
 pub mod path;
+pub mod seal;
 pub mod wire;
 
 pub use error::{Error, Result};

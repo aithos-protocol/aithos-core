@@ -4,14 +4,45 @@
 
 use aithos_core::derive::{derive_key, node_key, section_label};
 use aithos_core::did::{DidDocument, EpochTransition};
+use aithos_core::header::{Header, Line, Recipient, Wrap};
 use aithos_core::ids::Sid;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
 use aithos_core::path::{NodePath, Zone};
 use aithos_core::wire;
 use cucumber::{given, then, when, World};
+use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
 
 fn sid(n: u128) -> Sid {
     Sid(ulid::Ulid::from(n))
+}
+
+// --- step C fixtures: header seals (behavioral; byte-exactness lives in C1) ---
+const DID_C: &str = "did:aithos:test-header";
+const NODE_A: &str = "/e/circle";
+const NODE_OTHER: &str = "/e/self";
+const CHILD_NODE: &str = "/e/circle/d/00000000000000000000000001";
+const DK: [u8; 32] = [0x77; 32];
+const DK2: [u8; 32] = [0x66; 32];
+const PARENT_KEY: [u8; 32] = [0x55; 32];
+
+fn xsk(b: u8) -> StaticSecret {
+    StaticSecret::from([b; 32])
+}
+fn owner_rec() -> Recipient {
+    Recipient::owner(XPublicKey::from(&xsk(0x0A)))
+}
+fn grantee_rec(name: &str, b: u8) -> Recipient {
+    Recipient {
+        to: name.to_owned(),
+        kid: name.to_owned(),
+        pubkey: XPublicKey::from(&xsk(b)),
+    }
+}
+fn eph(i: u8) -> [u8; 32] {
+    [0x40 + i; 32]
+}
+fn non(i: u8) -> [u8; 24] {
+    [0x60 + i; 24]
 }
 
 const BUNDLE: &str = "file://local";
@@ -46,6 +77,23 @@ pub struct ProtocolWorld {
     deep_path: Option<NodePath>,
     node_keys: Vec<[u8; 32]>,
     folder_key: Option<[u8; 32]>,
+    // --- step C: headers ---
+    header: Option<Header>,
+    saved_line: Option<Line>,
+    opened: Vec<Result<[u8; 32], String>>,
+    wrap_obj: Option<Wrap>,
+}
+
+impl ProtocolWorld {
+    fn open_into(&mut self, version: u64, kid: &str, sk_byte: u8) {
+        let r = self
+            .header
+            .as_ref()
+            .unwrap()
+            .open(DID_C, version, kid, &xsk(sk_byte))
+            .map_err(|e| e.to_string());
+        self.opened.push(r);
+    }
 }
 
 impl ProtocolWorld {
@@ -146,6 +194,61 @@ fn zone_folder_section(w: &mut ProtocolWorld) {
 fn zone_and_folder(w: &mut ProtocolWorld) {
     a_zone_key(w);
     w.deep_path = Some(NodePath::folder(Zone::Circle, vec![sid(1)]));
+}
+
+#[given("a node key and two recipients, the owner and a grantee")]
+fn dk_and_two_recipients(_w: &mut ProtocolWorld) {
+    // Fixed fixtures: DK, owner (0x0A), grantee g1 (0x21).
+}
+
+#[given("a sealed header for the owner and a grantee")]
+fn sealed_header_owner_grantee(w: &mut ProtocolWorld) {
+    w.header = Some(
+        Header::build(
+            DID_C,
+            NODE_A,
+            &DK,
+            &[owner_rec(), grantee_rec("g1", 0x21)],
+            &[eph(1), eph(2)],
+            &[non(1), non(2)],
+        )
+        .unwrap(),
+    );
+}
+
+#[given("a sealed header for the owner on one node")]
+#[given("a sealed header for the owner")]
+fn sealed_header_owner_only(w: &mut ProtocolWorld) {
+    let header = Header::build(DID_C, NODE_A, &DK, &[owner_rec()], &[eph(1)], &[non(1)]).unwrap();
+    w.saved_line = Some(header.key_versions["1"].lines[0].clone());
+    w.header = Some(header);
+}
+
+#[given("a node key and a single grantee recipient")]
+fn single_grantee(_w: &mut ProtocolWorld) {}
+
+#[given("a sealed header for the owner and two grantees")]
+fn sealed_header_three(w: &mut ProtocolWorld) {
+    w.header = Some(
+        Header::build(
+            DID_C,
+            NODE_A,
+            &DK,
+            &[
+                owner_rec(),
+                grantee_rec("g1", 0x21),
+                grantee_rec("g2", 0x22),
+            ],
+            &[eph(1), eph(2), eph(3)],
+            &[non(1), non(2), non(3)],
+        )
+        .unwrap(),
+    );
+}
+
+#[given("a derived node rotated to a fresh random key")]
+fn derived_node_rotated(_w: &mut ProtocolWorld) {
+    // Fixtures: parent key PARENT_KEY, child CHILD_NODE rotated to DK2 v2.
 }
 
 // ----------------------------------------------------------------- whens
@@ -285,6 +388,91 @@ fn derive_tag_anchors(w: &mut ProtocolWorld, tag: String) {
     w.node_keys.push(node_key(&zone, &root));
     w.node_keys
         .push(node_key(&zone, &NodePath::folder(Zone::Circle, folders)));
+}
+
+#[when("the node key is sealed into a header")]
+fn seal_into_header(w: &mut ProtocolWorld) {
+    sealed_header_owner_grantee(w);
+}
+
+#[when("a third keypair tries every line")]
+fn stranger_tries(w: &mut ProtocolWorld) {
+    for kid in ["owner-kex", "g1"] {
+        w.open_into(1, kid, 0x99);
+    }
+}
+
+#[when("one byte of a line's ciphertext is corrupted")]
+fn corrupt_line(w: &mut ProtocolWorld) {
+    let header = w.header.as_mut().unwrap();
+    let kv = header.key_versions.get_mut("1").unwrap();
+    let c = &mut kv.lines[0].c;
+    let flipped = if c.starts_with('0') { "1" } else { "0" };
+    c.replace_range(0..1, flipped);
+    w.open_into(1, "owner-kex", 0x0A);
+}
+
+#[when("its owner line is replayed on a different node's header")]
+fn replay_line_other_node(w: &mut ProtocolWorld) {
+    let stolen = w.header.as_ref().unwrap().key_versions["1"].lines[0].clone();
+    let mut other =
+        Header::build(DID_C, NODE_OTHER, &DK, &[owner_rec()], &[eph(4)], &[non(4)]).unwrap();
+    other.key_versions.get_mut("1").unwrap().lines[0] = stolen;
+    w.header = Some(other);
+    w.open_into(1, "owner-kex", 0x0A);
+}
+
+#[when("a header is built without the owner line")]
+fn build_without_owner(w: &mut ProtocolWorld) {
+    match Header::build(
+        DID_C,
+        NODE_A,
+        &DK,
+        &[grantee_rec("g1", 0x21)],
+        &[eph(1)],
+        &[non(1)],
+    ) {
+        Ok(_) => panic!("a header without an owner line must be rejected"),
+        Err(e) => w.rejection = Some(e.to_string()),
+    }
+}
+
+#[when("a line for a new grantee is appended")]
+fn append_grantee_line(w: &mut ProtocolWorld) {
+    w.header
+        .as_mut()
+        .unwrap()
+        .append_line(DID_C, 1, &DK, &grantee_rec("g1", 0x21), eph(5), non(5))
+        .unwrap();
+}
+
+#[when("the node is rotated without the first grantee")]
+fn rotate_without_g1(w: &mut ProtocolWorld) {
+    w.header
+        .as_mut()
+        .unwrap()
+        .rotate(
+            DID_C,
+            2,
+            &DK2,
+            &[owner_rec(), grantee_rec("g2", 0x22)],
+            &[eph(6), eph(7)],
+            &[non(6), non(7)],
+        )
+        .unwrap();
+}
+
+#[when("the rotator posts the up-link wrap under the parent key")]
+fn post_uplink_wrap(w: &mut ProtocolWorld) {
+    w.wrap_obj = Some(Wrap::seal(
+        DID_C,
+        NODE_A,
+        &PARENT_KEY,
+        CHILD_NODE,
+        2,
+        &DK2,
+        non(9),
+    ));
 }
 
 // ----------------------------------------------------------------- thens
@@ -433,6 +621,101 @@ fn anchors_distinct(w: &mut ProtocolWorld) {
         3,
         "local anchor, root anchor, folder key all distinct"
     );
+}
+
+#[then("the owner opens the header and recovers the node key")]
+fn owner_opens(w: &mut ProtocolWorld) {
+    let dk = w
+        .header
+        .as_ref()
+        .unwrap()
+        .open(DID_C, 1, "owner-kex", &xsk(0x0A))
+        .unwrap();
+    assert_eq!(dk, DK);
+}
+
+#[then("the grantee opens the header and recovers the node key")]
+#[then("the new grantee opens the node key")]
+fn grantee_opens(w: &mut ProtocolWorld) {
+    let dk = w
+        .header
+        .as_ref()
+        .unwrap()
+        .open(DID_C, 1, "g1", &xsk(0x21))
+        .unwrap();
+    assert_eq!(dk, DK);
+}
+
+#[then("it recovers nothing")]
+fn stranger_recovers_nothing(w: &mut ProtocolWorld) {
+    assert!(!w.opened.is_empty());
+    assert!(w.opened.iter().all(Result::is_err));
+}
+
+#[then("opening that line is rejected")]
+#[then("opening it there is rejected")]
+fn opening_rejected(w: &mut ProtocolWorld) {
+    assert!(w.opened.last().unwrap().is_err());
+}
+
+#[then("the header is rejected as invalid")]
+fn header_invalid(w: &mut ProtocolWorld) {
+    let msg = w.rejection.as_deref().unwrap();
+    assert!(msg.contains("I3"), "rejection must name I3: {msg}");
+}
+
+#[then("the owner line is byte-identical to before")]
+fn owner_line_untouched(w: &mut ProtocolWorld) {
+    let header = w.header.as_ref().unwrap();
+    let owner_line = header.key_versions["1"]
+        .lines
+        .iter()
+        .find(|l| l.to == "owner")
+        .unwrap();
+    assert_eq!(owner_line, w.saved_line.as_ref().unwrap());
+}
+
+#[then("the surviving grantee opens the new node key")]
+fn survivor_opens(w: &mut ProtocolWorld) {
+    let dk = w
+        .header
+        .as_ref()
+        .unwrap()
+        .open(DID_C, 2, "g2", &xsk(0x22))
+        .unwrap();
+    assert_eq!(dk, DK2);
+}
+
+#[then("the first grantee cannot open the new version")]
+fn revoked_cannot_open(w: &mut ProtocolWorld) {
+    assert!(w
+        .header
+        .as_ref()
+        .unwrap()
+        .open(DID_C, 2, "g1", &xsk(0x21))
+        .is_err());
+}
+
+#[then("the owner opens the new version too")]
+fn owner_opens_new(w: &mut ProtocolWorld) {
+    let dk = w
+        .header
+        .as_ref()
+        .unwrap()
+        .open(DID_C, 2, "owner-kex", &xsk(0x0A))
+        .unwrap();
+    assert_eq!(dk, DK2);
+}
+
+#[then("a parent holder recovers the new node key through the wrap")]
+fn parent_recovers_via_wrap(w: &mut ProtocolWorld) {
+    let dk = w
+        .wrap_obj
+        .as_ref()
+        .unwrap()
+        .open(DID_C, &PARENT_KEY)
+        .unwrap();
+    assert_eq!(dk, DK2);
 }
 
 #[then(expr = "genesis is rejected with {string}")]

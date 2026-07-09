@@ -27,7 +27,9 @@ never individually granted has no header (derivation is its only route):
 ```
 
 - A **line** is an X25519-HKDF-SHA256-AEAD seal of the node's DK to one recipient
-  public key. AAD purpose `header-line`, bound to `subject_did ‖ node ‖ key_version`.
+  public key, with its own ephemeral (`epk` stored in the line — this is what keeps
+  grant O(1): appending a line never touches, nor needs, another line's ephemeral).
+  AAD purpose `header-line`, bound to `subject_did ‖ node ‖ key_version`.
 - `to` is a stable label (the grantee's multibase Ed25519 pubkey, or `"owner"`); it is
   a routing hint only — the seal is what grants. Recipients try lines addressed to
   their `kid`.
@@ -113,3 +115,25 @@ certificates already state, and never more.
 The header's hash is folded into its node's Merkle hash (§02.10): appending a line or
 rotating bumps the node's proof path to the signed state root, so a reader proves it
 holds the **current** header without fetching any other header.
+
+## 3.8 Seal construction (normative wire detail)
+
+```
+line:  (esk, epk) ← X25519 ephemeral, entropy injected; epk stored in the line
+       ss   = X25519(esk, recipient_pub)
+       kek  = HKDF-SHA256( ikm = ss, salt = ∅,
+                info = "aithos-core/v1/hdr-kek" ‖ 0x00 ‖ epk ‖ recipient_pub )
+       c    = XChaCha20-Poly1305( kek, n₂₄,
+                aad = "aithos-core/v1/header-line" ‖ 0x00 ‖ subject_did
+                      ‖ 0x00 ‖ node ‖ 0x00 ‖ key_version, DK )
+
+wrap (tag view & up-link, §3.4):
+       key  = derive("aithos-core/v1/wrap", K_via)      // via = anchor or parent
+       c    = XChaCha20-Poly1305( key, n₂₄,
+                aad = "aithos-core/v1/tagwrap" ‖ 0x00 ‖ subject_did
+                      ‖ 0x00 ‖ wrapped_node ‖ 0x00 ‖ key_version, DK' )
+```
+
+`key_version` is decimal ASCII; `epk`/`n`/`c` are hex on disk. Conformance vectors
+C1/C2 fix ephemerals and nonces as **inputs** — randomness is always injected
+(§00), so even randomized crypto cross-checks byte-for-byte.
