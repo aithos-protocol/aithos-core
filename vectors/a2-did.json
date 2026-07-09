@@ -1,0 +1,14 @@
+{
+  "vector": "A2",
+  "description": "DID document + identity-epoch transition (spec 01.4, 10.4). Two identities from fixed seeds; the transition is signed by the FIRST identity's succession key. Expected values generated independently (Python: blake3 + PyNaCl + base58); Ed25519 signatures are deterministic (RFC 8032), so canonical strings match byte-for-byte.",
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "succession_seed_hex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+  "successor_seed_hex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+  "successor_succession_seed_hex": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+  "bundle": "file://local",
+  "revocations": "gamma/gamma.jsonl",
+  "did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+  "successor_did": "did:aithos:z6MkjRNwu8WiMZhKTYnZRKYv8frjaEiZ9snoeoNyngcQtGac",
+  "did_doc_jcs": "{\"aithos-did-core\":\"1.0.0-draft.1\",\"bundle\":[\"file://local\"],\"id\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"keys\":{\"content\":\"z6MkvjGUmbjYidM8w69f146SuTEvYKMhsBWEjPXi9FybqWNk\",\"kex\":\"z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS\",\"root\":\"z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"succession\":\"z6MkhFwXNFWosLeugvSf4wcL9t3uuRXueGSFTRgSvHhWj5G2\"},\"revocations\":\"gamma/gamma.jsonl\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"20a580334c05c858791b60822b832dc0e0859f6b9ff407e219c324e6d17432e775fb300d7ae2eafcd7c64db82fab2b952ca6f982a91a4fbf40732622b3baea07\"}}",
+  "transition_jcs": "{\"aithos-epoch-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-09T00:00:00Z\",\"next_did\":\"did:aithos:z6MkjRNwu8WiMZhKTYnZRKYv8frjaEiZ9snoeoNyngcQtGac\",\"prev_did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#succession\",\"value\":\"cca21b3446ecda3848943f65e077839f6a6470b7a21f92f7d8fb7500e913c6182f99e87f1e1416d60744ad6647af487f79cbefc453a85012e11e94031edd8e09\"}}"
+}

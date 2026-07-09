@@ -25,6 +25,12 @@ pub enum Error {
 
     #[error("canonicalization failed: {0}")]
     Canonicalization(String),
+
+    #[error("invalid DID document: {0}")]
+    InvalidDidDocument(String),
+
+    #[error("invalid epoch transition: {0}")]
+    InvalidEpochTransition(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

@@ -53,6 +53,15 @@ impl OwnerKeys {
     }
 }
 
+/// The cold **succession keypair** (§01.1): deliberately NOT derived from `S`,
+/// built from caller-supplied entropy — the core never draws randomness. Its
+/// public half is pinned in the DID document; its private half stays cold. It
+/// signs exactly one kind of artifact: the identity-epoch transition (§01.4).
+#[must_use]
+pub fn succession_from_entropy(entropy: [u8; 32]) -> SigningKey {
+    SigningKey::from_bytes(&entropy)
+}
+
 /// Normative Ed25519 → X25519 conversion (§01.2, §04.1): the birational map
 /// to Montgomery form, byte-identical to libsodium's
 /// `crypto_sign_ed25519_pk_to_curve25519`. A mandate's `kex_pubkey` MUST

@@ -2,8 +2,13 @@
 //! root in `features/`; step definitions grow with each phase of
 //! docs/EXECUTION-PLAN.md and are never rewritten, only extended.
 
-use aithos_core::keys::{MasterSeed, OwnerKeys};
+use aithos_core::did::{DidDocument, EpochTransition};
+use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
+use aithos_core::wire;
 use cucumber::{given, then, when, World};
+
+const BUNDLE: &str = "file://local";
+const REVOCATIONS: &str = "gamma/gamma.jsonl";
 
 /// One derived identity, as its public keys (hex), in a fixed order:
 /// root_sign, content_sign, owner_kex (§01.1).
@@ -22,6 +27,13 @@ pub struct ProtocolWorld {
     seeds: Vec<Vec<u8>>,
     identities: Vec<PublicIdentity>,
     rejection: Option<String>,
+    /// Entropy injected for succession keypairs (the core never draws RNG).
+    succession_entropy: Vec<[u8; 32]>,
+    succession_pubs: Vec<String>,
+    did_doc: Option<DidDocument>,
+    prev_doc: Option<DidDocument>,
+    next_doc: Option<DidDocument>,
+    transition: Option<Result<(), String>>,
 }
 
 impl ProtocolWorld {
@@ -29,6 +41,23 @@ impl ProtocolWorld {
         let seed = MasterSeed::from_slice(&self.seeds[seed_index]).expect("valid seed");
         self.identities
             .push(public_identity(&OwnerKeys::genesis(&seed)));
+    }
+
+    fn owner(&self, seed_index: usize) -> OwnerKeys {
+        let seed = MasterSeed::from_slice(&self.seeds[seed_index]).expect("valid seed");
+        OwnerKeys::genesis(&seed)
+    }
+
+    fn build_doc(&self, seed_index: usize, entropy_index: usize) -> DidDocument {
+        let owner = self.owner(seed_index);
+        let succession = succession_from_entropy(self.succession_entropy[entropy_index]);
+        DidDocument::build(
+            &owner,
+            &succession.verifying_key(),
+            vec![BUNDLE.to_owned()],
+            REVOCATIONS.to_owned(),
+        )
+        .expect("DID document builds")
     }
 }
 
@@ -48,6 +77,28 @@ fn two_master_seeds(w: &mut ProtocolWorld) {
 #[given("a 31-byte seed candidate")]
 fn a_short_seed(w: &mut ProtocolWorld) {
     w.seeds.push(vec![7u8; 31]);
+}
+
+#[given("a master seed and a succession keypair")]
+fn seed_and_succession(w: &mut ProtocolWorld) {
+    w.seeds.push((0u8..32).collect());
+    w.succession_entropy.push([9u8; 32]);
+}
+
+#[given("a signed DID document")]
+fn a_signed_did_document(w: &mut ProtocolWorld) {
+    seed_and_succession(w);
+    w.did_doc = Some(w.build_doc(0, 0));
+}
+
+#[given("an identity and its successor identity")]
+fn identity_and_successor(w: &mut ProtocolWorld) {
+    w.seeds.push((0u8..32).collect());
+    w.seeds.push((100u8..132).collect());
+    w.succession_entropy.push([9u8; 32]);
+    w.succession_entropy.push([11u8; 32]);
+    w.prev_doc = Some(w.build_doc(0, 0));
+    w.next_doc = Some(w.build_doc(1, 1));
 }
 
 // ----------------------------------------------------------------- whens
@@ -81,6 +132,59 @@ fn try_derive(w: &mut ProtocolWorld) {
     }
 }
 
+#[when("I generate a succession keypair twice for the same seed")]
+fn generate_succession_twice(w: &mut ProtocolWorld) {
+    // Owner keys: derived from the seed, twice — must be identical.
+    w.derive_from(0);
+    w.derive_from(0);
+    // Succession: from two independent entropy draws — must differ.
+    for entropy in [[1u8; 32], [2u8; 32]] {
+        let key = succession_from_entropy(entropy);
+        w.succession_pubs
+            .push(hex::encode(key.verifying_key().to_bytes()));
+    }
+}
+
+#[when("I build the DID document")]
+fn build_did_document(w: &mut ProtocolWorld) {
+    w.did_doc = Some(w.build_doc(0, 0));
+}
+
+#[when("one byte of it is altered")]
+fn tamper_document(w: &mut ProtocolWorld) {
+    let doc = w.did_doc.as_mut().expect("a signed DID document");
+    doc.revocations.push('x');
+}
+
+#[when("the transition is signed by the succession key")]
+fn transition_by_succession(w: &mut ProtocolWorld) {
+    let (prev, next) = (w.prev_doc.clone().unwrap(), w.next_doc.clone().unwrap());
+    let succession = succession_from_entropy(w.succession_entropy[0]);
+    let tr = EpochTransition::sign(
+        &succession,
+        prev.id.clone(),
+        next.id,
+        "2026-07-09T00:00:00Z".to_owned(),
+    )
+    .expect("transition signs");
+    w.transition = Some(tr.verify(&prev).map_err(|e| e.to_string()));
+}
+
+#[when("the transition is signed by the root key itself")]
+fn transition_by_root(w: &mut ProtocolWorld) {
+    let (prev, next) = (w.prev_doc.clone().unwrap(), w.next_doc.clone().unwrap());
+    let owner = w.owner(0);
+    let tr = EpochTransition::sign_with(
+        &owner.root_sign,
+        "#root",
+        prev.id.clone(),
+        next.id,
+        "2026-07-09T00:00:00Z".to_owned(),
+    )
+    .expect("transition signs");
+    w.transition = Some(tr.verify(&prev).map_err(|e| e.to_string()));
+}
+
 // ----------------------------------------------------------------- thens
 
 #[then("both derivations yield the same public identity")]
@@ -104,6 +208,71 @@ fn domain_separated(w: &mut ProtocolWorld) {
     let id = &w.identities[0];
     let unique: std::collections::BTreeSet<_> = id.iter().collect();
     assert_eq!(unique.len(), id.len(), "keys must be pairwise distinct");
+}
+
+#[then("the two succession keys differ")]
+fn succession_keys_differ(w: &mut ProtocolWorld) {
+    assert_eq!(w.succession_pubs.len(), 2);
+    assert_ne!(w.succession_pubs[0], w.succession_pubs[1]);
+}
+
+#[then("the owner keys are identical both times")]
+fn owner_keys_identical(w: &mut ProtocolWorld) {
+    assert_eq!(w.identities[0], w.identities[1]);
+}
+
+#[then("it contains the root, content, kex and succession public keys")]
+fn doc_contains_four_keys(w: &mut ProtocolWorld) {
+    let doc = w.did_doc.as_ref().expect("a DID document");
+    let owner = w.owner(0);
+    let succession = succession_from_entropy(w.succession_entropy[0]);
+    assert_eq!(
+        doc.keys.root,
+        wire::ed25519_pub_to_multibase(&owner.root_sign.verifying_key().to_bytes())
+    );
+    assert_eq!(
+        doc.keys.content,
+        wire::ed25519_pub_to_multibase(&owner.content_sign.verifying_key().to_bytes())
+    );
+    assert_eq!(
+        doc.keys.kex,
+        wire::x25519_pub_to_multibase(&owner.owner_kex_pub().to_bytes())
+    );
+    assert_eq!(
+        doc.keys.succession,
+        wire::ed25519_pub_to_multibase(&succession.verifying_key().to_bytes())
+    );
+}
+
+#[then("its identifier is derived from the root public key")]
+fn doc_id_from_root(w: &mut ProtocolWorld) {
+    let doc = w.did_doc.as_ref().expect("a DID document");
+    let root = w.owner(0).root_sign.verifying_key().to_bytes();
+    assert_eq!(doc.id, wire::did_aithos(&root));
+}
+
+#[then("its signature verifies under the root key")]
+fn doc_signature_verifies(w: &mut ProtocolWorld) {
+    w.did_doc
+        .as_ref()
+        .unwrap()
+        .verify()
+        .expect("valid document");
+}
+
+#[then("verification is rejected")]
+fn verification_rejected(w: &mut ProtocolWorld) {
+    assert!(w.did_doc.as_ref().unwrap().verify().is_err());
+}
+
+#[then("the successor DID document is accepted")]
+fn successor_accepted(w: &mut ProtocolWorld) {
+    assert_eq!(w.transition.as_ref().unwrap(), &Ok(()));
+}
+
+#[then("the transition is rejected")]
+fn transition_rejected(w: &mut ProtocolWorld) {
+    assert!(w.transition.as_ref().unwrap().is_err());
 }
 
 #[then(expr = "genesis is rejected with {string}")]

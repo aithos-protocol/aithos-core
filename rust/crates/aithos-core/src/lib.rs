@@ -18,6 +18,7 @@
 //! - `merkle`  (todo)     → 02.10 (state roots, inclusion proofs)
 
 pub mod derive;
+pub mod did;
 pub mod error;
 pub mod ids;
 pub mod jcs;

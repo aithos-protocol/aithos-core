@@ -30,7 +30,6 @@ Feature: Identity genesis
 
   Rule: The succession key is independent and cold
 
-    @wip
     Scenario: The succession key is not derived from the master seed
       Given a master seed
       When I generate a succession keypair twice for the same seed
@@ -39,7 +38,6 @@ Feature: Identity genesis
 
   Rule: The DID document publishes the identity
 
-    @wip
     Scenario: The DID document lists the four public keys
       Given a master seed and a succession keypair
       When I build the DID document
@@ -47,7 +45,6 @@ Feature: Identity genesis
       And its identifier is derived from the root public key
       And its signature verifies under the root key
 
-    @wip
     Scenario: A tampered DID document fails closed
       Given a signed DID document
       When one byte of it is altered
@@ -55,13 +52,11 @@ Feature: Identity genesis
 
   Rule: Only the succession key can declare a new master key
 
-    @wip
     Scenario: An epoch transition signed by the succession key is accepted
       Given an identity and its successor identity
       When the transition is signed by the succession key
       Then the successor DID document is accepted
 
-    @wip
     Scenario: An epoch transition signed by anything else is rejected
       Given an identity and its successor identity
       When the transition is signed by the root key itself

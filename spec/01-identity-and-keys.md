@@ -86,7 +86,36 @@ segment. Labels use **sids**, never names, so renaming re-keys nothing (§02.9).
 `did:aithos:<multibase(root_sign.pub)>`. The DID document lists: root key, the
 content signing key, `owner_kex` public, the **succession public key** (§1.1),
 revocation-state pointer (§06.5), and the bundle's canonical location(s). Key
-fragments: `#root`, `#content`, `#kex`, `#succession`. It is signed by root_sign and versioned by the same
+fragments: `#root`, `#content`, `#kex`, `#succession`.
+
+```jsonc
+{ "aithos-did-core": "1.0.0-draft.1",
+  "id": "did:aithos:z6Mk…",                  // = multibase(keys.root); mismatch ⇒ invalid
+  "keys": { "root": "z6Mk…", "content": "z6Mk…",
+            "kex": "z6LS…", "succession": "z6Mk…" },
+  "revocations": "gamma/gamma.jsonl",        // revocation-state pointer (§06.5)
+  "bundle": ["file://…"],                    // canonical location(s)
+  "signature": { "alg": "ed25519", "key": "#root", "value": "<hex>" } }
+```
+
+Signing convention (shared with the manifest, §02.6): the signature covers the JCS
+of the document with `signature.value = ""`; `value` is the hex Ed25519 signature.
+Verification fails closed on: id↔root mismatch, malformed keys, bad signature.
+
+**Identity-epoch transition (§10.4).** The only artifact the succession key ever
+signs:
+
+```jsonc
+{ "aithos-epoch-core": "1.0.0-draft.1",
+  "prev_did": "did:aithos:z6Mk…",            // the compromised/lost identity
+  "next_did": "did:aithos:z6Mk…",            // the successor identity
+  "at": "2026-07-09T00:00:00Z",
+  "signature": { "alg": "ed25519", "key": "#succession", "value": "<hex>" } }
+```
+
+A verifier accepts a successor DID document only if the transition verifies under
+the **previous** document's `succession` key. Any other signer — including
+`#root` itself — is rejected: a stolen `S` can never steal the identity's future. It is signed by root_sign and versioned by the same
 edition chain as the bundle. Grantee keys never appear in it.
 
 ## 1.5 Key inventory (complete)

@@ -1,7 +1,8 @@
 //! `aithos-core` — reference CLI (spec §09.1). Everything is local; no
 //! command needs a network to be correct.
 
-use aithos_core::keys::{MasterSeed, OwnerKeys};
+use aithos_core::did::DidDocument;
+use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -20,36 +21,67 @@ enum Command {
         /// Omit to generate a fresh random seed.
         #[arg(long)]
         seed_hex: Option<String>,
+        /// DEV ONLY: fixed succession entropy as hex (deterministic).
+        #[arg(long)]
+        succession_seed_hex: Option<String>,
     },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     match Cli::parse().command {
-        Command::Init { seed_hex } => init(seed_hex),
+        Command::Init {
+            seed_hex,
+            succession_seed_hex,
+        } => init(seed_hex, succession_seed_hex),
     }
 }
 
-fn init(seed_hex: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
-    let seed = match seed_hex {
+fn seed32(
+    hex_or_random: Option<String>,
+    what: &str,
+) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    match hex_or_random {
         Some(h) => {
-            eprintln!("WARNING: --seed-hex is for tests/vectors only.");
-            MasterSeed::from_slice(&hex::decode(h)?)?
+            eprintln!("WARNING: --{what} is for tests/vectors only.");
+            Ok(hex::decode(h)?
+                .try_into()
+                .map_err(|_| format!("{what}: expected 32 bytes"))?)
         }
         None => {
             // OS randomness is injected here, at the surface — never inside core.
             let mut bytes = [0u8; 32];
             getrandom(&mut bytes)?;
-            MasterSeed::from_bytes(bytes)
+            Ok(bytes)
         }
-    };
+    }
+}
+
+fn init(
+    seed_hex: Option<String>,
+    succession_seed_hex: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let seed = MasterSeed::from_bytes(seed32(seed_hex, "seed-hex")?);
+    let succession_entropy = seed32(succession_seed_hex, "succession-seed-hex")?;
     let keys = OwnerKeys::genesis(&seed);
+    let succession = succession_from_entropy(succession_entropy);
+    let doc = DidDocument::build(
+        &keys,
+        &succession.verifying_key(),
+        vec!["file://local".to_owned()],
+        "gamma/gamma.jsonl".to_owned(),
+    )?;
+    doc.verify()?;
     let root_pub = keys.root_sign.verifying_key().to_bytes();
     let out = serde_json::json!({
-        "did": aithos_core::wire::did_aithos(&root_pub),
+        "did": doc.id,
         "root_sign_pub": hex::encode(root_pub),
         "content_sign_pub": hex::encode(keys.content_sign.verifying_key().to_bytes()),
         "owner_kex_pub": hex::encode(keys.owner_kex_pub().to_bytes()),
+        "succession_pub": hex::encode(succession.verifying_key().to_bytes()),
+        "succession_secret_hex": hex::encode(succession_entropy),
+        "did_document": doc,
     });
+    eprintln!("STORE succession_secret_hex COLD (paper/HSM) — it is shown ONCE and never derivable again.");
     println!("{}", serde_json::to_string_pretty(&out)?);
     Ok(())
 }
