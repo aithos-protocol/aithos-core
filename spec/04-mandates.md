@@ -139,8 +139,8 @@ To verify grantee G may do `OP` on subject `DID` at time `T` from a presented ch
    without a valid owner co-signature (§4.6) is rejected here.
 ```
 
-Fail any ⇒ reject. Every step reads files (DID doc, certs, gamma, revocation list);
-none needs a live server.
+Fail any ⇒ reject. Every step reads files (DID doc, certs, gamma — revocation state
+included, §06.5); none needs a live server.
 
 ## 4.6 Counter-signature (binding actions)
 
