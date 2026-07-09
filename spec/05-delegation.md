@@ -27,10 +27,15 @@ in every request and gamma entry.
 
 ## 5.3 Attenuation invariants (verifier, per link child→parent)
 
-1. **Perimeter containment.** Every child entry is covered by a parent entry under the
-   verb lattice and selector algebra (a parent `tag=test` covers only child `tag=test`;
-   a parent `circle` no-selector covers any child circle selector; `ns=p` covers
-   `id=p:x`).
+1. **Perimeter containment.** Every child entry is covered by a parent entry under
+   the verb lattice and selector algebra (§04.2): a parent `circle` no-selector
+   covers any child circle selector; `dir=p` covers `dir=p/q`, covers `id=` of any
+   section under `p`, covers `dir=p/q&tag=t`; `tag=t` covers `tag=t` and — policy
+   level — `dir=X&tag=t`; containment of `dir` is by segment list, never by string
+   prefix. Key level: a `dir&tag` grant is minted by a holder of the folder (or an
+   ancestor) — a holder of only the zone-root tag view holds section wraps, not the
+   folder, and so can delegate per-section (`id=`) subsets but cannot mint the
+   folder-local anchor (§5.2 physical attenuation).
 2. **Window containment.** `parent.nb ≤ child.nb ≤ child.na ≤ parent.na`.
 3. **Constraint monotonicity.** Child constraints are ≥ strict: numeric caps ≤ parent,
    `domains ⊆`, `counter_sign/binding ⊇`, `heartbeat` at least as tight, `freshness`

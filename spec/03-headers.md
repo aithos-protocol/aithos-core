@@ -6,8 +6,10 @@
 
 ## 3.1 Object
 
-One header per granted node (`/e/circle`, `/e/self`, `/e/<zone>/ns/<ns>`,
-`/e/<zone>/t/<tag>`, `/x/<id>`), at `.../header.json`:
+One header per granted node — a zone root `/e/<zone>`, any folder
+`/e/<zone>/d/<sid>/…`, any tag view `…/t/<tag>` (zone-root or folder-local), any
+section `…/s/<sid>`, or a vault `/x/<id>` — at `.../header.json`. A node that was
+never individually granted has no header (derivation is its only route):
 
 ```jsonc
 { "object": "header", "v": 1,

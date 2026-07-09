@@ -70,6 +70,9 @@ K(child) = derive("aithos-core/v1/" + child_label, K(parent))
 ```
 
 so holding a node's DK yields its entire subtree, present and future; nothing else.
+`child_label` is the marker + identifier of the segment (`d/<sid>` folder, `s/<sid>`
+section, `t/<tag>` tag anchor — §02.5); depth is unlimited, one derivation per
+segment. Labels use **sids**, never names, so renaming re-keys nothing (§02.9).
 
 ## 1.4 DID document (minimal carry)
 

@@ -11,11 +11,12 @@ Everything is local; no command needs a network to be correct.
 aithos-core init                         # generate S, DID doc, empty bundle
 aithos-core device add|remove <label>
 
-aithos-core section add|edit|delete <zone> <id> [--title] [--tags] [--body-file]
-aithos-core zone show <zone>
+aithos-core folder add|rename|move <zone> <path>          # move = rotation, §02.9
+aithos-core section add|edit|delete <zone> <path> [--title] [--tags] [--body-file]
+aithos-core zone show <zone>                # display paths (names); CLI resolves sids
 
 aithos-core grant <grantee> \            # mint mandate + append header lines
-    --perimeter "read.circle#tag=test,edit.circle#tag=test,act.x.gmail.reply" \
+    --perimeter "read.circle#dir=projets/perso&tag=toto,edit.circle#tag=test,act.x.gmail.reply" \
     --ttl 7d [--max-actions 50] [--counter-sign act.x.gmail.send] \
     [--heartbeat 24h/6h] [--session-bind] [--domains example.com] \
     [--issue depth=1]
@@ -34,8 +35,9 @@ aithos-core edition publish|verify                       # edition chain + fork 
 ## 9.2 Test vectors (normative at promotion)
 
 `vectors/` MUST cover, from a fixed `S`: DID doc; sphere/owner-kex keys; a node DK and
-its section-key derivations (plain + namespaced); a header seal/open for owner and a
-grantee; a tag wrap open; a mandate sign/verify; a chain of depth 2 with attenuation;
+a deep-path derivation (zone → folder → folder → section, one derive per segment); a
+header seal/open for owner and a grantee; a tag wrap open; a mandate sign/verify; a
+chain of depth 2 with attenuation;
 a revocation rotation (old line absent, survivor line opens new DK); a gamma entry
 sign/verify and a `max_actions` count; an edition prev_hash and a fork resolution.
 Both success and every fail-closed case (unauthorized revocation, over-wide
@@ -47,6 +49,13 @@ revocation (no line, no read); a backdated artifact outside the freshness anchor
 rejected; a subtree `max_actions` count via `authorized_via` (child action consumes
 parent budget); a `max_children` count via `grant` entries; an unauthorized tag
 re-label not bridged by the repair pass; a `kex_pubkey` mismatch → invalid mandate.
+Tree vectors: a folder grant opening its whole subtree by derivation; a folder-local
+`dir&tag` view where the tagged section opens, the untagged sibling does not, and a
+late-tagged section bridges in by wrap; `covers()` segment-boundary rejection
+(`dir=a/b` vs `dir=a/bc`); a move-as-rotation cutting an old-parent holder while the
+new parent derives through the up-link; a `self` round-trip proving index, headers
+and gamma targets leak no names while an authorized reader reconstructs its subtree
+from sealed descriptors.
 
 ## 9.3 Performance targets
 

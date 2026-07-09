@@ -18,7 +18,8 @@
                "pubkey": "z6MkGrantee…",       // Ed25519 — REQUIRED
                "kex_pubkey": "z6LSGrantee…" }, // X25519 — REQUIRED, = ed2x(pubkey)
   "perimeter": [ "read.circle#tag=test", "edit.circle#tag=test",
-                 "read.public", "read.self#id=sec_a",
+                 "read.public#dir=01J…X/01J…4&tag=toto",   // folder-local tag view
+                 "read.self#id=01J…A",
                  "act.x.gmail.reply", "issue#depth=1" ],
   "constraints": { … },                       // §4.4
   "not_before": "2026-07-08T00:00:00Z",
@@ -49,16 +50,29 @@ perimeter-entry :=
 
 verb       := read | edit | append | delete | write
 zone       := public | circle | self
-selector   := ns=<ns> | id=<section_id> | tag=<tag>
+selector   := sel *( "&" sel )                  conjunction = intersection
+sel        := dir=<sid-path> | id=<sid> | tag=<tag>
+sid-path   := <sid> *( "/" <sid> )              folder path from the zone root
 action-pat := <action> | "*"
 ```
+
+At most one `dir`, one `tag`, one `id` per entry. Semantics: `dir=` alone = the whole
+subtree; `tag=` alone = the zone-root tag view; `dir=…&tag=…` = the folder-local tag
+view (§02.9) — read what carries the tag under that folder, now and in the future;
+`id=` = one section (sids are global, so `id` composes with nothing). No selector =
+the whole zone. `covers()` is per-dimension: `dir` containment is by **segment list**
+(`dir=a/b` covers `a/b` and `a/b/c`, never `a/bc`); an absent dimension covers any
+value of it (no-`tag` covers any `tag`); `tag` covers only the equal `tag`.
+(The former `ns=` selector is gone: a namespace is a depth-1 folder, §02.2.)
 
 Verb lattice (normative): `read ⊑ edit ⊑ append ⊑ write`, `delete ⊑ write`; every
 mutation verb implies `read` on its perimeter. `append` = create + edit within
 perimeter; `write` = full CRUD. Multiple entries union per verb. A selector matching
 nothing yet is a valid forward-looking grant. Enforceability of a write perimeter:
-`id=`/`ns=` are clear in every zone (hard); `tag=` writes are hard on `public`/`circle`
-(clear tags, §07 authorship cross-check) and **read-only** on `self` (sealed tags).
+`id=`/`dir=` are clear placements on `public`/`circle` (hard); `tag=` writes are hard
+on `public`/`circle` (clear tags, §07 authorship cross-check). On `self`, structure
+and tags are sealed (§02.8): `dir=` and `tag=` perimeters there are **read-only**;
+`self` writes use `id=` or zone-level grants.
 
 Wildcard (normative `covers` rule): `act.x.<c>.*` covers every action the connector's
 manifest (§08.1) classes as `read` or `act`; it NEVER covers an action classed
@@ -73,10 +87,11 @@ revocable scope.
 | Entry | Header line the grantee needs |
 |---|---|
 | `read.public` | none (plaintext) |
-| `*.circle` / `*.self` (no selector) | line on `/e/<zone>` |
-| `*#ns=<ns>` | line on `/e/<zone>/ns/<ns>` |
-| `*#tag=<t>` | line on `/e/<zone>/t/<t>` (+ tag wraps bridge sections, §03/§07) |
-| `*#id=<x>` | line on `/e/<zone>/s/<x>` |
+| `*.circle` / `*.self` (no selector) | line on `/e/<zone>` (root folder) |
+| `*#dir=<p>` | line on the folder node `/e/<zone>/d/…` — opens the whole subtree by derivation |
+| `*#tag=<t>` | line on the zone-root view `/e/<zone>/t/<t>` (+ wraps bridge sections, §02.9) |
+| `*#dir=<p>&tag=<t>` | line on the folder-local view `/e/<zone>/d/…/t/<t>` (+ wraps, §02.9) |
+| `*#id=<x>` | line on the section node `/e/<zone>/…/s/<x>` |
 | `act.x.<c>.<a>` | none (action authorization only; config needs vault line, §08) |
 | `issue` | none |
 | `revoke` | none — by design; the political cut carries no key (§06.7) |

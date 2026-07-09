@@ -14,7 +14,8 @@
   "at": "2026-07-08T10:12:00Z",
   "kind": "section.add" | "section.modify" | "section.delete" | "section.redact"
         | "action" | "heartbeat" | "grant" | "revoke" | "rotate" | "merge",
-  "target": "/e/circle/s/gmail:0042",        // node path, when applicable
+  "target": "/e/circle/d/01J…G/s/01J…42",    // canonical sid-path, when applicable
+                                             // (self targets thus leak no structure, §02.8)
   "authorized_by": "mandate_01JZ…",          // omitted for owner-sphere-signed entries
   "authorized_via": ["mandate_root…","mandate_leaf…"],   // chain, for delegated/agentic
   "payload_enc": { "n": "…", "c": "…" } | "payload": { … },   // §7.3

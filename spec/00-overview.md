@@ -10,9 +10,10 @@
 |---|---|
 | **Subject / owner** | The human the ethos describes; holder of the master seed. |
 | **Ethos** | The subject's signed, partly encrypted profile: three zones of markdown sections. |
-| **Zone** | `public` (plaintext), `circle`, `self` (encrypted). |
-| **Section** | One markdown unit: `{id, title, tags, body}`. Id MAY be namespaced (`gmail:0042`). |
-| **Node** | A protectable point of the content tree: a zone, a namespace, a tag view, a section. |
+| **Zone** | `public` (plaintext), `circle`, `self` (encrypted) — each the root folder of its tree. |
+| **Folder** | A tree node of unlimited depth: `{sid, name, children}`; contains folders and sections freely (§02). |
+| **Section** | One markdown unit: `{sid, name, title, tags, body}`, living in a folder. `gmail:0042` is sugar for folder `gmail/`, section `0042`. |
+| **Node** | A protectable point of the content tree: a zone (root folder), any folder, a tag view (zone-root or folder-local), a section. |
 | **Node key (DK)** | The current symmetric key of a node. Random, published only via its header. |
 | **Header** | Per granted node: the DK sealed one line per authorized identity (§03). |
 | **Mandate** | A signed certificate granting scopes to a grantee keypair (§04). |

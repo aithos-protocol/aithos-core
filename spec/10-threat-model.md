@@ -9,6 +9,7 @@
 | Property | Mechanism |
 |---|---|
 | Confidentiality of circle/self (+ self titles/tags) | AEAD under node keys reachable only via a header line or derivation |
+| Structure secrecy of `self` | opaque sids in index, headers and gamma targets; hierarchy sealed in folder descriptors (§02.8) |
 | Perimeter confinement | one-way derivation + header lines sealed only to authorized keys |
 | Immutable credentials | I2 — nothing ever rewrites a grantee keypair or certificate |
 | Scoped revocation authority | I4 — only issuer/ancestors rotate a node or drop a line, verifiable from certs |
@@ -74,8 +75,9 @@ power is denial of service and equivocation up to the freshness window — the r
    unpreventable anywhere and out of scope.
 5. **Header reveals the recipient-key set** of a node (not identities beyond public
    keys, not content) — the same access-graph fact the certificates already state.
-6. **`self` tag writes are read-only** (sealed tags aren't verifier-checkable); write
-   perimeters on `self` use `id=`/`ns=`.
+6. **`self` `dir=`/`tag=` perimeters are read-only** — sealed structure and tags
+   aren't verifier-checkable (§02.8); write perimeters on `self` use `id=` or
+   zone-level grants.
 7. **The freshness window is the unit of slack.** Inside it, distinct verifiers can
    each honor the N-th action of a budget (double counting, §07.7) and an off-log
    artifact can be dated anywhere within it (anti-backdating bound, §07.7) — the
@@ -104,5 +106,8 @@ unauthorized re-linking; attenuation (policy + physical) against splice and down
 the disjoint-merge and nearest-common-manager rules (§02.6) against unauthorized
 resolution; watchdog `revoke` attenuation (§06.7) against revocation DoS; gamma
 action-count integrity against replay/omission (I5), including subtree counting and
-the freshness anchor (§07.7); heartbeat/session-bind against clock manipulation; and
-the succession-key / identity-epoch path (§10.4).
+the freshness anchor (§07.7); heartbeat/session-bind against clock manipulation;
+`dir` segment-list containment against prefix splice (`a/b` vs `a/bc`); `self`
+structure opacity across index, headers and gamma targets; move-as-rotation against
+stale-parent derivation (§02.9); and the succession-key / identity-epoch path
+(§10.4).

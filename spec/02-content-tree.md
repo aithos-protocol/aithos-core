@@ -1,77 +1,103 @@
 # 2 — Content tree
 
-> **Status: DRAFT.** Zones, sections, tags, how they map to nodes and keys, and how
-> editions chain without a server.
+> **Status: DRAFT.** Zones, folders, sections, tags: how an unlimited-depth tree maps
+> to nodes and keys, and how editions chain without a server.
 
 ## 2.1 Nodes and paths
 
-The content tree, with canonical paths (also the derivation labels):
+A zone is simply the **root folder** of its tree. Every folder is a node like any
+other, recursing without depth limit; every folder may freely contain subfolders and
+sections, and anchors its own local tag views. Canonical paths (also the derivation
+spine):
 
 ```
-/e/public                     zone (plaintext — no key, no header)
-/e/circle                     zone node (DK, header)
-/e/circle/ns/<ns>             namespace subtree (derived key)
-/e/circle/t/<tag>             tag view (derived key; bridges via tag wraps §03)
-/e/circle/s/<id>              section (derived key; via ns node if id is namespaced)
-/e/self …                     same shape as circle
-/x/<connector>                vault node (DK, header) — §08
+/e/public                       zone = root folder (plaintext — no key, no header)
+/e/circle                       zone = root folder (DK, header)
+/e/circle/d/<sid>               folder — recursive, unlimited depth (derived key)
+/e/circle/d/<sid>/d/<sid>/…     …folders contain folders and sections freely
+/e/…/t/<tag>                    tag view anchored at ANY folder, zone root included
+                                (derived anchor; sections bridge in via wraps, §2.9)
+/e/…/s/<sid>                    section (derived key, under its folder)
+/e/self …                       same shape as circle; paths opaque (§2.8)
+/x/<connector>                  vault node (DK, header) — §08
 ```
 
-`public` is plaintext by design; it has section addressability but no cryptography.
-`circle` and `self` are encrypted zones, each a node with its own DK and header.
+The marker segments `d`/`t`/`s` provide domain separation; `<sid>` is the node's
+stable identifier (§2.2). Human-readable names never appear in canonical paths — a
+display path like `circle/enfance/cicatrices/1234` is resolved through metadata.
+`public` is plaintext by design: real named folders on disk, addressability, no
+cryptography. `circle` and `self` are encrypted zones, each rooted in a node with its
+own DK and header.
 
-## 2.2 Sections
+## 2.2 Folders, sections, sids
 
-A section is `{id, title, tags[], body}`. `id ∈ [a-z0-9_:-]{1,64}`, at most one `:`
-splitting an optional namespace (`<ns>:<local>`, `ns ∈ [a-z0-9_-]{1,32}`). A
-namespaced id MUST derive through its `ns` node (§2.5) — this is what makes `#ns=`
-grants and namespace-scoped authoring work. Titles/tags: `public`/`circle` store them
-clear in the index; `self` seals them inside the blob.
+Every folder and every section has two identifiers:
+
+- **sid** — a ULID, globally unique, assigned at creation, **never changed**. The sid
+  is the derivation label (§2.5) and the blob filename. Because keys hang off sids,
+  renaming anything never re-keys anything.
+- **name** — the human segment (`enfance`, `cicatrices`, `1234`);
+  `[a-z0-9_-]{1,64}`, unique among its siblings. Pure metadata: clear in the index
+  for `public`/`circle`, sealed for `self` (§2.8).
+
+A section is `{sid, name, title, tags[], body}`; a folder is `{sid, name, children}`.
+The legacy namespaced id `gmail:0042` is sugar for folder `gmail/`, section `0042` —
+namespaces are just depth-1 folders and no separate `ns` concept survives. Display
+paths (`zone/enfance/cicatrices/1234`) resolve names→sids through the index
+(`public`/`circle`) or through sealed folder descriptors (`self`).
 
 Mutating a section's **tag set** is an edit of the section, never of the tag view: a
 `tag=` grant covers the sections currently carrying the tag, NOT re-labelling. Adding
-or removing a tag requires an `id=`, `ns=` or zone-level edit perimeter on the section
-itself. And when a repair pass creates a missing tag wrap for a section newly carrying
-a tag, it MUST first validate the author of that tag mutation (a covering edit
-perimeter at the mutation entry's `at`, per gamma) and fail closed: an unauthorized
-re-label is never bridged into a tag view.
+or removing a tag requires an `id=`, `dir=` or zone-level edit perimeter on the
+section itself. And when a repair pass creates a missing tag wrap for a section newly
+carrying a tag, it MUST first validate the author of that tag mutation (a covering
+edit perimeter at the mutation entry's `at`, per gamma) and fail closed: an
+unauthorized re-label is never bridged into a tag view.
 
 ## 2.3 Bundle layout
 
 ```
-manifest.json            signed, linear-chained (§2.6)
-did.json                 §01.4
-e/public/<id>.md         plaintext sections
-e/circle/index.json      clear index: [{id,title,tags,blob_sha,key_version,gamma_ref}]
-e/circle/<id>.enc        AEAD blob (purpose "blob")
-e/circle/header.json     §03
-e/self/index.json        reduced index: [{id, key_version, gamma_ref}] (no title/tags)
-e/self/<id>.enc          AEAD blob; title+tags sealed inside
-e/self/header.json
-x/<id>/…                 vault, §08
-certs/<mandate_id>.json  §04 (public)
-gamma/gamma.jsonl        §07
+manifest.json              signed, linear-chained (§2.6)
+did.json                   §01.4
+e/public/<name-path>.md    plaintext sections, real named folder tree on disk
+e/circle/index.json        clear tree: folders [{sid,name,parent_sid}] + sections
+                           [{sid,name,folder_sid,title,tags,blob_sha,key_version,gamma_ref}]
+e/circle/blobs/<sid>.enc   AEAD blob (purpose "blob")
+e/circle/hdr/<node>.json   one per granted node (§03), sid-addressed path
+e/self/index.json          FLAT opaque list: [{sid,key_version,gamma_ref}] — nothing else
+e/self/blobs/<sid>.enc     sections AND sealed folder descriptors, indistinguishable
+e/self/hdr/<node>.json     granted self nodes, sid-addressed
+x/<id>/…                   vault, §08
+certs/<mandate_id>.json    §04 (public)
+gamma/gamma.jsonl          §07
 ```
 
-Sharding of large indexes is permitted (deterministic, by `sha256(id)`) but omitted
+Sharding of large indexes is permitted (deterministic, by `sha256(sid)`) but omitted
 here for clarity; it does not affect keys or headers.
 
 ## 2.4 Blob format
 
-Encrypted zones: blob plaintext is JCS of `{title, tags, md}` for `self`
-(title/tags sealed) or `{md}` for `circle` (title/tags already clear in index).
-Ciphertext = `XChaCha20-Poly1305(K_section, nonce, plaintext)`, AAD purpose `blob`,
-bound to `subject_did ‖ /e/<zone>/s/<id> ‖ key_version`. Public: raw markdown file,
-integrity by `sha256` in the index.
+Encrypted zones: blob plaintext is JCS of `{md}` for `circle` sections (name/title/
+tags already clear in the index), `{kind:"section", name, title, tags, md}` for
+`self` sections, or `{kind:"folder", name, children:[sids]}` for `self` folder
+descriptors (§2.8). Ciphertext = `XChaCha20-Poly1305(K_node, nonce, plaintext)`, AAD
+purpose `blob`, bound to `subject_did ‖ canonical sid-path ‖ key_version`. Public:
+raw markdown file, integrity by `sha256` in the index.
 
-## 2.5 Derivation of a section key
+## 2.5 Derivation along the path
 
 ```
-DK_zone           = current node key of /e/<zone> (from its header, §03)
-plain id:   K_sec = derive("aithos-core/v1/s/"+id,    DK_zone)
-namespaced: K_ns  = derive("aithos-core/v1/ns/"+ns,   DK_zone)
-            K_sec = derive("aithos-core/v1/s/"+local, K_ns)
+K(zone root)     = current DK of /e/<zone> (from its header, §03)
+K(child folder)  = derive("aithos-core/v1/d/"+sid, K(parent folder))
+K(tag anchor)    = derive("aithos-core/v1/t/"+tag, K(folder))
+K(section)       = derive("aithos-core/v1/s/"+sid, K(folder))
 ```
+
+One BLAKE3 `derive_key` per path segment: reading at depth *d* costs *d* derivations
+— nanoseconds; depth is architecturally unlimited. Holding any folder's key yields
+its entire subtree, present and future; never anything above or beside it (one-way).
+Any node below the zone root can ALSO carry its own header (random DK + up-link wrap,
+§03.4): derivation is the default route, a header line the granted one; both resolve.
 
 `key_version` in the index tells a reader which DK generation the blob was written
 under; the header carries every live version (§03.4) so readers resolve any of them.
@@ -113,3 +139,38 @@ The manifest pins `gamma_head` = SHA-256 of the last gamma entry (§07). An edit
 its gamma head move together; a verifier checks that every section's `gamma_ref`
 resolves in the log and that the head matches. This binds "what the bundle says" to
 "what the log recorded," including delegated authorship and action accounting.
+
+## 2.8 `self` structure secrecy
+
+In `self`, the tree itself is confidential. On disk and in the index, `self` is a
+flat sea of opaque sids — sections and folder descriptors indistinguishable; names,
+titles, tags, parent/child links all live **inside** ciphertext. Each `self` folder
+has a small sealed **descriptor** blob under its own key listing `{name,
+children:[sids]}`; an authorized reader reconstructs exactly the sub-tree it can
+open, top-down from the deepest node it holds, and nothing else. Headers and gamma
+targets use sid-paths, so granting or editing a `self` node leaks no structure
+either. Consequence (same honest limit as sealed tags, §10.7): on `self`, `dir=` and
+`tag=` perimeters are enforceable for **reading** (keys are physics) but not
+verifier-checkable for **writing** — write perimeters on `self` use `id=` or
+zone-level grants.
+
+## 2.9 Tag views, rename, move
+
+**Tag views at any folder.** A tag view `…/t/<tag>` is an anchor node derived from
+its folder (§2.5). It grants nothing by derivation downward — sections enter it by
+**wrap**: the folder's manager seals `wrap(K_section)` under the anchor key when a
+section under that folder carries the tag (fail-closed authorship check, §2.2). A
+zone-root view spans the whole zone; a folder-local view spans that subtree only. One
+header line on the anchor is thus the O(1) grant "read what is tagged `toto` under
+this folder, now and in the future".
+
+**Rename is free.** Names are metadata (§2.2): renaming a folder or section edits an
+index row / descriptor, re-keys nothing, moves no bytes.
+
+**Move is a rotation.** Derivation cannot be un-taught: whoever held the old parent
+can derive the moved node's old key forever. Moving node M under a new parent is
+therefore the rotation of M (fresh DK', §03.4) plus its up-link wrap posted under the
+**new** parent, survivors re-sealed as usual: old-parent holders are cut
+cryptographically, new-parent holders derive through the wrap. Cost ∝ M's granted
+headers (+ re-encryption of M's subtree if incident-grade); the lazy variant is
+tolerated as hygiene (§06.8).
