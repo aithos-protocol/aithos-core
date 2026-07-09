@@ -38,7 +38,8 @@ Feature: Mandates and the offline verifier
     Scenario: An agent never reads outside its perimeter
       Given circle sections in sibling folders "projets/perso" and "projets/pro"
       When the owner grants the agent read on circle folder "projets/perso"
-      Then the agent cannot read the section under "projets/pro"
+      Then the agent reads the section under "projets/perso"
+      But the agent cannot read the section under "projets/pro"
 
   Rule: One keypair, one mandate, many perimeters
 
