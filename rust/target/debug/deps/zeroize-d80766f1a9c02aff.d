@@ -1,0 +1,11 @@
+/Volumes/Math17/aithos/code/aithos-core/rust/target/debug/deps/zeroize-d80766f1a9c02aff.d: /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/lib.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/aarch64.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/barrier.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/stack.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/../README.md
+
+/Volumes/Math17/aithos/code/aithos-core/rust/target/debug/deps/libzeroize-d80766f1a9c02aff.rlib: /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/lib.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/aarch64.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/barrier.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/stack.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/../README.md
+
+/Volumes/Math17/aithos/code/aithos-core/rust/target/debug/deps/libzeroize-d80766f1a9c02aff.rmeta: /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/lib.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/aarch64.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/barrier.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/stack.rs /Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/../README.md
+
+/Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/lib.rs:
+/Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/aarch64.rs:
+/Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/barrier.rs:
+/Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/stack.rs:
+/Users/mathieucolla/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.0/src/../README.md:

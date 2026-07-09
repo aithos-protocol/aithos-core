@@ -126,5 +126,12 @@ fn rejected_with(w: &mut ProtocolWorld, expected: String) {
 
 fn main() {
     let features = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../features");
-    futures::executor::block_on(ProtocolWorld::run(features));
+    // Ritual (docs/EXECUTION-PLAN.md): each phase's .feature is co-written and
+    // committed BEFORE implementation, its scenarios tagged @wip. The filter
+    // keeps the suite green until a scenario is implemented and untagged.
+    futures::executor::block_on(
+        ProtocolWorld::cucumber().filter_run(features, |_, _, scenario| {
+            !scenario.tags.iter().any(|t| t == "wip")
+        }),
+    );
 }
