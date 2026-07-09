@@ -31,7 +31,9 @@
    without one is invalid, and so is the edition carrying it.
 4. **I4 — Authority follows issuance.** Only the issuer of a mandate (or an ancestor
    in its chain, transitively up to the owner) may revoke it or remove its lines.
-   Verifiable from certificates alone.
+   Verifiable from certificates alone. A `revoke` perimeter entry (§04.2, §06.7)
+   delegates the *certificate* half of this authority — never the key half — within
+   attenuation.
 5. **I5 — No silent actions.** Every mutation and every connector action performed
    under a mandate MUST be recorded as a gamma entry naming the mandate. An action
    without its entry is invalid; verifiers treat the entry count as the mandate's
@@ -60,7 +62,26 @@ in log files. All `"1.0.0-draft.1"` in this series. Nothing is inherited from
 `Aithos-protocol` unless restated here; identity (DID document format) is restated in
 §01 with minimal carry.
 
-## 0.5 Reading order
+## 0.5 Transverse principles
+
+**Revocation is the revoker's atomic act.** Cutting a grantee is performed by the
+revoker — the owner or an ancestor of the revoked mandate. Attenuation guarantees the
+revoker's perimeter covers the revoked one, so it already holds every key of every
+node to rotate (no escalation), and it is present by definition (it signs the entry).
+No server, no custodian, no key reserve, no pre-generated material is ever required
+(§06.2). Corollary invariant: the *policy* cut — publishing a revocation entry — is
+delegable to an actor holding no content key at all (§06.7); the *cryptographic* cut —
+rotating a DK — is by mathematical nature the act of a key holder. No automaton can
+turn a lock it cannot open.
+
+**Absentee owner.** The owner is a root of authority, not an availability dependency.
+The target profile is an owner who issues a broad mandate and then almost never
+returns. Every maintenance duty (rotation, wrap repair, lazy re-encryption) is
+therefore recursive: it falls on the manager of the node concerned — whoever holds a
+perimeter there and issues grants on it — never on the owner. What remains
+structurally owner-only is reduced to a minimum and listed in §10.9.
+
+## 0.6 Reading order
 
 01 (keys) → 02 (content) → 03 (headers) → 04 (mandates) → 05 (delegation) →
 06 (revocation) → 07 (gamma) → 08 (connectors) → 09 (CLI & conformance) →

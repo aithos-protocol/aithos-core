@@ -15,7 +15,8 @@
   "issued_by": "did:aithos:z6Mkr…#self",     // sphere DID URL (root) OR grantee pubkey (sub)
   "grantee": { "id": "urn:aithos:agent:gmail@laptop",
                "label": "Gmail agent",
-               "pubkey": "z6MkGrantee…" },    // Ed25519 — REQUIRED
+               "pubkey": "z6MkGrantee…",       // Ed25519 — REQUIRED
+               "kex_pubkey": "z6LSGrantee…" }, // X25519 — REQUIRED, = ed2x(pubkey)
   "perimeter": [ "read.circle#tag=test", "edit.circle#tag=test",
                  "read.public", "read.self#id=sec_a",
                  "act.x.gmail.reply", "issue#depth=1" ],
@@ -27,6 +28,11 @@
   "signature": { "alg": "ed25519", "key": "…", "value": "…" } }
 ```
 
+`kex_pubkey` MUST equal the Ed25519→X25519 conversion of `pubkey` under the normative
+map (§01.2); a mismatch invalidates the mandate. Header lines seal to `kex_pubkey` —
+nothing is left implicit, yet the grantee still owns exactly one keypair (the owner's
+`owner_kex` is already explicit; this symmetrizes the grantees).
+
 The grantee's content keys are **not** in the mandate — they live in headers (§03).
 The mandate is a pure certificate: publishable, verifiable, revocable. (A convenience
 delivery bundle MAY ship the mandate together with the header lines the grantee needs,
@@ -37,12 +43,14 @@ but the lines are authoritative in the bundle, not in the certificate.)
 ```
 perimeter-entry :=
     <verb> "." <zone> [ "#" <selector> ]        ethos
-  | "act." "x." <connector> "." <action>        connector action
+  | "act." "x." <connector> "." <action-pat>    connector action
   | "issue" [ "#depth=" <n> ]                   delegation right (§05)
+  | "revoke" [ "." <zone> [ "#" <selector> ] ]  revocation right, certificate half only (§06.7)
 
-verb     := read | edit | append | delete | write
-zone     := public | circle | self
-selector := ns=<ns> | id=<section_id> | tag=<tag>
+verb       := read | edit | append | delete | write
+zone       := public | circle | self
+selector   := ns=<ns> | id=<section_id> | tag=<tag>
+action-pat := <action> | "*"
 ```
 
 Verb lattice (normative): `read ⊑ edit ⊑ append ⊑ write`, `delete ⊑ write`; every
@@ -51,6 +59,14 @@ perimeter; `write` = full CRUD. Multiple entries union per verb. A selector matc
 nothing yet is a valid forward-looking grant. Enforceability of a write perimeter:
 `id=`/`ns=` are clear in every zone (hard); `tag=` writes are hard on `public`/`circle`
 (clear tags, §07 authorship cross-check) and **read-only** on `self` (sealed tags).
+
+Wildcard (normative `covers` rule): `act.x.<c>.*` covers every action the connector's
+manifest (§08.1) classes as `read` or `act`; it NEVER covers an action classed
+`binding` — binding actions must be named explicitly (and still obey the
+`counter_sign`/`binding` constraints, §4.6). A `revoke` entry conveys no key and no
+read: only the authority to publish revocation entries for mandates whose perimeter
+it covers; attenuation applies (§06.7). A bare `revoke` covers the issuer's own
+revocable scope.
 
 ## 4.3 What each perimeter entry needs at the key layer
 
@@ -63,6 +79,7 @@ nothing yet is a valid forward-looking grant. Enforceability of a write perimete
 | `*#id=<x>` | line on `/e/<zone>/s/<x>` |
 | `act.x.<c>.<a>` | none (action authorization only; config needs vault line, §08) |
 | `issue` | none |
+| `revoke` | none — by design; the political cut carries no key (§06.7) |
 
 Issuance = mint the certificate **and** append the needed header lines (§03.3). Both
 are owner/delegate-local, offline.
@@ -77,13 +94,18 @@ counter-signature.
 | Key | Meaning | Tier |
 |---|---|---|
 | `not_before` / `not_after` | validity window (top-level, but listed for completeness) | V |
-| `max_actions: N` | at most N gamma action entries name this mandate over its life | V (count §07) |
+| `max_actions: N` | at most N gamma action entries carry this mandate in `authorized_via` over its life — a **subtree** count, see below | V (count §07) |
+| `max_children: N` | at most N direct sub-mandates ever issued under this mandate (bounds delegation *width*; `depth` bounds only length, §05.7) | V (count §07) |
+| `max_sessions: N` | at most N session keys simultaneously certified by the grantee's long-term key (§4.7) — blocks silent duplication of one mandate across N machines | V |
 | `max_actions_per: {window,N}` | ≤ N actions per rolling window (`"1h"`,`"1d"`) | V+X |
 | `rate_limit: {action,window,N}` | per-action-kind rate cap | V+X |
 | `active_hours: {tz, ranges[]}` | actions only within given local time ranges | X |
 | `counter_sign: [actions]` | listed actions require a fresh owner co-signature (§4.6) | C |
 | `binding: [actions]` | actions that constitute a commitment; implies counter_sign | C |
 | `domains: [patterns]` | connector actions may touch only these domains/recipients | X |
+| `action_params: {action: predicates}` | per-action argument predicates (e.g. reply only on an existing thread, no attachments, recipient cap) — generalizes `domains` | X |
+| `disclose_agency: true` | the agent MUST identify itself as an agent in every outbound communication of a connector action (transparency; EU-AI-Act-aligned) | X |
+| `notify: [events]` | out-of-band owner alert on the listed events; best effort, never a validity condition | X |
 | `purpose: "<text>" ` | signed statement of intent; actions cite it; audited | V+X |
 | `session_bind: <pubkey>` | actions valid only from this ephemeral session key (§4.7) | V |
 | `heartbeat: {every, grace}` | mandate valid only if owner liveness beacon < every+grace old (§4.8) | V |
@@ -93,6 +115,12 @@ counter-signature.
 
 These compose; the effective constraint is the **conjunction**. Sub-mandates may only
 tighten (§05.3).
+
+`max_actions` counts over the **subtree**: an action entry counts against its leaf
+mandate and against every ancestor named in its `authorized_via` chain (§07.4). A
+delegate can therefore never multiply its parent's budget by issuing children.
+Corollary: minting a sub-mandate is itself a `grant` gamma entry (§07) — issuance is
+never a silent action (I5) — and that entry is what `max_children` counts.
 
 ## 4.5 Verifier algorithm (offline)
 
@@ -121,7 +149,9 @@ An action listed in `counter_sign`/`binding` is valid only if accompanied by a
 agent prepares the action, obtains the owner's live co-signature (out of band — the
 human approves), then emits it with the gamma entry. This is how "the AI may act, but
 a commitment needs me in the loop" is expressed. Counter-signatures are one-shot
-(nonce-bound) and logged.
+(nonce-bound) and logged. They are also fresh-bound: a `co_sign` is valid only if
+`|entry.at − co_sign.at| ≤ Δ_cosign` (normative default **5 minutes**) — a stored
+"fresh" co-signature cannot be replayed later.
 
 ## 4.7 Session binding
 

@@ -59,9 +59,12 @@ root). Consequences:
   owner's other grants on the same node: it rotates the node key and republishes the
   header **omitting the revoked child's line but keeping every other line** — including
   lines it did not create (those it re-seals under the new DK using its own access).
-- To re-seal others' lines under a rotated DK, the revoker must itself hold the node
-  (it does — it had `issue` there). It cannot read those grantees' *content* choices,
-  only re-wrap the same DK to the same public keys: a mechanical, blind operation.
+- Re-sealing the survivors' lines under the rotated DK is done by the revoker itself
+  (owner or ancestor), which holds the node — attenuation guarantees it. The operation
+  is mechanical (re-wrapping the same DK' to the same public keys, learning nothing
+  new about the survivors), but its author is never a keyless third party: it is, by
+  the chain, an authorized holder. No automaton without the key can rotate a node
+  (§00.5).
 - The **owner** can revoke anything (root is ancestor of all).
 
 A verifier rejects a header rotation whose signer is not an authorized issuer for the
@@ -76,6 +79,12 @@ fresh direct mandate + one header line each (§03.3) — cheap, explicit, and it
 new trust path auditable. Compromise of a branch thus collapses the branch; rebuilding
 is a deliberate act, not an automatic survival.
 
+Re-adoption does not heal the survivor's **own** subtree: its sub-mandates name its
+old mandate id as `parent`, which is now revoked, so their chains stay broken. The
+re-adopted mandate is a fresh direct mandate; the survivor MUST re-issue its own
+sub-mandates under the new id if it wants to keep them. Expect no automatic subtree
+survival.
+
 ## 5.7 Worked example
 
 ```
@@ -85,3 +94,7 @@ assistant → helper  perimeter: read.circle#tag=test, act.x.gmail.draft, 24h
   # revoking assistant kills helper (chain breaks); revoking helper alone rotates
   #   /e/circle/t/test, drops helper's line, keeps the assistant's and owner's.
 ```
+
+Width warning: `issue#depth=n` without `max_children` (§04.4) authorizes unlimited
+width at every level — `depth` bounds only the chain's length. Pair `issue` with
+`max_children` on any sensitive perimeter.

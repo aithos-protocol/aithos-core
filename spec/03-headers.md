@@ -61,7 +61,19 @@ To rotate node N (revocation rung 2, §06):
 ```
 1. Generate DK' (fresh random). key_version += 1.
 2. Build key_versions[new].lines = a sealed line for every SURVIVING recipient
-   (everyone currently authorized minus the revoked) + the owner line.
+   (everyone currently authorized minus the revoked) + the owner line. The rotator
+   is the revoker itself (owner or authorized ancestor, §05.5): it holds the current
+   DK (its own line or derivation) and knows every survivor's public key (the
+   existing lines).
+2bis. Derivation up-link. If the rotated node N is derived from a parent node P that
+   the rotator holds, it also publishes an up-link wrap: seal(DK'_N) openable via
+   K_P — same primitive as a tag wrap (AAD purpose `tagwrap`, §00.3), bound to
+   subject_did ‖ N ‖ new key_version. The wrap restores the parent→child derivation
+   path broken by the fresh random DK', so holders of P (or of any ancestor of P)
+   keep reading N by derivation without needing a line of their own. If the rotator
+   holds exactly N but not P, it instead seals DK'_N individually to the current
+   holders of P (public keys read from P's header); the first manager of P that
+   later acts posts the definitive wrap.
 3. Re-encrypt the node's content under keys derived from DK' (rung 3), rewriting
    blobs and their index key_version; OR defer (lazy) leaving old versions live.
 4. Publish. Surviving grantees' keypairs are unchanged (I2); they open the new lines
@@ -70,6 +82,14 @@ To rotate node N (revocation rung 2, §06):
 
 The revoked recipient gets no line in the new version and cannot derive DK' (fresh
 random, not derived from anything he holds).
+
+Why 2bis exists: without the up-link, a fresh random DK' would sever derivation from
+every ancestor node — a holder of the zone who read N by pure derivation (§02.5)
+would silently lose N without having any header line to fall back on. The wrap
+re-establishes that path in one entry and touches no other line. Verification is
+mechanical: the new version's lines MUST equal the previous lines minus the revoked
+(plus, in the exactly-N case, recipients ⊆ P's header), and an up-link wrap whose
+author does not hold P is rejected.
 
 ## 3.5 Retention of old versions
 
