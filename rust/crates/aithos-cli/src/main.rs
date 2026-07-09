@@ -43,11 +43,11 @@ fn init(seed_hex: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let keys = OwnerKeys::genesis(&seed);
+    let root_pub = keys.root_sign.verifying_key().to_bytes();
     let out = serde_json::json!({
-        "root_sign_pub": hex::encode(keys.root_sign.verifying_key().to_bytes()),
-        "sphere_public_pub": hex::encode(keys.sphere_public.verifying_key().to_bytes()),
-        "sphere_circle_pub": hex::encode(keys.sphere_circle.verifying_key().to_bytes()),
-        "sphere_self_pub": hex::encode(keys.sphere_self.verifying_key().to_bytes()),
+        "did": aithos_core::wire::did_aithos(&root_pub),
+        "root_sign_pub": hex::encode(root_pub),
+        "content_sign_pub": hex::encode(keys.content_sign.verifying_key().to_bytes()),
         "owner_kex_pub": hex::encode(keys.owner_kex_pub().to_bytes()),
     });
     println!("{}", serde_json::to_string_pretty(&out)?);

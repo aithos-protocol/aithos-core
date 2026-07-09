@@ -5,15 +5,14 @@
 use aithos_core::keys::{MasterSeed, OwnerKeys};
 use cucumber::{given, then, when, World};
 
-/// One derived identity, as its five public keys (hex), in a fixed order.
+/// One derived identity, as its public keys (hex), in a fixed order:
+/// root_sign, content_sign, owner_kex (§01.1).
 type PublicIdentity = Vec<String>;
 
 fn public_identity(keys: &OwnerKeys) -> PublicIdentity {
     vec![
         hex::encode(keys.root_sign.verifying_key().to_bytes()),
-        hex::encode(keys.sphere_public.verifying_key().to_bytes()),
-        hex::encode(keys.sphere_circle.verifying_key().to_bytes()),
-        hex::encode(keys.sphere_self.verifying_key().to_bytes()),
+        hex::encode(keys.content_sign.verifying_key().to_bytes()),
         hex::encode(keys.owner_kex_pub().to_bytes()),
     ]
 }
@@ -100,7 +99,7 @@ fn unrelated_identities(w: &mut ProtocolWorld) {
     assert_eq!(shared, 0, "identities must share no public key");
 }
 
-#[then("the five public keys are pairwise distinct")]
+#[then("the three public keys are pairwise distinct")]
 fn domain_separated(w: &mut ProtocolWorld) {
     let id = &w.identities[0];
     let unique: std::collections::BTreeSet<_> = id.iter().collect();

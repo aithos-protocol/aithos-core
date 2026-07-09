@@ -19,7 +19,7 @@ Feature: Identity genesis
     Scenario: One identity's keys are pairwise distinct
       Given a master seed
       When I derive the owner keys
-      Then the five public keys are pairwise distinct
+      Then the three public keys are pairwise distinct
 
   Rule: Genesis fails closed
 

@@ -1,8 +1,6 @@
 //! Owner identity and key genesis (spec §01.1, §01.2).
 
-use crate::derive::{
-    derive_key, CTX_OWNER_KEX, CTX_ROOT_SIGN, CTX_SPHERE_CIRCLE, CTX_SPHERE_PUBLIC, CTX_SPHERE_SELF,
-};
+use crate::derive::{derive_key, CTX_CONTENT_SIGN, CTX_OWNER_KEX, CTX_ROOT_SIGN};
 use crate::error::{Error, Result};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
@@ -29,11 +27,12 @@ impl MasterSeed {
 /// Everything derived from `S` (§01.1) — recomputed on demand, never stored.
 pub struct OwnerKeys {
     /// Controls the DID document; issues/revokes first-level mandates.
+    /// Reserved for structural acts; never signs content.
     pub root_sign: SigningKey,
-    /// Per-zone content/gamma signing keys (accountability per audience).
-    pub sphere_public: SigningKey,
-    pub sphere_circle: SigningKey,
-    pub sphere_self: SigningKey,
+    /// The owner's single pen (§02.11): signs owner-authored gamma entries and
+    /// content where the zone's policy says so. The audience lives in the
+    /// signed payload ({zone, path}), never in the key.
+    pub content_sign: SigningKey,
     /// Recipient key of the owner's line in every header (I3).
     pub owner_kex: StaticSecret,
 }
@@ -44,9 +43,7 @@ impl OwnerKeys {
         let s = &seed.0;
         OwnerKeys {
             root_sign: SigningKey::from_bytes(&derive_key(CTX_ROOT_SIGN, s)),
-            sphere_public: SigningKey::from_bytes(&derive_key(CTX_SPHERE_PUBLIC, s)),
-            sphere_circle: SigningKey::from_bytes(&derive_key(CTX_SPHERE_CIRCLE, s)),
-            sphere_self: SigningKey::from_bytes(&derive_key(CTX_SPHERE_SELF, s)),
+            content_sign: SigningKey::from_bytes(&derive_key(CTX_CONTENT_SIGN, s)),
             owner_kex: StaticSecret::from(derive_key(CTX_OWNER_KEX, s)),
         }
     }

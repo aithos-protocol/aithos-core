@@ -8,9 +8,7 @@ pub const CTX_PREFIX: &str = "aithos-core/v1/";
 
 // §01.1 — owner key derivation contexts.
 pub const CTX_ROOT_SIGN: &str = "aithos-core/v1/root-sign";
-pub const CTX_SPHERE_PUBLIC: &str = "aithos-core/v1/sphere/public";
-pub const CTX_SPHERE_CIRCLE: &str = "aithos-core/v1/sphere/circle";
-pub const CTX_SPHERE_SELF: &str = "aithos-core/v1/sphere/self";
+pub const CTX_CONTENT_SIGN: &str = "aithos-core/v1/content-sign";
 pub const CTX_OWNER_KEX: &str = "aithos-core/v1/owner-kex";
 
 /// One derivation step (§01.3): `child = derive(label, parent)`.

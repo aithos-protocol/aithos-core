@@ -9,12 +9,11 @@ use serde::Deserialize;
 struct A1 {
     seed_hex: String,
     root_sign_pub_hex: String,
-    sphere_public_pub_hex: String,
-    sphere_circle_pub_hex: String,
-    sphere_self_pub_hex: String,
+    content_sign_pub_hex: String,
     owner_kex_pub_hex: String,
     root_sign_pub_ed2x_hex: String,
     root_sign_pub_multibase: String,
+    content_sign_pub_multibase: String,
     owner_kex_pub_multibase: String,
     did: String,
 }
@@ -40,19 +39,9 @@ fn a1_deterministic_genesis() {
         "root_sign"
     );
     assert_eq!(
-        hex::encode(keys.sphere_public.verifying_key().to_bytes()),
-        v.sphere_public_pub_hex,
-        "sphere/public"
-    );
-    assert_eq!(
-        hex::encode(keys.sphere_circle.verifying_key().to_bytes()),
-        v.sphere_circle_pub_hex,
-        "sphere/circle"
-    );
-    assert_eq!(
-        hex::encode(keys.sphere_self.verifying_key().to_bytes()),
-        v.sphere_self_pub_hex,
-        "sphere/self"
+        hex::encode(keys.content_sign.verifying_key().to_bytes()),
+        v.content_sign_pub_hex,
+        "content_sign"
     );
     assert_eq!(
         hex::encode(keys.owner_kex_pub().to_bytes()),
@@ -91,6 +80,10 @@ fn a1_wire_encodings_and_did() {
         wire::ed25519_pub_to_multibase(&root_pub),
         v.root_sign_pub_multibase,
         "multibase cross-check vs Python base58"
+    );
+    assert_eq!(
+        wire::ed25519_pub_to_multibase(&keys.content_sign.verifying_key().to_bytes()),
+        v.content_sign_pub_multibase
     );
     assert_eq!(
         wire::x25519_pub_to_multibase(&keys.owner_kex_pub().to_bytes()),
