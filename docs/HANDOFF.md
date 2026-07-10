@@ -74,8 +74,9 @@ Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 | I Concurrence | ⬜ | merge disjoint, fork, entrées merge |
 | K Intégration | ⬜ | scénario K, Docker, npm |
 
-**Tests : 105 scénarios / 369 steps cucumber + vecteurs A1/A2/B2/C1/E1/F1/F2/F3/F+,
-tous verts ; `clippy --all-targets -- -D warnings` clean ; `cargo fmt` passé.**
+**Tests : 105 scénarios / 369 steps cucumber + vecteurs A1/A2/B2/C1/E1/F1/F2/F3/F+
++ 12 tests de surface CLI (cli_surface.rs), tous verts ; `clippy --all-targets
+-- -D warnings` clean ; `cargo fmt` passé.**
 
 CLI : `grant-act` (--max-actions, --heartbeat-every/grace, **--budgets-json,
 --windows-json**), `action` (--cert répétable, **--budget-ref --model --tokens
@@ -131,14 +132,14 @@ Spec F+ gravée le 2026-07-10 : §04.4 (table mise à jour), §04.10 (fenêtres)
   manifests connecteurs (§08.1) — TODO noté dans covers_act.
 - Index/caches de query optimisés : post-F (le scan segmenté suffit) ; preuves de
   complétude pour mirrors : H.
-- **Tests CLI : AUCUN aujourd'hui** (le harnais cucumber teste la bibliothèque, pas
-  le binaire). À créer : `rust/crates/aithos-cli/tests/cli_surface.rs` avec dev-deps
-  `assert_cmd` + `predicates` + `tempfile` (`Command::cargo_bin("aithos-core")`,
-  bundle jetable par `TempDir`). Doit couvrir les invariants de **sécurité de
-  surface** (décidés 2026-07-10, voir plan §Sécurité de surface) : (a) le kind est
-  imposé par l'opération (`section edit` → toujours `ethos.edit`), (b) la clé
-  n'apparaît jamais en sortie, (c) inputs invalides fail-closed. Le checkpoint manuel
-  reste, non bloquant. Rituel mis à jour : tests CLI = niveau de test à part entière.
+- ~~Tests CLI : aucun~~ **SOLDÉ (2026-07-10)** : `rust/crates/aithos-cli/tests/
+  cli_surface.rs` — 12 tests `assert_cmd`+`predicates`+`tempfile` sur le binaire
+  réel, dans `cargo test --workspace`. Parcours critiques (init/éditions/tamper,
+  mandat+lecture agent, budget épuisé, heartbeat 1s/1s suspend-reprend, profils
+  de budget, fenêtres absolues, args scellés+audit+opacité disque) + les deux
+  invariants de surface : kinds canoniques par verbe (et `--kind` rejeté par
+  clap), aucun seed dans stdout/stderr/certs/log, inputs invalides fail-closed.
+  Le checkpoint manuel (docs/CLI-GUIDE.md) reste, non bloquant.
 - **Décision d'archi de déploiement (2026-07-10)** : la clé de l'agent est détenue
   par la CLI/le container, jamais par le LLM (qui produit des intentions, pas des
   signatures). Contrainte hors protocole (le core reste agnostique). Durcissement
