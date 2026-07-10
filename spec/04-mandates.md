@@ -54,6 +54,7 @@ perimeter-entry :=
   | "act." "x." <connector> "." <action-pat>    connector action
   | "issue" [ "#depth=" <n> ]                   delegation right (§05)
   | "revoke" [ "." <zone> [ "#" <selector> ] ]  revocation right, certificate half only (§06.7)
+  | "read.gamma" [ "#" <gamma-selector> ]       log read (§07.8) — read is gamma's only verb
 
 verb       := read | edit | append | delete | write
 zone       := public | circle | self
@@ -61,6 +62,9 @@ selector   := sel *( "&" sel )                  conjunction = intersection
 sel        := dir=<sid-path> | id=<sid> | tag=<tag>
 sid-path   := <sid> *( "/" <sid> )              folder path from the zone root
 action-pat := <action> | "*"
+gamma-selector := gsel *( "&" gsel )
+gsel       := dir=<sid-path> | id=<sid> | tag=<tag>
+            | kind=<kind> | since=<ts> | until=<ts>
 ```
 
 At most one `dir`, one `tag`, one `id` per entry. Semantics: `dir=` alone = the whole
@@ -80,6 +84,16 @@ nothing yet is a valid forward-looking grant. Enforceability of a write perimete
 on `public`/`circle` (clear tags, §07 authorship cross-check). On `self`, structure
 and tags are sealed (§02.8): `dir=` and `tag=` perimeters there are **read-only**;
 `self` writes use `id=` or zone-level grants.
+
+`read.gamma` grants log reading (§07.3, §07.8): appending never needs it (any
+mandate's actions imply their own entries), and by default nobody but the owner
+reads. `covers()` extends per-dimension as above: `dir`/`id`/`tag` scope entries by
+their (sealed) targets, `kind=` covers only the equal kind, `since`/`until` bound
+the entries' `at`. Enforcement is split honestly: `dir`/`id`/`tag` are **physics**
+(the sealed bodies only open under node keys the grantee holds, §07.3);
+`kind`/`since`/`until` are certificate policy — binding for honest verifiers,
+key-holders can physically scan what their keys open. Attenuation (§05.3) applies
+dimension-wise like everywhere else.
 
 Wildcard (normative `covers` rule): `act.x.<c>.*` covers every action the connector's
 manifest (§08.1) classes as `read` or `act`; it NEVER covers an action classed

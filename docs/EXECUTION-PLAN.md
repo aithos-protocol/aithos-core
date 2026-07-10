@@ -110,10 +110,17 @@ fail-closed : sur-large, splice, fenêtre, kex mismatch, wildcard binding…).
 après expiration.
 **Done :** E1–E3 verts ; features étendues (grant + lecture déléguée).
 
-### F — Gamma (spec 07)
-Chaînage SHA-256, entrées (kinds), signatures owner/délégué, comptage
-sous-arbre `authorized_via` (max_actions), `grant` compté (max_children),
-heartbeat (§07.5), ancre de fraîcheur (§07.7). Pas encore : merge entries (→ I).
+### F — Gamma (spec 07, redlinée 2026-07-10)
+Chaînage SHA-256 **segmenté par mois** (`gamma/<YYYY-MM>.jsonl`), enveloppe à
+deux couches : header de comptage clair (id/prev/at/kind/via/sig) + **corps
+scellé** `{target, payload}` pour les `section.*` (clé du nœud cible, purposes
+`gamma-body`/`gamma-hint`) — owner-only par défaut, un grant de sous-arbre
+ouvre exactement ses entrées, l'append est aveugle (gamma_head suffit).
+Signatures owner/délégué, comptage sous-arbre `authorized_via` (max_actions),
+fenêtré (`max_actions_per`, `rate_limit` par action), `grant` compté
+(max_children) + grant non loggé = chaîne morte, heartbeat (§07.5), ancre de
+fraîcheur (§07.7). Pas encore : merge entries (→ I), `read.gamma` enforcement
++ `log query` owner (→ post-F, grammaire réservée §04.2).
 **CLI :** `action`, `heartbeat`, `log show|verify`.
 **Manuel :** 3 actions avec `max_actions: 3` → la 4ᵉ rejetée ; owner silencieux
 au-delà de every+grace → mandat heartbeat suspendu.
@@ -128,10 +135,13 @@ watchdog (verbe revoke sans clé), move-as-rotation (§02.9).
 le survivant ne remarque rien, le détenteur de zone lit encore via l'up-link.
 **Done :** G1–G4 verts (dont : rotation par non-autorisé → rejet) ; features étendues.
 
-### H — Merkle (spec 02.10)
+### H — Merkle (spec 02.10 + racines gamma)
 `H_leaf/H_node` domain-separated, hash de nœud (ligne ‖ header ‖ wraps ‖
 enfants), racines par zone dans le manifest, preuves d'inclusion, sous-arbre
-`dir=`, diff par descente.
+`dir=`, diff par descente. **Étendu (recul 2026-07-10) :** racines gamma
+committées (par segment + trie `mandate_id → count`) → comptage de budgets par
+preuve O(log n), complétude prouvable pour les mirrors, et option de sceller
+les champs de comptage (kind/via) — bump `v` des entrées (§07.1 forward note).
 **CLI :** `prove`, `edition diff`.
 **Manuel :** `prove circle projets/perso/note1` → vérifier hors-ligne ;
 modifier une section → seul son chemin de racine change dans le diff.

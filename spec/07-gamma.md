@@ -6,25 +6,44 @@
 
 ## 7.1 Chain
 
-`gamma/gamma.jsonl` — one JSON entry per line, SHA-256 hash-chained:
+`gamma/<YYYY-MM>.jsonl` — one JSON entry per line, SHA-256 hash-chained, segmented
+by UTC month of `at` (a month with no entries has no file; `prev` crosses segment
+boundaries transparently). Segmentation buys date-range access in O(segments
+touched) and leaves room for per-segment keys later; the chain, not the file
+layout, is the truth. The manifest pins every segment's hash plus `gamma_head`
+(§02.7).
+
+An entry has two layers: a **clear counting header** — the fields any offline
+verifier needs to check the chain and tally budgets (§7.4) — and, for content
+mutations, a **sealed body** carrying everything else (§7.3):
 
 ```jsonc
-{ "id": "gamma_01JZ…",                       // ULID
+{ "v": 1,
+  "id": "gamma_01JZ…",                       // ULID
   "prev": "sha256:…",                        // hash of the previous entry's JCS
   "at": "2026-07-08T10:12:00Z",
   "kind": "section.add" | "section.modify" | "section.delete" | "section.redact"
         | "action" | "heartbeat" | "grant" | "revoke" | "rotate" | "merge",
-  "target": "/e/circle/d/01J…G/s/01J…42",    // canonical sid-path, when applicable
-                                             // (self targets thus leak no structure, §02.8)
+  "target": "x.gmail" | "mandate_01JZ…",     // clear for action/structural kinds only;
+                                             // for section.* kinds it lives in body_enc
   "authorized_by": "mandate_01JZ…",          // omitted for owner-signed entries
   "authorized_via": ["mandate_root…","mandate_leaf…"],   // chain, for delegated/agentic
-  "payload_enc": { "n": "…", "c": "…" } | "payload": { … },   // §7.3
+  "payload": { … },                          // clear: action & structural kinds (§7.3)
+  "body_enc": { "hint": "…", "n": "…", "c": "…" },       // sealed: section.* kinds (§7.3)
   "signature": { "alg": "ed25519", "key": "<owner key URL | grantee pubkey>", "value": "…" } }
 ```
 
-The manifest pins `gamma_head` (§02.7). Any past-entry alteration breaks `prev` and
-every downstream signature — a write-once log. Redaction is the public, logged
-`section.redact` (never silent deletion).
+The signature covers the whole entry (JCS, ciphertext included), so a sealed body
+is pinned by the same signature that pins the header. Any past-entry alteration
+breaks `prev` and every downstream signature — a write-once log. Redaction is the
+public, logged `section.redact` (never silent deletion).
+
+**Forward note (step H).** Once gamma state roots are committed in the manifest
+(§2.10 extension: per-segment roots and a `mandate_id → count` trie), budget checks
+become O(log n) Merkle proofs instead of raw tallies; a future profile may then
+seal today's clear counting fields (`kind`, `authorized_via`, action names) and
+verify counts against the committed roots alone. The `v` field exists so that
+transition is a version bump, not a fork.
 
 ## 7.2 Who may sign an entry
 
@@ -35,13 +54,42 @@ every downstream signature — a write-once log. Redaction is the public, logged
   key (and the session key if `session_bind`), carrying `authorized_by` = leaf id and
   `authorized_via` = full chain. Verified by §04.5 + §05.3 at the entry's `at`.
 
-## 7.3 Payload encryption
+## 7.3 Two-layer confidentiality
 
-For a mutation on an encrypted node, `payload_enc` is AEAD under the **target
-section's content key** (purpose `gamma-payload`): the log reveals *that* a section
-changed and *by whom under which mandate*, but its content is readable only by those
-who can read the section itself. Public-zone and structural entries (grant/revoke/
-rotate/heartbeat) use clear `payload` (ids, versions, mandate ids — no secrets).
+**Sealed bodies (content mutations).** For every `section.*` entry, the body
+`{target, payload}` is AEAD under the **target node's content key** (derivation
+purpose `gamma-body`): the log reveals *that* someone acted at some time under
+some mandate, but *what was touched and what changed* is readable only by those
+who can read the node itself. The target sid-path moving inside the ciphertext is
+what keeps activity from leaking structure — on every zone, not just `self`.
+
+Because the target is sealed, the body carries a clear `hint`: a recognition tag
+deterministically derivable **only by holders of the target node's key**
+(derivation purpose `gamma-hint`). A reader precomputes hints for the nodes it
+holds and matches entries in O(1); a stranger learns nothing but equality of
+hidden targets. (Same design stance as `self` structure secrecy, §02.8.)
+
+**Clear payloads (action & structural kinds).** `action`, `grant`, `revoke`,
+`rotate`, `heartbeat` and `merge` entries carry clear payloads of ids, versions,
+sequence numbers and hashes — no secrets by construction (§7.4's action payload
+hashes its args). They stay clear because third-party verifiers must count them
+(budgets, children, liveness) before committed count roots exist (forward note,
+§7.1).
+
+**Who reads what (defaults).** The owner derives every node key from S and reads
+everything. A grantee's subtree read grant (§04.3 header lines) opens exactly the
+bodies sealed under its perimeter's nodes — gamma reading rides the content key
+physics, no new key material. Everyone else — including agents that only *push*
+entries — sees the counting skeleton and nothing more. Appending never requires
+reading: an author needs only `gamma_head` (manifest, §02.7) to chain correctly.
+The `read.gamma` perimeter entry (§04.2) is the certificate half that makes log
+reading a *granted* right; for key-holders it is policy (an honest verifier
+refuses out-of-perimeter queries), physics for everyone else — the same honest
+split as sealed-zone writes (§04.2).
+
+**Crypto-erasure.** Destroying a node's key (rotation without re-wrap, §06)
+retroactively blinds every sealed body under it while the chain stays intact —
+erasure of content without falsification of history.
 
 ## 7.4 Action accounting (I5, the agentic meter)
 
@@ -63,7 +111,13 @@ Consequences, all verifier-checkable offline:
 - `max_children: N` ⇒ count `grant` entries whose `authorized_by` is this mandate.
   Minting a sub-mandate MUST append its `grant` entry — otherwise `issue` would be a
   silent action, contradicting I5.
-- `max_actions_per/{rate_limit}` ⇒ windowed count over `at`.
+- `max_actions_per: {window, N}` ⇒ same subtree count, over a **rolling window** on
+  `at` (never a calendar reset: "≤ N in *any* window" is stricter and needs no phase
+  anchor).
+- `rate_limit: {action, window, N}` ⇒ the windowed count filtered on the entry's
+  clear `payload.action` — a per-action-kind budget. Composing mandates gives the
+  same effect structurally: a mandate whose perimeter covers a single
+  `act.x.<c>.<action>` makes *any* of its counters de-facto per-action.
 - `binding`/`counter_sign` ⇒ entry MUST carry a valid `co_sign` (§04.6) or it is
   invalid (and any effect it claims is unattributable).
 - `purpose` ⇒ entry cites `purpose_ref`; audit trails intent.
@@ -112,3 +166,27 @@ window.
 the N-th action of a `max_actions` budget within the freshness window, before either
 entry propagates. Same bound as revocation propagation (§10.7): a stated limit of the
 serverless design, not a bug.
+
+## 7.8 Querying
+
+**The chain is the truth; indexes are caches.** Any query index — by date, kind,
+target, tag, mandate — is unsigned, rebuildable from the chain, local to whoever
+built it, and never a trust party. Queries hit indexes; audits and verification
+hit the chain. A wrong index can waste time, never forge history.
+
+- **Date ranges** resolve to segments by filename (§7.1) before any entry is read.
+- **Kind / mandate / signer** filters read only clear headers — streamable without
+  keys.
+- **Target / tag filters** are key-gated by construction: the querier matches
+  sealed bodies via its `gamma-hint` tags (§7.3), then joins tags through the tree
+  index it can read (clear on `public`/`circle`, sealed on `self`). Tag semantics
+  are *current-tag* (join at query time); an audit that needs *tag-at-action-time*
+  puts the snapshot inside the sealed body when logging.
+- The **owner** (all keys from S) materialises full local views; a grantee's view
+  is exactly its perimeter; a stranger's view is the counting skeleton.
+- **Third-party query service** — a mirror answering filtered queries with
+  inclusion *and completeness* proofs — needs the committed gamma roots of step H
+  (§7.1 forward note); until then a mirror can withhold, not forge (§2.10 limit).
+
+The certificate half of log access is the `read.gamma` perimeter entry (§04.2);
+its physics half is the node-key material the grantee already holds (§7.3).
