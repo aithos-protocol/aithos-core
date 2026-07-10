@@ -154,6 +154,25 @@ tier V de E — rien à réécrire. Trois blocs (discutés 2026-07-10) :
    (impose `model`, lit l'`usage` réel, refuse au budget). Hook `attestation`
    (reçu signé du provider) optionnel → passe la véracité de tier X à tier V le jour
    où un provider signe ses reçus.
+4. **Kind `inference` (trace fournisseur, discuté 2026-07-10).** Chaque appel LLM =
+   une entrée gamma légère, **payload clair** `{provider, model, tokens_in,
+   tokens_out, budget_ref, at}` écrite par le container. Alimente les budgets (2).
+   **Le contenu prompt/réponse ne va JAMAIS dans le gamma** — il vit dans le cache
+   agent `/k/` (hors log canonique) ; le gamma ne porte que le méta-compteur. Volume
+   absorbé par la segmentation mensuelle + le format clair léger.
+5. **Taxonomie de kinds standard (discuté 2026-07-10).** Registre normatif lisible
+   au lieu de strings ad hoc : `ethos.write` (regroupe les `section.*`), `ethos.read`
+   (**opt.** via contrainte `log_reads` — off par défaut, la lecture n'est pas
+   journalisée par I5 ; on par mandat sensible, ex. audit d'accès `self`),
+   `inference` (4), `act.<connector>.<action>`, structural `grant`/`revoke`/`rotate`/
+   `merge`, `heartbeat`. + convention de nommage stable.
+6. **`action_params` fins + audit scellé (discuté 2026-07-10).** Prédicats par
+   argument d'action (allow-list destinataires, pattern sujet, no-PJ, plafonds,
+   bornes). Enforcement tier X (le container évalue sur les args réels). Pour l'audit
+   *a posteriori vérifiable*, les args vont dans un **corps scellé** de l'entrée
+   `act` (réutilise le two-layer F : header clair + `body_enc` sous clé
+   d'audit/connecteur, `args_hash` clair pour l'intégrité) → l'owner rouvre et
+   vérifie le respect des prédicats ; l'étranger ne voit que le hash.
 
 **Tiers d'enforcement (à graver nettement)** : déclaration + comptage des valeurs
 *déclarées* = tier V (offline) ; véracité modèle/tokens réels = tier X (container) +
