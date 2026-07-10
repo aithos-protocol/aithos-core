@@ -1,0 +1,39 @@
+//! Fail-closed error taxonomy: one named variant per kind of rejection,
+//! mirroring the core's discipline. Tests assert on variants, not strings.
+
+/// Every way the gateway can refuse or fail. Refusals are still logged;
+/// a failure to log is itself a refusal (`LogAppendRefused`).
+#[derive(Debug, thiserror::Error)]
+pub enum GatewayError {
+    /// The tool is absent from the enterprise tool map — denied by default.
+    #[error("tool `{0}` is not in the tool map — denied by default")]
+    ToolNotMapped(String),
+
+    /// The mandate does not cover this operation at T.
+    #[error("mandate denies `{op}`: {reason}")]
+    MandateDenied { op: String, reason: String },
+
+    /// The act could not be appended to the gamma — the call must not proceed.
+    #[error("gamma append refused: {0}")]
+    LogAppendRefused(String),
+
+    /// Configuration is malformed, unknown, or ambiguous — fail closed.
+    #[error("config rejected: {0}")]
+    ConfigRejected(String),
+
+    /// The upstream MCP server is unreachable or spoke another protocol.
+    #[error("upstream MCP failed: {0}")]
+    UpstreamFailed(String),
+
+    /// The agent-facing request is not something the gateway relays.
+    #[error("request rejected: {0}")]
+    RequestRejected(String),
+
+    /// Audit export was refused (auditor mandate does not cover the query).
+    #[error("audit read denied: {0}")]
+    AuditDenied(String),
+
+    /// Core bridge failure that is not a policy denial (store I/O, state).
+    #[error("core bridge failed: {0}")]
+    BridgeFailed(String),
+}
