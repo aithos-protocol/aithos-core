@@ -45,6 +45,7 @@ fn built(v: &E1) -> (Mandate, OwnerKeys) {
         &MandateSpec {
             id: v.mandate_id.clone(),
             subject: aithos_core::wire::did_aithos(&owner.root_sign.verifying_key().to_bytes()),
+            constraints: MandateSpec::no_constraints(),
             grantee_id: "urn:aithos:agent:agent".to_owned(),
             grantee_label: "agent".to_owned(),
             grantee_pub: &agent.verifying_key(),

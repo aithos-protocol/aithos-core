@@ -56,7 +56,9 @@ transition is a version bump, not a fork.
 
 ## 7.3 Two-layer confidentiality
 
-**Sealed bodies (content mutations).** For every `section.*` entry, the body
+**Sealed bodies (content mutations).** For every `section.*` entry on a keyed
+zone (`circle`, `self` — `public` has no zone key and its mutations stay clear,
+target and payload at the top level like structural kinds), the body
 `{target, payload}` is AEAD under the **target node's content key** (derivation
 purpose `gamma-body`): the log reveals *that* someone acted at some time under
 some mandate, but *what was touched and what changed* is readable only by those

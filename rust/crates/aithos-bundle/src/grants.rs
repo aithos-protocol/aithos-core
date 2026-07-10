@@ -228,6 +228,7 @@ impl<S: Store> Bundle<S> {
                     Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
                 ),
                 subject: self.did.clone(),
+                constraints: MandateSpec::no_constraints(),
                 grantee_id: format!("urn:aithos:agent:{label}"),
                 grantee_label: label.to_owned(),
                 grantee_pub: agent_pub,
@@ -399,6 +400,7 @@ impl<S: Store> Bundle<S> {
                     Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
                 ),
                 subject: self.did.clone(),
+                constraints: MandateSpec::no_constraints(),
                 grantee_id: format!("urn:aithos:agent:{label}"),
                 grantee_label: label.to_owned(),
                 grantee_pub: child_pub,

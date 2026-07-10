@@ -299,6 +299,9 @@ def gen_f2():
                        "rolling-window max_actions_per, per-action rate_limit, "
                        "and the unlogged-grant fail-closed rule. Counts computed "
                        "independently in Python over the fixture entries.",
+        "seed_hex": SEED.hex(),
+        "agent_sk_hex": AGENT_SK.hex(),
+        "helper_sk_hex": HELPER_SK.hex(),
         "root_mandate_jcs": jcs(root),
         "leaf_mandate_jcs": jcs(leaf),
         "ghost_mandate_jcs": jcs(ghost),
@@ -338,6 +341,8 @@ def gen_f3():
                        "(spec 07.7). every=30d grace=72h from beacon1; anchor "
                        "tolerance freshness=24h. Instants and verdicts computed "
                        "independently with Python datetime.",
+        "seed_hex": SEED.hex(),
+        "agent_sk_hex": AGENT_SK.hex(),
         "beacon1_jcs": jcs(beacon1),
         "beacon2_jcs": jcs(beacon2),
         "heartbeat": {"every": "30d", "grace": "72h"},

@@ -40,6 +40,24 @@ pub enum Error {
 
     #[error("I3 violated — header without an owner line: {0}")]
     MissingOwnerLine(String),
+
+    #[error("invalid gamma entry: {0}")]
+    InvalidGammaEntry(String),
+
+    #[error("invalid gamma chain: {0}")]
+    InvalidGammaChain(String),
+
+    #[error("gamma budget exhausted: {0}")]
+    GammaBudgetExhausted(String),
+
+    #[error("I5 violated — grant never logged: {0}")]
+    GammaGrantNotLogged(String),
+
+    #[error("heartbeat stale — owner silent beyond every+grace: {0}")]
+    GammaHeartbeatStale(String),
+
+    #[error("stale freshness anchor: {0}")]
+    GammaStaleAnchor(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

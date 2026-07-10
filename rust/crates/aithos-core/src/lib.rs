@@ -20,6 +20,7 @@
 pub mod derive;
 pub mod did;
 pub mod error;
+pub mod gamma;
 pub mod header;
 pub mod ids;
 pub mod jcs;
