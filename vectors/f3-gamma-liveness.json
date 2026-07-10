@@ -1,0 +1,29 @@
+{
+  "vector": "F3",
+  "description": "Heartbeat window (spec 07.5, 04.8) and freshness anchor (spec 07.7). every=30d grace=72h from beacon1; anchor tolerance freshness=24h. Instants and verdicts computed independently with Python datetime.",
+  "beacon1_jcs": "{\"at\":\"2026-07-01T00:00:00Z\",\"id\":\"gamma_0000000000000000000000000M\",\"kind\":\"heartbeat\",\"payload\":{\"seq\":1},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#content\",\"value\":\"a048e2e9fb697e4ad68f616c09f5a549fb4c26f9152ddeeab1c2796039ce4d17dcef5e01395e0a6366e3e055c60c1a176c200aad19be3ea726630fa0506b6e0c\"},\"v\":1}",
+  "beacon2_jcs": "{\"at\":\"2026-08-10T00:00:00Z\",\"id\":\"gamma_0000000000000000000000000N\",\"kind\":\"heartbeat\",\"payload\":{\"seq\":2},\"prev\":\"sha256:8ca7e511d740ca300ed6571e129c71edb3eb8074ca1d083b2cabcf867b47572e\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#content\",\"value\":\"065e09f762e63e59c31992b42f4c2f6100ff0cfad6152225378b36de88ce016f60fed900936b264b7f23404d92766ac3a918b4e827aa64f72ca3255fa08bb20d\"},\"v\":1}",
+  "heartbeat": {
+    "every": "30d",
+    "grace": "72h"
+  },
+  "suspend_after": "2026-08-03T00:00:00Z",
+  "verdicts_after_beacon1": {
+    "2026-07-21T00:00:00Z": "valid",
+    "2026-08-03T00:00:00Z": "valid",
+    "2026-08-03T00:00:01Z": "GammaHeartbeatStale",
+    "2026-08-04T00:00:00Z": "GammaHeartbeatStale"
+  },
+  "verdict_after_beacon2": {
+    "2026-08-11T00:00:00Z": "valid"
+  },
+  "forged_beacon_signer": "grantee key",
+  "forged_beacon_must_fail": "InvalidGammaEntry",
+  "freshness": "24h",
+  "anchor_at": "2026-07-01T00:00:00Z",
+  "anchor_verdicts": {
+    "2026-07-01T12:00:00Z": "valid",
+    "2026-07-02T00:00:00Z": "valid",
+    "2026-07-03T00:00:00Z": "GammaStaleAnchor"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "vector": "F1",
+  "description": "Gamma chain, two-layer envelope, owner (content key) and delegated (grantee key) entry signatures (spec 07.1-07.3). Sealed body under the target node key, purpose gamma-body; hint via gamma-hint. Generated independently (Python blake3+PyNaCl+hashlib+base58).",
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "agent_sk_hex": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "zone_dk_hex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+  "folder_sid": "00000000000000000000000001",
+  "section_sid": "00000000000000000000000007",
+  "target": "/e/circle/d/00000000000000000000000001/s/00000000000000000000000007",
+  "body_nonce_hex": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+  "key_version": 1,
+  "node_key_hex": "afbeb4ddb49e42651950e699bd0627bbb92b9349049c55cd0cb106f5310fc5ff",
+  "hint_hex": "17a63d7a597fbc786298848f422dade44129671ea2421d5c29a1693fd0494c51",
+  "mandate_jcs": "{\"aithos-mandate-core\":\"1.0.0-draft.1\",\"constraints\":{\"max_actions\":3},\"grantee\":{\"id\":\"urn:aithos:agent:agent\",\"kex_pubkey\":\"z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn\",\"label\":\"agent\",\"pubkey\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\"},\"id\":\"mandate_00000000000000000000000020\",\"issued_at\":\"2026-07-01T00:00:00Z\",\"issued_by\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root\",\"nonce\":\"00000000000000000000000000000000\",\"not_after\":\"2026-08-01T00:00:00Z\",\"not_before\":\"2026-07-01T00:00:00Z\",\"parent\":null,\"perimeter\":[\"act.x.gmail.*\"],\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"90b660c8058d6c71a9d76efe89ea9ff130edeff97b6f77addc3287c8d9796ef778338d1dabf04f6bd54b6f5b68394011eb9593cbb2f828af8c7f7c683f0f7a07\"},\"subject\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"}",
+  "entry1_jcs": "{\"at\":\"2026-07-01T00:00:00Z\",\"body_enc\":{\"c\":\"37c736e158dcd0c710cc031faa1ba0f1c183482b401772c8db12095f7e552a302e79031a9ad58db81fc0067b1577772f422dfdb8fa2a30d9e6ceb43b6638db08b4b0a21e9fb3998e37fc9d66d880b0ab07c3a9be038105367e80814eb10a60ff3fd0ffa3d8b0e79fce2ab2c883f1cef1e549da8636a750875a49df\",\"hint\":\"17a63d7a597fbc786298848f422dade44129671ea2421d5c29a1693fd0494c51\",\"n\":\"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\"},\"id\":\"gamma_00000000000000000000000001\",\"kind\":\"section.add\",\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#content\",\"value\":\"156fd56c8701b026df210269459e179dab8d5566b8ceae9d9eac52ac2b9a8ea948d0c3f90bc274aee177c86571e7bb53ce2127b4fda843d2111014cd5d69bc09\"},\"v\":1}",
+  "entry1_hash": "sha256:3918e847f59c6c140cc40aa1c899fb124b1bac210cb1dd186ab51dd0ce176d42",
+  "entry2_jcs": "{\"at\":\"2026-07-01T00:05:00Z\",\"id\":\"gamma_00000000000000000000000002\",\"kind\":\"heartbeat\",\"payload\":{\"seq\":1},\"prev\":\"sha256:3918e847f59c6c140cc40aa1c899fb124b1bac210cb1dd186ab51dd0ce176d42\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#content\",\"value\":\"1b58d9220ce3ea27e64c99e634e56355322fced8f93de3249ecf32e792b06eb0d3930259f7e2bd3d262940a12eef2177adf3a6cad22c6d6a5e0a14180b78a30f\"},\"v\":1}",
+  "entry2_hash": "sha256:fdb2c1535e1b5aaea0af7576622a503c59df9871a59debdcaabeb9b2f627137b",
+  "entry3_jcs": "{\"at\":\"2026-07-02T00:00:00Z\",\"authorized_by\":\"mandate_00000000000000000000000020\",\"authorized_via\":[\"mandate_00000000000000000000000020\"],\"id\":\"gamma_00000000000000000000000003\",\"kind\":\"action\",\"payload\":{\"action\":\"reply\",\"args_hash\":\"sha256:090772cf4068973daad3f715eb788d39fe2c02be42efd86de81f0e59198d6237\"},\"prev\":\"sha256:fdb2c1535e1b5aaea0af7576622a503c59df9871a59debdcaabeb9b2f627137b\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\",\"value\":\"f26dffdb40447d27cbf1ded33dbb1db7faa6b4ce31b2dd11d8f04088843916d4b86a5159abcb3c99f4470a0023190861c0b074c5795f9f090cbe1a0f3185f20d\"},\"target\":\"x.gmail\",\"v\":1}",
+  "entry3_hash": "sha256:d549a2f3326de49d28905ac4f25b06feb3c4a8453389c9169d380b803ce71972",
+  "gamma_head": "sha256:d549a2f3326de49d28905ac4f25b06feb3c4a8453389c9169d380b803ce71972"
+}
