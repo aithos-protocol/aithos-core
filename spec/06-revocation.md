@@ -54,19 +54,36 @@ small reach — least privilege buys cheap revocation.
 
 ## 6.4 Revocation entry
 
+> Decided 2026-07-10 (G): ONE artifact, not two. The revocation IS the gamma
+> `revoke` entry — no standalone signed document exists. One signature (the
+> entry's), one anchor (the chain), zero divergence risk.
+
+A `revoke` gamma entry (§07.1 envelope, clear payload):
+
 ```jsonc
-{ "aithos-revocation-core": "1.0.0-draft.1",
-  "mandate_id": "mandate_01JZ…",
-  "subject": "did:aithos:z6Mkr…",
-  "revoked_by": "did:aithos:z6Mkr…#root",   // root DID URL, or an ancestor grantee pubkey
-  "revoked_at": "2026-07-10T12:00:00Z",
-  "reason": "device_lost",
-  "signature": { … } }
+{ "kind": "revoke",
+  "target": "mandate_01JZ…",                 // the revoked mandate id
+  "at": "2026-07-10T12:00:00Z",              // = revoked_at
+  "authorized_by"/"authorized_via": …,        // absent for owner entries (§07.2)
+  "payload": { "reason": "device_lost" },     // optional, clear, no secrets
+  "signature": { … } }                        // #content (owner) or revoker leaf key
 ```
 
-Forward-only: artifacts dated `< revoked_at` remain attributable; `≥ revoked_at` are
-invalid even if well-formed. Authority: `revoked_by` MUST be the mandate's issuer or a
-transitive ancestor (I4), checkable from certs.
+`revoked_by` is the entry's **signer**: the owner (universal ancestor), or a
+delegated revoker whose chain travels in `authorized_via`. Forward-only:
+artifacts dated `< at` remain attributable; `≥ at` are invalid even if
+well-formed. Authority (I4), checkable from certs alone — the entry is invalid
+unless its signer is:
+
+- the owner (owner-signed entry), or
+- the revoked mandate's **issuer** (revoker leaf grantee key == `issued_by`), or
+- a **transitive ancestor** (the revoker's leaf mandate id appears in the
+  revoked mandate's parent chain), or
+- a **watchdog** whose `revoke` perimeter covers the revoked mandate's
+  perimeter (§6.7, attenuation applies).
+
+An unauthorized `revoke` entry is an invalid entry: appenders refuse it and
+`log verify` fails on it — a forged revocation can never even sit on the log.
 
 ## 6.5 Revocation state without a server
 
@@ -74,9 +91,9 @@ Revocation state is **not** an owner-signed aggregate — that would be a hidden
 availability dependency on the owner, incompatible with the absentee-owner profile
 (§00.5). Instead:
 
-- Each revocation entry is individually verifiable from its own signature plus the
-  signer's certificate chain (I4): anyone can check that `revoked_by` is the target's
-  issuer or a transitive ancestor. No owner-signed artifact is required.
+- Each `revoke` entry is individually verifiable from its own signature plus the
+  signer's certificate chain (I4): anyone can check the §6.4 authority rule. No
+  owner-signed aggregate is required.
 - Anti-rollback comes from the gamma chain: revocations are `revoke` gamma entries
   (§07), hash-chained and pinned by each edition's `gamma_head`. Withholding one
   means withholding the log tip — detectable equivocation (§10.6), never silent.
