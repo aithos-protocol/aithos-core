@@ -525,6 +525,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     action: &action,
                     args_hash: &args_hash,
                     now: &now_string(),
+                    budget: None,
+                    sealed_args: None,
                 },
                 &mut OsEntropy,
             )?;

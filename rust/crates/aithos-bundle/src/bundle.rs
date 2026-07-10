@@ -224,6 +224,19 @@ impl<S: Store> Bundle<S> {
             )?;
             bundle.put_json(&format!("e/{}/header.json", zone.as_str()), &header)?;
         }
+        // Vault root (§08.2): audit keys for sealed action args live here.
+        {
+            let dk = ent.e32();
+            let header = Header::build(
+                &bundle.did.clone(),
+                "/x",
+                &dk,
+                &[Recipient::owner(owner.owner_kex_pub())],
+                &[ent.e32()],
+                &[ent.e24()],
+            )?;
+            bundle.put_json("e/x/header.json", &header)?;
+        }
 
         bundle.put_json("e/public/index.json", &ZoneIndex::default())?;
         bundle.put_json("e/circle/index.json", &ZoneIndex::default())?;
@@ -260,6 +273,13 @@ impl<S: Store> Bundle<S> {
 
     pub fn zone_dk(&self, zone: Zone, owner: &OwnerKeys) -> Result<[u8; 32]> {
         let header: Header = self.get_json(&format!("e/{}/header.json", zone.as_str()))?;
+        header.validate()?;
+        header.open(&self.did, KV, "owner-kex", &owner.owner_kex)
+    }
+
+    /// Vault root DK (§08.2) — parent of the per-connector audit keys.
+    pub fn vault_dk(&self, owner: &OwnerKeys) -> Result<[u8; 32]> {
+        let header: Header = self.get_json("e/x/header.json")?;
         header.validate()?;
         header.open(&self.did, KV, "owner-kex", &owner.owner_kex)
     }

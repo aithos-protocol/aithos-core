@@ -1625,6 +1625,8 @@ impl ProtocolWorld {
                     action,
                     args_hash: "sha256:00",
                     now: at,
+                    budget: None,
+                    sealed_args: None,
                 },
                 &mut ent,
             )

@@ -47,14 +47,32 @@ pub struct LogHit {
     pub body: Option<Body>,
 }
 
-/// Parameters of one logged connector action (§07.4).
-#[derive(Debug, Clone, Copy)]
+/// Parameters of one logged connector action (§07.4, §04.11, §07.9.3).
+#[derive(Debug, Clone, Default)]
 pub struct ActionSpec<'a> {
     pub connector: &'a str,
     pub action: &'a str,
-    /// SHA-256 of the action arguments — the log never carries the args.
+    /// SHA-256 of the action arguments — the log never carries clear args.
+    /// Recomputed from `sealed_args` when those are provided.
     pub args_hash: &'a str,
     /// Injected timestamp of the entry.
+    pub now: &'a str,
+    /// Budget citation (§04.11): budget_ref / model / tokens / receipt,
+    /// merged into the clear payload.
+    pub budget: Option<serde_json::Value>,
+    /// Full argument object, sealed under the connector's audit key
+    /// (§07.9.3) for a-posteriori predicate audit.
+    pub sealed_args: Option<serde_json::Value>,
+}
+
+/// Parameters of one metered inference (§07.9.1).
+#[derive(Debug, Clone)]
+pub struct InferenceSpec<'a> {
+    pub provider: &'a str,
+    pub model: &'a str,
+    pub tokens_in: u64,
+    pub tokens_out: u64,
+    pub budget_ref: Option<&'a str>,
     pub now: &'a str,
 }
 
@@ -247,6 +265,31 @@ impl<S: Store> Bundle<S> {
         let doc = self.did_doc()?;
         let entries = self.gamma_entries()?;
         let via: Vec<String> = chain.iter().map(|m| m.id.clone()).collect();
+        // Sealed args (§07.9.3): args_hash pins the sealed body.
+        let (args_hash, body_enc) = match &spec.sealed_args {
+            None => (spec.args_hash.to_owned(), None),
+            Some(args) => {
+                let canon = aithos_core::jcs::canonical_bytes(args)?;
+                let hash = format!("sha256:{}", aithos_core::gamma::sha256_hex(&canon));
+                let key = self.audit_key_any(chain, agent_sk, spec.connector)?;
+                let target = format!("x.{}", spec.connector);
+                let body = aithos_core::gamma::seal_body(
+                    &key, &self.did, &target, KV, args, &ent.e24(),
+                )?;
+                (hash, Some(body))
+            }
+        };
+        let mut payload = serde_json::json!({
+            "action": spec.action,
+            "args_hash": args_hash,
+        });
+        if let Some(budget) = &spec.budget {
+            if let (Some(p), Some(b)) = (payload.as_object_mut(), budget.as_object()) {
+                for (k, v) in b {
+                    p.insert(k.clone(), v.clone());
+                }
+            }
+        }
         let entry = delegated_entry(
             EntrySpec {
                 id: self.next_gamma_id(ent),
@@ -254,10 +297,99 @@ impl<S: Store> Bundle<S> {
                 at: spec.now.to_owned(),
                 kind: Kind::Action,
                 target: Some(format!("x.{}", spec.connector)),
-                payload: Some(serde_json::json!({
-                    "action": spec.action,
-                    "args_hash": spec.args_hash,
-                })),
+                payload: Some(payload),
+                body_enc,
+            },
+            via,
+            agent_sk,
+        )?;
+        verify_delegated_entry(&entry, chain, &doc)?;
+        check_action_append(&entries, &entry, chain, &doc)?;
+        self.gamma_append(&entry)?;
+        Ok(entry)
+    }
+
+    /// The connector audit key (§07.9.3): owner-derivable from the vault
+    /// root; an agent uses a granted header line on `/x` or `/x/<connector>`.
+    fn audit_key_any(
+        &self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        connector: &str,
+    ) -> Result<[u8; 32]> {
+        let label = format!("aithos-core/v1/x/{connector}");
+        // Agent path: a line on the vault root sealed to the leaf grantee.
+        if let Some(leaf) = chain.last() {
+            let kex = grantee_kex_secret(agent_sk);
+            if let Some(bytes) = self.store.get("e/x/header.json").ok().flatten() {
+                if let Ok(header) = serde_json::from_slice::<aithos_core::header::Header>(&bytes) {
+                    if let Ok(dk) = header.open(&self.did, KV, &leaf.grantee.pubkey, &kex) {
+                        return Ok(aithos_core::derive::derive_key(&label, &dk));
+                    }
+                }
+            }
+        }
+        Err(Error::SealRejected(format!(
+            "no audit key path for connector {connector}"
+        )))
+    }
+
+    /// Owner-side audit key for a connector (§07.9.3).
+    pub fn audit_key_owner(&self, owner: &OwnerKeys, connector: &str) -> Result<[u8; 32]> {
+        Ok(aithos_core::derive::derive_key(
+            &format!("aithos-core/v1/x/{connector}"),
+            &self.vault_dk(owner)?,
+        ))
+    }
+
+    /// Grant an agent the vault line it needs to seal audit args (§07.9.3).
+    pub fn grant_audit_line(
+        &mut self,
+        owner: &OwnerKeys,
+        agent_pub: &ed25519_dalek::VerifyingKey,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        let dk = self.vault_dk(owner)?;
+        let mb = aithos_core::wire::ed25519_pub_to_multibase(&agent_pub.to_bytes());
+        let recipient = aithos_core::header::Recipient {
+            to: mb.clone(),
+            kid: mb,
+            pubkey: aithos_core::keys::ed2x(agent_pub),
+        };
+        let mut header: aithos_core::header::Header = self.get_json("e/x/header.json")?;
+        header.append_line(&self.did.clone(), KV, &dk, &recipient, ent.e32(), ent.e24())?;
+        self.put_json("e/x/header.json", &header)
+    }
+
+    /// A metered LLM call (§07.9.1): light clear entry, budget-checked like
+    /// an action, never carrying prompt or response text.
+    pub fn log_inference(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        spec: &InferenceSpec<'_>,
+        ent: &mut dyn EntropySource,
+    ) -> Result<Entry> {
+        let doc = self.did_doc()?;
+        let entries = self.gamma_entries()?;
+        let via: Vec<String> = chain.iter().map(|m| m.id.clone()).collect();
+        let mut payload = serde_json::json!({
+            "provider": spec.provider,
+            "model": spec.model,
+            "tokens_in": spec.tokens_in,
+            "tokens_out": spec.tokens_out,
+        });
+        if let Some(r) = spec.budget_ref {
+            payload["budget_ref"] = serde_json::json!(r);
+        }
+        let entry = delegated_entry(
+            EntrySpec {
+                id: self.next_gamma_id(ent),
+                prev: gamma::head(&entries)?,
+                at: spec.now.to_owned(),
+                kind: Kind::Inference,
+                target: Some("x.llm".to_owned()),
+                payload: Some(payload),
                 body_enc: None,
             },
             via,
@@ -265,6 +397,53 @@ impl<S: Store> Bundle<S> {
         )?;
         verify_delegated_entry(&entry, chain, &doc)?;
         check_action_append(&entries, &entry, chain, &doc)?;
+        self.gamma_append(&entry)?;
+        Ok(entry)
+    }
+
+    /// A journalized read (§07.9.2, `log_reads`): sealed body naming the
+    /// section, under the very key that just opened it.
+    pub fn log_read_as_agent(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        zone: Zone,
+        display_path: &str,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<Entry> {
+        let doc = self.did_doc()?;
+        let entries = self.gamma_entries()?;
+        let leaf = chain
+            .last()
+            .ok_or_else(|| Error::InvalidGammaEntry("empty chain".to_owned()))?;
+        let (row, folders) = self.resolve_clear(zone, display_path)?;
+        let node = NodePath::section(zone, folders, Sid::parse(&row.sid)?);
+        let kex = grantee_kex_secret(agent_sk);
+        let key = self.agent_node_key(&leaf.grantee.pubkey, &kex, &node)?;
+        let body = aithos_core::gamma::seal_body(
+            &key,
+            &self.did,
+            &node.to_string(),
+            KV,
+            &serde_json::json!({}),
+            &ent.e24(),
+        )?;
+        let via: Vec<String> = chain.iter().map(|m| m.id.clone()).collect();
+        let entry = delegated_entry(
+            EntrySpec {
+                id: self.next_gamma_id(ent),
+                prev: gamma::head(&entries)?,
+                at: now.to_owned(),
+                kind: Kind::EthosRead,
+                target: None,
+                payload: None,
+                body_enc: Some(body),
+            },
+            via,
+            agent_sk,
+        )?;
+        verify_delegated_entry(&entry, chain, &doc)?;
         self.gamma_append(&entry)?;
         Ok(entry)
     }
@@ -379,6 +558,10 @@ impl<S: Store> Bundle<S> {
         dir: Option<&(Zone, String)>,
         tag: Option<&str>,
     ) -> Result<bool> {
+        if !target.starts_with("/e/") {
+            // Connector-plane target (x.<c>): tree filters cannot match it.
+            return Ok(dir.is_none() && tag.is_none());
+        }
         let node = NodePath::parse(target)?;
         if let Some((zone, display)) = dir {
             let want = self.resolve_folder(*zone, display)?;
@@ -409,7 +592,10 @@ impl<S: Store> Bundle<S> {
     }
 
     fn clear_dims_match(e: &Entry, f: &LogFilter) -> bool {
-        f.kind.as_ref().is_none_or(|k| &e.kind == k)
+        f.kind.as_ref().is_none_or(|k| {
+            &e.kind == k
+                || aithos_core::gamma::Kind::parse(&e.kind).is_ok_and(|x| x.class() == k)
+        })
             && f.action.as_ref().is_none_or(|a| {
                 e.payload
                     .as_ref()
