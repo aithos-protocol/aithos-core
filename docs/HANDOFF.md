@@ -3,8 +3,8 @@
 **But.** Reprendre l'implémentation de référence d'aithos-core sans rien reperdre.
 Résume où on en est, comment on travaille, et la prochaine étape exacte.
 
-**Branche : `feat/f-gamma`** (étape F complète dessus, PAS encore mergée sur
-master — décision Mathieu). Repo : `code/aithos-core/`.
+**Branche : `feat/f-plus`** (F mergée sur master en fast-forward ; F+ complète
+sur cette branche, merge = décision Mathieu). Repo : `code/aithos-core/`.
 
 ---
 
@@ -54,7 +54,7 @@ rejet) ; wire figé étape 0 (multibase base58btc, JCS RFC 8785, AAD §00.3).
   À H : racines committées → preuves O(log n), option de sceller kind/via (champ
   `v` prêt). Crypto-erasure par destruction de clé.
 
-## 4. État du code (7 étapes closes sur 12)
+## 4. État du code (8 étapes closes sur 12)
 
 Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 `aithos-cli`, `aithos-wasm`.
@@ -68,19 +68,23 @@ Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 | D Bundle | ✅ | bundle.rs, manifest.rs, entropy.rs, FsStore |
 | E Mandats | ✅ | mandate.rs, grants.rs — E1 |
 | **F Gamma** | ✅ | gamma.rs (chaîne, enveloppe, compteur, heartbeat, ancre), log.rs (segments, appends autorisés, query owner/agent), PerimeterEntry::{Act,Gamma}, covers_act/covers_gamma_query, manifest.gamma_head, SectionSpec/ActionSpec (dette params réglée) — F1, F2, F3 |
-| F+ Contraintes avancées | ⏳ **prochaine** | spec d'abord (§04.4+§07.4) : active_windows, budgets[], container tier X — voir plan (note coordination levée : F est fini) |
-| G Révocation | ⬜ | révocations = entrées gamma |
+| **F+ Contraintes avancées** | ✅ | constraints.rs (Window arithmétique half-open, BudgetProfile OU, reçus d'attestation, action_params), kinds inference/ethos.read + classes registry, atténuation fenêtres dans verify_chain, vault d'audit (`e/x/header.json`) + args scellés §7.9.3, log_inference/log_read_as_agent, audit owner (audit_action_args, audit_log_against) — vecteur F+ |
+| G Révocation | ⏳ **prochaine** | révocations = entrées gamma (kind déjà dans le registre) |
 | H Merkle | ⬜ | racines zones + **racines gamma** (segments + trie mandate_id→count) |
 | I Concurrence | ⬜ | merge disjoint, fork, entrées merge |
 | K Intégration | ⬜ | scénario K, Docker, npm |
 
-**Tests : 68 scénarios / 235 steps cucumber + vecteurs A1/A2/B2/C1/E1/F1/F2/F3,
+**Tests : 105 scénarios / 369 steps cucumber + vecteurs A1/A2/B2/C1/E1/F1/F2/F3/F+,
 tous verts ; `clippy --all-targets -- -D warnings` clean ; `cargo fmt` passé.**
 
-CLI (nouveaux verbes F) : `grant-act` (mandat d'action, --max-actions,
---heartbeat-every/grace), `action` (--cert répétable, chaîne leaf-last),
-`heartbeat`, `log-show`, `log-verify`, `log-query` (--kind/--action/--since/
---until/--folder/--tag/--mandate). `grant` logge désormais son entrée gamma.
+CLI : `grant-act` (--max-actions, --heartbeat-every/grace, **--budgets-json,
+--windows-json**), `action` (--cert répétable, **--budget-ref --model --tokens
+--receipt-json --args-json** pour args scellés), **`inference`**, `heartbeat`,
+`log-show`, `log-verify`, `log-query` (--kind accepte les classes, ex.
+ethos.write). `grant` logge son entrée gamma.
+Décision de wire F+ à connaître : instants en RFC 3339 Z, jamais d'epoch ns —
+RFC 8785 sérialise les nombres en doubles IEEE 754, un epoch ns (>2^53)
+perdrait de la précision dans les octets signés.
 Checkpoint manuel déroulé : 3 actions max_actions=3 → 4ᵉ `GammaBudgetExhausted` ;
 heartbeat 10s/5s → silence 16s → `GammaHeartbeatStale` → beacon → reprise. ✔
 
@@ -108,19 +112,16 @@ précédente peuvent appartenir à `nobody` (illisibles). Setup qui marche :
   erreur depuis B ; l'historique garde le poids — réécriture = décision à part).
   `.gitignore` couvre `rust/target*/`.
 
-## 6. Prochaine étape : F+ (spec d'abord), puis G
+## 6. Prochaine étape : G — Révocation (spec 06)
 
-**F+** (voir `docs/EXECUTION-PLAN.md` § F+, discuté/écrit par Mathieu 2026-07-10) :
-enrichissement purement additif du vocabulaire `constraints` — (1) `active_windows`
-arithmétiques absolues (remplace active_hours, zéro TZ/DST), (2) `budgets:[profile]`
-en OU logique (modèle/tokens/fenêtres par profil, comptage par `budget_ref`),
-(3) enforcement modèle via container (tier X) + hook `attestation` (pont tier V).
-Rituel : **graver la spec §04.4+§07.4 d'abord**, puis feature/vecteur/impl.
-Le moteur de comptage de F (somme sur `authorized_via`, fenêtres glissantes,
-filtre payload) se réutilise tel quel.
+Révocations = entrées gamma (kind `revoke` déjà dans le registre §7.9.2).
+Échelle complète du plan : cert (entrée gamma ancrée), rotation atomique +
+re-scellement survivants + up-link wrap (§03.4 2bis), re-chiffrement, cascade,
+ré-adoption, watchdog (verbe revoke sans clé), move-as-rotation (§02.9).
+CLI : `revoke [--mode]`, `adopt`, `folder move`. Rituel : feature G d'abord.
 
-**G** ensuite : révocations = entrées gamma (kind `revoke` déjà dans l'enum),
-rotation + re-scellement + up-link (§03.4), cascade, watchdog, move-as-rotation.
+Spec F+ gravée le 2026-07-10 : §04.4 (table mise à jour), §04.10 (fenêtres),
+§04.11 (+§04.11.1 reçus), §07.9 (inference, registre kinds, args scellés).
 
 ## 7. Points ouverts / dette assumée (non bloquants)
 
