@@ -292,7 +292,7 @@ paquet npm `@aithos/core` (wasm-pack), conformance levels §09.4 documentés.
 | F Gamma | **faite** — chaîne segmentée mensuelle, enveloppe 2 couches, compteur sous-arbre, heartbeat, ancre de fraîcheur ; F1–F3 |
 | F+ Contraintes | **faite** — fenêtres arithmétiques absolues, profils de budget OU, reçus d'attestation, action_params, kinds inference/ethos.read ; vecteur F+ |
 | G Révocation | **faite** — échelle complète, rotation + up-link + ré-encryption, cascade, watchdog, move-as-rotation (§02.9) ; G1–G3, CLI revoke/move (123 scénarios) |
-| G+ Obligations | **en cours** — spec §4.12 gravée (primitive + counter_sign/attestation refondus en instances) ; feature → vecteurs → code à suivre |
+| G+ Obligations | **faite** — 4 décisions gravées (un wire co_sign désugaré, mandate_id = feuille, atténuation JCS-stricte, refus = Err pur) ; Obligation/parse/verify/check dans constraints.rs (payload reconstruit des coordonnées de l'entrée → le rejeu meurt dans la signature), branché gamma append + verify_chain, log_action_with_checks additif ; vecteur G+ Python indépendant (6 valides, 8 négatifs, atténuation, JCS byte-identique) ; 26 scénarios ; CLI grant-act --obligations-json/--counter-sign, action --check-json, approve (WYSIWYS, --key-only) + 2 tests de surface (149 scénarios / 522 steps, 15 tests CLI, clippy clean) |
 | H Merkle | à faire |
 | I Concurrence | à faire |
 | K Intégration | à faire |

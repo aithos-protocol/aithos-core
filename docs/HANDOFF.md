@@ -3,9 +3,10 @@
 **But.** Reprendre l'implémentation de référence d'aithos-core sans rien reperdre.
 Résume où on en est, comment on travaille, et la prochaine étape exacte.
 
-**Branche : `feat/f-plus`** (F mergée sur master ; F+ et G **entièrement** closes
-sur cette branche — move-as-rotation inclus —, merge = décision Mathieu).
-Repo : `code/aithos-core/`.
+**Branche : `feat/obligations`** (créée depuis le HEAD complet `feat/gateway` ;
+F+, G **et G+** entièrement closes ici ; le crate `aithos-gateway` ride sur la
+branche mais n'est JAMAIS touché — sessions parallèles ; merge = décision
+Mathieu). Repo : `code/aithos-core/`.
 
 ---
 
@@ -69,8 +70,25 @@ rejet) ; wire figé étape 0 (multibase base58btc, JCS RFC 8785, AAD §00.3).
   eager du sous-arbre (posture rotate_folder). Header de M reconstruit au
   NOUVEAU chemin (AAD) à v+1, l'ancien fichier reste en archéologie. Couper
   quelqu'un = `revoke`, jamais move. Option future : `move --keep-old-access`.
+- **Obligations §4.12 — 4 décisions gravées (Mathieu, 2026-07-10, commit
+  08bc9e8)** : (1) **UN wire** — counter_sign/binding se désugarent en
+  obligation réservée `co_sign` (attestor = clé content owner, verdict
+  approve, Δ_cosign 5m) ; le reçu signe TOUJOURS le payload complet
+  `{obligation, mandate_id, action, args_hash, verdict, presented_digest?,
+  at}` (« implicite » = la déclaration, jamais les octets signés — §4.6
+  amendée) ; (2) **mandate_id = authorized_by de l'entrée** (la feuille) — un
+  reçu ne se transfère jamais entre sous-mandats frères, même obligation
+  ancêtre et args identiques ; (3) **atténuation JCS-stricte** — une
+  obligation héritée doit être byte-identique chez l'enfant, resserrer =
+  AJOUTER (la conjonction est le resserrement), counter_sign/binding ⊇ en
+  sets de noms d'action ; (4) **refus = Err pur** (GammaObligationUnsatisfied,
+  rien d'appendé — précédent check_budgets) ; le « refusal log » est un devoir
+  du gateway, hors protocole. Astuce d'impl qui PORTE l'anti-rejeu : le
+  vérificateur reconstruit le payload depuis les coordonnées de l'ENTRÉE —
+  toute divergence (mandat, action, args, digest) tue la signature, zéro
+  comparaison à la main.
 
-## 4. État du code (9 étapes closes sur 12)
+## 4. État du code (10 étapes closes sur 13)
 
 Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 `aithos-cli`, `aithos-wasm`.
@@ -86,13 +104,14 @@ Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 | **F Gamma** | ✅ | gamma.rs (chaîne, enveloppe, compteur, heartbeat, ancre), log.rs (segments, appends autorisés, query owner/agent), PerimeterEntry::{Act,Gamma}, covers_act/covers_gamma_query, manifest.gamma_head, SectionSpec/ActionSpec (dette params réglée) — F1, F2, F3 |
 | **F+ Contraintes avancées** | ✅ | constraints.rs (Window arithmétique half-open, BudgetProfile OU, reçus d'attestation, action_params), kinds inference/ethos.read + classes registry, atténuation fenêtres dans verify_chain, vault d'audit (`e/x/header.json`) + args scellés §7.9.3, log_inference/log_read_as_agent, audit owner (audit_action_args, audit_log_against) — vecteur F+ |
 | **G Révocation** | ✅ | revocation.rs (set actif, forward-only, autorité issuer/ancêtre/watchdog), PerimeterEntry::Revoke, verify_chain_revocable (état injecté, §04.5 step 4), revoke.rs bundle (rotate_folder : versions header, survivants, up-link 2bis, ré-encryption, lecture version-aware), log_revoke owner/délégué, CLI `revoke [--rotate]` — G1, G2. **Move-as-rotation (§02.9) SOLDÉ (2026-07-10)** : `move_folder` (re-parentage sid stable, DK' au nouveau chemin scellée à l'ancien line set, wrap via NOUVEAU parent, ré-encryption), coverage nodale `dir_covers` (§04.2), écritures circle version-aware (`section_add` via `owner_current_section_key` — trou réel : écrire à v1 sous un dossier tourné/déplacé rendait le contenu à l'ancien parent), marche de clé agent descendante (wraps parent→enfant + zroot), `Header::build_at`, 3 scénarios, vecteur G3, CLI `move` + test surface |
+| **G+ Obligations** | ✅ | **SOLDÉ (2026-07-10 soir)** : constraints.rs (Obligation/AppliesTo, parse_obligations + désugarage counter_sign/binding → instance `co_sign`, verify_obligation_receipt — payload RECONSTRUIT des coordonnées de l'entrée, le rejeu cross-mandat/action/args meurt dans la signature —, check_obligations, obligations_attenuate JCS-strict), branché check_action_append (gamma.rs, à côté de check_budgets, clé content injectée du DID doc) + verify_chain (mandate.rs, add-only par maillon), log_action_with_checks (log.rs, additif — ActionSpec intact, le gateway build inchangé), GammaObligationUnsatisfied fail-closed. CLI grant-act --obligations-json/--counter-sign, action --check-json, **approve** (--approver-seed-hex ou --owner-seed-hex co_sign, --presented WYSIWYS, --key-only). Vecteur G+ Python indépendant (gen-gplus.py auto-validé contre le reçu F+) : JCS byte-identique, 6 reçus valides, 8 négatifs, atténuation. 26 scénarios, 2 tests de surface |
 | H Merkle | ⬜ | racines zones + **racines gamma** (segments + trie mandate_id→count) |
 | I Concurrence | ⬜ | merge disjoint, fork, entrées merge |
 | K Intégration | ⬜ | scénario K, Docker, npm |
 
-**Tests : 123 scénarios / 437 steps cucumber (zéro skip) + vecteurs
-A→F+/G1/G2/G3 + 13 tests de surface CLI, tous verts ; `clippy --all-targets
--- -D warnings` clean ; `cargo fmt` passé.**
+**Tests : 149 scénarios / 522 steps cucumber (zéro skip) + vecteurs
+A→F+/G1/G2/G3/G+ + 15 tests de surface CLI, tous verts ; `clippy --workspace
+--all-targets -- -D warnings` clean ; `cargo fmt` passé.**
 
 Deux trous de discipline découverts et soldés (2026-07-10) : (1) le scénario
 « A revoked chain is refused at verification time » était silencieusement
@@ -102,16 +121,23 @@ move passait À VIDE (steps stubs `{}`, pas de tag @wip) et son Given était
 faux au regard de la sémantique clarifiée (ligne directe = survivant).
 
 CLI : `grant-act` (--max-actions, --heartbeat-every/grace, **--budgets-json,
---windows-json**), `action` (--cert répétable, **--budget-ref --model --tokens
---receipt-json --args-json** pour args scellés), **`inference`**, `heartbeat`,
-`log-show`, `log-verify`, `log-query` (--kind accepte les classes, ex.
-ethos.write), **`move <folder> --under <parent>`** (publie l'édition).
-`grant` logge son entrée gamma.
+--windows-json, --obligations-json, --counter-sign**), `action` (--cert
+répétable, **--budget-ref --model --tokens --receipt-json --args-json
+--check-json**), **`approve`** (reçu d'obligation signé ; --approver-seed-hex
+device OU --owner-seed-hex co_sign ; --presented WYSIWYS ; --key-only sort la
+pub multibase à épingler), **`inference`**, `heartbeat`, `log-show`,
+`log-verify`, `log-query` (--kind accepte les classes, ex. ethos.write),
+**`move <folder> --under <parent>`** (publie l'édition). `grant` logge son
+entrée gamma.
 Décision de wire F+ à connaître : instants en RFC 3339 Z, jamais d'epoch ns —
 RFC 8785 sérialise les nombres en doubles IEEE 754, un epoch ns (>2^53)
 perdrait de la précision dans les octets signés.
 Checkpoint manuel déroulé : 3 actions max_actions=3 → 4ᵉ `GammaBudgetExhausted` ;
 heartbeat 10s/5s → silence 16s → `GammaHeartbeatStale` → beacon → reprise. ✔
+Checkpoint G+ déroulé (bloc 12 du guide) : publish sans reçu → refus fail-closed ;
+approve WYSIWYS → logged ; rejeu autres args → « args_hash does not match » ;
+reçu 12 min / max_age 5m → « stale (720s > 300s) » ; counter_sign : send refusé,
+reply passe, co_sign owner → logged ; log-verify OK. ✔
 
 ## 5. Comment builder / tester
 
@@ -143,25 +169,17 @@ recyclage, lire AVANT de builder)** :
   erreur depuis B ; l'historique garde le poids — réécriture = décision à part).
   `.gitignore` couvre `rust/target*/` et `rust/cargo-linux/`.
 
-## 6. Prochaine étape : G+ — Obligations (spec gravée), puis H — Merkle
+## 6. Prochaine étape : H — Merkle
 
-**G+ Obligations (nouveau, 2026-07-10).** Branche dédiée **`feat/obligations`**
-(créée depuis le HEAD complet `feat/gateway` : core complet + move-as-rotation ;
-le crate `aithos-gateway` ride mais n'est **jamais** touché — G+ ne concerne que
-`spec/`, `aithos-core`, `aithos-bundle`, `aithos-cli`, `features/`). **Spec
-§4.12 gravée** (primitive `obligations` : reçu signé lié à `args_hash`, vérifié
-à l'append tier V à côté de `check_budgets`, enregistré dans `checks[]`) +
-touchpoints §4.4/§4.5/§4.6/§07. `counter_sign` (jamais codé) et le pont
-d'attestation deviennent des instances — équivalence prouvée par sur-ensemble du
-payload `co_sign`. Modèle 1 seul pour l'approbation humaine (clé de l'approbateur
-sur son appareil ; Aithos ne détient jamais de clé forgeant une approbation).
-**Reste :** feature `g-plus-obligations.feature` → vecteur Python indépendant →
-code (`Obligation`/`parse_obligations`/`verify_obligation_receipt`/
-`check_obligations` dans `constraints.rs`, branché `gamma.rs` ~L567, `checks[]`
-dans `log.rs`, CLI `approve`/`grant-act --obligation`). Voir plan étape G+.
-`verify_op` reste pur, cœur crypto intact, zéro régression de vecteur (constraints
-ouvert §04.4). **Ordre rituel : la spec attend la validation de Mathieu avant le
-code.**
+**G+ est ENTIÈREMENT close (2026-07-10 soir, cette session).** Rituel intégral
+déroulé : 4 points de décision validés par Mathieu → spec amendée (08bc9e8) →
+feature committée AVANT le code (fe508c6, 26 scénarios) → vecteur Python
+indépendant auto-validé contre le reçu F+ (71e93d5) → impl core (9f572db) →
+CLI + 2 tests de surface (6b39413) → checkpoint manuel bloc 12 ✔. Voir tableau
+§4 et décisions §3 (les 4 décisions gravées). `verify_op` intact, zéro
+régression de vecteur, le token-receipt F+ garde son squelette (verify_receipt
+mesure, verify_obligation_receipt gate — mêmes octets Ed25519+JCS). Gateway
+jamais touché.
 
 **G est ENTIÈREMENT close** (move-as-rotation soldé 2026-07-10, voir tableau §4
 et décisions §3 — coverage nodale + move). Les 3 scénarios move sont verts, le
@@ -210,3 +228,13 @@ rangé en défense en profondeur (additif, sans breaking wire — voir plan §H)
   sans breaking wire) — voir plan.
 - Merge entries / éditions concurrentes : I. Manifest à pins plats jusqu'à H.
 - Artefact de récupération combiné (S ‖ succession) : couche présentation, plus tard.
+- **G+ (dette assumée, non bloquante)** : (a) `log-show` (vue résumée) n'affiche
+  pas `checks[]` — les reçus sont dans le payload, visibles au fichier brut et
+  attestés par le test de surface ; (b) quorum M-of-N réservé dans la spec
+  (`attestor` porte déjà le set ; un futur `quorum: k` transforme le OR en
+  k-of-n) ; (c) Modèle 2 d'approbation (service attestant pour l'humain) =
+  fallback futur, pas le MVP ; (d) le désugarage counter_sign matche le nom
+  d'action sur TOUT connecteur du périmètre (le raccourci §4.4 ne porte pas de
+  connecteur — une obligation déclarée `applies_to` fait le ciblage fin).
+- Env sandbox G+ : `pip install pynacl base58 --break-system-packages` requis
+  dans une VM fraîche pour les générateurs de vecteurs.

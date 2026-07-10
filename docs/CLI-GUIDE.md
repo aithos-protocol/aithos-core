@@ -191,6 +191,56 @@ Le déplacer VERS un dossier partagé le partage (wrap sous le nouveau parent) ;
 le déplacer HORS d'un dossier partagé le dé-partage (rotation). Comme un objet
 physique qui change de tiroir. Couper quelqu'un explicitement = `revoke`.
 
+## 12. Obligations — approbation humaine & co_sign (G+, spec 04.12)
+
+```bash
+export AP=$(printf 'b5%.0s' $(seq 32))   # la clé DEVICE de l'approbateur
+PUB=$(ac approve --approver-seed-hex $AP --mandate - --key-only publish)
+echo $PUB                                # → z6Mk… : à épingler au grant
+
+ac grant-act --dir $D --seed-hex $S --agent-seed-hex $A \
+  --obligations-json "[{\"id\":\"publish-approval\",\"check\":\"human.approve\",\
+\"attestor\":[\"$PUB\"],\"applies_to\":\"act.x.social.publish\",\
+\"verdict\":\"approve\",\"max_age\":\"5m\"}]" social '*'
+export CACT=$D/certs/<le cert affiché>.json ; export MID=$(basename $CACT .json)
+
+ac action --dir $D --cert $CACT --agent-seed-hex $A social publish --args "Ship it"
+# → Error GammaObligationUnsatisfied("…no receipt…") : fail-closed, rien d'appendé
+
+ac approve --approver-seed-hex $AP --obligation publish-approval --mandate $MID \
+  --args "Ship it" --presented "PUBLISH: Ship it" publish > /tmp/receipt.json
+# → le reçu signé {obligation, args_hash, verdict, presented_digest, at, sig}
+#   (presented_digest = WYSIWYS : le hash de CE que le device a montré est
+#    DANS les octets signés ; jamais de seed en sortie)
+
+ac action --dir $D --cert $CACT --agent-seed-hex $A social publish \
+  --args "Ship it" --check-json "$(cat /tmp/receipt.json)"
+# → action logged — le reçu ride dans checks[] de l'entrée
+
+ac action --dir $D --cert $CACT --agent-seed-hex $A social publish \
+  --args "Something else" --check-json "$(cat /tmp/receipt.json)"
+# → Error "args_hash does not match" : un reçu est single-use, lié aux args
+
+ac approve --approver-seed-hex $AP --obligation publish-approval --mandate $MID \
+  --args "Old news" --at $(date -u -v-12M +%Y-%m-%dT%H:%M:%SZ) publish > /tmp/stale.json
+ac action --dir $D --cert $CACT --agent-seed-hex $A social publish \
+  --args "Old news" --check-json "$(cat /tmp/stale.json)"
+# → Error "receipt is stale (720s > 300s)" : l'approbation ne vieillit pas
+
+# counter_sign = la même primitive, instance owner (clé content, id co_sign) :
+ac grant-act --dir $D --seed-hex $S --agent-seed-hex $A --counter-sign send gmail '*'
+export CCS=$D/certs/<cert>.json ; export MCS=$(basename $CCS .json)
+ac action --dir $D --cert $CCS --agent-seed-hex $A gmail send --args "wire"   # → refusé
+ac action --dir $D --cert $CCS --agent-seed-hex $A gmail reply --args "re"    # → passe (non binding)
+ac approve --owner-seed-hex $S --mandate $MCS --args "wire" --presented "SEND: wire" send > /tmp/co.json
+ac action --dir $D --cert $CCS --agent-seed-hex $A gmail send --args "wire" \
+  --check-json "$(cat /tmp/co.json)"                                          # → logged
+```
+
+Le protocole vérifie une signature liée (mandat feuille + action + args + at),
+jamais la logique : guardrail, humain qui tape « approve » ou second agent,
+même wire. La logique vit dans l'attestor, hors protocole.
+
 ## Récap des invariants que tu viens de toucher
 
 | Bloc | Invariant prouvé |
@@ -204,3 +254,4 @@ physique qui change de tiroir. Couper quelqu'un explicitement = `revoke`.
 | 9 | l'audit rouvre ce que l'étranger ne voit pas ; hash = intégrité |
 | 10 | la recherche suit ce que tes clés ouvrent, rien de plus |
 | 11 | le périmètre suit le nœud, pas l'adresse ; la dérivation ne se désapprend pas |
+| 12 | un permis peut exiger sa décharge : reçu signé, lié, single-use, vérifié des fichiers seuls |
