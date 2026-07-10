@@ -46,7 +46,7 @@ deps, le CI, le rituel de test. Extraction en repo séparé plus tard, quand ça
 aithos-gateway/
   policy/        moteur de politique : charge le(s) mandat(s), appelle verify_op,
                  mappe {requête entrante} → {Op aithos}, décide allow/deny
-  keyholder/     détient la keypair de l'agent + les clés d'ethos ; signe le gamma ;
+  keyholder/     implémente le trait Vault (§4bis) ; signe le gamma / déchiffre ;
                  JAMAIS exposé à l'agent (process/mémoire séparés)
   proxy_mcp/     parle MCP ; expose les mêmes outils ; filtre par le mandat ; logge
   proxy_llm/     parle l'API provider (OpenAI-compat d'abord) ; impose model/budget ;
@@ -59,6 +59,53 @@ aithos-gateway/
 Les trois proxies partagent le **même moteur de politique** : chaque requête devient
 un `Op` (verbe + cible), passé à `verify_op` ; si ok, exécutée puis loggée ; sinon
 rejetée fail-closed et loggée comme refus.
+
+## 4bis. Le coffre est un TRAIT `Vault` (anticipation SaaS, décidé 2026-07-10)
+
+Le keyholder ne doit **jamais exposer les octets de clé** au reste du gateway : il
+expose des **opérations**. C'est le pendant, côté secrets, du trait `Store` qui
+abstrait déjà le stockage du bundle. Poser ce trait dès le MVP (même avec la seule
+impl locale) garde ouvert, **sans refacto ultérieure**, le modèle « container sur
+serveur, coffre chez l'utilisateur » — le SaaS cohérent avec la thèse (control
+plane cloud, key plane local, notre cloud ne voit rien).
+
+```rust
+trait Vault {
+    /// Signe une entrée gamma / un artefact déjà mis en FORME NON SIGNÉE (JCS).
+    /// Le core produit toujours l'unsigned_jcs séparément (did/mandate/manifest),
+    /// donc la signature peut être calculée ailleurs que là où l'artefact est bâti.
+    fn sign(&self, unsigned_jcs: &[u8]) -> Result<Signature>;
+    /// Déchiffre une ligne de header (récupère une DK) sans exposer la clé kex.
+    fn unseal(&self, line: &Line, aad: &[u8]) -> Result<Dk>;
+    /// (Option) émet une clé de session courte certifiée (session_bind, §04.7).
+    fn session_key(&self, ttl: Duration) -> Result<SessionKey>;
+}
+```
+
+**Règle d'or (comme pour `Store`)** : `core_bridge` et les proxies passent
+TOUJOURS par `Vault` — jamais d'accès direct aux octets. Tant que ça tient, on
+swappe l'implémentation sans toucher au reste.
+
+Implémentations, de l'MVP au SaaS :
+- **`LocalVault`** — la clé en mémoire, l'op faite localement (l'actuel `Keyholder`,
+  à faire implémenter `Vault` : remplacer l'accesseur `agent_seed()` par des
+  méthodes `sign`/`unseal`). C'est le MVP.
+- **`RemoteVault`** — le coffre est une API qu'on maîtrise (app desktop/mobile de
+  l'utilisateur). `sign`/`unseal` sont délégués en HTTP/gRPC ; l'octet de clé ne
+  quitte jamais le poste de l'user. Zero-knowledge fort.
+- **`HsmVault`** — HSM/KMS pour l'entreprise.
+
+**Pourquoi c'est quasi gratuit à anticiper** : le core garde déjà la propriété
+qui rend le remote-signer trivial — **signatures détachées calculées sur JCS
+canonique** (`unsigned_jcs()` + `signature` séparés dans did/mandate/manifest).
+On construit l'artefact côté gateway, le `Vault` (local OU distant) le signe. Le
+core ne bouge pas.
+
+**Curseur autonomie ↔ zero-knowledge, réglable par mandat** (pas de choix global) :
+clé d'agent scopée gardée par le container (autonome, agent 24/7 même coffre
+déconnecté) ; ou clé de session éphémère (`session_bind`, coffre joignable au
+démarrage) ; ou remote-sign à chaque acte (zero-knowledge fort, coffre joignable
+en continu, +1 aller-retour par signature). Le protocole supporte les trois.
 
 ## 5. Flux d'une requête (exemple : appel d'un outil MCP)
 
