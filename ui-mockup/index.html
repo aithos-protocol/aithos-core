@@ -167,6 +167,11 @@
   .gkind.action{color:#8ef0c4}.gkind.grant{color:#c6d5ff}.gkind.revoke{color:#f6b3b3}
   .gkind.heartbeat{color:#dcc4fb}.gkind.section{color:var(--ink-2)}
   .gsealed{color:var(--ink-3);font-style:italic}
+  .gbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+  .gbar-l,.gbar-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .gbar label{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .gbar select,.gbar input{background:var(--bg-2);color:var(--ink);border:1px solid var(--line-2);border-radius:8px;padding:7px 9px;font-size:12.5px;font-family:var(--mono)}
+  .gbar input{min-width:200px}
 
   /* ---- interrogate ---- */
   .chat{background:var(--bg-2);border:1px solid var(--line);border-radius:11px;padding:14px;min-height:120px}
@@ -377,19 +382,21 @@
       <!-- CONSTRAINTS -->
       <div id="t-constr" class="tabpane hide">
         <div class="section">
-          <div class="sec-head"><h2>Contraintes agentiques</h2></div>
+          <div class="sec-head"><h2>Contraintes agentiques</h2><button class="btn primary sm" onclick="openConstr()">+ Ajouter une contrainte</button></div>
           <div class="legend">
             <span><span class="tier V"><span class="lk">🔒</span> V</span> vérifieur — garanti offline, crypto</span>
             <span><span class="tier X"><span class="lk">◑</span> X</span> tool-host — best-effort runtime</span>
             <span><span class="tier C"><span class="lk">✍</span> C</span> co-signature owner</span>
           </div>
           <div style="height:6px"></div>
+          <div id="constrList">
           <div class="row"><div><div class="k">1 publication / jour maximum</div><div class="kv-note">rate_limit:{action:publish, window:"1d", N:1} — compté en gamma</div></div><div class="v"><span class="tier V">🔒 V</span> <span class="tier X">◑ X</span></div></div>
           <div class="row"><div><div class="k">Uniquement 08:45 → 09:45 (Europe/Paris), sauf dimanche</div><div class="kv-note">active_hours:{tz, ranges[]} — <span class="flag">⚠ « sauf dimanche » = extension day-of-week proposée</span></div></div><div class="v"><span class="tier X">◑ X</span></div></div>
           <div class="row"><div><div class="k">Mail uniquement vers toto@mail.com</div><div class="kv-note">domains:["toto@mail.com"]</div></div><div class="v"><span class="tier X">◑ X</span></div></div>
           <div class="row"><div><div class="k">Publication LinkedIn = action « binding »</div><div class="kv-note">counter_sign:["publish"] — co-signature owner &lt; 5 min requise</div></div><div class="v"><span class="tier C">✍ C</span></div></div>
           <div class="row"><div><div class="k">L'agent se déclare comme agent (transparence)</div><div class="kv-note">disclose_agency:true — aligné EU AI Act</div></div><div class="v"><span class="tier X">◑ X</span></div></div>
           <div class="row"><div><div class="k">Plafond de budget modèle (tokens)</div><div class="kv-note">token_cap — voir onglet Modèles · compté en gamma comme max_actions</div></div><div class="v"><span class="tier V">🔒 V</span></div></div>
+          </div>
         </div>
       </div>
 
@@ -576,13 +583,44 @@
       <h1>Gamma — journal du sujet</h1>
       <p class="sub">Chaîne inviolable (SHA-256) de toute mutation et toute action agentique (I5). C'est aussi le compteur des contraintes : max_actions, budgets tokens, heartbeats se vérifient ici, offline.</p>
       <div class="section">
-        <div class="glog">
-          <div class="gentry"><span class="muted">09:12:04Z</span><span class="gkind action">action</span><span>linkedin.publish · authorized_via [root…, linkedin@laptop]</span></div>
-          <div class="gentry"><span class="muted">09:11:40Z</span><span class="gkind action">action</span><span>gmail.send · args_hash sha256:22bd…</span></div>
-          <div class="gentry"><span class="muted">08:45:00Z</span><span class="gkind heartbeat">heartbeat</span><span>owner beacon · seq 412</span></div>
-          <div class="gentry"><span class="muted">Jul 08</span><span class="gkind grant">grant</span><span>mandate_01JZ8K…3F</span></div>
-          <div class="gentry"><span class="muted">Jul 07</span><span class="gkind revoke">revoke</span><span>mandate_01JZ7A…9B (widening — même keypair)</span></div>
+        <div class="gbar">
+          <div class="gbar-l">
+            <label>Type</label>
+            <select id="gKind" onchange="filterGamma()">
+              <option value="">Tous</option>
+              <option value="action">action</option>
+              <option value="grant">grant</option>
+              <option value="revoke">revoke</option>
+              <option value="heartbeat">heartbeat</option>
+              <option value="section">section.*</option>
+            </select>
+            <label>Agent</label>
+            <select id="gAgent" onchange="filterGamma()">
+              <option value="">Tous</option>
+              <option value="linkedin@laptop">linkedin@laptop</option>
+              <option value="mailtri@server">mailtri@server</option>
+              <option value="owner">owner</option>
+            </select>
+            <input id="gSearch" placeholder="Rechercher (action, hash, mandat…)" oninput="filterGamma()">
+          </div>
+          <div class="gbar-r">
+            <label>Trier</label>
+            <select id="gSort" onchange="filterGamma()">
+              <option value="desc">Plus récent d'abord</option>
+              <option value="asc">Plus ancien d'abord</option>
+            </select>
+          </div>
         </div>
+        <div class="glog" id="gLog">
+          <div class="gentry" data-ts="1720602724" data-kind="action" data-agent="linkedin@laptop"><span class="muted">09:12:04Z</span><span class="gkind action">action</span><span>linkedin.publish · authorized_via [root…, linkedin@laptop]</span></div>
+          <div class="gentry" data-ts="1720602700" data-kind="action" data-agent="linkedin@laptop"><span class="muted">09:11:40Z</span><span class="gkind action">action</span><span>gmail.send · args_hash sha256:22bd…</span></div>
+          <div class="gentry" data-ts="1720601100" data-kind="heartbeat" data-agent="owner"><span class="muted">08:45:00Z</span><span class="gkind heartbeat">heartbeat</span><span>owner beacon · seq 412</span></div>
+          <div class="gentry" data-ts="1720564900" data-kind="action" data-agent="mailtri@server"><span class="muted">Jul 09</span><span class="gkind action">action</span><span>gmail.draft · reply sur thread existant</span></div>
+          <div class="gentry" data-ts="1720440000" data-kind="grant" data-agent="owner"><span class="muted">Jul 08</span><span class="gkind grant">grant</span><span>mandate_01JZ8K…3F (linkedin@laptop)</span></div>
+          <div class="gentry" data-ts="1720353600" data-kind="revoke" data-agent="owner"><span class="muted">Jul 07</span><span class="gkind revoke">revoke</span><span>mandate_01JZ7A…9B (widening — même keypair)</span></div>
+          <div class="gentry" data-ts="1720350000" data-kind="section" data-agent="linkedin@laptop"><span class="muted">Jul 07</span><span class="gkind section">section.modify</span><span class="gsealed">⌁ corps scellé · hint c2a7… (circle/linkedin)</span></div>
+        </div>
+        <p class="hint" id="gEmpty" style="display:none">Aucune entrée pour ce filtre.</p>
       </div>
     </section>
 
@@ -672,6 +710,51 @@
   </div>
 </div>
 
+<!-- ======================= ADD CONSTRAINT ======================= -->
+<div class="overlay" id="constrModal">
+  <div class="modal" style="width:min(560px,100%)">
+    <div class="modal-head">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Ajouter une contrainte</h2>
+        <button class="btn ghost sm" onclick="closeConstr()">✕</button>
+      </div>
+      <p class="hint" style="margin:10px 0 0">Vocabulaire normatif §4.4. Le tier d'enforcement est déterminé par la clé — il ne se choisit pas.</p>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>Contrainte</label>
+        <select id="cKey" onchange="onConstrKey()">
+          <option value="">Choisir…</option>
+          <option value="max_actions">max_actions — plafond d'actions (vie du mandat)</option>
+          <option value="max_actions_per">max_actions_per — actions par fenêtre glissante</option>
+          <option value="rate_limit">rate_limit — plafond par type d'action</option>
+          <option value="max_children">max_children — nb de sous-mandats</option>
+          <option value="max_sessions">max_sessions — sessions simultanées</option>
+          <option value="active_hours">active_hours — plage horaire</option>
+          <option value="domains">domains — destinataires/domaines autorisés</option>
+          <option value="action_params">action_params — prédicats par action</option>
+          <option value="counter_sign">counter_sign — co-signature owner</option>
+          <option value="binding">binding — action engageante (implique counter_sign)</option>
+          <option value="disclose_agency">disclose_agency — se déclarer comme agent</option>
+          <option value="notify">notify — alerte owner hors-bande</option>
+          <option value="purpose">purpose — intention signée</option>
+          <option value="session_bind">session_bind — clé de session éphémère</option>
+          <option value="heartbeat">heartbeat — dead-man switch</option>
+          <option value="freshness">freshness — fraîcheur d'état de révocation</option>
+          <option value="spend_cap">spend_cap — plafond de dépense externe</option>
+          <option value="token_cap">token_cap — budget tokens modèle</option>
+          <option value="first_party_only">first_party_only — self-agent uniquement</option>
+        </select>
+      </div>
+      <div class="field"><label>Enforcement</label><div id="cTier" class="muted">—</div></div>
+      <div class="field"><label>Valeur</label><input id="cVal" class="mono" placeholder='ex. {"action":"publish","window":"1d","N":1}'></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" onclick="closeConstr()">Annuler</button>
+      <button class="btn primary" onclick="addConstr()">Ajouter la contrainte</button>
+    </div>
+  </div>
+</div>
+
 <!-- toast -->
 <div id="toast" style="position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);opacity:0;transition:.22s;background:var(--panel-2);border:1px solid var(--line-2);color:var(--ink);padding:12px 18px;border-radius:11px;max-width:520px;font-size:13px;box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:80"></div>
 
@@ -728,6 +811,54 @@ function renderWiz(){
   }
   document.getElementById('wPrev').style.visibility = wi===0?'hidden':'visible';
   document.getElementById('wNext').textContent = wi===3?'Émettre le mandat':'Suivant';
+}
+
+/* ---------- gamma filter + sort ---------- */
+function filterGamma(){
+  const kind=document.getElementById('gKind').value;
+  const agent=document.getElementById('gAgent').value;
+  const q=document.getElementById('gSearch').value.trim().toLowerCase();
+  const sort=document.getElementById('gSort').value;
+  const log=document.getElementById('gLog');
+  const rows=[...log.querySelectorAll('.gentry')];
+  let shown=0;
+  rows.forEach(r=>{
+    const okKind=!kind || r.dataset.kind===kind;
+    const okAgent=!agent || r.dataset.agent===agent;
+    const okQ=!q || r.textContent.toLowerCase().includes(q);
+    const vis=okKind&&okAgent&&okQ;
+    r.style.display=vis?'':'none'; if(vis) shown++;
+  });
+  rows.sort((a,b)=> sort==='asc' ? a.dataset.ts-b.dataset.ts : b.dataset.ts-a.dataset.ts)
+      .forEach(r=>log.appendChild(r));
+  document.getElementById('gEmpty').style.display = shown?'none':'block';
+}
+
+/* ---------- add constraint ---------- */
+const CONSTR_TIERS = {
+  max_actions:['V'], max_actions_per:['V','X'], rate_limit:['V','X'], max_children:['V'],
+  max_sessions:['V'], active_hours:['X'], domains:['X'], action_params:['X'],
+  counter_sign:['C'], binding:['C'], disclose_agency:['X'], notify:['X'], purpose:['V','X'],
+  session_bind:['V'], heartbeat:['V'], freshness:['V'], spend_cap:['X'], token_cap:['V'],
+  first_party_only:['V']
+};
+const TIER_LABEL = {V:'🔒 V — vérifieur, garanti crypto', X:'◑ X — tool-host, best-effort', C:'✍ C — co-signature owner'};
+function openConstr(){ document.getElementById('cKey').value=''; document.getElementById('cVal').value='';
+  document.getElementById('cTier').innerHTML='—'; document.getElementById('constrModal').classList.add('on'); }
+function closeConstr(){ document.getElementById('constrModal').classList.remove('on'); }
+function onConstrKey(){
+  const k=document.getElementById('cKey').value; const box=document.getElementById('cTier');
+  if(!k){box.innerHTML='—';return;}
+  box.innerHTML = CONSTR_TIERS[k].map(t=>`<span class="tier ${t}">${TIER_LABEL[t]}</span>`).join(' ');
+}
+function addConstr(){
+  const k=document.getElementById('cKey').value; if(!k){toast('Choisis une contrainte.');return;}
+  const val=document.getElementById('cVal').value.trim();
+  const tiers=CONSTR_TIERS[k].map(t=>`<span class="tier ${t}">${t==='V'?'🔒 V':t==='X'?'◑ X':'✍ C'}</span>`).join(' ');
+  const row=document.createElement('div'); row.className='row';
+  row.innerHTML=`<div><div class="k">${k}</div><div class="kv-note mono">${val||'—'}</div></div><div class="v">${tiers}</div>`;
+  document.getElementById('constrList').appendChild(row);
+  closeConstr(); toast(`Contrainte ${k} ajoutée (${CONSTR_TIERS[k].join('+')}).`);
 }
 
 /* ---------- toast ---------- */
