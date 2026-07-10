@@ -436,6 +436,50 @@ pub fn check_budgets(
     Ok(())
 }
 
+// ----------------------------------------------------------- action_params
+
+/// Evaluate `action_params` predicates (§04.4) against a real argument
+/// object — the container's tier-X duty, reused verbatim by the owner's
+/// a-posteriori audit (§07.9.3). Minimal predicate set, additive later:
+/// `recipients_allow: [addr]`, `no_attachments: true`.
+pub fn check_action_params(
+    constraints: &serde_json::Value,
+    action: &str,
+    args: &serde_json::Value,
+) -> Result<()> {
+    let err = |m: String| Error::InvalidMandate(format!("action_params: {m}"));
+    let Some(params) = constraints.get("action_params").and_then(|p| p.get(action)) else {
+        return Ok(()); // no predicates for this action
+    };
+    if let Some(allow) = params.get("recipients_allow").and_then(|a| a.as_array()) {
+        let allowed: Vec<&str> = allow.iter().filter_map(|x| x.as_str()).collect();
+        let mut recipients: Vec<&str> = Vec::new();
+        if let Some(r) = args.get("recipient").and_then(|r| r.as_str()) {
+            recipients.push(r);
+        }
+        if let Some(rs) = args.get("recipients").and_then(|r| r.as_array()) {
+            recipients.extend(rs.iter().filter_map(|x| x.as_str()));
+        }
+        if recipients.is_empty() {
+            return Err(err(format!("{action}: no recipient to check")));
+        }
+        for r in recipients {
+            if !allowed.contains(&r) {
+                return Err(err(format!("{action}: recipient '{r}' not allowed")));
+            }
+        }
+    }
+    if params.get("no_attachments").and_then(|b| b.as_bool()) == Some(true)
+        && args
+            .get("attachments")
+            .and_then(|a| a.as_array())
+            .is_some_and(|a| !a.is_empty())
+    {
+        return Err(err(format!("{action}: attachments are not allowed")));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

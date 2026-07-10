@@ -143,6 +143,9 @@ pub struct ProtocolWorld {
     audit_chain: Vec<Mandate>,
     query_hits: Option<Result<Vec<LogHit>, String>>,
     sealed_probe: Vec<Result<aithos_core::gamma::Body, String>>,
+    // --- step F+: constraints ---
+    gamma_baseline: usize,
+    receipt: Option<serde_json::Value>,
 }
 
 impl ProtocolWorld {
@@ -1565,7 +1568,12 @@ impl ProtocolWorld {
 
     /// Sub-mandate over an action pattern, minted by the AGENT for HELPER;
     /// logging the grant is the caller's (spec-mandated) duty.
-    fn delegate_act(&mut self, pattern: &str, log_grant: bool) -> Result<String, String> {
+    fn delegate_act(
+        &mut self,
+        pattern: &str,
+        constraints: serde_json::Value,
+        log_grant: bool,
+    ) -> Result<String, String> {
         use aithos_core::mandate::{Mandate as M, MandateSpec, PerimeterEntry};
         let parent = self.chain[0].clone();
         let child = M::build_sub(
@@ -1578,7 +1586,7 @@ impl ProtocolWorld {
                 grantee_label: "helper".into(),
                 grantee_pub: &agent_sk(HELPER).verifying_key(),
                 perimeter: vec![PerimeterEntry::parse(pattern).unwrap()],
-                constraints: MandateSpec::no_constraints(),
+                constraints,
                 not_before: NB.into(),
                 not_after: parent.not_after.clone(),
                 issued_at: NB.into(),
@@ -1608,6 +1616,17 @@ impl ProtocolWorld {
     }
 
     fn try_action(&mut self, helper: bool, action: &str, at: &str) -> Result<String, String> {
+        self.try_action_full(helper, action, at, None, None)
+    }
+
+    fn try_action_full(
+        &mut self,
+        helper: bool,
+        action: &str,
+        at: &str,
+        budget: Option<serde_json::Value>,
+        sealed_args: Option<serde_json::Value>,
+    ) -> Result<String, String> {
         let chain = if helper {
             self.helper_chain.clone()
         } else {
@@ -1625,8 +1644,39 @@ impl ProtocolWorld {
                     action,
                     args_hash: "sha256:00",
                     now: at,
-                    budget: None,
-                    sealed_args: None,
+                    budget,
+                    sealed_args,
+                },
+                &mut ent,
+            )
+            .map(|e| e.id)
+            .map_err(|e| e.to_string());
+        self.ent = ent;
+        r
+    }
+
+    fn try_inference(
+        &mut self,
+        model: &str,
+        tokens_in: u64,
+        tokens_out: u64,
+        budget_ref: Option<&str>,
+        at: &str,
+    ) -> Result<String, String> {
+        let chain = self.chain.clone();
+        let mut ent = std::mem::take(&mut self.ent);
+        let r = self
+            .gbundle()
+            .log_inference(
+                &chain,
+                &agent_sk(AGENT),
+                &aithos_bundle::log::InferenceSpec {
+                    provider: "provider",
+                    model,
+                    tokens_in,
+                    tokens_out,
+                    budget_ref,
+                    now: at,
                 },
                 &mut ent,
             )
@@ -1706,7 +1756,7 @@ fn act_grant_budget_issue(w: &mut ProtocolWorld) {
 
 #[given("the agent delegates its perimeter to a helper")]
 fn delegates_perimeter(w: &mut ProtocolWorld) {
-    w.delegate_act("act.x.gmail.*", true).unwrap();
+    w.delegate_act("act.x.gmail.*", serde_json::json!({}), true).unwrap();
 }
 
 #[given("an agent granted action rights with max_actions_per 2 per 24 hours")]
@@ -1747,7 +1797,7 @@ fn minted_unlogged(w: &mut ProtocolWorld) {
         serde_json::json!({}),
         NA30,
     );
-    w.delegate_act("act.x.gmail.reply", false).unwrap();
+    w.delegate_act("act.x.gmail.reply", serde_json::json!({}), false).unwrap();
 }
 
 #[given("a head mandate with heartbeat every 30 days grace 72 hours")]
@@ -1957,8 +2007,8 @@ fn two_kind_actions_day1(w: &mut ProtocolWorld, action: String) {
 
 #[when("the agent delegates twice, each grant logged")]
 fn delegates_twice(w: &mut ProtocolWorld) {
-    w.delegate_act("act.x.gmail.reply", true).unwrap();
-    w.delegate_act("act.x.gmail.label", true).unwrap();
+    w.delegate_act("act.x.gmail.reply", serde_json::json!({}), true).unwrap();
+    w.delegate_act("act.x.gmail.label", serde_json::json!({}), true).unwrap();
 }
 
 #[when("the helper presents an action under that chain")]
@@ -2263,7 +2313,7 @@ fn kind_day2_verifies(w: &mut ProtocolWorld, action: String) {
 
 #[then("a third delegation is rejected")]
 fn third_delegation_rejected(w: &mut ProtocolWorld) {
-    let r = w.delegate_act("act.x.gmail.send", true);
+    let r = w.delegate_act("act.x.gmail.send", serde_json::json!({}), true);
     assert!(r.as_ref().is_err_and(|e| e.contains("budget")), "got {r:?}");
 }
 
@@ -2486,6 +2536,1022 @@ fn action_refused(w: &mut ProtocolWorld, action: String) {
         DAY1,
     );
     assert!(r.is_err(), "an out-of-perimeter action must be refused");
+}
+
+
+// ------------------------------------------ step F+: advanced constraints ---
+
+const PROVIDER: u8 = 0xC3;
+
+fn win(anchor: &str, duration: &str) -> serde_json::Value {
+    serde_json::json!({"anchor": anchor, "duration": duration})
+}
+
+fn win_periodic(anchor: &str, duration: &str, period: &str) -> serde_json::Value {
+    serde_json::json!({"anchor": anchor, "duration": duration, "period": period})
+}
+
+/// The founding two-profile budgets (spec §04.11 example).
+fn founding_budgets() -> serde_json::Value {
+    serde_json::json!({"budgets": [
+        {"id": "haiku", "models": ["claude-haiku"], "token_budget": 10000,
+         "active_windows": [win_periodic(&day(1, "14:00:00"), "4h", "7d")],
+         "max_actions": 1},
+        {"id": "gemma", "models": ["gemma"], "token_budget": 25000}
+    ]})
+}
+
+fn cite(profile: &str, model: &str, tokens: u64) -> serde_json::Value {
+    serde_json::json!({"budget_ref": profile, "model": model, "tokens": tokens})
+}
+
+fn provider_receipt(args_hash: &str, model: &str, tokens: u64, signer: u8) -> serde_json::Value {
+    use ed25519_dalek::Signer;
+    let payload = serde_json::json!({"args_hash": args_hash, "model": model, "tokens": tokens});
+    let bytes = aithos_core::jcs::canonical_bytes(&payload).unwrap();
+    let sig = hex::encode(agent_sk(signer).sign(&bytes).to_bytes());
+    let mut r = payload;
+    r["sig"] = serde_json::json!(sig);
+    r
+}
+
+fn attestation_budgets() -> serde_json::Value {
+    let key = wire::ed25519_pub_to_multibase(&agent_sk(PROVIDER).verifying_key().to_bytes());
+    serde_json::json!({"budgets": [
+        {"id": "haiku", "require_attestation": true, "attestation_key": key}
+    ]})
+}
+
+// --- F+ givens: windows ---
+
+#[given("an agent granted gmail actions active from day 3 14:00 for 4 hours")]
+fn grant_oneshot_window(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({"active_windows": [win(&day(3, "14:00:00"), "4h")]}),
+        NA30,
+    );
+}
+
+#[given("an agent granted gmail actions every 7 days from day 1 14:00 for 4 hours")]
+fn grant_weekly_window(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({"active_windows": [win_periodic(&day(1, "14:00:00"), "4h", "7d")]}),
+        NA30,
+    );
+}
+
+#[given("an agent granted gmail actions every 7 days from day 1 14:00 for 4 hours until day 20")]
+fn grant_weekly_until(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    let mut window = win_periodic(&day(1, "14:00:00"), "4h", "7d");
+    window["until"] = serde_json::json!(day(20, "00:00:00"));
+    w.grant_act(vec![], serde_json::json!({"active_windows": [window]}), NA30);
+}
+
+#[given("an agent granted gmail actions every 7 days from day 1 14:00 for 4 hours, 2 occurrences")]
+fn grant_weekly_count(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    let mut window = win_periodic(&day(1, "14:00:00"), "4h", "7d");
+    window["count"] = serde_json::json!(2);
+    w.grant_act(vec![], serde_json::json!({"active_windows": [window]}), NA30);
+}
+
+#[given("an agent granted gmail actions active on day 3 morning and day 5 evening")]
+fn grant_union_windows(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({"active_windows": [
+            win(&day(3, "08:00:00"), "4h"),
+            win(&day(5, "18:00:00"), "4h")
+        ]}),
+        NA30,
+    );
+}
+
+#[given("an agent granted gmail actions every day at 14:00 for 4 hours with max_actions_per 2 per 24 hours")]
+fn grant_daily_with_rolling(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({
+            "active_windows": [win_periodic(&day(1, "14:00:00"), "4h", "1d")],
+            "max_actions_per": {"window": "24h", "n": 2}
+        }),
+        NA30,
+    );
+}
+
+#[given("an agent granted gmail actions active from day 1 to day 20 with issue depth 1")]
+fn grant_window_with_issue(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        serde_json::json!({"active_windows": [win(&day(1, "00:00:00"), "19d")]}),
+        NA30,
+    );
+}
+
+#[given("an agent granted gmail actions for 7 days, active daily 14:00 for 4 hours")]
+fn grant_7d_daily(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({"active_windows": [win_periodic(&day(1, "14:00:00"), "4h", "1d")]}),
+        NA7,
+    );
+}
+
+// --- F+ givens: budgets ---
+
+#[given("a mandate with two budget profiles:")]
+#[given("a mandate with two budget profiles")]
+#[given("the founding two-profile mandate")]
+fn founding_mandate(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], founding_budgets(), NA30);
+}
+
+#[given(expr = "a profile {string} with a {int} token budget")]
+fn single_profile(w: &mut ProtocolWorld, id: String, budget: u64) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({"budgets": [{"id": id, "token_budget": budget}]}),
+        NA30,
+    );
+}
+
+#[given(expr = "{int} tokens already consumed on {string}")]
+fn tokens_consumed(w: &mut ProtocolWorld, tokens: u64, profile: String) {
+    w.try_action_full(
+        false,
+        "reply",
+        &day(1, "01:00:00"),
+        Some(serde_json::json!({"budget_ref": profile, "tokens": tokens})),
+        None,
+    )
+    .unwrap();
+}
+
+#[given(expr = "profile {string} has spent its single action")]
+fn profile_spent(w: &mut ProtocolWorld, profile: String) {
+    w.try_action_full(
+        false,
+        "reply",
+        &day(1, "15:00:00"),
+        Some(cite(&profile, "claude-haiku", 100)),
+        None,
+    )
+    .unwrap();
+}
+
+#[given(expr = "a profile {string} allowing model {string}")]
+fn profile_allowing(w: &mut ProtocolWorld, id: String, model: String) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({"budgets": [{"id": id, "models": [model]}]}),
+        NA30,
+    );
+}
+
+#[given("the founding two-profile mandate with issue depth 1")]
+fn founding_with_issue(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    let mut c = founding_budgets();
+    c["budgets"].as_array_mut().unwrap(); // keep shape
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        c,
+        NA30,
+    );
+}
+
+#[given("the agent delegates the gemma perimeter to a helper")]
+fn delegates_gemma(w: &mut ProtocolWorld) {
+    w.delegate_act("act.x.gmail.*", founding_budgets(), true)
+        .unwrap();
+}
+
+#[given(expr = "logged actions of {int}, {int} and {int} tokens on {string}")]
+fn logged_actions_tokens(w: &mut ProtocolWorld, a: u64, b: u64, c: u64, profile: String) {
+    for (i, t) in [a, b, c].into_iter().enumerate() {
+        w.try_action_full(
+            false,
+            "reply",
+            &day(1, &format!("0{}:00:00", i + 1)),
+            Some(serde_json::json!({"budget_ref": profile, "tokens": t})),
+            None,
+        )
+        .unwrap();
+    }
+}
+
+// --- F+ givens: attestation ---
+
+#[given(expr = "a profile {string} that requires attestation")]
+fn profile_requires_attestation(w: &mut ProtocolWorld, _id: String) {
+    w.init_bundle();
+    w.grant_act(vec![], attestation_budgets(), NA30);
+}
+
+#[given("a provider attestation key pinned in the mandate")]
+fn provider_key_pinned(_w: &mut ProtocolWorld) {
+    // Pinned by the attestation_budgets() fixture above.
+}
+
+#[given("a valid receipt for an earlier action's args_hash")]
+fn earlier_receipt(w: &mut ProtocolWorld) {
+    w.receipt = Some(provider_receipt(
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "claude-haiku",
+        4000,
+        PROVIDER,
+    ));
+}
+
+// --- F+ givens: inference & kinds ---
+
+#[given(expr = "logged inferences of {int} and {int} total tokens citing {string}")]
+fn logged_inferences(w: &mut ProtocolWorld, a: u64, b: u64, profile: String) {
+    for (i, t) in [a, b].into_iter().enumerate() {
+        w.try_inference(
+            "gemma",
+            t - 1000,
+            1000,
+            Some(&profile),
+            &day(1, &format!("0{}:00:00", i + 1)),
+        )
+        .unwrap();
+    }
+}
+
+#[given(expr = "a logged action of {int} declared tokens citing {string}")]
+fn logged_action_tokens(w: &mut ProtocolWorld, tokens: u64, profile: String) {
+    w.try_action_full(
+        false,
+        "reply",
+        &day(1, "01:00:00"),
+        Some(serde_json::json!({"budget_ref": profile, "tokens": tokens})),
+        None,
+    )
+    .unwrap();
+}
+
+#[given("a bundle whose log records section additions, a modification and actions")]
+fn log_with_kinds(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_named_section("projets", "note1", &[]);
+    w.add_named_section("projets", "note2", &[]);
+    let owner = w.owner(0);
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gbundle()
+        .log_section_modify(
+            &owner,
+            Zone::Circle,
+            "projets/note1",
+            serde_json::json!({"change": "x"}),
+            &day(9, "00:00:00"),
+            &mut ent,
+        )
+        .unwrap();
+    w.ent = ent;
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    w.try_action(false, "reply", &day(10, "00:00:00")).unwrap();
+}
+
+#[given(expr = "an agent granted read on circle folder {string}")]
+fn plain_read_grant(w: &mut ProtocolWorld, folder: String) {
+    w.init_bundle();
+    w.add_named_section(&folder, "note1", &[]);
+    w.grant_to_agent(&[dir_spec(&folder)], NA30, 0);
+    w.granted_folder = folder;
+    w.gamma_baseline = w.gbundle().gamma_entries().unwrap().len();
+}
+
+#[given(expr = "an agent granted read on circle folder {string} with log_reads")]
+fn read_grant_log_reads(w: &mut ProtocolWorld, folder: String) {
+    plain_read_grant(w, folder);
+    // Same keypair, the mandate re-issued with the log_reads duty.
+    let owner = w.owner(0);
+    let mut m = w.chain[0].clone();
+    m.constraints = serde_json::json!({"log_reads": true});
+    m.resign(&owner.root_sign).unwrap();
+    w.store_cert(&m);
+    w.chain = vec![m];
+}
+
+// --- F+ givens: sealed args ---
+
+#[given(expr = "an agent granted gmail {string} with sealed-args audit")]
+fn grant_with_audit(w: &mut ProtocolWorld, action: String) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    let _ = action;
+    let owner = w.owner(0);
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gbundle()
+        .grant_audit_line(&owner, &agent_sk(AGENT).verifying_key(), &mut ent)
+        .unwrap();
+    w.ent = ent;
+}
+
+#[given("a logged action with sealed args")]
+fn logged_sealed_action(w: &mut ProtocolWorld) {
+    grant_with_audit(w, "reply".to_owned());
+    w.try_action_full(
+        false,
+        "reply",
+        &day(1, "01:00:00"),
+        None,
+        Some(serde_json::json!({"recipient": "alice@example.com"})),
+    )
+    .unwrap();
+}
+
+#[given(expr = "a mandate whose action_params allow replies only to {string}")]
+fn mandate_action_params(w: &mut ProtocolWorld, addr: String) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({"action_params": {"reply": {"recipients_allow": [addr]}}}),
+        NA30,
+    );
+    let owner = w.owner(0);
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gbundle()
+        .grant_audit_line(&owner, &agent_sk(AGENT).verifying_key(), &mut ent)
+        .unwrap();
+    w.ent = ent;
+}
+
+#[given(expr = "a logged reply whose sealed args name {string}")]
+fn logged_reply_naming(w: &mut ProtocolWorld, addr: String) {
+    w.try_action_full(
+        false,
+        "reply",
+        &day(1, "01:00:00"),
+        None,
+        Some(serde_json::json!({"recipient": addr})),
+    )
+    .unwrap();
+}
+
+// --- F+ whens ---
+
+#[when(expr = "the agent appends an action at day {int} {word}")]
+fn action_at(w: &mut ProtocolWorld, d: u32, hm: String) {
+    w.gamma_result = Some(w.try_action(false, "reply", &day(d, &format!("{hm}:00"))));
+}
+
+#[when("the agent delegates the perimeter active from day 3 14:00 for 4 hours")]
+fn delegate_windowed_inside(w: &mut ProtocolWorld) {
+    w.delegate_act(
+        "act.x.gmail.*",
+        serde_json::json!({"active_windows": [win(&day(3, "14:00:00"), "4h")]}),
+        true,
+    )
+    .unwrap();
+}
+
+#[when("the agent delegates the perimeter active from day 15 to day 40")]
+fn delegate_windowed_outside(w: &mut ProtocolWorld) {
+    w.delegate_act(
+        "act.x.gmail.*",
+        serde_json::json!({"active_windows": [win(&day(15, "00:00:00"), "600h")]}),
+        true,
+    )
+    .unwrap();
+    w.chain_result = Some(w.verify_chain_at(&w.helper_chain.clone(), DAY1));
+}
+
+#[when("the agent appends two actions inside the day 3 window")]
+fn two_in_window(w: &mut ProtocolWorld) {
+    w.try_action(false, "reply", &day(3, "14:30:00")).unwrap();
+    w.try_action(false, "label", &day(3, "15:00:00")).unwrap();
+}
+
+#[when(expr = "the agent acts citing profile {string} with model {string} and {int} tokens at day {int} {word}")]
+fn act_citing_full(w: &mut ProtocolWorld, profile: String, model: String, tokens: u64, d: u32, hm: String) {
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(d, &format!("{hm}:00")),
+        Some(cite(&profile, &model, tokens)),
+        None,
+    ));
+}
+
+#[when("the agent acts without citing any budget_ref")]
+fn act_uncited(w: &mut ProtocolWorld) {
+    w.gamma_result = Some(w.try_action(false, "reply", &day(1, "15:00:00")));
+}
+
+#[when(expr = "the agent acts citing {string} with {int} declared tokens")]
+fn act_citing_tokens(w: &mut ProtocolWorld, profile: String, tokens: u64) {
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(1, "02:00:00"),
+        Some(serde_json::json!({"budget_ref": profile, "tokens": tokens})),
+        None,
+    ));
+}
+
+#[when(expr = "the agent acts citing profile {string} with model {string} and {int} tokens")]
+fn act_citing_short(w: &mut ProtocolWorld, profile: String, model: String, tokens: u64) {
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(1, "16:00:00"),
+        Some(cite(&profile, &model, tokens)),
+        None,
+    ));
+}
+
+#[when(expr = "the agent acts citing {string} with model {string}")]
+fn act_citing_model(w: &mut ProtocolWorld, profile: String, model: String) {
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(1, "15:00:00"),
+        Some(cite(&profile, &model, 10)),
+        None,
+    ));
+}
+
+#[when(expr = "the agent acts citing profile {string} at day {int} {word}")]
+fn act_citing_at(w: &mut ProtocolWorld, profile: String, d: u32, hm: String) {
+    let model = if profile == "haiku" { "claude-haiku" } else { "gemma" };
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(d, &format!("{hm}:00")),
+        Some(cite(&profile, model, 10)),
+        None,
+    ));
+}
+
+#[when(expr = "the agent acts citing budget_ref {string}")]
+fn act_citing_unknown(w: &mut ProtocolWorld, profile: String) {
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(1, "15:00:00"),
+        Some(serde_json::json!({"budget_ref": profile})),
+        None,
+    ));
+}
+
+#[when(expr = "the helper acts citing {string} with {int} tokens")]
+fn helper_acts_citing(w: &mut ProtocolWorld, profile: String, tokens: u64) {
+    w.try_action_full(
+        true,
+        "reply",
+        &day(2, "01:00:00"),
+        Some(serde_json::json!({"budget_ref": profile, "model": "gemma", "tokens": tokens})),
+        None,
+    )
+    .unwrap();
+}
+
+#[when(expr = "the agent acts citing {string} with a declared usage and no receipt")]
+fn act_no_receipt(w: &mut ProtocolWorld, profile: String) {
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(1, "15:00:00"),
+        Some(serde_json::json!({"budget_ref": profile, "model": "claude-haiku", "tokens": 500})),
+        None,
+    ));
+}
+
+#[when(expr = "the agent acts citing {string} carrying a receipt signed by the provider")]
+fn act_with_receipt(w: &mut ProtocolWorld, profile: String) {
+    let receipt = provider_receipt("sha256:00", "claude-haiku", 8412, PROVIDER);
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(1, "15:00:00"),
+        Some(serde_json::json!({
+            "budget_ref": profile, "model": "claude-haiku", "tokens": 500,
+            "receipt": receipt
+        })),
+        None,
+    ));
+}
+
+#[when("the agent acts carrying a receipt signed by the agent itself")]
+fn act_with_forged_receipt(w: &mut ProtocolWorld) {
+    let receipt = provider_receipt("sha256:00", "claude-haiku", 8412, AGENT);
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(1, "15:00:00"),
+        Some(serde_json::json!({
+            "budget_ref": "haiku", "model": "claude-haiku", "tokens": 500,
+            "receipt": receipt
+        })),
+        None,
+    ));
+}
+
+#[when("the agent replays that receipt on a new action")]
+fn replay_receipt(w: &mut ProtocolWorld) {
+    let receipt = w.receipt.clone().unwrap();
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(1, "15:00:00"),
+        Some(serde_json::json!({
+            "budget_ref": "haiku", "model": "claude-haiku", "tokens": 500,
+            "receipt": receipt
+        })),
+        None,
+    ));
+}
+
+#[when(expr = "the container logs an inference on {string} of {int} tokens in and {int} out citing {string}")]
+fn container_logs_inference(w: &mut ProtocolWorld, model: String, tin: u64, tout: u64, profile: String) {
+    w.gamma_result = Some(w.try_inference(&model, tin, tout, Some(&profile), &day(1, "16:00:00")));
+}
+
+#[when(expr = "the container logs an inference of {int} total tokens citing {string}")]
+fn container_logs_total(w: &mut ProtocolWorld, total: u64, profile: String) {
+    w.gamma_result = Some(w.try_inference(
+        "gemma",
+        total - 100,
+        100,
+        Some(&profile),
+        &day(2, "10:00:00"),
+    ));
+}
+
+#[when("the container logs an inference citing no budget_ref")]
+fn container_logs_uncited(w: &mut ProtocolWorld) {
+    w.gamma_result = Some(w.try_inference("gemma", 100, 10, None, &day(1, "16:00:00")));
+}
+
+#[when(expr = "an entry of kind {string} is forced onto the log")]
+fn force_unknown_kind(w: &mut ProtocolWorld, kind: String) {
+    let head = w.gbundle().gamma_head().unwrap();
+    let line = serde_json::json!({
+        "v": 1, "id": "gamma_00000000000000000000BANANA", "prev": head,
+        "at": day(1, "00:00:00"), "kind": kind, "payload": {},
+        "signature": {"alg": "ed25519", "key": "#content", "value": ""}
+    });
+    let seg = "gamma/2026-07.jsonl";
+    let mut bytes = w.gbundle().store.get(seg).unwrap().unwrap_or_default();
+    bytes.extend_from_slice(line.to_string().as_bytes());
+    bytes.push(b'\n');
+    w.gbundle().store.put(seg, &bytes).unwrap();
+}
+
+#[when(expr = "the owner queries the kind class {string}")]
+fn query_kind_class(w: &mut ProtocolWorld, class: String) {
+    let owner = w.owner(0);
+    w.query_hits = Some(
+        w.bundle
+            .as_ref()
+            .unwrap()
+            .log_query_owner(
+                &owner,
+                &LogFilter {
+                    kind: Some(class),
+                    ..LogFilter::default()
+                },
+            )
+            .map_err(|e| e.to_string()),
+    );
+}
+
+#[when(expr = "the agent reads a section under {string}")]
+fn agent_reads_section(w: &mut ProtocolWorld, folder: String) {
+    let path = format!("{folder}/note1");
+    w.read_body = Some(w.agent_reads(&w.chain.clone(), AGENT, &path));
+}
+
+#[when(expr = "the agent reads a section under {string} and logs its read")]
+fn agent_reads_and_logs(w: &mut ProtocolWorld, folder: String) {
+    let path = format!("{folder}/note1");
+    w.read_body = Some(w.agent_reads(&w.chain.clone(), AGENT, &path));
+    let chain = w.chain.clone();
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gbundle()
+        .log_read_as_agent(
+            &chain,
+            &agent_sk(AGENT),
+            Zone::Circle,
+            &path,
+            &day(9, "01:00:00"),
+            &mut ent,
+        )
+        .unwrap();
+    w.ent = ent;
+}
+
+#[when(expr = "the agent acts with arguments naming recipient {string}")]
+fn act_with_sealed_args(w: &mut ProtocolWorld, addr: String) {
+    w.gamma_result = Some(w.try_action_full(
+        false,
+        "reply",
+        &day(1, "01:00:00"),
+        None,
+        Some(serde_json::json!({"recipient": addr, "body": "hello"})),
+    ));
+}
+
+#[when("the sealed body is swapped for another one")]
+fn swap_sealed_body(w: &mut ProtocolWorld) {
+    // A lying agent: clear args_hash from one argument object, sealed body
+    // from another — signed consistently, appended, caught only by audit.
+    let owner = w.owner(0);
+    let key = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .audit_key_owner(&owner, "gmail")
+        .unwrap();
+    let mut ent = std::mem::take(&mut w.ent);
+    let body = aithos_core::gamma::seal_body(
+        &key,
+        &w.bundle.as_ref().unwrap().did.clone(),
+        "x.gmail",
+        1,
+        &serde_json::json!({"recipient": "mallory@evil.example"}),
+        &ent.e24(),
+    )
+    .unwrap();
+    w.ent = ent;
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let spec = aithos_core::gamma::EntrySpec {
+        id: "gamma_00000000000000000000000LIE".into(),
+        prev: aithos_core::gamma::head(&entries).unwrap(),
+        at: day(1, "02:00:00"),
+        kind: aithos_core::gamma::Kind::Action,
+        target: Some("x.gmail".into()),
+        payload: Some(serde_json::json!({"action": "reply", "args_hash": "sha256:00"})),
+        body_enc: Some(body),
+    };
+    let via: Vec<String> = w.chain.iter().map(|m| m.id.clone()).collect();
+    let entry = aithos_core::gamma::delegated_entry(spec, via, &agent_sk(AGENT)).unwrap();
+    let bundle = w.gbundle();
+    bundle.gamma_append(&entry).unwrap();
+}
+
+#[when(expr = "the agent asks the container to reply to {string}")]
+fn container_asked(w: &mut ProtocolWorld, addr: String) {
+    // The container evaluates action_params on the REAL args (tier X)
+    // before any entry exists.
+    let verdict = aithos_core::constraints::check_action_params(
+        &w.chain[0].constraints,
+        "reply",
+        &serde_json::json!({"recipient": addr}),
+    );
+    w.gamma_baseline = w.gbundle().gamma_entries().unwrap().len();
+    w.gamma_result = Some(verdict.map(|()| "allowed".into()).map_err(|e| e.to_string()));
+}
+
+#[when("the owner audits the log against the mandate predicates")]
+fn owner_audits(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let mandate = w.chain[0].clone();
+    w.gamma_result = Some(
+        w.bundle
+            .as_ref()
+            .unwrap()
+            .audit_log_against(&owner, &mandate)
+            .map(|n| n.to_string())
+            .map_err(|e| e.to_string()),
+    );
+}
+
+// --- F+ thens ---
+
+#[then("the action verifies")]
+fn action_verifies(w: &mut ProtocolWorld) {
+    let r = w.gamma_result.as_ref().unwrap();
+    assert!(r.is_ok(), "action should verify, got {r:?}");
+}
+
+#[then("the action is refused as out of window")]
+#[then("the action is refused as over budget")]
+#[then("the action is refused as model not allowed")]
+#[then("the action is refused")]
+fn fplus_action_refused(w: &mut ProtocolWorld) {
+    let r = w.gamma_result.as_ref().unwrap();
+    assert!(r.is_err(), "action should be refused, got {r:?}");
+}
+
+#[then(expr = "an action exactly at day {int} {word} verifies")]
+#[then(expr = "an action at day {int} {word} verifies, F+")]
+fn action_at_verifies_exact(w: &mut ProtocolWorld, d: u32, hms: String) {
+    let hms = if hms.matches(':').count() == 1 {
+        format!("{hms}:00")
+    } else {
+        hms
+    };
+    w.try_action(false, "reply", &day(d, &hms)).unwrap();
+}
+
+#[then(expr = "an action at day {int} {word} verifies")]
+fn action_at_verifies(w: &mut ProtocolWorld, d: u32, hms: String) {
+    action_at_verifies_exact(w, d, hms);
+}
+
+#[then(expr = "an action exactly at day {int} {word} is refused")]
+#[then(expr = "an action at day {int} {word} is refused")]
+fn action_at_refused(w: &mut ProtocolWorld, d: u32, hms: String) {
+    let hms = if hms.matches(':').count() == 1 {
+        format!("{hms}:00")
+    } else {
+        hms
+    };
+    let r = w.try_action(false, "reply", &day(d, &hms));
+    assert!(r.is_err(), "day {d} {hms} should be refused, got {r:?}");
+}
+
+#[then("an action in the day 3 morning window verifies")]
+fn union_day3(w: &mut ProtocolWorld) {
+    w.try_action(false, "reply", &day(3, "09:00:00")).unwrap();
+}
+
+#[then("an action in the day 5 evening window verifies")]
+fn union_day5(w: &mut ProtocolWorld) {
+    w.try_action(false, "reply", &day(5, "19:00:00")).unwrap();
+}
+
+#[then("an action on day 4 noon is refused")]
+fn union_day4_refused(w: &mut ProtocolWorld) {
+    assert!(w.try_action(false, "reply", &day(4, "12:00:00")).is_err());
+}
+
+#[then("a third action inside the day 3 window is refused by the rolling limit")]
+fn third_in_window_refused(w: &mut ProtocolWorld) {
+    let r = w.try_action(false, "send", &day(3, "15:30:00"));
+    assert!(r.as_ref().is_err_and(|e| e.contains("budget")), "got {r:?}");
+}
+
+#[then("an action inside the day 4 window verifies")]
+fn day4_window_ok(w: &mut ProtocolWorld) {
+    w.try_action(false, "reply", &day(4, "14:30:00")).unwrap();
+}
+
+#[then("the helper's action inside that window verifies")]
+fn helper_windowed_ok(w: &mut ProtocolWorld) {
+    w.try_action(true, "reply", &day(3, "15:00:00")).unwrap();
+}
+
+#[then(expr = "an action at day {int} {word} is refused even though {word} is in phase")]
+fn refused_beyond_validity(w: &mut ProtocolWorld, d: u32, hms: String, _phase: String) {
+    let r = w.try_action(false, "reply", &day(d, &format!("{hms}:00")));
+    assert!(r.is_err(), "beyond validity should refuse, got {r:?}");
+}
+
+#[then(expr = "the log shows {int} tokens consumed on profile {string}")]
+fn log_shows_tokens(w: &mut ProtocolWorld, tokens: u64, profile: String) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let got = aithos_core::constraints::tally_tokens(&entries, &w.chain[0].id, &profile);
+    assert_eq!(got, tokens);
+}
+
+#[then(expr = "an action citing {string} with {int} declared tokens verifies")]
+fn citing_tokens_ok(w: &mut ProtocolWorld, profile: String, tokens: u64) {
+    w.try_action_full(
+        false,
+        "reply",
+        &day(1, "03:00:00"),
+        Some(serde_json::json!({"budget_ref": profile, "tokens": tokens})),
+        None,
+    )
+    .unwrap();
+}
+
+#[then(expr = "the same action citing profile {string} verifies")]
+fn same_action_other_profile(w: &mut ProtocolWorld, profile: String) {
+    w.try_action_full(
+        false,
+        "reply",
+        &day(2, "09:00:00"),
+        Some(cite(&profile, "gemma", 10)),
+        None,
+    )
+    .unwrap();
+}
+
+#[then(expr = "an agent action citing {string} with {int} tokens is refused as over budget")]
+fn agent_citing_refused(w: &mut ProtocolWorld, profile: String, tokens: u64) {
+    let r = w.try_action_full(
+        false,
+        "reply",
+        &day(2, "02:00:00"),
+        Some(serde_json::json!({"budget_ref": profile, "model": "gemma", "tokens": tokens})),
+        None,
+    );
+    assert!(r.as_ref().is_err_and(|e| e.contains("budget")), "got {r:?}");
+}
+
+#[then(expr = "any verifier counts {int} tokens consumed on {string}")]
+fn verifier_counts_tokens(w: &mut ProtocolWorld, tokens: u64, profile: String) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    assert_eq!(
+        aithos_core::constraints::tally_tokens(&entries, &w.chain[0].id, &profile),
+        tokens
+    );
+}
+
+#[then(expr = "the remaining budget admits at most {int} declared tokens")]
+fn headroom_check(w: &mut ProtocolWorld, headroom: u64) {
+    let over = w.try_action_full(
+        false,
+        "reply",
+        &day(2, "01:00:00"),
+        Some(serde_json::json!({"budget_ref": "gemma", "tokens": headroom + 1})),
+        None,
+    );
+    assert!(over.is_err(), "over headroom should refuse");
+    w.try_action_full(
+        false,
+        "reply",
+        &day(2, "02:00:00"),
+        Some(serde_json::json!({"budget_ref": "gemma", "tokens": headroom})),
+        None,
+    )
+    .unwrap();
+}
+
+#[then("the receipt's usage overrides the declared tokens in the tally")]
+fn receipt_overrides(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    assert_eq!(
+        aithos_core::constraints::tally_tokens(&entries, &w.chain[0].id, "haiku"),
+        8412
+    );
+}
+
+#[then(expr = "the entry is of kind {string}")]
+fn entry_of_kind(w: &mut ProtocolWorld, kind: String) {
+    assert!(w.gamma_result.as_ref().unwrap().is_ok());
+    let entries = w.gbundle().gamma_entries().unwrap();
+    assert_eq!(entries.last().unwrap().kind, kind);
+}
+
+#[then("it reveals provider, model, token counts and budget_ref")]
+fn inference_reveals_counters(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let p = entries.last().unwrap().payload.as_ref().unwrap();
+    for k in ["provider", "model", "tokens_in", "tokens_out", "budget_ref"] {
+        assert!(p.get(k).is_some(), "missing {k}");
+    }
+}
+
+#[then("no prompt or response text exists anywhere in the log files")]
+fn no_prompt_in_log(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    for e in entries.iter().filter(|e| e.kind == "inference") {
+        let keys: Vec<&String> = e
+            .payload
+            .as_ref()
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect();
+        for k in keys {
+            assert!(
+                ["provider", "model", "tokens_in", "tokens_out", "budget_ref"]
+                    .contains(&k.as_str()),
+                "unexpected inference payload key {k}"
+            );
+        }
+        assert!(e.body_enc.is_none());
+    }
+}
+
+#[then("the inference is refused as over budget")]
+#[then("the inference is refused")]
+fn inference_refused(w: &mut ProtocolWorld) {
+    let r = w.gamma_result.as_ref().unwrap();
+    assert!(r.is_err(), "inference should be refused, got {r:?}");
+}
+
+#[then(expr = "an inference of {int} total tokens citing {string} verifies")]
+fn inference_fits(w: &mut ProtocolWorld, total: u64, profile: String) {
+    w.try_inference("gemma", total - 100, 100, Some(&profile), &day(2, "11:00:00"))
+        .unwrap();
+}
+
+#[then("every section entry comes back")]
+fn sections_come_back(w: &mut ProtocolWorld) {
+    let hits = w.query_hits.as_ref().unwrap().as_ref().unwrap();
+    assert_eq!(hits.len(), 3, "two adds + one modify");
+    assert!(hits.iter().all(|h| h.entry.kind.starts_with("section.")));
+}
+
+#[then("no action or heartbeat entry does")]
+fn no_action_in_class(w: &mut ProtocolWorld) {
+    let hits = w.query_hits.as_ref().unwrap().as_ref().unwrap();
+    assert!(hits
+        .iter()
+        .all(|h| h.entry.kind != "action" && h.entry.kind != "heartbeat"));
+}
+
+#[then("no gamma entry is appended")]
+fn no_entry_appended(w: &mut ProtocolWorld) {
+    assert!(w.read_body.as_ref().unwrap().is_ok(), "the read succeeds");
+    let len = w.gbundle().gamma_entries().unwrap().len();
+    assert_eq!(len, w.gamma_baseline, "reading must not touch the log");
+}
+
+#[then(expr = "an {string} entry signed by the agent chains onto the log")]
+fn read_entry_chains(w: &mut ProtocolWorld, kind: String) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let last = entries.last().unwrap();
+    assert_eq!(last.kind, kind);
+    assert!(last.authorized_by.is_some());
+    w.bundle.as_ref().unwrap().gamma_verify().unwrap();
+}
+
+#[then("its sealed body names the section it read")]
+fn read_body_names_section(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let hits = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .log_query_owner(
+            &owner,
+            &LogFilter {
+                kind: Some("ethos.read".into()),
+                ..LogFilter::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    let body = hits[0].body.as_ref().expect("owner opens the read body");
+    assert!(body.target.contains("/s/"), "target must name a section");
+}
+
+#[then("the entry carries a clear args_hash and a sealed args body")]
+fn entry_has_sealed_args(w: &mut ProtocolWorld) {
+    assert!(w.gamma_result.as_ref().unwrap().is_ok());
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let last = entries.last().unwrap();
+    assert!(last.payload.as_ref().unwrap().get("args_hash").is_some());
+    assert!(last.body_enc.is_some());
+}
+
+#[then("the owner reopens the arguments and finds the recipient")]
+fn owner_reopens_args(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let args = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .audit_action_args(&owner, entries.last().unwrap())
+        .unwrap();
+    assert_eq!(args["recipient"], "alice@example.com");
+}
+
+#[then("a stranger sees only the hash")]
+fn stranger_sees_hash(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let last = entries.last().unwrap();
+    let clear = serde_json::to_string(last.payload.as_ref().unwrap()).unwrap();
+    assert!(!clear.contains("alice@example.com"), "args must not leak");
+    assert!(clear.contains("sha256:"));
+}
+
+#[then("the audit rejects the entry as inconsistent")]
+fn audit_rejects(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let r = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .audit_action_args(&owner, entries.last().unwrap());
+    assert!(r.is_err(), "mismatched args must fail the audit, got {r:?}");
+}
+
+#[then("the container refuses before anything is logged")]
+fn container_refuses(w: &mut ProtocolWorld) {
+    assert!(w.gamma_result.as_ref().unwrap().is_err());
+    let len = w.gbundle().gamma_entries().unwrap().len();
+    assert_eq!(len, w.gamma_baseline, "nothing may be logged");
+}
+
+#[then("the audit reports every logged action compliant")]
+fn audit_compliant(w: &mut ProtocolWorld) {
+    let r = w.gamma_result.as_ref().unwrap();
+    assert!(r.is_ok(), "audit should pass, got {r:?}");
+    assert_ne!(r.as_ref().unwrap(), "0", "at least one action audited");
 }
 
 // ------------------------------------------------------------------ main

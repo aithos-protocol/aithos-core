@@ -735,6 +735,63 @@ impl<S: Store> Bundle<S> {
         )))
     }
 
+    /// Open and check one action's sealed args (§07.9.3): the args must
+    /// reopen under the connector's audit key AND recompute to the entry's
+    /// clear `args_hash` — a mismatch is a tampered audit trail.
+    pub fn audit_action_args(
+        &self,
+        owner: &OwnerKeys,
+        entry: &Entry,
+    ) -> Result<serde_json::Value> {
+        let err = |m: &str| Error::InvalidGammaEntry(format!("{}: audit: {m}", entry.id));
+        let connector = entry
+            .target
+            .as_deref()
+            .and_then(|t| t.strip_prefix("x."))
+            .ok_or_else(|| err("not a connector action"))?;
+        let enc = entry.body_enc.as_ref().ok_or_else(|| err("no sealed args"))?;
+        let key = self.audit_key_owner(owner, connector)?;
+        let body = open_body(&key, &self.did, &format!("x.{connector}"), KV, enc)?;
+        let canon = aithos_core::jcs::canonical_bytes(&body.payload)?;
+        let recomputed = format!("sha256:{}", aithos_core::gamma::sha256_hex(&canon));
+        let clear = entry
+            .payload
+            .as_ref()
+            .and_then(|p| p.get("args_hash"))
+            .and_then(|h| h.as_str())
+            .ok_or_else(|| err("no clear args_hash"))?;
+        if recomputed != clear {
+            return Err(err("sealed args do not match the clear args_hash"));
+        }
+        Ok(body.payload)
+    }
+
+    /// Audit every sealed-args action on the log against a mandate's
+    /// `action_params` predicates (§04.4 tier-V audit half).
+    pub fn audit_log_against(
+        &self,
+        owner: &OwnerKeys,
+        mandate: &Mandate,
+    ) -> Result<usize> {
+        let mut checked = 0;
+        for e in self.gamma_entries()? {
+            if e.kind != "action" || e.body_enc.is_none() {
+                continue;
+            }
+            let args = self.audit_action_args(owner, &e)?;
+            let action = e
+                .payload
+                .as_ref()
+                .and_then(|p| p.get("action"))
+                .and_then(|a| a.as_str())
+                .unwrap_or_default()
+                .to_owned();
+            aithos_core::constraints::check_action_params(&mandate.constraints, &action, &args)?;
+            checked += 1;
+        }
+        Ok(checked)
+    }
+
     /// Action-covering check exposed for callers building presentations.
     pub fn action_covered(&self, chain: &[Mandate], connector: &str, action: &str) -> Result<bool> {
         let leaf = chain
