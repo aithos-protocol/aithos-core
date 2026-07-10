@@ -16,6 +16,8 @@ serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 zeroize = { workspace = true }
 hex = { workspace = true }
+ed25519-dalek = { workspace = true }
+ulid = { workspace = true }
 
 # transport (decided 2026-07-10: MCP Streamable HTTP first)
 tokio = { workspace = true }
@@ -29,6 +31,8 @@ clap = { workspace = true }
 cucumber = { workspace = true }
 futures = { workspace = true }
 tempfile = { workspace = true }
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
 
 [[test]]
 name = "cucumber"

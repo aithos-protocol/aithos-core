@@ -74,8 +74,8 @@ pub struct GatewayConfig {
 impl GatewayConfig {
     /// Parse and validate a YAML config. Any ambiguity is a rejection.
     pub fn from_yaml(text: &str) -> Result<Self> {
-        let cfg: GatewayConfig = serde_yaml::from_str(text)
-            .map_err(|e| GatewayError::ConfigRejected(e.to_string()))?;
+        let cfg: GatewayConfig =
+            serde_yaml::from_str(text).map_err(|e| GatewayError::ConfigRejected(e.to_string()))?;
         cfg.validate()?;
         Ok(cfg)
     }
@@ -84,8 +84,7 @@ impl GatewayConfig {
         if self.listen.trim().is_empty() {
             return Err(GatewayError::ConfigRejected("`listen` is empty".into()));
         }
-        if !(self.upstream_mcp.starts_with("http://")
-            || self.upstream_mcp.starts_with("https://"))
+        if !(self.upstream_mcp.starts_with("http://") || self.upstream_mcp.starts_with("https://"))
         {
             return Err(GatewayError::ConfigRejected(format!(
                 "`upstream_mcp` must be an http(s) URL, got `{}`",
@@ -97,11 +96,19 @@ impl GatewayConfig {
                 return Err(GatewayError::ConfigRejected("`store.root` is empty".into()));
             }
         }
+        let mut seen = std::collections::BTreeMap::new();
         for tool in self.tools.keys() {
             if tool.trim().is_empty() {
                 return Err(GatewayError::ConfigRejected(
                     "empty tool name in `tools`".into(),
                 ));
+            }
+            // Mandate actions flatten dots to underscores; two tools that
+            // flatten identically would silently share one grant — refuse.
+            if let Some(other) = seen.insert(crate::policy::action_name(tool), tool.clone()) {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "tools `{other}` and `{tool}` collide once mapped to a mandate action"
+                )));
             }
         }
         Ok(())
@@ -151,6 +158,16 @@ tools:
     #[test]
     fn non_http_upstream_is_rejected() {
         let text = GOOD.replace("http://127.0.0.1:4124/mcp", "ftp://x");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    #[test]
+    fn tools_colliding_after_action_mapping_are_rejected() {
+        // "user.read" and "user_read" would share one mandate action.
+        let text = format!("{GOOD}  user_read: read\n");
         assert!(matches!(
             GatewayConfig::from_yaml(&text),
             Err(GatewayError::ConfigRejected(_))

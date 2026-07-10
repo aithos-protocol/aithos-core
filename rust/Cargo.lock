@@ -81,11 +81,14 @@ version = "0.1.0"
 dependencies = [
  "aithos-bundle",
  "aithos-core",
+ "assert_cmd",
  "axum",
  "clap",
  "cucumber",
+ "ed25519-dalek",
  "futures",
  "hex",
+ "predicates",
  "reqwest",
  "serde",
  "serde_json",
@@ -93,6 +96,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "ulid",
  "zeroize",
 ]
 

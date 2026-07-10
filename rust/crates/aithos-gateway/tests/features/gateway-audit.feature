@@ -12,7 +12,6 @@ Feature: Gateway audit MVP — an agent is plugged, contained and audited
 
   Rule: Plugging in changes the route, not the behaviour of reads
 
-    @wip
     Scenario: A read tool call passes through and is logged
       When the agent calls tool "user.read" through the gateway
       Then the call reaches the MCP server and the agent gets the answer
@@ -20,14 +19,12 @@ Feature: Gateway audit MVP — an agent is plugged, contained and audited
 
   Rule: The mandate is enforced fail-closed on every call
 
-    @wip
     Scenario: A write tool call is refused and the refusal is logged
       When the agent calls tool "user.update" through the gateway
       Then the call never reaches the MCP server
       And the agent receives a policy refusal
       And the gamma log gains one refusal entry
 
-    @wip
     Scenario: A tool absent from the mapping is denied by default
       When the agent calls tool "user.delete" through the gateway
       Then the call never reaches the MCP server
@@ -35,7 +32,6 @@ Feature: Gateway audit MVP — an agent is plugged, contained and audited
 
   Rule: The agent never holds a key and never chooses a kind
 
-    @wip
     Scenario: Entries are signed by the gateway with the imposed kind
       When the agent calls tool "user.read" claiming kind "heartbeat"
       Then the claimed kind is ignored
@@ -44,9 +40,9 @@ Feature: Gateway audit MVP — an agent is plugged, contained and audited
 
   Rule: A third-party auditor sees exactly their scope
 
-    @wip
     Scenario: An auditor exports the scoped log and verifies it offline
       Given an auditor granted read.gamma scoped to act entries
+      And the agent has made one allowed and one refused call
       When the auditor exports the audit log from the gateway
       Then the export contains the act entries and verifies offline
       And entries outside the auditor's scope are not readable

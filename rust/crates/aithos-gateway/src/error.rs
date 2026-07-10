@@ -37,3 +37,19 @@ pub enum GatewayError {
     #[error("core bridge failed: {0}")]
     BridgeFailed(String),
 }
+
+impl GatewayError {
+    /// Short, non-sensitive reason code carried in refusal entries.
+    pub fn refusal_code(&self) -> &'static str {
+        match self {
+            GatewayError::ToolNotMapped(_) => "tool_not_mapped",
+            GatewayError::MandateDenied { .. } => "mandate_denied",
+            GatewayError::LogAppendRefused(_) => "log_append_refused",
+            GatewayError::ConfigRejected(_) => "config_rejected",
+            GatewayError::UpstreamFailed(_) => "upstream_failed",
+            GatewayError::RequestRejected(_) => "request_rejected",
+            GatewayError::AuditDenied(_) => "audit_denied",
+            GatewayError::BridgeFailed(_) => "bridge_failed",
+        }
+    }
+}

@@ -15,9 +15,19 @@ use crate::{GatewayError, Result};
 /// One place to change if the core grammar evolves.
 pub const MCP_CONNECTOR: &str = "mcp";
 
-/// The op string an MCP tool call maps to (`act.x.mcp.<tool>`).
+/// The action name a tool maps to in the mandate grammar. The grammar
+/// splits `act.x.<connector>.<action>` at the LAST dot, so dotted MCP
+/// tool names ("user.read") cannot be actions verbatim: dots become
+/// underscores. The raw tool name still travels in the clear payload of
+/// every logged act. Collisions ("user.read" vs "user_read") are
+/// rejected at config time — never aliased silently.
+pub fn action_name(tool: &str) -> String {
+    tool.replace('.', "_")
+}
+
+/// The op string an MCP tool call maps to (`act.x.mcp.<action>`).
 pub fn op_for_tool(tool: &str) -> String {
-    format!("act.x.{MCP_CONNECTOR}.{tool}")
+    format!("act.x.{MCP_CONNECTOR}.{}", action_name(tool))
 }
 
 /// The declared tool map, wrapped with fail-closed lookups.
@@ -81,6 +91,9 @@ mod tests {
 
     #[test]
     fn ops_follow_the_connector_grammar() {
-        assert_eq!(op_for_tool("user.read"), "act.x.mcp.user.read");
+        // Dots in tool names cannot survive into the action (the grammar
+        // splits at the last dot) — they become underscores.
+        assert_eq!(op_for_tool("user.read"), "act.x.mcp.user_read");
+        assert_eq!(op_for_tool("search"), "act.x.mcp.search");
     }
 }

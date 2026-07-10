@@ -23,7 +23,7 @@ use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
 use crate::core_bridge::Bridge;
-use crate::policy::{op_for_tool, Policy};
+use crate::policy::Policy;
 use crate::{GatewayError, Result};
 
 /// JSON-RPC error code for a gateway policy refusal (implementation-defined
@@ -38,10 +38,7 @@ pub type Clock = Arc<dyn Fn() -> String + Send + Sync>;
 /// Seam to the real MCP server: HTTP in production, in-process fake in
 /// the acceptance tests (GATEWAY-BOOTSTRAP §8).
 pub trait Upstream: Send + Sync + 'static {
-    fn forward(
-        &self,
-        body: Value,
-    ) -> impl std::future::Future<Output = Result<Value>> + Send;
+    fn forward(&self, body: Value) -> impl std::future::Future<Output = Result<Value>> + Send;
 }
 
 /// Production upstream: JSON-RPC over POST (Streamable HTTP, stateless).
@@ -130,29 +127,35 @@ async fn tool_call<U: Upstream>(gw: &McpProxy<U>, msg: Value) -> Value {
     else {
         let e = GatewayError::RequestRejected("tools/call without params.name".into());
         let mut bridge = gw.bridge.lock().await;
-        let _ = bridge.record_refusal("<unnamed>", &e.to_string(), &now);
+        let _ = bridge.record_refusal("<unnamed>", e.refusal_code(), &now);
         return error_response(id, &e);
     };
+
+    // The arguments only ever enter the log as a hash.
+    let args = msg
+        .pointer("/params/arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
 
     // Fail-closed policy: whitelist map first, then the mandate at T —
     // both layers must say yes, and the mandate is the authority.
     let mut bridge = gw.bridge.lock().await;
     let denial = match gw.policy.access_for(&tool) {
-        Ok(_) => bridge.authorize(&op_for_tool(&tool), &now).err(),
+        Ok(_) => bridge.authorize(&tool, &now).err(),
         Err(e) => Some(e),
     };
 
     if let Some(deny) = denial {
         // Refusals are governance acts of the gateway itself: logged,
         // then surfaced. Even if the refusal log fails we still refuse.
-        let _ = bridge.record_refusal(&tool, &deny.to_string(), &now);
+        let _ = bridge.record_refusal(&tool, deny.refusal_code(), &now);
         return error_response(id, &deny);
     }
 
     // Log before relaying: if the act cannot be recorded, it does not happen.
-    if let Err(e) = bridge.record_act(&tool, &now) {
+    if let Err(e) = bridge.record_act(&tool, &args, &now) {
         let deny = GatewayError::LogAppendRefused(e.to_string());
-        let _ = bridge.record_refusal(&tool, &deny.to_string(), &now);
+        let _ = bridge.record_refusal(&tool, deny.refusal_code(), &now);
         return error_response(id, &deny);
     }
     drop(bridge);
