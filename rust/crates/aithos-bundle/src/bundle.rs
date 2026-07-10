@@ -87,6 +87,19 @@ struct SelfSection {
 
 // ----------------------------------------------------------------- bundle
 
+/// Parameters of one section creation (the step-F params struct).
+#[derive(Debug, Clone, Copy)]
+pub struct SectionSpec<'a> {
+    pub zone: Zone,
+    pub folder_path: &'a str,
+    pub name: &'a str,
+    pub title: &'a str,
+    pub tags: &'a [String],
+    pub body: &'a str,
+    /// Injected timestamp of the mutation's gamma entry (§07.1).
+    pub now: &'a str,
+}
+
 pub struct Bundle<S: Store> {
     pub store: S,
     pub did: String,
@@ -189,7 +202,7 @@ impl<S: Store> Bundle<S> {
             owner,
             succession_pub,
             vec!["file://local".to_owned()],
-            "gamma/gamma.jsonl".to_owned(),
+            "gamma/".to_owned(),
         )?;
         let mut bundle = Bundle {
             store,
@@ -299,34 +312,39 @@ impl<S: Store> Bundle<S> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)] // spec-shaped surface; a params struct lands with step F
+    /// One section to create — the params struct promised at step F.
+    /// `now` timestamps the gamma entry every mutation MUST leave (§07.4).
     pub fn section_add(
         &mut self,
-        zone: Zone,
-        folder_path: &str,
-        name: &str,
-        title: &str,
-        tags: &[String],
-        body: &str,
+        spec: &SectionSpec<'_>,
         owner: &OwnerKeys,
         ent: &mut dyn EntropySource,
     ) -> Result<()> {
+        let SectionSpec {
+            zone,
+            folder_path,
+            name,
+            title,
+            tags,
+            body,
+            now,
+        } = *spec;
         let display_path = if folder_path.is_empty() {
             name.to_owned()
         } else {
             format!("{folder_path}/{name}")
         };
-        match zone {
+        let (node, blob_sha) = match zone {
             Zone::Public => {
-                let sid = Self::new_sid(ent).to_string();
+                let sid = Self::new_sid(ent);
                 let folders = self.ensure_folder(zone, folder_path, owner, ent)?;
                 let file = format!("e/public/{display_path}.md");
                 self.store.put(&file, body.as_bytes()).map_err(io_err)?;
-                let sig = owner_content_sig(owner, zone, &display_path, &sid, body)?;
+                let sig = owner_content_sig(owner, zone, &display_path, &sid.to_string(), body)?;
                 let index_path = "e/public/index.json";
                 let mut index: ZoneIndex = self.get_json(index_path)?;
                 index.sections.push(SectionRow {
-                    sid,
+                    sid: sid.to_string(),
                     name: name.to_owned(),
                     folder_sid: folders.last().map(ToString::to_string),
                     title: title.to_owned(),
@@ -335,7 +353,11 @@ impl<S: Store> Bundle<S> {
                     key_version: KV,
                     sig: Some(sig),
                 });
-                self.put_json(index_path, &index)
+                self.put_json(index_path, &index)?;
+                (
+                    NodePath::section(zone, folders, sid),
+                    sha256_hex(body.as_bytes()),
+                )
             }
             Zone::Circle => {
                 let folders = self.ensure_folder(zone, folder_path, owner, ent)?;
@@ -359,11 +381,12 @@ impl<S: Store> Bundle<S> {
                     folder_sid: folders.last().map(ToString::to_string),
                     title: title.to_owned(),
                     tags: tags.to_vec(),
-                    blob_sha: sha,
+                    blob_sha: sha.clone(),
                     key_version: KV,
                     sig: None,
                 });
-                self.put_json(index_path, &index)
+                self.put_json(index_path, &index)?;
+                (node, sha)
             }
             Zone::Self_ => {
                 let folders = self.ensure_self_folder(folder_path, owner, ent)?;
@@ -378,7 +401,7 @@ impl<S: Store> Bundle<S> {
                     tags: tags.to_vec(),
                     md: body.to_owned(),
                 };
-                self.put_blob(
+                let sha = self.put_blob(
                     &format!("e/self/blobs/{sid}.enc"),
                     &key,
                     &node,
@@ -391,9 +414,19 @@ impl<S: Store> Bundle<S> {
                     sid: sid.to_string(),
                     key_version: KV,
                 });
-                self.put_json("e/self/index.json", &index)
+                self.put_json("e/self/index.json", &index)?;
+                (node, sha)
             }
-        }
+        };
+        // §07.4: a mutation without its gamma entry is unauthorized.
+        self.log_owner_mutation(
+            owner,
+            aithos_core::gamma::Kind::SectionAdd,
+            &node,
+            serde_json::json!({ "blob_sha": blob_sha, "name": name }),
+            now,
+            ent,
+        )
     }
 
     // ------------------------------------------------------ self plumbing
@@ -791,7 +824,15 @@ impl<S: Store> Bundle<S> {
             prev.chain_hash()?
         };
         let files = self.all_pinned_files(height)?;
-        let manifest = Manifest::build(&owner.root_sign, height, prev_hash, now.to_owned(), files)?;
+        let gamma_head = self.gamma_head()?;
+        let manifest = Manifest::build(
+            &owner.root_sign,
+            height,
+            prev_hash,
+            now.to_owned(),
+            files,
+            gamma_head,
+        )?;
         self.put_json(&format!("manifests/{height}.json"), &manifest)?;
         self.put_json("manifest.json", &manifest)
     }
@@ -846,6 +887,41 @@ impl<S: Store> Bundle<S> {
                 && !latest.files.contains_key(&path)
             {
                 return Err(err(format!("unpinned file: {path}")));
+            }
+        }
+        // Gamma (§02.7, §07.1): the chain verifies and the manifest pins
+        // its tip — the edition and the log move together.
+        let entries = self.gamma_entries()?;
+        aithos_core::gamma::verify_links(&entries)?;
+        if aithos_core::gamma::head(&entries)? != latest.gamma_head {
+            return Err(err("manifest gamma_head does not pin the log tip".into()));
+        }
+        Ok(())
+    }
+
+    /// Every `self` section node, owner-side (descriptor walk, §02.8).
+    pub(crate) fn self_section_nodes(&self, owner: &OwnerKeys) -> Result<Vec<NodePath>> {
+        let mut out = Vec::new();
+        self.self_collect_sections(&[], owner, &mut out)?;
+        Ok(out)
+    }
+
+    fn self_collect_sections(
+        &self,
+        chain: &[Sid],
+        owner: &OwnerKeys,
+        out: &mut Vec<NodePath>,
+    ) -> Result<()> {
+        let (file, key, node) = self.self_desc_location(chain, owner)?;
+        let desc = self.read_desc(&file, &key, &node)?;
+        for child in &desc.children {
+            let child_sid = Sid::parse(&child.sid)?;
+            if child.kind == "d" {
+                let mut cc = chain.to_vec();
+                cc.push(child_sid);
+                self.self_collect_sections(&cc, owner, out)?;
+            } else {
+                out.push(NodePath::section(Zone::Self_, chain.to_vec(), child_sid));
             }
         }
         Ok(())

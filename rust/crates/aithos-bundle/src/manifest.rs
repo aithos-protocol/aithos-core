@@ -29,6 +29,10 @@ pub struct Manifest {
     pub edition: Edition,
     /// Flat file pins until step H replaces them with Merkle state roots.
     pub files: BTreeMap<String, String>,
+    /// `sha256:<hex>` of the last gamma entry's JCS (§02.7); empty when the
+    /// log is empty.
+    #[serde(default)]
+    pub gamma_head: String,
     pub signature: SignatureBlock,
 }
 
@@ -55,6 +59,7 @@ impl Manifest {
         prev_hash: String,
         created_at: String,
         files: BTreeMap<String, String>,
+        gamma_head: String,
     ) -> Result<Self> {
         let mut m = Manifest {
             version: CORE_VERSION.to_owned(),
@@ -64,6 +69,7 @@ impl Manifest {
                 created_at,
             },
             files,
+            gamma_head,
             signature: SignatureBlock {
                 alg: "ed25519".to_owned(),
                 key: "#root".to_owned(),

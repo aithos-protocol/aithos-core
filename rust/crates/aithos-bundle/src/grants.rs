@@ -55,7 +55,7 @@ fn agent_recipient(pubkey: &VerifyingKey) -> Recipient {
 }
 
 impl<S: Store> Bundle<S> {
-    fn did_doc(&self) -> Result<DidDocument> {
+    pub(crate) fn did_doc(&self) -> Result<DidDocument> {
         self.get_json("did.json")
     }
 
@@ -245,7 +245,7 @@ impl<S: Store> Bundle<S> {
 
     /// What an agent can compute for a node from its own lines: try headers
     /// on the node and every ancestor folder, then derive down (§02.5).
-    fn agent_node_key(
+    pub(crate) fn agent_node_key(
         &self,
         kid: &str,
         kex: &x25519_dalek::StaticSecret,

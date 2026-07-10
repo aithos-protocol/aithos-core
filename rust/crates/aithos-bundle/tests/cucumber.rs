@@ -2,7 +2,7 @@
 //! root in `features/`; step definitions grow with each phase of
 //! docs/EXECUTION-PLAN.md and are never rewritten, only extended.
 
-use aithos_bundle::bundle::Bundle;
+use aithos_bundle::bundle::{Bundle, SectionSpec};
 use aithos_bundle::entropy::SeqEntropy;
 use aithos_bundle::grants::GrantSpec;
 use aithos_bundle::manifest::{sha256_hex, Manifest};
@@ -189,12 +189,15 @@ impl ProtocolWorld {
             .unwrap();
         bundle
             .section_add(
-                Zone::Circle,
-                folder,
-                name,
-                "note",
-                tags,
-                BODY,
+                &SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: folder,
+                    name,
+                    title: "note",
+                    tags,
+                    body: BODY,
+                    now: NOW,
+                },
                 &owner,
                 &mut self.ent,
             )
@@ -227,12 +230,15 @@ impl ProtocolWorld {
             .unwrap();
         bundle
             .section_add(
-                Zone::Circle,
-                folder,
-                name,
-                "note",
-                &[tag.to_owned()],
-                BODY,
+                &SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: folder,
+                    name,
+                    title: "note",
+                    tags: &[tag.to_owned()],
+                    body: BODY,
+                    now: NOW,
+                },
                 &owner,
                 &mut self.ent,
             )
@@ -457,12 +463,15 @@ fn published_public(w: &mut ProtocolWorld, name: String, folder: String) {
         .as_mut()
         .unwrap()
         .section_add(
-            Zone::Public,
-            &folder,
-            &name,
-            "bio",
-            &[],
-            PUB_BODY,
+            &SectionSpec {
+                zone: Zone::Public,
+                folder_path: &folder,
+                name: &name,
+                title: "bio",
+                tags: &[],
+                body: PUB_BODY,
+                now: NOW,
+            },
             &owner,
             &mut w.ent,
         )
@@ -478,12 +487,15 @@ fn bundle_with_self(w: &mut ProtocolWorld, folder: String, name: String) {
         .as_mut()
         .unwrap()
         .section_add(
-            Zone::Self_,
-            &folder,
-            &name,
-            "cicatrice au genou",
-            &["sante".to_owned()],
-            SELF_BODY,
+            &SectionSpec {
+                zone: Zone::Self_,
+                folder_path: &folder,
+                name: &name,
+                title: "cicatrice au genou",
+                tags: &["sante".to_owned()],
+                body: SELF_BODY,
+                now: NOW,
+            },
             &owner,
             &mut w.ent,
         )
@@ -854,6 +866,7 @@ fn wrong_predecessor(w: &mut ProtocolWorld) {
         "0".repeat(64),
         NOW.to_owned(),
         latest.files.clone(),
+        latest.gamma_head.clone(),
     )
     .unwrap();
     let bundle = w.bundle.as_mut().unwrap();
