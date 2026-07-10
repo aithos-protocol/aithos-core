@@ -191,6 +191,10 @@ enum Command {
         /// '[{"anchor":"2026-07-02T14:00:00Z","duration":"4h","period":"7d"}]'
         #[arg(long)]
         windows_json: Option<String>,
+        /// Also grant the vault audit line so the agent can seal its action
+        /// arguments (spec 07.9.3).
+        #[arg(long, default_value_t = false)]
+        audit: bool,
     },
     /// Log a connector action under a mandate chain (leaf last). The gamma
     /// entry IS the authorization evidence — no entry, no action (I5).
@@ -257,6 +261,18 @@ enum Command {
     LogVerify {
         #[arg(long)]
         dir: String,
+    },
+    /// Owner audit of sealed action args (spec 07.9.3): reopen each sealed
+    /// argument object, re-check its hash, optionally re-evaluate the
+    /// action_params predicates of a mandate.
+    LogAudit {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+        /// Re-evaluate this certificate's action_params on the args.
+        #[arg(long)]
+        cert: Option<String>,
     },
     /// Owner search over the log (spec 07.8): every present filter narrows.
     LogQuery {
@@ -482,6 +498,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             heartbeat_grace,
             budgets_json,
             windows_json,
+            audit,
         } => {
             let owner = owner_from(&seed_hex)?;
             let agent = ed25519_dalek::SigningKey::from_bytes(
@@ -538,6 +555,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 serde_json::to_vec_pretty(&m)?,
             )?;
             bundle.log_owner_grant(&owner, &m.id, &now_string(), &mut OsEntropy)?;
+            if audit {
+                bundle.grant_audit_line(&owner, &agent.verifying_key(), &mut OsEntropy)?;
+                println!("audit line granted (sealed args enabled)");
+            }
             println!("granted; cert = certs/{}.json", m.id);
             Ok(())
         }
@@ -662,6 +683,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::LogVerify { dir } => {
             bundle_at(&dir)?.gamma_verify()?;
             println!("gamma chain: OK");
+            Ok(())
+        }
+        Command::LogAudit {
+            dir,
+            seed_hex,
+            cert,
+        } => {
+            let owner = owner_from(&seed_hex)?;
+            let bundle = bundle_at(&dir)?;
+            let mandate: Option<aithos_core::mandate::Mandate> = cert
+                .map(|c| -> Result<_, Box<dyn std::error::Error>> {
+                    Ok(serde_json::from_slice(&std::fs::read(c)?)?)
+                })
+                .transpose()?;
+            let mut audited = 0;
+            for e in bundle.gamma_entries()? {
+                if e.kind != "action" || e.body_enc.is_none() {
+                    continue;
+                }
+                let args = bundle.audit_action_args(&owner, &e)?;
+                let action = e
+                    .payload
+                    .as_ref()
+                    .and_then(|p| p.get("action"))
+                    .and_then(|a| a.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                if let Some(m) = &mandate {
+                    aithos_core::constraints::check_action_params(&m.constraints, &action, &args)?;
+                }
+                println!("{}  {action}  args = {args}", e.id);
+                audited += 1;
+            }
+            println!("audited: {audited} sealed action(s), all consistent");
             Ok(())
         }
         Command::LogQuery {

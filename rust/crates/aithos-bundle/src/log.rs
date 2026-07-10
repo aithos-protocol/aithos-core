@@ -611,9 +611,21 @@ impl<S: Store> Bundle<S> {
     /// Owner query (§07.8): scan the touched segments, open every body S
     /// reaches, filter dimension by dimension.
     pub fn log_query_owner(&self, owner: &OwnerKeys, filter: &LogFilter) -> Result<Vec<LogHit>> {
-        let hints = self.owner_hint_map(owner)?;
+        let mut hints = self.owner_hint_map(owner)?;
+        let entries = self.gamma_entries()?;
+        // Audit keys for sealed action args (§07.9.3): connectors are clear
+        // in the entries' targets.
+        for e in entries.iter().filter(|e| e.body_enc.is_some()) {
+            if let Some(c) = e.target.as_deref().and_then(|t| t.strip_prefix("x.")) {
+                let key = self.audit_key_owner(owner, c)?;
+                hints.insert(
+                    gamma::body_hint(&key),
+                    (NodePath::zone_root(Zone::Circle), key),
+                );
+            }
+        }
         let mut out = Vec::new();
-        for e in self.gamma_entries()? {
+        for e in entries {
             if !Self::clear_dims_match(&e, filter) {
                 continue;
             }
@@ -622,7 +634,11 @@ impl<S: Store> Bundle<S> {
                 let Some((node, key)) = hints.get(&enc.hint) else {
                     continue; // unreadable body cannot prove it matches — skip
                 };
-                let opened = open_body(key, &self.did, &node.to_string(), KV, enc)?;
+                let candidate = match e.target.as_deref() {
+                    Some(t) if t.starts_with("x.") => t.to_owned(), // audit body
+                    _ => node.to_string(),
+                };
+                let opened = open_body(key, &self.did, &candidate, KV, enc)?;
                 if !self.target_matches(
                     &opened.target,
                     filter.zone_dir.as_ref(),
