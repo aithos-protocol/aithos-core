@@ -136,8 +136,9 @@ are owner/delegate-local, offline.
 
 `constraints` is an object; unknown keys MUST NOT cause rejection but MAY cause a
 tool host to refuse an action it cannot enforce. Each key states its **enforcement
-tier**: **V** verifier (offline, from files), **X** executor/tool-host (runtime), **C**
-counter-signature.
+tier**: **V** verifier (offline, from files) or **X** executor/tool-host (runtime).
+(Counter-signature, once its own tier **C**, is now the owner instance of an
+obligation — tier V, §4.12.)
 
 | Key | Meaning | Tier |
 |---|---|---|
@@ -371,7 +372,7 @@ The **receipt** rides in the action entry (`checks: [...]`, §07.4):
     "verdict": "approve",
     "presented_digest": "sha256:…",       // optional: hash of what was shown (WYSIWYS)
     "at": "2026-07-10T14:02:11Z",
-    "sig": "<ed25519 over JCS of {obligation, mandate_id, action, args_hash, verdict, at}>" } ]
+    "sig": "<ed25519 over JCS of {obligation, mandate_id, action, args_hash, verdict, presented_digest?, at}>" } ]
 ```
 
 **Verifier rule (tier V, offline).** For every `action` entry, for every obligation
@@ -380,9 +381,11 @@ in the chain whose `applies_to` covers the entry's action, the entry MUST carry 
 `verdict` satisfying the predicate, `sig` verifying under a pinned `attestor`, and
 — if `max_age` is set — `|entry.at − receipt.at| ≤ max_age`. Any failure invalidates
 the entry. The signed payload `{obligation, mandate_id, action, args_hash, verdict,
-at}` is a **superset** of the §4.6 `co_sign` payload: binding `args_hash` makes the
-receipt single-use, binding `mandate_id`+`action` blocks cross-mandate and
-cross-action replay.
+presented_digest?, at}` is a **superset** of the §4.6 `co_sign` payload: binding
+`args_hash` makes the receipt single-use, binding `mandate_id`+`action` blocks
+cross-mandate and cross-action replay. When present, `presented_digest` sits inside
+the signed set, so the rendered-vs-executed (WYSIWYS) binding cannot be altered
+after the fact; comparing it to a re-render is an off-protocol audit step.
 
 **The attestor holds the logic; the protocol holds a signature.** `check` is opaque
 to the verifier — PII guardrail, policy engine, or a human tapping *approve* is

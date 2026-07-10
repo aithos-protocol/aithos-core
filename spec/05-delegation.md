@@ -38,7 +38,8 @@ in every request and gamma entry.
    folder-local anchor (§5.2 physical attenuation).
 2. **Window containment.** `parent.nb ≤ child.nb ≤ child.na ≤ parent.na`.
 3. **Constraint monotonicity.** Child constraints are ≥ strict: numeric caps ≤ parent,
-   `domains ⊆`, `counter_sign/binding ⊇`, `heartbeat` at least as tight, `freshness`
+   `domains ⊆`, `counter_sign/binding ⊇`, `obligations ⊇` (a sub-mandate may add
+   an obligation, never drop one, §4.12), `heartbeat` at least as tight, `freshness`
    ≤ parent, `first_party_only` not weakened.
 4. **Depth.** child `issue#depth=m` ⇒ `m ≤ n−1`; chain length in links ≤ root depth.
 5. **Signature & identity.** child.signature verifies under parent.grantee.pubkey;
