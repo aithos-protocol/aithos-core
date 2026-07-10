@@ -1,11 +1,13 @@
-Feature: Advanced agentic constraints — absolute windows, budget profiles, attestation
+Feature: Advanced agentic constraints — windows, budgets, inference, kinds, sealed args
   A purely additive enrichment of the mandate constraint vocabulary
   (spec 04.4 + 07.4): time becomes interval arithmetic on absolute windows
   (no timezone, no DST, no calendar in the verifier), spend becomes budget
-  profiles composed with OR, and model/token truthfulness is staged —
-  declared values count at tier V, reality is the container's duty (tier X)
-  until a provider attestation bridges it back. Everything below reads
-  files and an injected T; the counting engine is step F's, unchanged.
+  profiles composed with OR, every LLM call leaves a light metered entry,
+  kinds form a normative registry, and action arguments are predicated and
+  sealed for verifiable audit. Model/token truthfulness is staged: declared
+  values count at tier V, reality is the container's duty (tier X) until a
+  provider attestation bridges it back. Everything below reads files and an
+  injected T; the counting engine is step F's, unchanged.
 
   Rule: An active window is arithmetic — anchor, duration, nothing else
 
@@ -180,3 +182,91 @@ Feature: Advanced agentic constraints — absolute windows, budget profiles, att
       And a valid receipt for an earlier action's args_hash
       When the agent replays that receipt on a new action
       Then the action is refused
+
+  Rule: Every inference is metered, never transcribed
+
+    @wip
+    Scenario: An inference entry carries counters, never content
+      Given the founding two-profile mandate
+      When the container logs an inference on "gemma" of 1200 tokens in and 300 out citing "gemma"
+      Then the entry is of kind "inference"
+      And it reveals provider, model, token counts and budget_ref
+      But no prompt or response text exists anywhere in the log files
+
+    @wip
+    Scenario: Inference tokens drain the cited budget profile
+      Given a profile "gemma" with a 25000 token budget
+      And logged inferences of 12000 and 9000 total tokens citing "gemma"
+      When the container logs an inference of 5000 total tokens citing "gemma"
+      Then the inference is refused as over budget
+      But an inference of 3000 total tokens citing "gemma" verifies
+
+    @wip
+    Scenario: Actions and inferences drain the same profile together
+      Given a profile "gemma" with a 25000 token budget
+      And a logged action of 20000 declared tokens citing "gemma"
+      When the container logs an inference of 6000 total tokens citing "gemma"
+      Then the inference is refused as over budget
+
+    @wip
+    Scenario: An inference without budget_ref under a budgets mandate is refused
+      Given the founding two-profile mandate
+      When the container logs an inference citing no budget_ref
+      Then the inference is refused
+
+  Rule: Kinds are a normative registry, not ad hoc strings
+
+    @wip
+    Scenario: An entry with an unregistered kind fails closed
+      Given an initialised bundle
+      When an entry of kind "banana.peel" is forced onto the log
+      Then log verification is rejected
+
+    @wip
+    Scenario: The ethos.write class groups every content mutation in queries
+      Given a bundle whose log records section additions, a modification and actions
+      When the owner queries the kind class "ethos.write"
+      Then every section entry comes back
+      But no action or heartbeat entry does
+
+    @wip
+    Scenario: Reads are not journalized by default
+      Given an agent granted read on circle folder "projets"
+      When the agent reads a section under "projets"
+      Then no gamma entry is appended
+
+    @wip
+    Scenario: A log_reads mandate journalizes reads as ethos.read
+      Given an agent granted read on circle folder "projets" with log_reads
+      When the agent reads a section under "projets" and logs its read
+      Then an "ethos.read" entry signed by the agent chains onto the log
+      And its sealed body names the section it read
+
+  Rule: Action arguments are predicated — and sealed for verifiable audit
+
+    @wip
+    Scenario: Sealed args open for the owner, stay a hash for a stranger
+      Given an agent granted gmail "reply" with sealed-args audit
+      When the agent acts with arguments naming recipient "alice@example.com"
+      Then the entry carries a clear args_hash and a sealed args body
+      And the owner reopens the arguments and finds the recipient
+      But a stranger sees only the hash
+
+    @wip
+    Scenario: The sealed args must match their clear hash
+      Given a logged action with sealed args
+      When the sealed body is swapped for another one
+      Then the audit rejects the entry as inconsistent
+
+    @wip
+    Scenario: A recipient outside the allow-list is refused by the container
+      Given a mandate whose action_params allow replies only to "alice@example.com"
+      When the agent asks the container to reply to "mallory@evil.example"
+      Then the container refuses before anything is logged
+
+    @wip
+    Scenario: The owner audits predicate compliance after the fact
+      Given a mandate whose action_params allow replies only to "alice@example.com"
+      And a logged reply whose sealed args name "alice@example.com"
+      When the owner audits the log against the mandate predicates
+      Then the audit reports every logged action compliant
