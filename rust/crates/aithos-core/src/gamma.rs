@@ -575,7 +575,8 @@ pub fn check_action_append(
             }
         }
         if let Some((_, secs, n)) = constraint_window(m, "max_actions_per")? {
-            if is_action && count_actions(existing, &m.id, None, Some((secs, at_t))) as u64 + 1 > n {
+            if is_action && count_actions(existing, &m.id, None, Some((secs, at_t))) as u64 + 1 > n
+            {
                 return Err(Error::GammaBudgetExhausted(format!(
                     "{}: max_actions_per {n} spent in window",
                     m.id

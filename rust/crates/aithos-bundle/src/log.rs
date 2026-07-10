@@ -273,9 +273,8 @@ impl<S: Store> Bundle<S> {
                 let hash = format!("sha256:{}", aithos_core::gamma::sha256_hex(&canon));
                 let key = self.audit_key_any(chain, agent_sk, spec.connector)?;
                 let target = format!("x.{}", spec.connector);
-                let body = aithos_core::gamma::seal_body(
-                    &key, &self.did, &target, KV, args, &ent.e24(),
-                )?;
+                let body =
+                    aithos_core::gamma::seal_body(&key, &self.did, &target, KV, args, &ent.e24())?;
                 (hash, Some(body))
             }
         };
@@ -593,17 +592,14 @@ impl<S: Store> Bundle<S> {
 
     fn clear_dims_match(e: &Entry, f: &LogFilter) -> bool {
         f.kind.as_ref().is_none_or(|k| {
-            &e.kind == k
-                || aithos_core::gamma::Kind::parse(&e.kind).is_ok_and(|x| x.class() == k)
-        })
-            && f.action.as_ref().is_none_or(|a| {
-                e.payload
-                    .as_ref()
-                    .and_then(|p| p.get("action"))
-                    .and_then(|x| x.as_str())
-                    == Some(a.as_str())
-            })
-            && f.since.as_ref().is_none_or(|s| e.at.as_str() >= s.as_str())
+            &e.kind == k || aithos_core::gamma::Kind::parse(&e.kind).is_ok_and(|x| x.class() == k)
+        }) && f.action.as_ref().is_none_or(|a| {
+            e.payload
+                .as_ref()
+                .and_then(|p| p.get("action"))
+                .and_then(|x| x.as_str())
+                == Some(a.as_str())
+        }) && f.since.as_ref().is_none_or(|s| e.at.as_str() >= s.as_str())
             && f.until.as_ref().is_none_or(|u| e.at.as_str() <= u.as_str())
             && f.mandate.as_ref().is_none_or(|m| {
                 e.authorized_via
@@ -738,18 +734,17 @@ impl<S: Store> Bundle<S> {
     /// Open and check one action's sealed args (§07.9.3): the args must
     /// reopen under the connector's audit key AND recompute to the entry's
     /// clear `args_hash` — a mismatch is a tampered audit trail.
-    pub fn audit_action_args(
-        &self,
-        owner: &OwnerKeys,
-        entry: &Entry,
-    ) -> Result<serde_json::Value> {
+    pub fn audit_action_args(&self, owner: &OwnerKeys, entry: &Entry) -> Result<serde_json::Value> {
         let err = |m: &str| Error::InvalidGammaEntry(format!("{}: audit: {m}", entry.id));
         let connector = entry
             .target
             .as_deref()
             .and_then(|t| t.strip_prefix("x."))
             .ok_or_else(|| err("not a connector action"))?;
-        let enc = entry.body_enc.as_ref().ok_or_else(|| err("no sealed args"))?;
+        let enc = entry
+            .body_enc
+            .as_ref()
+            .ok_or_else(|| err("no sealed args"))?;
         let key = self.audit_key_owner(owner, connector)?;
         let body = open_body(&key, &self.did, &format!("x.{connector}"), KV, enc)?;
         let canon = aithos_core::jcs::canonical_bytes(&body.payload)?;
@@ -768,11 +763,7 @@ impl<S: Store> Bundle<S> {
 
     /// Audit every sealed-args action on the log against a mandate's
     /// `action_params` predicates (§04.4 tier-V audit half).
-    pub fn audit_log_against(
-        &self,
-        owner: &OwnerKeys,
-        mandate: &Mandate,
-    ) -> Result<usize> {
+    pub fn audit_log_against(&self, owner: &OwnerKeys, mandate: &Mandate) -> Result<usize> {
         let mut checked = 0;
         for e in self.gamma_entries()? {
             if e.kind != "action" || e.body_enc.is_none() {

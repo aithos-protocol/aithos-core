@@ -91,7 +91,7 @@ impl Window {
             return false;
         }
         let start = self.occurrence_start(k);
-        !self.until.is_some_and(|u| start > u)
+        self.until.is_none_or(|u| start <= u)
     }
 
     /// Is `t` inside some occurrence? Start inclusive, end exclusive.

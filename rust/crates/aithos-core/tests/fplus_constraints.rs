@@ -190,12 +190,15 @@ fn attestation_verdicts_match_python() {
     // Attested tokens override the declaration in tallies.
     assert_eq!(
         entry_tokens(&good),
-        att["expected"]["attested_tokens_override"].as_u64().unwrap()
+        att["expected"]["attested_tokens_override"]
+            .as_u64()
+            .unwrap()
     );
 
     // Wrong signer.
     let mut bad = good.clone();
-    bad.payload.as_mut().unwrap()["receipt"]["sig"] = att["expected"]["wrong_signer_sig_hex"].clone();
+    bad.payload.as_mut().unwrap()["receipt"]["sig"] =
+        att["expected"]["wrong_signer_sig_hex"].clone();
     assert!(matches!(
         verify_receipt(&bad, &profile),
         Err(Error::InvalidGammaEntry(_))
@@ -203,8 +206,9 @@ fn attestation_verdicts_match_python() {
 
     // Replay on another action's args.
     let mut replay = good.clone();
-    replay.payload.as_mut().unwrap()["args_hash"] =
-        serde_json::json!("sha256:0000000000000000000000000000000000000000000000000000000000000000");
+    replay.payload.as_mut().unwrap()["args_hash"] = serde_json::json!(
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    );
     assert!(matches!(
         verify_receipt(&replay, &profile),
         Err(Error::InvalidGammaEntry(_))

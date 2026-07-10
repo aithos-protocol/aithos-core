@@ -183,6 +183,14 @@ enum Command {
         heartbeat_every: Option<String>,
         #[arg(long)]
         heartbeat_grace: Option<String>,
+        /// Budget profiles as raw JSON (spec 04.11), e.g.
+        /// '[{"id":"gemma","models":["gemma"],"token_budget":25000}]'
+        #[arg(long)]
+        budgets_json: Option<String>,
+        /// Absolute active windows as raw JSON (spec 04.10), e.g.
+        /// '[{"anchor":"2026-07-02T14:00:00Z","duration":"4h","period":"7d"}]'
+        #[arg(long)]
+        windows_json: Option<String>,
     },
     /// Log a connector action under a mandate chain (leaf last). The gamma
     /// entry IS the authorization evidence — no entry, no action (I5).
@@ -199,6 +207,37 @@ enum Command {
         /// Free-form action arguments; only their hash enters the log.
         #[arg(long, default_value = "")]
         args: String,
+        /// Budget profile citation (spec 04.11).
+        #[arg(long)]
+        budget_ref: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        tokens: Option<u64>,
+        /// Provider attestation receipt as raw JSON (spec 04.11.1).
+        #[arg(long)]
+        receipt_json: Option<String>,
+        /// Full argument object (JSON), sealed under the connector's audit
+        /// key for a-posteriori audit (spec 07.9.3). Overrides --args.
+        #[arg(long)]
+        args_json: Option<String>,
+    },
+    /// Log one metered LLM call (spec 07.9.1): counters only, never text.
+    Inference {
+        #[arg(long)]
+        dir: String,
+        #[arg(long = "cert")]
+        certs: Vec<String>,
+        #[arg(long)]
+        agent_seed_hex: String,
+        provider: String,
+        model: String,
+        #[arg(long)]
+        tokens_in: u64,
+        #[arg(long)]
+        tokens_out: u64,
+        #[arg(long)]
+        budget_ref: Option<String>,
     },
     /// Publish an owner liveness beacon (spec 07.5).
     Heartbeat {
@@ -441,6 +480,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             max_actions,
             heartbeat_every,
             heartbeat_grace,
+            budgets_json,
+            windows_json,
         } => {
             let owner = owner_from(&seed_hex)?;
             let agent = ed25519_dalek::SigningKey::from_bytes(
@@ -459,6 +500,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "heartbeat".into(),
                     serde_json::json!({"every": every, "grace": grace}),
                 );
+            }
+            if let Some(b) = &budgets_json {
+                constraints.insert("budgets".into(), serde_json::from_str(b)?);
+            }
+            if let Some(wjs) = &windows_json {
+                constraints.insert("active_windows".into(), serde_json::from_str(wjs)?);
             }
             let mut nonce = [0u8; 16];
             getrandom(&mut nonce)?;
@@ -501,6 +548,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             connector,
             action,
             args,
+            budget_ref,
+            model,
+            tokens,
+            receipt_json,
+            args_json,
         } => {
             let mut bundle = bundle_at(&dir)?;
             let chain: Vec<aithos_core::mandate::Mandate> = certs
@@ -517,6 +569,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "sha256:{}",
                 aithos_bundle::manifest::sha256_hex(args.as_bytes())
             );
+            let mut budget = serde_json::Map::new();
+            if let Some(b) = &budget_ref {
+                budget.insert("budget_ref".into(), serde_json::json!(b));
+            }
+            if let Some(m) = &model {
+                budget.insert("model".into(), serde_json::json!(m));
+            }
+            if let Some(t) = tokens {
+                budget.insert("tokens".into(), serde_json::json!(t));
+            }
+            if let Some(r) = &receipt_json {
+                budget.insert("receipt".into(), serde_json::from_str(r)?);
+            }
             let entry = bundle.log_action(
                 &chain,
                 &agent,
@@ -525,12 +590,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     action: &action,
                     args_hash: &args_hash,
                     now: &now_string(),
-                    budget: None,
-                    sealed_args: None,
+                    budget: (!budget.is_empty()).then_some(serde_json::Value::Object(budget)),
+                    sealed_args: args_json.as_deref().map(serde_json::from_str).transpose()?,
                 },
                 &mut OsEntropy,
             )?;
             println!("action logged: {}", entry.id);
+            Ok(())
+        }
+        Command::Inference {
+            dir,
+            certs,
+            agent_seed_hex,
+            provider,
+            model,
+            tokens_in,
+            tokens_out,
+            budget_ref,
+        } => {
+            let mut bundle = bundle_at(&dir)?;
+            let chain: Vec<aithos_core::mandate::Mandate> = certs
+                .iter()
+                .map(|c| -> Result<_, Box<dyn std::error::Error>> {
+                    Ok(serde_json::from_slice(&std::fs::read(c)?)?)
+                })
+                .collect::<Result<_, _>>()?;
+            let agent = ed25519_dalek::SigningKey::from_bytes(
+                &<[u8; 32]>::try_from(hex::decode(agent_seed_hex)?)
+                    .map_err(|_| "agent-seed-hex: 32 bytes")?,
+            );
+            let entry = bundle.log_inference(
+                &chain,
+                &agent,
+                &aithos_bundle::log::InferenceSpec {
+                    provider: &provider,
+                    model: &model,
+                    tokens_in,
+                    tokens_out,
+                    budget_ref: budget_ref.as_deref(),
+                    now: &now_string(),
+                },
+                &mut OsEntropy,
+            )?;
+            println!("inference logged: {}", entry.id);
             Ok(())
         }
         Command::Heartbeat { dir, seed_hex, seq } => {

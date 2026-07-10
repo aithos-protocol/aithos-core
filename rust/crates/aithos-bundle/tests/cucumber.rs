@@ -1756,7 +1756,8 @@ fn act_grant_budget_issue(w: &mut ProtocolWorld) {
 
 #[given("the agent delegates its perimeter to a helper")]
 fn delegates_perimeter(w: &mut ProtocolWorld) {
-    w.delegate_act("act.x.gmail.*", serde_json::json!({}), true).unwrap();
+    w.delegate_act("act.x.gmail.*", serde_json::json!({}), true)
+        .unwrap();
 }
 
 #[given("an agent granted action rights with max_actions_per 2 per 24 hours")]
@@ -1797,7 +1798,8 @@ fn minted_unlogged(w: &mut ProtocolWorld) {
         serde_json::json!({}),
         NA30,
     );
-    w.delegate_act("act.x.gmail.reply", serde_json::json!({}), false).unwrap();
+    w.delegate_act("act.x.gmail.reply", serde_json::json!({}), false)
+        .unwrap();
 }
 
 #[given("a head mandate with heartbeat every 30 days grace 72 hours")]
@@ -2007,8 +2009,10 @@ fn two_kind_actions_day1(w: &mut ProtocolWorld, action: String) {
 
 #[when("the agent delegates twice, each grant logged")]
 fn delegates_twice(w: &mut ProtocolWorld) {
-    w.delegate_act("act.x.gmail.reply", serde_json::json!({}), true).unwrap();
-    w.delegate_act("act.x.gmail.label", serde_json::json!({}), true).unwrap();
+    w.delegate_act("act.x.gmail.reply", serde_json::json!({}), true)
+        .unwrap();
+    w.delegate_act("act.x.gmail.label", serde_json::json!({}), true)
+        .unwrap();
 }
 
 #[when("the helper presents an action under that chain")]
@@ -2538,7 +2542,6 @@ fn action_refused(w: &mut ProtocolWorld, action: String) {
     assert!(r.is_err(), "an out-of-perimeter action must be refused");
 }
 
-
 // ------------------------------------------ step F+: advanced constraints ---
 
 const PROVIDER: u8 = 0xC3;
@@ -2609,7 +2612,11 @@ fn grant_weekly_until(w: &mut ProtocolWorld) {
     w.init_bundle();
     let mut window = win_periodic(&day(1, "14:00:00"), "4h", "7d");
     window["until"] = serde_json::json!(day(20, "00:00:00"));
-    w.grant_act(vec![], serde_json::json!({"active_windows": [window]}), NA30);
+    w.grant_act(
+        vec![],
+        serde_json::json!({"active_windows": [window]}),
+        NA30,
+    );
 }
 
 #[given("an agent granted gmail actions every 7 days from day 1 14:00 for 4 hours, 2 occurrences")]
@@ -2617,7 +2624,11 @@ fn grant_weekly_count(w: &mut ProtocolWorld) {
     w.init_bundle();
     let mut window = win_periodic(&day(1, "14:00:00"), "4h", "7d");
     window["count"] = serde_json::json!(2);
-    w.grant_act(vec![], serde_json::json!({"active_windows": [window]}), NA30);
+    w.grant_act(
+        vec![],
+        serde_json::json!({"active_windows": [window]}),
+        NA30,
+    );
 }
 
 #[given("an agent granted gmail actions active on day 3 morning and day 5 evening")]
@@ -2936,8 +2947,17 @@ fn two_in_window(w: &mut ProtocolWorld) {
     w.try_action(false, "label", &day(3, "15:00:00")).unwrap();
 }
 
-#[when(expr = "the agent acts citing profile {string} with model {string} and {int} tokens at day {int} {word}")]
-fn act_citing_full(w: &mut ProtocolWorld, profile: String, model: String, tokens: u64, d: u32, hm: String) {
+#[when(
+    expr = "the agent acts citing profile {string} with model {string} and {int} tokens at day {int} {word}"
+)]
+fn act_citing_full(
+    w: &mut ProtocolWorld,
+    profile: String,
+    model: String,
+    tokens: u64,
+    d: u32,
+    hm: String,
+) {
     w.gamma_result = Some(w.try_action_full(
         false,
         "reply",
@@ -2987,7 +3007,11 @@ fn act_citing_model(w: &mut ProtocolWorld, profile: String, model: String) {
 
 #[when(expr = "the agent acts citing profile {string} at day {int} {word}")]
 fn act_citing_at(w: &mut ProtocolWorld, profile: String, d: u32, hm: String) {
-    let model = if profile == "haiku" { "claude-haiku" } else { "gemma" };
+    let model = if profile == "haiku" {
+        "claude-haiku"
+    } else {
+        "gemma"
+    };
     w.gamma_result = Some(w.try_action_full(
         false,
         "reply",
@@ -3076,8 +3100,16 @@ fn replay_receipt(w: &mut ProtocolWorld) {
     ));
 }
 
-#[when(expr = "the container logs an inference on {string} of {int} tokens in and {int} out citing {string}")]
-fn container_logs_inference(w: &mut ProtocolWorld, model: String, tin: u64, tout: u64, profile: String) {
+#[when(
+    expr = "the container logs an inference on {string} of {int} tokens in and {int} out citing {string}"
+)]
+fn container_logs_inference(
+    w: &mut ProtocolWorld,
+    model: String,
+    tin: u64,
+    tout: u64,
+    profile: String,
+) {
     w.gamma_result = Some(w.try_inference(&model, tin, tout, Some(&profile), &day(1, "16:00:00")));
 }
 
@@ -3214,7 +3246,11 @@ fn container_asked(w: &mut ProtocolWorld, addr: String) {
         &serde_json::json!({"recipient": addr}),
     );
     w.gamma_baseline = w.gbundle().gamma_entries().unwrap().len();
-    w.gamma_result = Some(verdict.map(|()| "allowed".into()).map_err(|e| e.to_string()));
+    w.gamma_result = Some(
+        verdict
+            .map(|()| "allowed".into())
+            .map_err(|e| e.to_string()),
+    );
 }
 
 #[when("the owner audits the log against the mandate predicates")]
@@ -3442,8 +3478,14 @@ fn inference_refused(w: &mut ProtocolWorld) {
 
 #[then(expr = "an inference of {int} total tokens citing {string} verifies")]
 fn inference_fits(w: &mut ProtocolWorld, total: u64, profile: String) {
-    w.try_inference("gemma", total - 100, 100, Some(&profile), &day(2, "11:00:00"))
-        .unwrap();
+    w.try_inference(
+        "gemma",
+        total - 100,
+        100,
+        Some(&profile),
+        &day(2, "11:00:00"),
+    )
+    .unwrap();
 }
 
 #[then("every section entry comes back")]
