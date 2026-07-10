@@ -3,7 +3,8 @@
 **But.** Reprendre l'implémentation de référence d'aithos-core sans rien reperdre.
 Résume où on en est, comment on travaille, et la prochaine étape exacte.
 
-Dernier commit : `cd6fc36` (step E complete). Repo : `code/aithos-core/`.
+**Branche : `feat/f-gamma`** (étape F complète dessus, PAS encore mergée sur
+master — décision Mathieu). Repo : `code/aithos-core/`.
 
 ---
 
@@ -16,111 +17,118 @@ scopée, log d'actions inviolable. Primitives : BLAKE3 (dérivation), XChaCha20-
 vit dans `spec/00..10` — **source de vérité**.
 
 Profil cible : **absentee owner** — l'owner émet un mandat large puis ne repasse
-presque jamais ; toute la maintenance est récursive (les gestionnaires délégués), pas
-owner-dépendante.
+presque jamais ; toute la maintenance est récursive.
 
 ## 2. Méthode de travail (à respecter à la lettre)
 
 Rituel par étape du plan (`docs/EXECUTION-PLAN.md`) :
 
-1. **Feature d'abord (BDD).** On co-écrit le `.feature` Gherkin (anglais) AVANT le
-   code, scénarios taggés `@wip` (le runner les saute → suite verte). C'est le contrat.
+1. **Feature d'abord (BDD).** `.feature` Gherkin (anglais) co-écrit AVANT le code,
+   scénarios `@wip` (le runner les saute → suite verte). C'est le contrat.
 2. **Vecteurs d'abord (TDD).** Valeurs attendues générées **indépendamment** en Python
-   (`blake3` + `PyNaCl` + `base58`) quand c'est de la crypto — jamais d'auto-certification.
-3. **Impl** jusqu'à vecteurs + scénarios verts ; on dé-tagge `@wip` au fur et à mesure.
-4. **Checkpoint manuel CLI** (non bloquant) déroulé pour "sentir" le produit.
-5. **Commit** en anglais, clair. Validation utilisateur → étape suivante.
+   — le générateur est committé (`vectors/gen-f.py`, auto-validé contre B2/E1).
+3. **Impl** jusqu'à vecteurs + scénarios verts ; dé-tagger `@wip` au fur et à mesure.
+4. **Checkpoint manuel CLI** (non bloquant).
+5. **Commit** anglais clair. Validation utilisateur → étape suivante.
 
-Règles gravées :
-- **Pureté du core** : `aithos-core` ne fait aucune I/O, aucune horloge, aucun RNG.
-  Temps `T`, aléa et stockage sont **injectés**. C'est ce qui rend tout déterministe,
-  rejouable contre `vectors/`, et compilable en WASM.
-- **DDD-lite** : chaque type de code porte le nom exact de son concept spec (Mandate,
-  PerimeterEntry, NodePath, Header, Edition…), frontières = chapitres.
-- **Fail-closed** : chaque rejet = un variant nommé de `error.rs`.
-- **Décisions wire figées (étape 0)** : multibase base58btc (`z6Mk` ed25519 /
-  `z6LS` x25519), JCS RFC 8785 pour tout ce qui est signé/haché, AAD `§00.3`.
+Règles gravées : pureté du core (zéro I/O/horloge/RNG — temps `T`, aléa, storage
+injectés) ; DDD-lite (types = noms spec) ; fail-closed (un variant d'erreur par
+rejet) ; wire figé étape 0 (multibase base58btc, JCS RFC 8785, AAD §00.3).
 
-## 3. Décisions de design importantes prises en cours de route
+## 3. Décisions de design (rappels + celles du recul gamma 2026-07-10)
 
-- **Une seule clé de contenu owner** (`content_sign`), PAS trois sphères. L'audience
-  vit dans le **payload signé** (`{zone, path, sid, body_hash}`), jamais dans la clé.
-  public = signé au clair ; circle = signé sous scellé ; **self = jamais signé**
-  (déniable par défaut ; divulgation sélective = mécanisme officiel). Spec §02.11.
-- **Décision B** : le mandat de tête porte un dead-man heartbeat par défaut (30 j),
-  signé par une clé de liveness, jamais dans le périmètre de l'agent de tête.
-- **Clé de succession** : froide, NON dérivée de S, seule autorité pour déclarer une
-  nouvelle clé maîtresse (transition d'époque). Inventaire owner : root, content, kex,
-  succession.
-- **Arbre profond** : zones = dossiers racines, récursion sans limite ; sids stables
-  = labels de dérivation (renommer ne re-chiffre jamais ; déplacer = rotation).
-- **Une clé, N périmètres** : un agent = 1 keypair Ed25519. Un grant scelle une COPIE
-  de la DK vers sa clé (une ligne de header) ; N périmètres = N lignes, une seule clé.
-- **Merkle** (spec §02.10) : conçu, PAS encore implémenté (étape H). Le manifest
-  épingle les fichiers à plat en attendant — point d'accroche prévu.
+- **Une seule clé de contenu owner** (`content_sign`) ; audience dans le payload
+  signé, jamais dans la clé. self = jamais signé (§02.11).
+- **Décision B** : mandat de tête = dead-man heartbeat par défaut (30 j).
+- **Clé de succession** froide, non dérivée de S.
+- **Une clé, N périmètres** ; sids stables = labels de dérivation.
+- **Gamma (recul validé)** : enveloppe **2 couches** — header de comptage CLAIR
+  (id/prev/at/kind/via/sig, nécessaire au comptage offline par tout verifier
+  jusqu'à H) + **corps scellé** `{target,payload}` pour les `section.*` sur zones
+  à clé (public reste clair). Hint de reconnaissance dérivable par les seuls
+  détenteurs de la clé du nœud (`gamma-hint`). **La frontière de lecture est la
+  LISIBILITÉ, pas l'auteur** : un grant de sous-arbre ouvre les corps de son
+  périmètre, owner = tout (S), étranger = squelette. Log **segmenté par mois**
+  (`gamma/<YYYY-MM>.jsonl`), append aveugle (gamma_head suffit). `read.gamma`
+  = moitié certificat (policy sur kind/action/date, physique sur dir/id/tag).
+  À H : racines committées → preuves O(log n), option de sceller kind/via (champ
+  `v` prêt). Crypto-erasure par destruction de clé.
 
-## 4. État du code (6 étapes closes sur 11)
+## 4. État du code (7 étapes closes sur 12)
 
 Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
-`aithos-cli` (binaire), `aithos-wasm` (bindings).
+`aithos-cli`, `aithos-wasm`.
 
 | Étape | Statut | Livré |
 |---|---|---|
-| 0 Conventions | ✅ | wire.rs (multibase), jcs.rs, cucumber harness, vectors/README |
-| A Identité | ✅ | keys.rs (genesis, succession, ed2x), did.rs (DID doc + epoch transition) — A1, A2 |
-| B Dérivation | ✅ | derive.rs::node_key (1 dérivation/segment), path.rs (NodePath, covers) — B2 |
-| C Scellés | ✅ | seal.rs (ECIES + wrap + blob AEAD), header.rs (I3, grant, rotate, up-link) — C1, C2 |
-| D Bundle | ✅ | bundle.rs (3 zones, éditions signées, self opaque), manifest.rs, entropy.rs, FsStore |
-| E Mandats | ✅ | mandate.rs (grammaire, covers, verifier à T), grants.rs (grant+delegate) — E1 |
-| F Gamma | ⏳ **prochaine** | — |
-| G Révocation | ⬜ | (après F : révocations = entrées gamma) |
-| H Merkle | ⬜ | racines d'état, preuves |
-| I Concurrence | ⬜ | merge disjoint, fork |
-| K Intégration | ⬜ | scénario K complet, Docker, npm |
+| 0 Conventions | ✅ | wire.rs, jcs.rs, cucumber harness |
+| A Identité | ✅ | keys.rs, did.rs — A1, A2 |
+| B Dérivation | ✅ | derive.rs, path.rs — B2 |
+| C Scellés | ✅ | seal.rs, header.rs — C1, C2 |
+| D Bundle | ✅ | bundle.rs, manifest.rs, entropy.rs, FsStore |
+| E Mandats | ✅ | mandate.rs, grants.rs — E1 |
+| **F Gamma** | ✅ | gamma.rs (chaîne, enveloppe, compteur, heartbeat, ancre), log.rs (segments, appends autorisés, query owner/agent), PerimeterEntry::{Act,Gamma}, covers_act/covers_gamma_query, manifest.gamma_head, SectionSpec/ActionSpec (dette params réglée) — F1, F2, F3 |
+| F+ Contraintes avancées | ⏳ **prochaine** | spec d'abord (§04.4+§07.4) : active_windows, budgets[], container tier X — voir plan (note coordination levée : F est fini) |
+| G Révocation | ⬜ | révocations = entrées gamma |
+| H Merkle | ⬜ | racines zones + **racines gamma** (segments + trie mandate_id→count) |
+| I Concurrence | ⬜ | merge disjoint, fork, entrées merge |
+| K Intégration | ⬜ | scénario K, Docker, npm |
 
-**Tests actuels : 42 scénarios / 147 steps cucumber + vecteurs A1/A2/B2/C1/E1, tous
-verts ; clippy clean.**
+**Tests : 68 scénarios / 235 steps cucumber + vecteurs A1/A2/B2/C1/E1/F1/F2/F3,
+tous verts ; `clippy --all-targets -- -D warnings` clean ; `cargo fmt` passé.**
+
+CLI (nouveaux verbes F) : `grant-act` (mandat d'action, --max-actions,
+--heartbeat-every/grace), `action` (--cert répétable, chaîne leaf-last),
+`heartbeat`, `log-show`, `log-verify`, `log-query` (--kind/--action/--since/
+--until/--folder/--tag/--mandate). `grant` logge désormais son entrée gamma.
+Checkpoint manuel déroulé : 3 actions max_actions=3 → 4ᵉ `GammaBudgetExhausted` ;
+heartbeat 10s/5s → silence 16s → `GammaHeartbeatStale` → beacon → reprise. ✔
 
 ## 5. Comment builder / tester
 
-Rust installé hors du repo (voir env). Depuis `code/aithos-core/` :
-
 ```
-cargo test  --workspace --manifest-path rust/Cargo.toml   # 42 scénarios + vecteurs
-cargo clippy --workspace --manifest-path rust/Cargo.toml -- -D warnings
+cargo test  --workspace --manifest-path rust/Cargo.toml
+cargo clippy --workspace --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+python3 vectors/gen-f.py   # régénère F1-F3 (auto-check B2/E1 d'abord)
 ```
 
-CLI (verbes existants) : `init --dir`, `folder-add`, `section-add`, `zone-show`,
-`section-read` (public sans clé), `edition-publish`, `edition-verify`, `grant`,
-`mandate-verify`, `section-read-agent`, + debug `node-key`, `header-seal/open`.
+**Env sandbox (2026-07-10, après recyclage VM)** : les caches `/tmp` d'une session
+précédente peuvent appartenir à `nobody` (illisibles). Setup qui marche :
+- toolchain : `/tmp/rustup/toolchains/stable-aarch64-unknown-linux-gnu/bin` appelée
+  EN DIRECT (rustup shim cassé sans settings) — exporter ce bin dans PATH.
+- `CARGO_HOME=/tmp/cargo2` (copie de /tmp/cargo, sans bin/), `CARGO_INCREMENTAL=0`.
+- `CARGO_TARGET_DIR=<repo>/rust/target-linux` (sur le volume Mac — la VM n'a pas
+  la place ; `rust/target/` = artefacts macOS de Mathieu, NE PAS toucher).
+- Suppressions de fichiers bloquées par défaut sur le montage Cowork → si
+  "Operation not permitted" sur rm/unlink (cargo, git), demander le déblocage
+  (outil allow_file_delete). `.git/*.lock` à rm avant commit.
+- Process background tués entre appels shell → builds par tranches (`timeout 40`),
+  les artefacts s'accumulent.
+- `rust/target` a été PURGÉ du tracking git (7938 fichiers macOS committés par
+  erreur depuis B ; l'historique garde le poids — réécriture = décision à part).
+  `.gitignore` couvre `rust/target*/`.
 
-Note environnement sandbox : `rustup`/`cargo` sous `/tmp/cargo`, `/tmp/rustup` ;
-`CARGO_TARGET_DIR=/tmp/target CARGO_INCREMENTAL=0` (disque limité, purger
-`/tmp/target/debug/incremental` si "No space left"). Le repo git a parfois des
-`.git/*.lock` à supprimer avant commit (permissions sandbox).
+## 6. Prochaine étape : F+ (spec d'abord), puis G
 
-## 6. Prochaine étape : F — Gamma (spec §07)
+**F+** (voir `docs/EXECUTION-PLAN.md` § F+, discuté/écrit par Mathieu 2026-07-10) :
+enrichissement purement additif du vocabulaire `constraints` — (1) `active_windows`
+arithmétiques absolues (remplace active_hours, zéro TZ/DST), (2) `budgets:[profile]`
+en OU logique (modèle/tokens/fenêtres par profil, comptage par `budget_ref`),
+(3) enforcement modèle via container (tier X) + hook `attestation` (pont tier V).
+Rituel : **graver la spec §04.4+§07.4 d'abord**, puis feature/vecteur/impl.
+Le moteur de comptage de F (somme sur `authorized_via`, fenêtres glissantes,
+filtre payload) se réutilise tel quel.
 
-Le journal chaîné, substrat d'enforcement des contraintes. À implémenter :
-chaînage SHA-256 des entrées, kinds (`section.add/modify/delete`, `action`, `grant`,
-`revoke`, `rotate`, `heartbeat`, `merge`), signatures owner (`content_sign`) vs
-délégué (keypair + `authorized_via`), **comptage sous-arbre** `max_actions` via
-`authorized_via`, `max_children` via entrées `grant`, heartbeat (§07.5), **ancre de
-fraîcheur** anti-antidatage (§07.7). Pas encore : merge entries concurrentes (→ I).
-
-Rituel : co-écrire `features/f-gamma.feature` d'abord (chaîne inviolable, budget
-`max_actions` épuisé à la N+1, heartbeat suspend au-delà de every+grace, entrée
-antidatée hors ancre rejetée), vecteur F Python, puis impl `gamma.rs` dans le core +
-verbes CLI `action`/`heartbeat`/`log show|verify`.
-
-**Dépendance importante** : G (révocation) s'appuie sur F — c'est pour ça que le plan
-a mis gamma AVANT révocation (les révocations sont des entrées gamma, §06.5).
+**G** ensuite : révocations = entrées gamma (kind `revoke` déjà dans l'enum),
+rotation + re-scellement + up-link (§03.4), cascade, watchdog, move-as-rotation.
 
 ## 7. Points ouverts / dette assumée (non bloquants)
 
-- Manifest à pins plats jusqu'à H (Merkle).
-- `section_add`/`grant`/`delegate` ont beaucoup d'arguments (`#[allow(too_many_arguments)]`) —
-  un struct de params est prévu à F.
-- Édition : pas encore de merge/fork (étape I).
-- Artefact de récupération combiné (S ‖ succession en une mnémonique) : couche de
-  présentation pure, ajoutable bien plus tard, zéro impact protocole.
+- Lecture gamma côté agent sur zone `self` : la walk des descripteurs avec clés
+  d'agent n'est pas écrite (owner-only pour l'instant) — les scénarios couvrent circle.
+- Wildcard `act.x.<c>.*` : le refus des actions classe `binding` attend les
+  manifests connecteurs (§08.1) — TODO noté dans covers_act.
+- Index/caches de query optimisés : post-F (le scan segmenté suffit) ; preuves de
+  complétude pour mirrors : H.
+- Merge entries / éditions concurrentes : I. Manifest à pins plats jusqu'à H.
+- Artefact de récupération combiné (S ‖ succession) : couche présentation, plus tard.
