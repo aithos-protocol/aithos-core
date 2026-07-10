@@ -64,7 +64,7 @@ sid-path   := <sid> *( "/" <sid> )              folder path from the zone root
 action-pat := <action> | "*"
 gamma-selector := gsel *( "&" gsel )
 gsel       := dir=<sid-path> | id=<sid> | tag=<tag>
-            | kind=<kind> | since=<ts> | until=<ts>
+            | kind=<kind> | action=<action> | since=<ts> | until=<ts>
 ```
 
 At most one `dir`, one `tag`, one `id` per entry. Semantics: `dir=` alone = the whole
@@ -88,8 +88,9 @@ and tags are sealed (§02.8): `dir=` and `tag=` perimeters there are **read-only
 `read.gamma` grants log reading (§07.3, §07.8): appending never needs it (any
 mandate's actions imply their own entries), and by default nobody but the owner
 reads. `covers()` extends per-dimension as above: `dir`/`id`/`tag` scope entries by
-their (sealed) targets, `kind=` covers only the equal kind, `since`/`until` bound
-the entries' `at`. Enforcement is split honestly: `dir`/`id`/`tag` are **physics**
+their (sealed) targets, `kind=` covers only the equal kind, `action=` only the
+equal clear `payload.action` (audit "replies only"), `since`/`until` bound the
+entries' `at`. Enforcement is split honestly: `dir`/`id`/`tag` are **physics**
 (the sealed bodies only open under node keys the grantee holds, §07.3);
 `kind`/`since`/`until` are certificate policy — binding for honest verifiers,
 key-holders can physically scan what their keys open. Attenuation (§05.3) applies
