@@ -103,8 +103,8 @@ Every connector action taken under a mandate MUST append an `action` entry:
 ```jsonc
 { "kind": "action", "at": "…", "target": "x.gmail",
   "authorized_by": "mandate_01JZ…", "authorized_via": [ … ],
-  "payload": { "action": "reply", "args_hash": "sha256:…",
-               "purpose_ref": "…", "co_sign": { … }? },   // co_sign iff binding
+  "payload": { "action": "reply", "args_hash": "sha256:…", "purpose_ref": "…",
+               "checks": [ … ]? },   // obligation receipts §04.12 (owner co_sign, guardrail, approval)
   "signature": { "key": "<grantee pubkey>", … } }
 ```
 
@@ -128,7 +128,8 @@ Consequences, all verifier-checkable offline:
   `tokens` (actions) plus `tokens_in + tokens_out` (inferences) against
   `token_budget` — subtree counts, per budgets-bearing mandate in the chain.
   Attested `tokens` (§04.11.1) override declarations in the tally.
-- `binding`/`counter_sign` ⇒ entry MUST carry a valid `co_sign` (§04.6) or it is
+- `binding`/`counter_sign` and any `obligations` (§04.12) ⇒ entry MUST carry a
+  valid receipt in `checks[]` (owner co_sign, guardrail pass, approval) or it is
   invalid (and any effect it claims is unattributable).
 - `purpose` ⇒ entry cites `purpose_ref`; audit trails intent.
 
@@ -232,7 +233,7 @@ closed). Naming: `<domain>.<verb>`, lowercase.
 |---|---|---|
 | `section.add/modify/delete/redact` | `ethos.write` | sealed body (keyed zones) |
 | `ethos.read` | `ethos.read` | sealed body naming the section read |
-| `action` | `act` | clear: action, args_hash, budget_ref?, tokens?, receipt? (+ sealed args body, §7.9.3) |
+| `action` | `act` | clear: action, args_hash, budget_ref?, tokens?, receipt?, checks?[] (§04.12) (+ sealed args body, §7.9.3) |
 | `inference` | `act` | clear counters (§7.9.1) |
 | `grant` / `revoke` / `rotate` / `merge` | structural | clear ids/versions |
 | `heartbeat` | liveness | clear `{seq}` |

@@ -143,7 +143,25 @@ recyclage, lire AVANT de builder)** :
   erreur depuis B ; l'historique garde le poids — réécriture = décision à part).
   `.gitignore` couvre `rust/target*/` et `rust/cargo-linux/`.
 
-## 6. Prochaine étape : H — Merkle (G est close)
+## 6. Prochaine étape : G+ — Obligations (spec gravée), puis H — Merkle
+
+**G+ Obligations (nouveau, 2026-07-10).** Branche dédiée **`feat/obligations`**
+(créée depuis le HEAD complet `feat/gateway` : core complet + move-as-rotation ;
+le crate `aithos-gateway` ride mais n'est **jamais** touché — G+ ne concerne que
+`spec/`, `aithos-core`, `aithos-bundle`, `aithos-cli`, `features/`). **Spec
+§4.12 gravée** (primitive `obligations` : reçu signé lié à `args_hash`, vérifié
+à l'append tier V à côté de `check_budgets`, enregistré dans `checks[]`) +
+touchpoints §4.4/§4.5/§4.6/§07. `counter_sign` (jamais codé) et le pont
+d'attestation deviennent des instances — équivalence prouvée par sur-ensemble du
+payload `co_sign`. Modèle 1 seul pour l'approbation humaine (clé de l'approbateur
+sur son appareil ; Aithos ne détient jamais de clé forgeant une approbation).
+**Reste :** feature `g-plus-obligations.feature` → vecteur Python indépendant →
+code (`Obligation`/`parse_obligations`/`verify_obligation_receipt`/
+`check_obligations` dans `constraints.rs`, branché `gamma.rs` ~L567, `checks[]`
+dans `log.rs`, CLI `approve`/`grant-act --obligation`). Voir plan étape G+.
+`verify_op` reste pur, cœur crypto intact, zéro régression de vecteur (constraints
+ouvert §04.4). **Ordre rituel : la spec attend la validation de Mathieu avant le
+code.**
 
 **G est ENTIÈREMENT close** (move-as-rotation soldé 2026-07-10, voir tableau §4
 et décisions §3 — coverage nodale + move). Les 3 scénarios move sont verts, le

@@ -150,8 +150,9 @@ counter-signature.
 | `active_windows: [window]` | union of absolute arithmetic windows (§4.10); acting outside every window is invalid — replaces the former `active_hours` (calendar/timezone live in the issuing tool, never in the verifier) | V |
 | `budgets: [profile]` | OR-composed budget profiles (§4.11): model list, token budget, windows, action cap, attestation hook; actions and inferences MUST cite a `budget_ref` | V+X |
 | `log_reads: true` | the grantee MUST journalize its reads as `ethos.read` entries (§07.9); off by default — reading is not logged under I5. Physics cannot force a reader's pen: an honest verifier of a *read presentation* requires the entry; a silent read stays possible and is exactly what this flag makes contractually visible | V+X |
-| `counter_sign: [actions]` | listed actions require a fresh owner co-signature (§4.6) | C |
-| `binding: [actions]` | actions that constitute a commitment; implies counter_sign | C |
+| `obligations: [obligation]` | listed actions may consume only if carrying a valid signed receipt from a pinned attestor whose verdict satisfies the predicate (§4.12): guardrail pass, human approval, dual control | V |
+| `counter_sign: [actions]` | shorthand for the **owner-approval** obligation: listed actions require a fresh owner co-signature (§4.6, §4.12) | V |
+| `binding: [actions]` | actions that constitute a commitment; implies counter_sign | V |
 | `domains: [patterns]` | connector actions may touch only these domains/recipients | X |
 | `action_params: {action: predicates}` | per-action argument predicates (allow-listed recipients, subject patterns, no-attachments, numeric caps) — generalizes `domains`. Enforced on the real args by the container (X); **auditable at V** through the sealed args body of the entry (§07.9): the owner reopens the args and re-evaluates the predicates | X (+V audit) |
 | `disclose_agency: true` | the agent MUST identify itself as an agent in every outbound communication of a connector action (transparency; EU-AI-Act-aligned) | X |
@@ -184,25 +185,35 @@ To verify grantee G may do `OP` on subject `DID` at time `T` from a presented ch
 4. Revocation: none of the chain's ids is revoked at T (§06.5); freshness honored.
 5. Chain attenuation (§05.3) holds link by link.
 6. OP ∈ effective perimeter of the leaf (verb lattice + selector match).
-7. Constraints tier V all pass (counts via gamma §07, session_bind, heartbeat, …).
+7. Constraints tier V all pass (counts via gamma §07, session_bind, heartbeat,
+   obligations §4.12 — incl. counter_sign co-signatures — …).
 8. Proof of possession: the presented request/entry is signed by leaf.grantee.pubkey.
-9. Tier X/C constraints are handed to the executor; a binding/counter_sign action
-   without a valid owner co-signature (§4.6) is rejected here.
+9. Tier X constraints are handed to the executor (real-arg predicates, model
+   truth). Obligations — including binding/counter_sign co-signatures — are
+   **tier V**, already enforced at step 7 from the signed receipts in the log.
 ```
 
 Fail any ⇒ reject. Every step reads files (DID doc, certs, gamma — revocation state
 included, §06.5); none needs a live server.
 
-## 4.6 Counter-signature (binding actions)
+## 4.6 Counter-signature (binding actions) — the owner-approval obligation
 
-An action listed in `counter_sign`/`binding` is valid only if accompanied by a
-`co_sign`: the owner content key signing `{mandate_id, action, args_hash, at}`. The
-agent prepares the action, obtains the owner's live co-signature (out of band — the
-human approves), then emits it with the gamma entry. This is how "the AI may act, but
-a commitment needs me in the loop" is expressed. Counter-signatures are one-shot
-(nonce-bound) and logged. They are also fresh-bound: a `co_sign` is valid only if
-`|entry.at − co_sign.at| ≤ Δ_cosign` (normative default **5 minutes**) — a stored
-"fresh" co-signature cannot be replayed later.
+`counter_sign`/`binding` are the **owner instance of an obligation** (§4.12):
+listed actions may consume only if accompanied by a `co_sign` — a receipt whose
+attestor is the owner content key and whose verdict is *approve*. The agent
+prepares the action, obtains the owner's live co-signature (out of band — the
+human approves), then emits it with the gamma entry. This is how "the AI may
+act, but a commitment needs me in the loop" is expressed.
+
+The `co_sign` receipt signs `{mandate_id, action, args_hash, at}` — the general
+obligation payload (§4.12) specialized to owner-approve (its `obligation`/`verdict`
+implicit), so every anti-replay property carries over identically: one-shot
+(nonce-bound), logged, and fresh-bound — valid only if
+`|entry.at − co_sign.at| ≤ Δ_cosign` (normative default **5 minutes**), so a
+stored "fresh" co-signature cannot be replayed later. `binding` additionally
+marks the action as a commitment (implies `counter_sign`). Enforcement is
+**tier V** (§4.5 step 7): a signed file artifact verified offline like any
+obligation, not handed to a runtime executor.
 
 ## 4.7 Session binding
 
@@ -326,4 +337,75 @@ A profile with `require_attestation: true` rejects any citing entry without
 a receipt that verifies under the profile's `attestation_key`. The
 `args_hash` binding makes receipts single-use: a receipt never transfers to
 another action. Where receipts exist, tallies use the attested `tokens`,
-not the declaration.
+not the declaration. (This receipt *meters*; the *gating* receipts that share
+its crypto skeleton — guardrail, approval, counter_sign — are obligations, §4.12.)
+
+## 4.12 Obligations (the general gate)
+
+> Decided 2026-07-10. `counter_sign` (§4.6) and the token receipt (§4.11.1) were
+> two instances of one shape: a **signed statement, bound to a specific action,
+> checked at gamma-append, recorded in the log**. §4.12 names that primitive so
+> guardrails, human approval and dual control all reuse it — one mechanism, N
+> enforcement types, all provable from files alone.
+
+An **obligation** attaches a discharge requirement to a permit: an in-scope action
+may *consume* (append its `action` entry) only if it carries a valid **receipt**
+from a pinned attestor whose verdict satisfies the predicate.
+
+```jsonc
+"obligations": [
+  { "id": "publish-approval",
+    "check": "human.approve",             // opaque check id; the LOGIC lives in the attestor
+    "attestor": ["z6MkApprover…"],        // pinned key(s); a valid receipt from ANY satisfies
+    "applies_to": "act.x.social.publish", // action pattern (perimeter grammar, §4.2)
+    "verdict": "approve",                 // required value
+    "max_age": "5m" } ]                   // optional receipt freshness vs entry.at
+```
+
+The **receipt** rides in the action entry (`checks: [...]`, §07.4):
+
+```jsonc
+"checks": [
+  { "obligation": "publish-approval",
+    "args_hash": "sha256:…",              // MUST equal the entry's args_hash
+    "verdict": "approve",
+    "presented_digest": "sha256:…",       // optional: hash of what was shown (WYSIWYS)
+    "at": "2026-07-10T14:02:11Z",
+    "sig": "<ed25519 over JCS of {obligation, mandate_id, action, args_hash, verdict, at}>" } ]
+```
+
+**Verifier rule (tier V, offline).** For every `action` entry, for every obligation
+in the chain whose `applies_to` covers the entry's action, the entry MUST carry a
+`checks[]` receipt with matching `obligation`, `args_hash` equal to the entry's,
+`verdict` satisfying the predicate, `sig` verifying under a pinned `attestor`, and
+— if `max_age` is set — `|entry.at − receipt.at| ≤ max_age`. Any failure invalidates
+the entry. The signed payload `{obligation, mandate_id, action, args_hash, verdict,
+at}` is a **superset** of the §4.6 `co_sign` payload: binding `args_hash` makes the
+receipt single-use, binding `mandate_id`+`action` blocks cross-mandate and
+cross-action replay.
+
+**The attestor holds the logic; the protocol holds a signature.** `check` is opaque
+to the verifier — PII guardrail, policy engine, or a human tapping *approve* is
+off-protocol. The protocol verifies *that a pinned key signed a bound verdict*,
+never *why*. The core stays a signature checker, not a workflow engine.
+
+**Instances (one primitive, three uses).**
+- **Guardrail** — `attestor` = a gateway guardrail adapter's key, `verdict:
+  "pass"`. The adapter calls the guardrail (Lakera/NeMo/…) and signs the verdict.
+- **Human approval (Model 1)** — `attestor` = an approver's device-held key,
+  `verdict: "approve"`; `presented_digest` binds WYSIWYS, `max_age` keeps it fresh.
+  `counter_sign`/`binding` (§4.6) are this with attestor = owner.
+- **Dual control** — `attestor` = a second agent's grantee key (four-eyes).
+
+**Discharge order.** Authorize first (`covers_act`, pure, §4.5); then discharge —
+run the check / obtain the signature (I/O, gateway-side, never the agent); then
+append+consume with the receipt. A blocked or missing receipt consumes nothing and
+is logged as a refusal. Waiting on a human is a **pre-condition, not a deferred
+duty**: the log only ever holds the committed action carrying its receipt, or
+nothing (§07 has no "pending" state), so verification stays deterministic offline.
+
+**Attenuation.** A sub-mandate may only ADD obligations, never drop a parent's
+(§05.3): delegation can tighten a gate, never strip it.
+
+*M-of-N (quorum of approvers) is reserved: the `attestor` set already carries the
+keys; a future `quorum: k` on the obligation turns OR-across-set into k-of-n.*

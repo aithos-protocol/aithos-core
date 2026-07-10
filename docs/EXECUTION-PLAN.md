@@ -226,6 +226,31 @@ watchdog (verbe revoke sans clé), move-as-rotation (§02.9).
 le survivant ne remarque rien, le détenteur de zone lit encore via l'up-link.
 **Done :** G1–G4 verts (dont : rotation par non-autorisé → rejet) ; features étendues.
 
+### G+ — Obligations (spec 04.12) — enrichissement additif du plan contrainte
+Comme F+ après F : le champ `constraints` est ouvert (§04.4, unknown keys
+non-breaking) → **zéro régression de vecteur**, `verify_op` reste pur, cœur
+crypto intact. Une primitive `obligations` : un **reçu signé lié à l'action par
+`args_hash`**, vérifié à l'append (tier V, à côté de `check_budgets` dans
+`gamma.rs`), enregistré dans `checks[]`. Payload signé
+`{obligation, mandate_id, action, args_hash, verdict, at}` = sur-ensemble du
+`co_sign` de §4.6 → toute propriété anti-rejeu de counter_sign préservée à
+l'identique. `counter_sign`/`binding` (jamais codés) et le pont d'attestation
+deviennent des **instances**, pas des mécanismes séparés. Trois usages :
+guardrail (attestor = adaptateur machine, verdict `pass`), **approbation humaine
+Modèle 1** (attestor = clé de l'approbateur tenue sur son appareil, verdict
+`approve`, `presented_digest` WYSIWYS, `max_age` fraîcheur), double contrôle
+(attestor = 2ᵉ agent). Le protocole vérifie une signature liée, jamais la
+logique métier (elle vit dans l'attestor, hors protocole). Modèle 2 (service qui
+atteste pour l'humain) = fallback futur, pas le MVP.
+**Code :** `constraints.rs` (`Obligation`, `parse_obligations`,
+`verify_obligation_receipt` partageant le squelette Ed25519+`args_hash` de
+`verify_receipt`, `check_obligations`), branché en `gamma.rs` (~L567),
+`checks[]` porté par `log.rs`.
+**CLI :** `grant-act --obligation`, `approve` (l'approbateur signe → reçu).
+**Done :** feature obligations verte (guardrail pass/block, approbation
+approve/reject/missing/stale, presented_digest mismatch, counter_sign) ; vecteur
+reçu d'obligation croisé Python indépendant ; token-receipt F+ toujours vert.
+
 ### H — Merkle (spec 02.10 + racines gamma)
 `H_leaf/H_node` domain-separated, hash de nœud (ligne ‖ header ‖ wraps ‖
 enfants), racines par zone dans le manifest, preuves d'inclusion, sous-arbre
@@ -264,8 +289,10 @@ paquet npm `@aithos/core` (wasm-pack), conformance levels §09.4 documentés.
 | C Scellés | **faite** — C1/C2 verts (ECIES cross-checké Python au byte près), header I3 fail-closed, grant O(1) byte-identique, rotation + up-link wrap, 8 scénarios BDD, CLI header-seal/open. Spec §3.8 (construction normative), éphémère par ligne |
 | D Bundle | **faite** — 8 scénarios e2e verts : chaîne d'éditions signée (manifest JCS #root, prev_hash, fail-closed tamper/chaîne), round-trip circle, rename sans re-clé, public lisible sans clé, self opaque vérifié en adversaire + reconstruction par descripteurs. FsStore + MemStore, CLI complet (init --dir, folder-add, section-add, zone-show, section-read, edition-publish/verify). Accroches prévues : pins plats → Merkle (H), gamma_ref (F) |
 | E Mandats | **faite** — 11 scénarios verts : certificat pur (fenêtre à T injecté, kex vérifié pas cru), périmètre exact (sous-arbre, dir&tag fondateur, pas de latéral), multi-périmètres une clé (dont cross-branch), délégation atténuée + 3 fail-closed. mandate.rs (grammaire, covers(), verifier), grants.rs (grant = cert + lignes + vue tag + wraps, delegate offline). Vecteur E1 (JCS + signature cross-checkés Python). CLI grant/mandate-verify/section-read-agent |
-| F Gamma | à faire |
-| G Révocation | à faire |
+| F Gamma | **faite** — chaîne segmentée mensuelle, enveloppe 2 couches, compteur sous-arbre, heartbeat, ancre de fraîcheur ; F1–F3 |
+| F+ Contraintes | **faite** — fenêtres arithmétiques absolues, profils de budget OU, reçus d'attestation, action_params, kinds inference/ethos.read ; vecteur F+ |
+| G Révocation | **faite** — échelle complète, rotation + up-link + ré-encryption, cascade, watchdog, move-as-rotation (§02.9) ; G1–G3, CLI revoke/move (123 scénarios) |
+| G+ Obligations | **en cours** — spec §4.12 gravée (primitive + counter_sign/attestation refondus en instances) ; feature → vecteurs → code à suivre |
 | H Merkle | à faire |
 | I Concurrence | à faire |
 | K Intégration | à faire |
