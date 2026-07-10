@@ -71,9 +71,20 @@ At most one `dir`, one `tag`, one `id` per entry. Semantics: `dir=` alone = the 
 subtree; `tag=` alone = the zone-root tag view; `dir=…&tag=…` = the folder-local tag
 view (§02.9) — read what carries the tag under that folder, now and in the future;
 `id=` = one section (sids are global, so `id` composes with nothing). No selector =
-the whole zone. `covers()` is per-dimension: `dir` containment is by **segment list**
-(`dir=a/b` covers `a/b` and `a/b/c`, never `a/bc`); an absent dimension covers any
-value of it (no-`tag` covers any `tag`); `tag` covers only the equal `tag`.
+the whole zone. `covers()` is per-dimension: `dir` containment is **nodal** — a
+`dir` names its granted folder by the **terminal sid** of the recorded sid-path
+(the leading segments are the folder's address at issuance, kept for audit, never
+a constraint). An empty `dir` is the zone root and covers the zone. A non-empty
+`dir` covers a target iff the target's chain **passes through the terminal sid**:
+for an operation, the target's *current* resolved chain; for entry-vs-entry
+containment (§05.3), the child entry's recorded sid-path. On a tree that never
+moved this is exactly segment-list containment (`dir=a/b` covers `a/b` and
+`a/b/c`, never `a/bc` — sids are unique); it diverges only after a move (§02.9):
+the perimeter follows the **node**, not its address, so a directly granted folder
+keeps its grants when moved, while grants on the old parent no longer cover it.
+An absent dimension covers any value of it (no-`tag` covers any `tag`); `tag`
+covers only the equal `tag`. `gamma-selector` `dir`s are **not** nodal: they
+filter log entries by their recorded, historical coordinates (§07.8).
 (The former `ns=` selector is gone: a namespace is a depth-1 folder, §02.2.)
 
 Verb lattice (normative): `read ⊑ edit ⊑ append ⊑ write`, `delete ⊑ write`; every

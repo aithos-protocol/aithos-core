@@ -5,3 +5,4 @@ dist/
 
 # cargo build artifacts (any platform)
 rust/target*/
+rust/cargo-linux/

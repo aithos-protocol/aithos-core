@@ -177,6 +177,20 @@ cryptographically, new-parent holders derive through the wrap. Cost ∝ M's gran
 headers (+ re-encryption of M's subtree if incident-grade); the lazy variant is
 tolerated as hygiene (§06.8).
 
+Certificates follow the node, not its address (§04.2 nodal `dir` containment): a
+mandate granted **on M itself** — a direct header line, re-sealed as a survivor —
+keeps both its key and its coverage at M's new address; a mandate on the **old
+parent** loses M's subtree at verification time too, so policy and physics agree.
+Move re-parents M's index row; sids are stable, so every derivation label below M
+is unchanged and only M's own key is fresh. M's rotated header (and each
+re-encrypted body) binds M's **new** canonical path; the old header file stays in
+place, an immutable record of the versions sealed at the old address. Fail-closed
+bounds: a move never crosses zones, never targets M itself or a descendant (no
+cycles), and never lands beside a same-named sibling. Move cuts by consequence,
+not by intent — cutting someone is what revocation is for (§06); moving M into a
+granted subtree shares it with that subtree's holders, moving it out un-shares it,
+exactly like a physical object changing drawers.
+
 ## 2.10 Merkle state roots (verifiable partial reads)
 
 Each edition's manifest pins one **state root** per zone, plus the vault, next to

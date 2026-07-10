@@ -3901,6 +3901,7 @@ fn revoke_with_rotation(w: &mut ProtocolWorld) {
     w.publish_bundle();
 }
 
+#[given("the owner revokes the agent's mandate")]
 #[when("the owner revokes the agent's mandate")]
 #[when("the owner revokes the agent's mandate for real")]
 fn revoke_agent(w: &mut ProtocolWorld) {
@@ -4039,9 +4040,6 @@ fn bogus_wrap(w: &mut ProtocolWorld) {
     let bytes = serde_json::to_vec_pretty(&bogus).unwrap();
     w.gb().store.put(&file, &bytes).unwrap();
 }
-
-#[when("the owner moves the folder under \"projets\"")]
-fn move_folder(_w: &mut ProtocolWorld) {}
 
 #[when("the owner grants the helper a fresh mandate on the same folder")]
 fn readopt_helper(w: &mut ProtocolWorld) {
@@ -4258,12 +4256,6 @@ fn helper_readopted(w: &mut ProtocolWorld) {
     let r = w.read_at(&w.holder_chain.clone(), HELPER, "projets/note1", G_AFTER);
     assert!(r.is_ok(), "re-adopted helper reads, got {r:?}");
 }
-
-#[then("the folder carries a new key version at its new path")]
-fn folder_new_version_path(_w: &mut ProtocolWorld) {}
-
-#[then("the agent granted on the old path no longer opens new content")]
-fn old_path_dead(_w: &mut ProtocolWorld) {}
 
 // ------------------------------------------------------------------ main
 
