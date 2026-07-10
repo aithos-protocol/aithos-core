@@ -231,7 +231,7 @@
 
     <nav id="nav">
       <button class="on" data-view="agents" onclick="go('agents')"><span class="ic">◈</span> Agents <span class="dim" style="margin-left:auto">3</span></button>
-      <button data-view="connectors" onclick="go('connectors')"><span class="ic">⇄</span> Connecteurs &amp; Vault</button>
+      <button data-view="connectors" onclick="go('connectors')"><span class="ic">⇄</span> Gateway · Coffre</button>
       <button data-view="gamma" onclick="go('gamma')"><span class="ic">▤</span> Gamma (journal)</button>
       <button data-view="providers" onclick="go('providers')"><span class="ic">◍</span> Modèles &amp; caches</button>
     </nav>
@@ -397,32 +397,33 @@
       <!-- CONNECTORS -->
       <div id="t-conn" class="tabpane hide">
         <div class="section">
-          <div class="sec-head"><h2>Connecteurs</h2><span class="dim mono">/x/&lt;id&gt;</span></div>
+          <div class="sec-head"><h2>Accès connecteurs</h2><span class="dim">délégués par la gateway</span></div>
+          <p class="hint" style="margin-top:0">Cet agent ne détient <b>aucun secret</b>. Il porte seulement des <i>scopes d'action</i> ; les credentials restent dans le <a onclick="go('connectors')" style="color:var(--accent);cursor:pointer">coffre de la gateway</a>. À l'exécution, l'agent présente son mandat, la gateway ouvre le secret et exécute.</p>
           <div class="conn">
             <div class="cico a-li">in</div>
             <div class="grow"><b>linkedin</b><div class="curl mono">https://mcp.linkedone.fr</div></div>
             <div style="text-align:right">
-              <div class="sealed">🔒 identifiant « toto » · secret scellé /x/linkedin</div>
-              <div class="kv-note" style="margin-top:6px">Guardian : cet agent (act.x.linkedin.config)</div>
+              <span class="perm act">act.x.linkedin.publish</span>
+              <div class="kv-note" style="margin-top:6px">Secret : coffre gateway · guardian tool-host</div>
             </div>
           </div>
           <div class="conn">
             <div class="cico a-gm">M</div>
             <div class="grow"><b>gmail</b><div class="curl mono">https://mcp.google.com/mcp</div></div>
             <div style="text-align:right">
-              <div class="sealed">🔒 OAuth token scellé /x/gmail</div>
-              <div class="kv-note" style="margin-top:6px">domains: toto@mail.com</div>
+              <span class="perm act">act.x.gmail.send</span>
+              <div class="kv-note" style="margin-top:6px">domains: toto@mail.com · secret coffre gateway</div>
             </div>
           </div>
           <div class="conn">
             <div class="cico a-x">Æ</div>
             <div class="grow"><b>aithos</b><div class="curl mono">https://mcp.aithos.be/mcp</div></div>
             <div style="text-align:right">
-              <div class="v mono" style="font-size:12px">mandats : 1234 · 2345</div>
-              <div class="kv-note" style="margin-top:6px">Guardian : tool-host</div>
+              <span class="perm act">act.x.aithos.*</span>
+              <div class="kv-note" style="margin-top:6px">mandats délégués 1234 · 2345</div>
             </div>
           </div>
-          <p class="hint" style="margin-top:14px">🔒 <b>Aucun secret n'est affiché ni stocké en clair (invariant I1).</b> Les credentials vivent dans un nœud vault scellé, ouvrable via header. L'UI ne montre que la référence et le « guardian ».</p>
+          <p class="hint" style="margin-top:14px">🔒 <b>Compromettre cet agent n'expose aucun credential (I1).</b> Le secret ne quitte jamais le coffre ; l'agent ne peut qu'invoquer une action dans son périmètre.</p>
         </div>
       </div>
 
@@ -505,14 +506,69 @@
       </div>
     </section>
 
-    <!-- ---------- VIEW: CONNECTORS ---------- -->
+    <!-- ---------- VIEW: GATEWAY / VAULT ---------- -->
     <section id="view-connectors" class="hide">
-      <h1>Connecteurs &amp; Vault</h1>
-      <p class="sub">Un connecteur = un id + un manifeste signé d'actions (classées read / act / binding). Ses secrets vivent dans un nœud vault <span class="mono">/x/&lt;id&gt;</span> scellé — jamais en clair (I1).</p>
+      <div class="page-head">
+        <div><h1>Gateway · Coffre</h1></div>
+        <button class="btn primary" onclick="openConn()">+ Ajouter un connecteur</button>
+      </div>
+      <p class="sub">Les credentials (identifiants, mots de passe, tokens OAuth) vivent <b>ici, dans le coffre de la gateway</b> — <b>jamais dans l'agent</b>. Un agent ne reçoit qu'un <i>scope d'action</i> (<span class="mono">act.x.&lt;id&gt;.&lt;action&gt;</span>) ; il présente son mandat, la gateway ouvre le secret et exécute. Le secret ne quitte jamais le coffre (invariant I1 · guardian = tool-host §08.2).</p>
+
+      <div class="scope owner" style="background:var(--v-bg);border-color:rgba(52,201,139,.28);color:#bff0d0">
+        <span class="dot"></span>
+        <span>Séparation nette : <b>Coffre (secrets)</b> côté gateway · <b>Agent (clés + mandat)</b> côté runtime. Compromettre un agent n'expose aucun credential.</span>
+      </div>
+
+      <!-- linkedin -->
       <div class="section">
-        <div class="conn"><div class="cico a-li">in</div><div class="grow"><b>linkedin</b><div class="curl mono">https://mcp.linkedone.fr</div></div><span class="sealed">🔒 /x/linkedin</span></div>
-        <div class="conn"><div class="cico a-gm">M</div><div class="grow"><b>gmail</b><div class="curl mono">https://mcp.google.com/mcp</div></div><span class="sealed">🔒 /x/gmail</span></div>
-        <div class="conn"><div class="cico a-x">Æ</div><div class="grow"><b>aithos</b><div class="curl mono">https://mcp.aithos.be/mcp</div></div><span class="v mono" style="font-size:12px">mandats 1234 · 2345</span></div>
+        <div class="conn" style="align-items:flex-start">
+          <div class="cico a-li" style="margin-top:2px">in</div>
+          <div class="grow">
+            <div style="display:flex;align-items:center;gap:10px"><b>linkedin</b><span class="sealed">🔒 coffre gateway</span></div>
+            <div class="curl mono">https://mcp.linkedone.fr</div>
+            <div class="row"><div class="k">Accès stockés</div><div class="v"><span class="mono">login « toto »</span> · <span class="mono">•••••••• (scellé)</span></div></div>
+            <div class="row"><div class="k">Manifeste d'actions</div><div class="v"><span class="perm act">publish</span> <span class="perm">read_feed</span></div></div>
+            <div class="row"><div class="k">Agents autorisés (scope, pas de secret)</div><div class="v">Agent LinkedIn <span class="perm act">act.x.linkedin.publish</span></div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn sm" onclick="toast('Ouvre le coffre gateway pour éditer l\'accès — le secret ne sort jamais.')">Gérer l'accès</button>
+            <button class="btn sm" onclick="toast('Rotation du secret amont + rotation du nœud vault (§06). Coupe les holders compromis.')">Rotation</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- gmail -->
+      <div class="section">
+        <div class="conn" style="align-items:flex-start">
+          <div class="cico a-gm" style="margin-top:2px">M</div>
+          <div class="grow">
+            <div style="display:flex;align-items:center;gap:10px"><b>gmail</b><span class="sealed">🔒 coffre gateway</span></div>
+            <div class="curl mono">https://mcp.google.com/mcp</div>
+            <div class="row"><div class="k">Accès stockés</div><div class="v"><span class="mono">OAuth token (scellé)</span> · refresh auto</div></div>
+            <div class="row"><div class="k">Manifeste d'actions</div><div class="v"><span class="perm act">send</span> <span class="perm">draft</span> <span class="perm">read</span></div></div>
+            <div class="row"><div class="k">Agents autorisés</div><div class="v">Agent LinkedIn <span class="perm act">send</span> · Agent Mail-tri <span class="perm act">draft</span></div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn sm" onclick="toast('Ré-authentifier OAuth Google.')">Gérer l'accès</button>
+            <button class="btn sm" onclick="toast('Rotation vault gmail.')">Rotation</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- aithos -->
+      <div class="section">
+        <div class="conn" style="align-items:flex-start">
+          <div class="cico a-x" style="margin-top:2px">Æ</div>
+          <div class="grow">
+            <div style="display:flex;align-items:center;gap:10px"><b>aithos</b><span class="v mono" style="font-size:11px">mandats délégués</span></div>
+            <div class="curl mono">https://mcp.aithos.be/mcp</div>
+            <div class="row"><div class="k">Mandats présentables</div><div class="v"><span class="mono">1234</span> · <span class="mono">2345</span></div></div>
+            <div class="row"><div class="k">Agents autorisés</div><div class="v">Agent LinkedIn <span class="perm act">act.x.aithos.*</span></div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn sm" onclick="toast('Gérer les mandats délégués 1234 / 2345.')">Gérer les mandats</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -601,6 +657,33 @@
   </div>
 </div>
 
+<!-- ======================= ADD CONNECTOR (gateway coffre) ======================= -->
+<div class="overlay" id="connModal">
+  <div class="modal" style="width:min(560px,100%)">
+    <div class="modal-head">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Ajouter un connecteur au coffre</h2>
+        <button class="btn ghost sm" onclick="closeConn()">✕</button>
+      </div>
+      <p class="hint" style="margin:10px 0 0">Le secret est stocké dans le coffre de la gateway et scellé immédiatement. Les agents n'y accèdent jamais — ils reçoivent un scope d'action.</p>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>Id du connecteur</label><input class="mono" placeholder="linkedin"></div>
+      <div class="field"><label>Endpoint MCP</label><input class="mono" placeholder="https://mcp.linkedone.fr"></div>
+      <div class="field"><label>Type d'accès</label>
+        <select><option>Identifiant / mot de passe</option><option>OAuth 2.0</option><option>Mandats aithos délégués</option><option>API key</option></select>
+      </div>
+      <div class="field"><label>Identifiant</label><input class="mono" placeholder="toto"></div>
+      <div class="field"><label>Secret <span class="sealed" style="margin-left:6px">🔒 scellé à l'enregistrement</span></label><input type="password" value="••••••••••••"></div>
+      <p class="hint">🔒 Une fois enregistré, le secret n'est plus jamais affiché ni exporté. La rotation se fait ici, côté coffre.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" onclick="closeConn()">Annuler</button>
+      <button class="btn primary" onclick="closeConn();toast('Connecteur ajouté au coffre gateway · secret scellé.')">Sceller dans le coffre</button>
+    </div>
+  </div>
+</div>
+
 <!-- toast -->
 <div id="toast" style="position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);opacity:0;transition:.22s;background:var(--panel-2);border:1px solid var(--line-2);color:var(--ink);padding:12px 18px;border-radius:11px;max-width:520px;font-size:13px;box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:80"></div>
 
@@ -614,6 +697,8 @@ function go(v){
 }
 function openAgent(id){ go('detail'); }
 function openWizardView(){}
+function openConn(){ document.getElementById('connModal').classList.add('on'); }
+function closeConn(){ document.getElementById('connModal').classList.remove('on'); }
 
 /* ---------- detail tabs ---------- */
 function tab(btn, pane){
