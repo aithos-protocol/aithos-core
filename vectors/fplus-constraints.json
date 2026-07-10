@@ -1,0 +1,105 @@
+{
+  "vector": "F+",
+  "description": "Absolute windows (half-open occurrences, until/count), budget profile tallies and verdicts, attestation receipt signature. Generated independently (Python datetime + PyNaCl + hashlib).",
+  "windows": {
+    "window": {
+      "anchor": "2026-07-02T14:00:00Z",
+      "duration": "4h",
+      "period": "7d"
+    },
+    "verdicts": {
+      "2026-07-02T14:00:00Z": true,
+      "2026-07-02T17:59:59Z": true,
+      "2026-07-02T18:00:00Z": false,
+      "2026-07-04T15:00:00Z": false,
+      "2026-07-16T15:00:00Z": true,
+      "2026-07-02T13:59:59Z": false
+    },
+    "bounded": {
+      "until_day20": {
+        "until": "2026-07-21T14:00:00Z",
+        "2026-07-16T15:00:00Z": true,
+        "2026-07-23T15:00:00Z": false
+      },
+      "count_2": {
+        "count": 2,
+        "2026-07-09T15:00:00Z": true,
+        "2026-07-16T15:00:00Z": false
+      }
+    }
+  },
+  "budgets": {
+    "profiles": [
+      {
+        "id": "haiku",
+        "models": [
+          "claude-haiku"
+        ],
+        "token_budget": 10000,
+        "active_windows": [
+          {
+            "anchor": "2026-07-02T14:00:00Z",
+            "duration": "4h",
+            "period": "7d"
+          }
+        ],
+        "max_actions": 1
+      },
+      {
+        "id": "gemma",
+        "models": [
+          "gemma"
+        ],
+        "token_budget": 25000
+      }
+    ],
+    "ledger": [
+      {
+        "kind": "action",
+        "budget_ref": "gemma",
+        "tokens": 5000
+      },
+      {
+        "kind": "inference",
+        "budget_ref": "gemma",
+        "tokens_in": 6000,
+        "tokens_out": 1000
+      },
+      {
+        "kind": "inference",
+        "budget_ref": "gemma",
+        "tokens_in": 8000,
+        "tokens_out": 1000
+      }
+    ],
+    "expected": {
+      "gemma_tokens_consumed": 21000,
+      "gemma_headroom": 4000,
+      "next_5000_on_gemma": "GammaBudgetExhausted",
+      "next_4000_on_gemma": "valid",
+      "haiku_model_gpt-oss": "GammaBudgetExhausted",
+      "haiku_outside_window_at_2026-07-03T14:00:00Z": "GammaBudgetExhausted",
+      "unknown_budget_ref": "GammaBudgetExhausted",
+      "missing_budget_ref": "GammaBudgetExhausted"
+    }
+  },
+  "attestation": {
+    "provider_sk_hex": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+    "provider_pub_hex": "d404bc44565aedbb899150e5b0b3b32b9441bf0cb7884c33130da8dbc27dd2cf",
+    "args_hash": "sha256:da1f454ad2dd27d752bd6c06d84730eccfb29e9a0bc297e545f240adb4cfd40b",
+    "receipt": {
+      "args_hash": "sha256:da1f454ad2dd27d752bd6c06d84730eccfb29e9a0bc297e545f240adb4cfd40b",
+      "model": "claude-haiku",
+      "tokens": 8412,
+      "sig": "b67f9f12ef24f3ad1db95e4653bb32db470b731c8b9292f78662df1b282e2f4eb355692fe7fa1392842043bd8a1b49c8adbe8947dbd0203a7fd2a71cb9dca00a"
+    },
+    "receipt_jcs_signed": "{\"args_hash\":\"sha256:da1f454ad2dd27d752bd6c06d84730eccfb29e9a0bc297e545f240adb4cfd40b\",\"model\":\"claude-haiku\",\"tokens\":8412}",
+    "expected": {
+      "valid_receipt": "valid",
+      "wrong_signer_sig_hex": "56f8c699a7329dc57f0b71109b46784c90c39c175250b264e6f7ec2052b3d92318a7c497a5debfbeadcf260bc3076e3fa4210e45452eab45e8c170f6afa55b09",
+      "wrong_signer": "InvalidGammaEntry",
+      "replayed_on_other_args_hash": "InvalidGammaEntry",
+      "attested_tokens_override": 8412
+    }
+  }
+}
