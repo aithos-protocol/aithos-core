@@ -172,6 +172,25 @@ ac edition-publish --dir $D --seed-hex $S && ac edition-verify --dir $D
 Note `--folder` : la query retrouve les mutations **scellées** de ce sous-arbre
 via les hints — seul un détenteur de clés (ici l'owner) peut le faire.
 
+## 11. Move = rotation (G, spec 02.9)
+
+```bash
+ac section-add --dir $D --seed-hex $S circle archives/old/note1 --title n --body "secret"
+ac section-add --dir $D --seed-hex $S circle projets/keep --title n --body "ancre"
+ac grant --dir $D --seed-hex $S --agent-seed-hex $A1 archives/old --ttl-days 7   # ligne directe
+ac grant --dir $D --seed-hex $S --agent-seed-hex $A2 archives --ttl-days 7      # ancien parent
+ac move --dir $D --seed-hex $S archives/old --under projets
+# → "moved archives/old under projets — rotated, wrap posted, subtree re-encrypted"
+ac section-read-agent --dir $D --cert $C1 --agent-seed-hex $A1 --at $T projets/old/note1
+# → le corps : la ligne directe survit, même keypair, nouvelle adresse
+ac section-read-agent --dir $D --cert $C2 --agent-seed-hex $A2 --at $T projets/old/note1
+# → Error "not covered" : le grant sur l'ancien parent ne suit pas le nœud
+```
+
+Le déplacer VERS un dossier partagé le partage (wrap sous le nouveau parent) ;
+le déplacer HORS d'un dossier partagé le dé-partage (rotation). Comme un objet
+physique qui change de tiroir. Couper quelqu'un explicitement = `revoke`.
+
 ## Récap des invariants que tu viens de toucher
 
 | Bloc | Invariant prouvé |
@@ -184,3 +203,4 @@ via les hints — seul un détenteur de clés (ici l'owner) peut le faire.
 | 8 | le temps du verifier est arithmétique — zéro fuseau, zéro DST |
 | 9 | l'audit rouvre ce que l'étranger ne voit pas ; hash = intégrité |
 | 10 | la recherche suit ce que tes clés ouvrent, rien de plus |
+| 11 | le périmètre suit le nœud, pas l'adresse ; la dérivation ne se désapprend pas |

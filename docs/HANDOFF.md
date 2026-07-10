@@ -3,8 +3,9 @@
 **But.** Reprendre l'implémentation de référence d'aithos-core sans rien reperdre.
 Résume où on en est, comment on travaille, et la prochaine étape exacte.
 
-**Branche : `feat/f-plus`** (F mergée sur master ; F+ et G complètes sur cette
-branche, merge = décision Mathieu). Repo : `code/aithos-core/`.
+**Branche : `feat/f-plus`** (F mergée sur master ; F+ et G **entièrement** closes
+sur cette branche — move-as-rotation inclus —, merge = décision Mathieu).
+Repo : `code/aithos-core/`.
 
 ---
 
@@ -53,6 +54,21 @@ rejet) ; wire figé étape 0 (multibase base58btc, JCS RFC 8785, AAD §00.3).
   = moitié certificat (policy sur kind/action/date, physique sur dir/id/tag).
   À H : racines committées → preuves O(log n), option de sceller kind/via (champ
   `v` prêt). Crypto-erasure par destruction de clé.
+- **Coverage NODALE (gravée 2026-07-10, passe move)** : un `dir` de périmètre
+  nomme son dossier par le **sid terminal** (le préfixe = adresse à l'émission,
+  gardée pour l'audit, jamais une contrainte). Couverture ssi la chaîne de la
+  cible **passe par ce sid** — chaîne COURANTE pour une op, listes émises pour
+  le containment §05.3 (délégations pré-move stables). Équivalent strict au
+  préfixe-segments tant que rien n'a bougé (sids uniques) ; ne diverge qu'après
+  move. Les `gamma-selector` dirs restent POSITIONNELS (coordonnées historiques
+  du log). Spec : §04.2 amendée + note §02.9. `dir_covers()` dans mandate.rs.
+- **Move = rotation (§02.9, décision validée)** : couper l'ancien parent est LE
+  but (sinon move serait gratuit comme rename — garder son accès serait un wrap
+  O(1), trivial mais sur-grant silencieux, refusé). Ligne directe sur M =
+  survivante (policy ET crypto) ; wrap via le NOUVEAU parent ; ré-encryption
+  eager du sous-arbre (posture rotate_folder). Header de M reconstruit au
+  NOUVEAU chemin (AAD) à v+1, l'ancien fichier reste en archéologie. Couper
+  quelqu'un = `revoke`, jamais move. Option future : `move --keep-old-access`.
 
 ## 4. État du code (9 étapes closes sur 12)
 
@@ -69,20 +85,28 @@ Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 | E Mandats | ✅ | mandate.rs, grants.rs — E1 |
 | **F Gamma** | ✅ | gamma.rs (chaîne, enveloppe, compteur, heartbeat, ancre), log.rs (segments, appends autorisés, query owner/agent), PerimeterEntry::{Act,Gamma}, covers_act/covers_gamma_query, manifest.gamma_head, SectionSpec/ActionSpec (dette params réglée) — F1, F2, F3 |
 | **F+ Contraintes avancées** | ✅ | constraints.rs (Window arithmétique half-open, BudgetProfile OU, reçus d'attestation, action_params), kinds inference/ethos.read + classes registry, atténuation fenêtres dans verify_chain, vault d'audit (`e/x/header.json`) + args scellés §7.9.3, log_inference/log_read_as_agent, audit owner (audit_action_args, audit_log_against) — vecteur F+ |
-| **G Révocation** | ✅ | revocation.rs (set actif, forward-only, autorité issuer/ancêtre/watchdog), PerimeterEntry::Revoke, verify_chain_revocable (état injecté, §04.5 step 4), rotation.rs bundle (rotate_folder : versions header, survivants, up-link 2bis, ré-encryption, lecture version-aware), log_revoke owner/délégué, CLI `revoke [--rotate]` — G1, G2. **Reste @wip : move-as-rotation (§02.9)** — 1 scénario, sa propre passe |
+| **G Révocation** | ✅ | revocation.rs (set actif, forward-only, autorité issuer/ancêtre/watchdog), PerimeterEntry::Revoke, verify_chain_revocable (état injecté, §04.5 step 4), revoke.rs bundle (rotate_folder : versions header, survivants, up-link 2bis, ré-encryption, lecture version-aware), log_revoke owner/délégué, CLI `revoke [--rotate]` — G1, G2. **Move-as-rotation (§02.9) SOLDÉ (2026-07-10)** : `move_folder` (re-parentage sid stable, DK' au nouveau chemin scellée à l'ancien line set, wrap via NOUVEAU parent, ré-encryption), coverage nodale `dir_covers` (§04.2), écritures circle version-aware (`section_add` via `owner_current_section_key` — trou réel : écrire à v1 sous un dossier tourné/déplacé rendait le contenu à l'ancien parent), marche de clé agent descendante (wraps parent→enfant + zroot), `Header::build_at`, 3 scénarios, vecteur G3, CLI `move` + test surface |
 | H Merkle | ⬜ | racines zones + **racines gamma** (segments + trie mandate_id→count) |
 | I Concurrence | ⬜ | merge disjoint, fork, entrées merge |
 | K Intégration | ⬜ | scénario K, Docker, npm |
 
-**Tests : 120 scénarios / 426 steps cucumber (+1 skip move @wip) + vecteurs
-A→F+/G1/G2 + 12 tests de surface CLI, tous verts ; `clippy --all-targets
+**Tests : 123 scénarios / 437 steps cucumber (zéro skip) + vecteurs
+A→F+/G1/G2/G3 + 13 tests de surface CLI, tous verts ; `clippy --all-targets
 -- -D warnings` clean ; `cargo fmt` passé.**
+
+Deux trous de discipline découverts et soldés (2026-07-10) : (1) le scénario
+« A revoked chain is refused at verification time » était silencieusement
+SKIPPÉ (step revoke définie en `#[when]` seulement, utilisée en Given) — le
+« +1 skip move @wip » de l'ancien handoff, c'était LUI ; (2) l'ancien scénario
+move passait À VIDE (steps stubs `{}`, pas de tag @wip) et son Given était
+faux au regard de la sémantique clarifiée (ligne directe = survivant).
 
 CLI : `grant-act` (--max-actions, --heartbeat-every/grace, **--budgets-json,
 --windows-json**), `action` (--cert répétable, **--budget-ref --model --tokens
 --receipt-json --args-json** pour args scellés), **`inference`**, `heartbeat`,
 `log-show`, `log-verify`, `log-query` (--kind accepte les classes, ex.
-ethos.write). `grant` logge son entrée gamma.
+ethos.write), **`move <folder> --under <parent>`** (publie l'édition).
+`grant` logge son entrée gamma.
 Décision de wire F+ à connaître : instants en RFC 3339 Z, jamais d'epoch ns —
 RFC 8785 sérialise les nombres en doubles IEEE 754, un epoch ns (>2^53)
 perdrait de la précision dans les octets signés.
@@ -97,40 +121,44 @@ cargo clippy --workspace --manifest-path rust/Cargo.toml --all-targets -- -D war
 python3 vectors/gen-f.py   # régénère F1-F3 (auto-check B2/E1 d'abord)
 ```
 
-**Env sandbox (2026-07-10, après recyclage VM)** : les caches `/tmp` d'une session
-précédente peuvent appartenir à `nobody` (illisibles). Setup qui marche :
-- toolchain : `/tmp/rustup/toolchains/stable-aarch64-unknown-linux-gnu/bin` appelée
-  EN DIRECT (rustup shim cassé sans settings) — exporter ce bin dans PATH.
-- `CARGO_HOME=/tmp/cargo2` (copie de /tmp/cargo, sans bin/), `CARGO_INCREMENTAL=0`.
-- `CARGO_TARGET_DIR=<repo>/rust/target-linux` (sur le volume Mac — la VM n'a pas
-  la place ; `rust/target/` = artefacts macOS de Mathieu, NE PAS toucher).
-- Suppressions de fichiers bloquées par défaut sur le montage Cowork → si
-  "Operation not permitted" sur rm/unlink (cargo, git), demander le déblocage
-  (outil allow_file_delete). `.git/*.lock` à rm avant commit.
-- Process background tués entre appels shell → builds par tranches (`timeout 40`),
-  les artefacts s'accumulent.
+**Env sandbox (2026-07-10 soir, session move — la VM se dégrade à chaque
+recyclage, lire AVANT de builder)** :
+- toolchain : `/tmp/rustup/toolchains/stable-aarch64-unknown-linux-gnu/bin` EN
+  DIRECT dans PATH (rustup shim cassé). `CARGO_INCREMENTAL=0`.
+- **Disque VM PLEIN** (100%, résidus `nobody` indélébiles, pas de sudo) →
+  `CARGO_HOME=<repo>/rust/cargo-linux` (sur le volume Mac, gitignoré) ET
+  `CARGO_TARGET_DIR=<repo>/rust/target-linux`. `rust/target/` = artefacts macOS
+  de Mathieu, NE PAS toucher.
+- **Piège mortel : les kills à ~40s laissent des artefacts DÉCHIRÉS sur le
+  montage** (fingerprint ok, .rmeta absent/corrompu → E0463/E0460, StableCrateId
+  collisions, ICE). Recette qui converge : builds `-j 1`, `sync` après chaque
+  tranche, capturer la dernière ligne `Compiling <crate>` et `cargo clean -p
+  <crate>` au début de la tranche suivante ; itérer cible par cible (d'abord
+  `-p aithos-bundle --test cucumber`, le workspace complet à la fin). Si le
+  registry part en vrille (collisions serde) : `rm -rf cargo-linux/registry/src`
+  (les tarballs re-extraient, réseau crates.io OK).
+- Suppressions bloquées sur le montage → outil allow_cowork_file_delete au
+  premier "Operation not permitted". `.git/*.lock` à rm avant commit.
 - `rust/target` a été PURGÉ du tracking git (7938 fichiers macOS committés par
   erreur depuis B ; l'historique garde le poids — réécriture = décision à part).
-  `.gitignore` couvre `rust/target*/`.
+  `.gitignore` couvre `rust/target*/` et `rust/cargo-linux/`.
 
-## 6. Prochaine étape : finir G (move-as-rotation) puis H — Merkle
+## 6. Prochaine étape : H — Merkle (G est close)
 
-**G reste 1 sous-item** : `move-as-rotation` (§02.9) — le scénario Gherkin
-"Moving a folder rotates its key" est tagué `@wip`. Move = re-parenter la
-folder-row (sids stables) + rotation du nœud (la dérivation depuis l'ancien
-parent ne peut être désapprise). Sémantique à clarifier : un grantee avec une
-LIGNE directe survit (comme une rotation ordinaire) ; seul le lecteur par
-DÉRIVATION depuis l'ancien parent perd l'accès. Mérite sa propre passe.
+**G est ENTIÈREMENT close** (move-as-rotation soldé 2026-07-10, voir tableau §4
+et décisions §3 — coverage nodale + move). Les 3 scénarios move sont verts, le
+vecteur G3 croise le générateur Python indépendant, la CLI a `move`.
 
-**Décision G gravée** : révocation = UNE entrée gamma `revoke` (pas de doc
-autonome §6.4). `verify_chain_revocable(chain, doc, at, revs)` = §04.5 étape 4,
-état injecté (pureté core). `verify_chain` inchangée appelle avec revs vide →
-zéro régression. Rotation version-aware : la clé de section se résout par le
-header de la folder à `row.key_version` (up-link wrap pour les dérivants).
+**Décision G gravée (rappel)** : révocation = UNE entrée gamma `revoke` (pas de
+doc autonome §6.4). `verify_chain_revocable(chain, doc, at, revs)` = §04.5
+étape 4, état injecté (pureté core). `verify_chain` inchangée appelle avec revs
+vide → zéro régression. Rotation version-aware : la clé de section se résout
+par le header de la folder à `row.key_version` (up-link wrap pour les dérivants).
 
-**H — Merkle** ensuite (spec §02.10 + racines gamma) : `H_leaf/H_node`, racines
-par zone + racines gamma (segments + trie mandate_id→count), preuves O(log n),
-diff par descente.
+**H — Merkle** (spec §02.10 + racines gamma) : `H_leaf/H_node` domain-separated,
+racines par zone + racines gamma (segments + trie mandate_id→count), preuves
+O(log n), diff par descente. + le durcissement offline « no mislabeled effects »
+rangé en défense en profondeur (additif, sans breaking wire — voir plan §H).
 
 ## 7. Points ouverts / dette assumée (non bloquants)
 
@@ -138,6 +166,15 @@ diff par descente.
   d'agent n'est pas écrite (owner-only pour l'instant) — les scénarios couvrent circle.
 - Wildcard `act.x.<c>.*` : le refus des actions classe `binding` attend les
   manifests connecteurs (§08.1) — TODO noté dans covers_act.
+- **Post-move (passe 2026-07-10, assumé)** : (a) tag-views ancrées sur un dossier
+  déplacé — l'ancre suit le nœud en dérivation mais les wraps de vue ne sont pas
+  re-postés : fail-closed (« no key path »), passe dédiée si besoin ; (b) header
+  de GRANT profond sous un ancêtre tourné/déplacé garde sa lignée v1 (classe de
+  limite héritée de G : rotate_folder ne re-scelle pas les headers descendants) —
+  la marche read/write est cohérente des deux côtés, mais un re-seal descendant
+  serait la version incident-grade ; (c) moves = Circle only (self : structure
+  scellée, autre passe) ; (d) `sections_under`/`resolve_*` restent positionnels
+  (adresses courantes — c'est correct : l'index EST l'adresse du moment).
 - Index/caches de query optimisés : post-F (le scan segmenté suffit) ; preuves de
   complétude pour mirrors : H.
 - ~~Tests CLI : aucun~~ **SOLDÉ (2026-07-10)** : `rust/crates/aithos-cli/tests/
