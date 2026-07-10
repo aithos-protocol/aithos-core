@@ -1,0 +1,270 @@
+{
+  "vector": "G+",
+  "description": "Obligation receipts (spec 04.12): one wire shape {obligation, mandate_id, action, args_hash, verdict, presented_digest?, at} signed Ed25519 over JCS. Guardrail pass, human approval (WYSIWYS, max_age), owner co_sign (counter_sign desugared), replay negatives, add-only attenuation. Generated independently (Python hashlib+PyNaCl+base58); self-checked against the committed F+ receipt.",
+  "keys": {
+    "approver_sk_hex": "b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5",
+    "approver_pub_multibase": "z6MkpGrGdqbngEo77RYtzPE1FtmGcATVaT5LcfqR4AQoLwD9",
+    "approver2_sk_hex": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+    "approver2_pub_multibase": "z6Mko6CkAtZEMth5zj3LFBphfj2ncN9ooWppSSQfsMPAauxS",
+    "guardrail_sk_hex": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+    "guardrail_pub_multibase": "z6MkvRB58z4d5i8vFXCX873HtRV5G26xQhpn1Qj3S1gcz9Dv",
+    "owner_content_sk_hex": "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5",
+    "owner_content_pub_multibase": "z6MkhXim6Hetcxrfi1DTuxo4XojsKcMtBFvYU7yDF652hL5n",
+    "stranger_sk_hex": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+  },
+  "receipts": {
+    "obligations": {
+      "approval": {
+        "id": "publish-approval",
+        "check": "human.approve",
+        "attestor": [
+          "z6MkpGrGdqbngEo77RYtzPE1FtmGcATVaT5LcfqR4AQoLwD9",
+          "z6Mko6CkAtZEMth5zj3LFBphfj2ncN9ooWppSSQfsMPAauxS"
+        ],
+        "applies_to": "act.x.social.publish",
+        "verdict": "approve",
+        "max_age": "5m"
+      },
+      "guardrail": {
+        "id": "pii-guard",
+        "check": "guardrail.pii",
+        "attestor": [
+          "z6MkvRB58z4d5i8vFXCX873HtRV5G26xQhpn1Qj3S1gcz9Dv"
+        ],
+        "applies_to": "act.x.social.publish",
+        "verdict": "pass"
+      },
+      "co_sign_desugared": {
+        "id": "co_sign",
+        "check": "owner.approve",
+        "attestor": [
+          "z6MkhXim6Hetcxrfi1DTuxo4XojsKcMtBFvYU7yDF652hL5n"
+        ],
+        "applies_to": "send",
+        "verdict": "approve",
+        "max_age": "5m"
+      }
+    },
+    "entry": {
+      "authorized_by": "mandate_00000000000000000000GPLA",
+      "action": "publish",
+      "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+      "at": "2026-07-10T14:04:00Z"
+    },
+    "fresh_approval": {
+      "payload_jcs": "{\"action\":\"publish\",\"args_hash\":\"sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411\",\"at\":\"2026-07-10T14:02:11Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"publish-approval\",\"presented_digest\":\"sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7\",\"verdict\":\"approve\"}",
+      "check": {
+        "obligation": "publish-approval",
+        "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+        "verdict": "approve",
+        "at": "2026-07-10T14:02:11Z",
+        "sig": "2111e88dd7034445c521da45200744706e57e67360b1e15c6ca31584645dc5f8b31e1e3fac054c7c167ff4e317a56373185fb2a1505d9cfcbddd08ad33cd3901",
+        "presented_digest": "sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7"
+      }
+    },
+    "by_second_approver": {
+      "payload_jcs": "{\"action\":\"publish\",\"args_hash\":\"sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411\",\"at\":\"2026-07-10T14:02:11Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"publish-approval\",\"presented_digest\":\"sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7\",\"verdict\":\"approve\"}",
+      "check": {
+        "obligation": "publish-approval",
+        "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+        "verdict": "approve",
+        "at": "2026-07-10T14:02:11Z",
+        "sig": "5f43b9c3ee627ec5189c6de112b7f2f093b08af2ed4f6fdf44649b38ac75e5408ee0a1c4686e71db05a1e06486179909b2915e28fffad83429508c6e2ea27e06",
+        "presented_digest": "sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7"
+      }
+    },
+    "without_presented_digest": {
+      "payload_jcs": "{\"action\":\"publish\",\"args_hash\":\"sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411\",\"at\":\"2026-07-10T14:02:11Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"publish-approval\",\"verdict\":\"approve\"}",
+      "check": {
+        "obligation": "publish-approval",
+        "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+        "verdict": "approve",
+        "at": "2026-07-10T14:02:11Z",
+        "sig": "0f08789a09535dde2975ade97e9054b0f3488cc55aebef2bc74d70474430918f601d237b305158e9185560efd5589d12e361efdbf07fbb822b766be02a147d0a"
+      }
+    },
+    "ahead_of_entry_clock": {
+      "payload_jcs": "{\"action\":\"publish\",\"args_hash\":\"sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411\",\"at\":\"2026-07-10T14:06:00Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"publish-approval\",\"presented_digest\":\"sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7\",\"verdict\":\"approve\"}",
+      "check": {
+        "obligation": "publish-approval",
+        "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+        "verdict": "approve",
+        "at": "2026-07-10T14:06:00Z",
+        "sig": "c39e442f1f226f772b958206fce3a036f2d95954e4462a7b272bbc1f26d5fcc0dd7bc9f0eddfc0b819f1ec6f2b46cc7b626ee324a152c8998450ae1e54ec7003",
+        "presented_digest": "sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7"
+      }
+    },
+    "guardrail_pass_aged_no_max_age": {
+      "payload_jcs": "{\"action\":\"publish\",\"args_hash\":\"sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411\",\"at\":\"2026-07-08T14:00:00Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"pii-guard\",\"verdict\":\"pass\"}",
+      "check": {
+        "obligation": "pii-guard",
+        "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+        "verdict": "pass",
+        "at": "2026-07-08T14:00:00Z",
+        "sig": "584e06f94eae014f491199cd1382b260871a7822b9cb0c28c96b2c6befded02d9b2dc14b3dd774d1651ce31936ecefd218115a648fc58bb6f741f62496d2480e"
+      }
+    },
+    "co_sign_owner_send": {
+      "payload_jcs": "{\"action\":\"send\",\"args_hash\":\"sha256:c5f126aa7a36b2db02185952c50c5efe269418b65c02612be4c9b78b277baea2\",\"at\":\"2026-07-10T14:02:11Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"co_sign\",\"verdict\":\"approve\"}",
+      "check": {
+        "obligation": "co_sign",
+        "args_hash": "sha256:c5f126aa7a36b2db02185952c50c5efe269418b65c02612be4c9b78b277baea2",
+        "verdict": "approve",
+        "at": "2026-07-10T14:02:11Z",
+        "sig": "d3e1672cfecb5e26d2b992320a3d1ee75f203c540e21d121e5066bf676101a074deaf015515166157a92b2a794cbe2932dd9622f38554c6d52b3fe21d9b9c200"
+      },
+      "entry_action": "send",
+      "entry_args_hash": "sha256:c5f126aa7a36b2db02185952c50c5efe269418b65c02612be4c9b78b277baea2"
+    },
+    "expected_valid": [
+      "fresh_approval",
+      "by_second_approver",
+      "without_presented_digest",
+      "ahead_of_entry_clock",
+      "guardrail_pass_aged_no_max_age",
+      "co_sign_owner_send"
+    ],
+    "negatives": {
+      "stale_receipt": {
+        "payload_jcs": "{\"action\":\"publish\",\"args_hash\":\"sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411\",\"at\":\"2026-07-10T13:58:59Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"publish-approval\",\"presented_digest\":\"sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7\",\"verdict\":\"approve\"}",
+        "check": {
+          "obligation": "publish-approval",
+          "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+          "verdict": "approve",
+          "at": "2026-07-10T13:58:59Z",
+          "sig": "a9e5d644ae111b07ae62b7dd052fb6aedfbcc6e185c73fb58959ab95027f2b370f3a23e5f9866defbea5a42c734b9dfc8b203cfbba048a67da1e33909fd51004",
+          "presented_digest": "sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7"
+        }
+      },
+      "guardrail_block_verdict": {
+        "payload_jcs": "{\"action\":\"publish\",\"args_hash\":\"sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411\",\"at\":\"2026-07-10T14:03:00Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"pii-guard\",\"verdict\":\"block\"}",
+        "check": {
+          "obligation": "pii-guard",
+          "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+          "verdict": "block",
+          "at": "2026-07-10T14:03:00Z",
+          "sig": "8210657defb8e15651a29062c8d9f381bfe4d60132764d8a2934c817ded10c42fac9a6415e0f09c8961d3b565516c6fdd7dad14921d7d5d23fc554aba325ad0e"
+        }
+      },
+      "bound_to_other_args": {
+        "payload_jcs": "{\"action\":\"publish\",\"args_hash\":\"sha256:b99e18a63c31ff7580f748cdc72741aedb2c2ec1753288d131cafaa5b77aecb9\",\"at\":\"2026-07-10T14:02:11Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"publish-approval\",\"presented_digest\":\"sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7\",\"verdict\":\"approve\"}",
+        "check": {
+          "obligation": "publish-approval",
+          "args_hash": "sha256:b99e18a63c31ff7580f748cdc72741aedb2c2ec1753288d131cafaa5b77aecb9",
+          "verdict": "approve",
+          "at": "2026-07-10T14:02:11Z",
+          "sig": "a6fc0d3a66042f0fe0ef6c3fe57885e154a75e6e67d0f06ed71f68b2fdd65cab681c2cbc387743e0ffbc40520888adee5a677dd4b17a59e43158e80a53b02a01",
+          "presented_digest": "sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7"
+        }
+      },
+      "sibling_mandate_id": {
+        "payload_jcs": "{\"action\":\"publish\",\"args_hash\":\"sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411\",\"at\":\"2026-07-10T14:02:11Z\",\"mandate_id\":\"mandate_00000000000000000000GPLB\",\"obligation\":\"publish-approval\",\"presented_digest\":\"sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7\",\"verdict\":\"approve\"}",
+        "check": {
+          "obligation": "publish-approval",
+          "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+          "verdict": "approve",
+          "at": "2026-07-10T14:02:11Z",
+          "sig": "a6afeff06057592081d7527ec24969dc1440b94f36259715cc9adbac13984c9f7c15385104baa9de5a487a0a1bd6705aaf8f1a17fc4e72fb74616dcafed08402",
+          "presented_digest": "sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7"
+        }
+      },
+      "cross_action": {
+        "payload_jcs": "{\"action\":\"delete\",\"args_hash\":\"sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411\",\"at\":\"2026-07-10T14:02:11Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"publish-approval\",\"presented_digest\":\"sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7\",\"verdict\":\"approve\"}",
+        "check": {
+          "obligation": "publish-approval",
+          "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+          "verdict": "approve",
+          "at": "2026-07-10T14:02:11Z",
+          "sig": "88db6d84b15e22a500f19120c3cc2a0a549237992972364b51b11d6f44150bc65a23f0b926d7e8db43aa35c3edd7079f5dc24d5ee5111b367acdc58e0e043b02",
+          "presented_digest": "sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7"
+        }
+      },
+      "stranger_key": {
+        "payload_jcs": "{\"action\":\"publish\",\"args_hash\":\"sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411\",\"at\":\"2026-07-10T14:02:11Z\",\"mandate_id\":\"mandate_00000000000000000000GPLA\",\"obligation\":\"publish-approval\",\"presented_digest\":\"sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7\",\"verdict\":\"approve\"}",
+        "check": {
+          "obligation": "publish-approval",
+          "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+          "verdict": "approve",
+          "at": "2026-07-10T14:02:11Z",
+          "sig": "f683ea396b1ee362247695fde756b45d5cfd6f3968f29d0ad009ac4426042528fdf8678f5a509ba60147f0ffa87cab5c57569cf3ff7221acc63f990f9340190e",
+          "presented_digest": "sha256:99a8dc36aba4c2e8a6fb8ead2e68d0d85d51e5c72a5a0e9082072eda4936f5c7"
+        }
+      },
+      "presented_digest_swapped": {
+        "check": {
+          "obligation": "publish-approval",
+          "args_hash": "sha256:e57d76fae6af05763a5680f5d68a05b4f93a39371934a66c3cef95b9ec07c411",
+          "verdict": "approve",
+          "at": "2026-07-10T14:02:11Z",
+          "sig": "2111e88dd7034445c521da45200744706e57e67360b1e15c6ca31584645dc5f8b31e1e3fac054c7c167ff4e317a56373185fb2a1505d9cfcbddd08ad33cd3901",
+          "presented_digest": "sha256:69052092b37a28aab73c85e713a044c37dfcb00731554939bd162f99ea8993e6"
+        }
+      },
+      "missing_receipt": {
+        "check": null
+      }
+    },
+    "expected_negative_error": "GammaObligationUnsatisfied"
+  },
+  "attenuation": {
+    "parent_obligations": [
+      {
+        "id": "publish-approval",
+        "check": "human.approve",
+        "attestor": [
+          "z6MkpGrGdqbngEo77RYtzPE1FtmGcATVaT5LcfqR4AQoLwD9",
+          "z6Mko6CkAtZEMth5zj3LFBphfj2ncN9ooWppSSQfsMPAauxS"
+        ],
+        "applies_to": "act.x.social.publish",
+        "verdict": "approve",
+        "max_age": "5m"
+      }
+    ],
+    "child_adds": {
+      "obligations": [
+        {
+          "id": "publish-approval",
+          "check": "human.approve",
+          "attestor": [
+            "z6MkpGrGdqbngEo77RYtzPE1FtmGcATVaT5LcfqR4AQoLwD9",
+            "z6Mko6CkAtZEMth5zj3LFBphfj2ncN9ooWppSSQfsMPAauxS"
+          ],
+          "applies_to": "act.x.social.publish",
+          "verdict": "approve",
+          "max_age": "5m"
+        },
+        {
+          "id": "pii-guard",
+          "check": "guardrail.pii",
+          "attestor": [
+            "z6MkvRB58z4d5i8vFXCX873HtRV5G26xQhpn1Qj3S1gcz9Dv"
+          ],
+          "applies_to": "act.x.social.publish",
+          "verdict": "pass"
+        }
+      ],
+      "expected": "valid"
+    },
+    "child_drops": {
+      "obligations": [],
+      "expected": "InvalidMandate"
+    },
+    "child_loosens": {
+      "obligations": [
+        {
+          "id": "publish-approval",
+          "check": "human.approve",
+          "attestor": [
+            "z6MkpGrGdqbngEo77RYtzPE1FtmGcATVaT5LcfqR4AQoLwD9",
+            "z6Mko6CkAtZEMth5zj3LFBphfj2ncN9ooWppSSQfsMPAauxS"
+          ],
+          "applies_to": "act.x.social.publish",
+          "verdict": "approve",
+          "max_age": "1h"
+        }
+      ],
+      "expected": "InvalidMandate"
+    },
+    "rule": "inherited obligations MUST be JCS-identical; adding tightens"
+  }
+}
