@@ -113,12 +113,37 @@ impl Header {
         ephemerals: &[[u8; 32]],
         nonces: &[[u8; 24]],
     ) -> Result<Self> {
+        Self::build_at(subject_did, node, 1, dk, recipients, ephemerals, nonces)
+    }
+
+    /// Build a node's header whose FIRST version is `version` — the moved
+    /// node's case (§02.9): its header at the new canonical path opens at
+    /// the post-rotation version, while the old-path file keeps the earlier
+    /// versions. Same I3 fail-closed rule as [`Header::build`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_at(
+        subject_did: &str,
+        node: &str,
+        version: u64,
+        dk: &[u8; 32],
+        recipients: &[Recipient],
+        ephemerals: &[[u8; 32]],
+        nonces: &[[u8; 24]],
+    ) -> Result<Self> {
         check_owner_line(node, recipients)?;
         let mut key_versions = BTreeMap::new();
         key_versions.insert(
-            "1".to_owned(),
+            version.to_string(),
             KeyVersion {
-                lines: build_lines(subject_did, node, 1, dk, recipients, ephemerals, nonces),
+                lines: build_lines(
+                    subject_did,
+                    node,
+                    version,
+                    dk,
+                    recipients,
+                    ephemerals,
+                    nonces,
+                ),
             },
         );
         Ok(Header {

@@ -308,6 +308,45 @@ impl<S: Store> Bundle<S> {
         header.open(&self.did, KV, "owner-kex", &owner.owner_kex)
     }
 
+    /// Owner write-side key for a NEW circle section: the deepest ancestor
+    /// folder carrying a header governs — its owner line at its LATEST
+    /// version, derived down (§03.4/§02.9: a rotated or moved ancestor's
+    /// fresh key must reach every new write below it). Plain zone derivation
+    /// at v1 when no ancestor was ever granted or rotated.
+    /// Returns `(key_version, section_key)`.
+    pub(crate) fn owner_current_section_key(
+        &self,
+        owner: &OwnerKeys,
+        folders: &[Sid],
+        sid: Sid,
+    ) -> Result<(u64, [u8; 32])> {
+        let zone = Zone::Circle;
+        for depth in (0..=folders.len()).rev() {
+            let ancestor = NodePath::folder(zone, folders[..depth].to_vec());
+            let file = crate::grants::hdr_file(zone, &ancestor);
+            let Some(bytes) = self.store.get(&file).ok().flatten() else {
+                continue;
+            };
+            let Ok(header) = serde_json::from_slice::<Header>(&bytes) else {
+                continue;
+            };
+            let (v, base) = header.open_latest(&self.did, "owner-kex", &owner.owner_kex)?;
+            let rest = NodePath {
+                zone,
+                folders: folders[depth..].to_vec(),
+                leaf: aithos_core::path::Leaf::Section(sid),
+            };
+            return Ok((v, node_key(&base, &rest)));
+        }
+        Ok((
+            KV,
+            node_key(
+                &self.zone_dk(zone, owner)?,
+                &NodePath::section(zone, folders.to_vec(), sid),
+            ),
+        ))
+    }
+
     // --------------------------------------------------- folders/sections
 
     fn new_sid(ent: &mut dyn EntropySource) -> Sid {
@@ -407,13 +446,18 @@ impl<S: Store> Bundle<S> {
                 let folders = self.ensure_folder(zone, folder_path, owner, ent)?;
                 let sid = Self::new_sid(ent);
                 let node = NodePath::section(zone, folders.clone(), sid);
-                let key = node_key(&self.zone_dk(zone, owner)?, &node);
+                // New content seals under the governing ancestor's CURRENT
+                // key at its CURRENT version (§03.4, §02.9): writing at v1
+                // past a rotated or moved folder would hand the content back
+                // to whoever the rotation cut.
+                let (kv, key) = self.owner_current_section_key(owner, &folders, sid)?;
                 let sig = owner_content_sig(owner, zone, &display_path, &sid.to_string(), body)?;
                 let blob = serde_json::json!({ "md": body, "sig": sig });
-                let sha = self.put_blob(
+                let sha = self.put_blob_v(
                     &format!("e/circle/blobs/{sid}.enc"),
                     &key,
                     &node,
+                    kv,
                     &jcs::canonical_bytes(&blob)?,
                     ent,
                 )?;
@@ -426,7 +470,7 @@ impl<S: Store> Bundle<S> {
                     title: title.to_owned(),
                     tags: tags.to_vec(),
                     blob_sha: sha.clone(),
-                    key_version: KV,
+                    key_version: kv,
                     sig: None,
                 });
                 self.put_json(index_path, &index)?;

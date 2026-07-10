@@ -271,6 +271,21 @@ enum Command {
         #[arg(long)]
         revoked_seed_hex: Option<String>,
     },
+    /// Move a circle folder under a new parent (spec 02.9): move IS a
+    /// rotation — fresh key at the new path, direct lines re-sealed as
+    /// survivors, up-link wrap under the NEW parent, subtree re-encrypted.
+    /// Old-parent holders are cut; certificates follow the node (04.2).
+    Move {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+        /// The circle folder to move (display path).
+        folder: String,
+        /// The destination parent folder ("" = the zone root).
+        #[arg(long)]
+        under: String,
+    },
     /// Print the log's counting skeleton (what any file-holder sees).
     LogShow {
         #[arg(long)]
@@ -713,6 +728,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 bundle.rotate_folder(&owner, &folder, &kid, &mut OsEntropy)?;
                 println!("rotated {folder} out of the revoked grantee");
             }
+            bundle.publish(&owner, &now_string())?;
+            Ok(())
+        }
+        Command::Move {
+            dir,
+            seed_hex,
+            folder,
+            under,
+        } => {
+            let owner = owner_from(&seed_hex)?;
+            let mut bundle = bundle_at(&dir)?;
+            bundle.move_folder(&owner, &folder, &under, &mut OsEntropy)?;
+            let dest = if under.is_empty() {
+                "the zone root"
+            } else {
+                &under
+            };
+            println!("moved {folder} under {dest} — rotated, wrap posted, subtree re-encrypted");
             bundle.publish(&owner, &now_string())?;
             Ok(())
         }

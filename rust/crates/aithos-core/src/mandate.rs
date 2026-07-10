@@ -294,7 +294,7 @@ impl PerimeterEntry {
         }
     }
 
-    /// Containment (§04.2, §05.3): segment-list dir prefix, tag equality,
+    /// Containment (§04.2, §05.3): nodal dir containment, tag equality,
     /// verb lattice; an absent dimension covers any value of it.
     pub fn covers(&self, child: &PerimeterEntry) -> bool {
         /// Absent covers anything; present covers only the equal value.
@@ -372,8 +372,7 @@ impl PerimeterEntry {
             ) => {
                 pz == cz
                     && pv.covers(*cv)
-                    && cd.len() >= pd.len()
-                    && cd[..pd.len()] == pd[..]
+                    && dir_covers(pd, cd)
                     && match (pt, ct) {
                         (None, _) => true,
                         (Some(a), Some(b)) => a == b,
@@ -398,6 +397,22 @@ pub fn covers(parent: &PerimeterEntry, child: &PerimeterEntry) -> bool {
     parent.covers(child)
 }
 
+/// Nodal `dir` containment (§04.2): a `dir` names its granted folder by its
+/// **terminal sid** — the leading segments are the address at issuance, kept
+/// for audit, never a constraint. A target is inside iff its chain passes
+/// through that sid; the empty `dir` is the zone root and covers the zone.
+/// On a tree that never moved this equals segment-list prefix containment
+/// (sids are unique); it diverges only after a move (§02.9): the perimeter
+/// follows the node, not its address. `gamma-selector` dirs are NOT nodal —
+/// they filter recorded log coordinates (§07.8).
+#[must_use]
+pub fn dir_covers(dir: &[Sid], chain: &[Sid]) -> bool {
+    match dir.last() {
+        None => true,
+        Some(node) => chain.contains(node),
+    }
+}
+
 /// The operation a verifier is asked about.
 #[derive(Debug, Clone)]
 pub struct Op<'a> {
@@ -409,7 +424,9 @@ pub struct Op<'a> {
     pub tags: &'a [String],
 }
 
-/// Does any leaf entry cover the operation?
+/// Does any leaf entry cover the operation? `op.folders` is the target's
+/// CURRENT resolved chain — nodal containment (§04.2) makes the perimeter
+/// follow the node across moves (§02.9).
 pub fn covers_op(perimeter: &[PerimeterEntry], op: &Op<'_>) -> bool {
     perimeter.iter().any(|e| match e {
         PerimeterEntry::Ethos {
@@ -420,8 +437,7 @@ pub fn covers_op(perimeter: &[PerimeterEntry], op: &Op<'_>) -> bool {
         } => {
             *zone == op.zone
                 && verb.covers(op.verb)
-                && op.folders.len() >= dir.len()
-                && op.folders[..dir.len()] == dir[..]
+                && dir_covers(dir, op.folders)
                 && tag.as_ref().is_none_or(|t| op.tags.contains(t))
         }
         _ => false,

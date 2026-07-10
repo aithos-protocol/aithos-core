@@ -371,6 +371,11 @@ impl<S: Store> Bundle<S> {
     ) -> Result<[u8; 32]> {
         let zone = Zone::Circle;
         let section = NodePath::section(zone, folders.to_vec(), sid);
+        // From the deepest folder this key holds a line on, walk DOWN to the
+        // section: derive by default, step through an up-link wrap wherever
+        // a rotation (§03.4, via the zone root) or a move (§02.9, via the
+        // new parent) re-keyed a node along the way. Fail-closed: a wrap
+        // that does not open with the walk's current key grants nothing.
         for depth in (0..=folders.len()).rev() {
             let ancestor = NodePath::folder(zone, folders[..depth].to_vec());
             let Some(bytes) = self.store.get(&hdr_file(zone, &ancestor)).ok().flatten() else {
@@ -384,27 +389,49 @@ impl<S: Store> Bundle<S> {
             } else {
                 header.latest_version()
             };
-            if let Ok(base) = header.open(&self.did, v, kid, kex) {
-                let rest = NodePath {
-                    zone,
-                    folders: folders[depth..].to_vec(),
-                    leaf: Leaf::Section(sid),
-                };
-                return Ok(node_key(&base, &rest));
-            }
-            let zroot = NodePath::zone_root(zone);
-            if let Ok(zone_dk) = self.agent_node_key(kid, kex, &zroot) {
-                if let Ok(wrap) = self.get_json::<Wrap>(&wrap_file(zone, &zroot, &ancestor)) {
-                    if let Ok(folder_dk) = wrap.open(&self.did, &zone_dk) {
-                        let rest = NodePath {
-                            zone,
-                            folders: folders[depth..].to_vec(),
-                            leaf: Leaf::Section(sid),
-                        };
-                        return Ok(node_key(&folder_dk, &rest));
+            let Ok(base) = header.open(&self.did, v, kid, kex) else {
+                continue;
+            };
+            let mut k = base;
+            for d in depth..folders.len() {
+                let parent = NodePath::folder(zone, folders[..d].to_vec());
+                let child = NodePath::folder(zone, folders[..=d].to_vec());
+                // A wrap via the immediate parent wins over derivation:
+                // past a fresh key, the derived value is stale by design.
+                if let Ok(wrap) = self.get_json::<Wrap>(&wrap_file(zone, &parent, &child)) {
+                    if let Ok(dk) = wrap.open(&self.did, &k) {
+                        k = dk;
+                        continue;
                     }
                 }
+                // Rotation wraps hang under the zone root (§03.4 step 2bis);
+                // only the zone-root key itself opens them.
+                if depth == 0 {
+                    let zroot = NodePath::zone_root(zone);
+                    if let Ok(wrap) = self.get_json::<Wrap>(&wrap_file(zone, &zroot, &child)) {
+                        if let Ok(dk) = wrap.open(&self.did, &base) {
+                            k = dk;
+                            continue;
+                        }
+                    }
+                }
+                k = node_key(
+                    &k,
+                    &NodePath {
+                        zone,
+                        folders: vec![folders[d]],
+                        leaf: Leaf::Folder,
+                    },
+                );
             }
+            return Ok(node_key(
+                &k,
+                &NodePath {
+                    zone,
+                    folders: vec![],
+                    leaf: Leaf::Section(sid),
+                },
+            ));
         }
         self.agent_node_key(kid, kex, &section)
     }

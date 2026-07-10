@@ -106,7 +106,6 @@ Feature: Revocation — the full ladder, with no server in any trust role
 
   Rule: Move is a rotation — derivation cannot be un-taught (spec 02.9)
 
-    @wip
     Scenario: Moving a folder cuts the old parent's derivation
       Given an agent granted read on circle folder "archives"
       And a section "archives/old/note1" the agent reads by derivation
@@ -115,13 +114,11 @@ Feature: Revocation — the full ladder, with no server in any trust role
       But the agent's read of "projets/old/note1" is rejected as outside its perimeter
       And the folder carries a fresh key version at its new path
 
-    @wip
     Scenario: A directly granted line survives the move
       Given an agent granted read on circle folder "archives/old"
       When the owner moves folder "archives/old" under "projets"
       Then the agent reads new content at "projets/old" with its unchanged keypair
 
-    @wip
     Scenario: The new parent's holder reads the moved folder through the up-link wrap
       Given an agent granted read on circle folder "projets"
       When the owner moves folder "archives/old" under "projets"

@@ -752,3 +752,115 @@ fn invalid_inputs_fail_closed() {
         .assert()
         .failure();
 }
+
+#[test]
+fn a_move_rotates_cuts_the_old_parent_and_keeps_the_direct_line() {
+    const OLD_PARENT_AGENT: &str =
+        "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
+    let dir = init_bundle();
+    // archives/old/note1 to move, projets as destination.
+    for path in ["archives/old/note1", "projets/keep"] {
+        ac().args([
+            "section-add",
+            "--dir",
+            &d(&dir),
+            "--seed-hex",
+            OWNER,
+            "circle",
+            path,
+            "--title",
+            "note",
+            "--body",
+            BODY,
+        ])
+        .assert()
+        .success();
+    }
+    // One direct line on the moved folder, one grant on the old parent.
+    for (seed, folder) in [(AGENT, "archives/old"), (OLD_PARENT_AGENT, "archives")] {
+        ac().args([
+            "grant",
+            "--dir",
+            &d(&dir),
+            "--seed-hex",
+            OWNER,
+            "--agent-seed-hex",
+            seed,
+            folder,
+            "--ttl-days",
+            "7",
+        ])
+        .assert()
+        .success();
+    }
+    let old_parent_cert = last_cert(&dir);
+    let now = {
+        let m: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&old_parent_cert).unwrap()).unwrap();
+        m["not_before"].as_str().unwrap().to_owned()
+    };
+    let direct_cert = {
+        let mut certs: Vec<_> = std::fs::read_dir(dir.path().join("certs"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        certs.sort_by_key(|p| std::fs::metadata(p).unwrap().modified().unwrap());
+        certs[certs.len() - 2].to_str().unwrap().to_owned()
+    };
+
+    ac().args([
+        "move",
+        "--dir",
+        &d(&dir),
+        "--seed-hex",
+        OWNER,
+        "archives/old",
+        "--under",
+        "projets",
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("moved archives/old under projets"));
+
+    // The direct line survives — same cert, same keypair, new address.
+    ac().args([
+        "section-read-agent",
+        "--dir",
+        &d(&dir),
+        "--cert",
+        &direct_cert,
+        "--agent-seed-hex",
+        AGENT,
+        "--at",
+        &now,
+        "projets/old/note1",
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains(BODY));
+
+    // The old parent's grant no longer covers the moved subtree.
+    ac().args([
+        "section-read-agent",
+        "--dir",
+        &d(&dir),
+        "--cert",
+        &old_parent_cert,
+        "--agent-seed-hex",
+        OLD_PARENT_AGENT,
+        "--at",
+        &now,
+        "projets/old/note1",
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("not covered"));
+
+    // The move republished a verifiable edition and log.
+    ac().args(["edition-verify", "--dir", &d(&dir)])
+        .assert()
+        .success();
+    ac().args(["log-verify", "--dir", &d(&dir)])
+        .assert()
+        .success();
+}

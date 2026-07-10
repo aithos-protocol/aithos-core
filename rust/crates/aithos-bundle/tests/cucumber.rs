@@ -4257,6 +4257,129 @@ fn helper_readopted(w: &mut ProtocolWorld) {
     assert!(r.is_ok(), "re-adopted helper reads, got {r:?}");
 }
 
+// ----------------------------------------- move-as-rotation (spec 02.9) ---
+
+fn hdr_path_of(node: &NodePath) -> String {
+    format!(
+        "e/circle/hdr/{}.json",
+        hex::encode(&blake3::hash(node.to_string().as_bytes()).as_bytes()[..12])
+    )
+}
+
+fn wrap_path_of(via: &NodePath, node: &NodePath) -> String {
+    format!(
+        "e/circle/wraps/{}.json",
+        hex::encode(&blake3::hash(format!("{via}\u{0}{node}").as_bytes()).as_bytes()[..12])
+    )
+}
+
+#[given(expr = "a section {string} the agent reads by derivation")]
+fn section_read_by_derivation(w: &mut ProtocolWorld, path: String) {
+    let (folder, name) = path.rsplit_once('/').expect("folder/name");
+    w.add_named_section(folder, name, &[]);
+    let r = w.agent_reads(&w.chain.clone(), AGENT, &path);
+    assert_eq!(r.as_deref(), Ok(BODY), "derivation read fails: {r:?}");
+}
+
+#[when(expr = "the owner moves folder {string} under {string}")]
+fn owner_moves_folder(w: &mut ProtocolWorld, folder: String, dest: String) {
+    // Scenario permutations share this step: seed the fixture ends that the
+    // Given did not create (the new-parent scenario grants "projets" only).
+    if w.bundle
+        .as_ref()
+        .unwrap()
+        .resolve_folder(Zone::Circle, &folder)
+        .is_err()
+    {
+        assert_eq!(folder, "archives/old", "unexpected move fixture");
+        w.add_named_section(&folder, "note1", &[]);
+    }
+    let owner = w.owner(0);
+    let bundle = w.bundle.as_mut().unwrap();
+    bundle
+        .ensure_folder(Zone::Circle, &dest, &owner, &mut w.ent)
+        .expect("destination exists");
+    bundle
+        .move_folder(&owner, &folder, &dest, &mut w.ent)
+        .expect("move succeeds");
+}
+
+#[then("the agent still derives the folder's old key — it cannot be un-taught")]
+fn agent_still_derives_old_key(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let b = w.bundle.as_ref().unwrap();
+    // The moved folder sits at its new address; its sid is stable.
+    let new_chain = b.resolve_folder(Zone::Circle, "projets/old").unwrap();
+    let m_sid = *new_chain.last().unwrap();
+    let a_chain = b.resolve_folder(Zone::Circle, "archives").unwrap();
+    // Agent side: its own line on "archives", one derivation step down.
+    let a_node = NodePath::folder(Zone::Circle, a_chain.clone());
+    let header: Header = read_json(b, &hdr_path_of(&a_node));
+    let sk = agent_sk(AGENT);
+    let kid = wire::ed25519_pub_to_multibase(&sk.verifying_key().to_bytes());
+    let kex = aithos_core::keys::grantee_kex_secret(&sk);
+    let dk_a = header
+        .open(&b.did, 1, &kid, &kex)
+        .expect("agent line opens");
+    let derived = derive_key(&aithos_core::derive::folder_label(&m_sid), &dk_a);
+    // Owner side: the same old key straight from the zone root — the move
+    // could not un-teach it, which is exactly why it had to rotate.
+    let mut old_chain = a_chain;
+    old_chain.push(m_sid);
+    let expected = node_key(
+        &b.zone_dk(Zone::Circle, &owner).unwrap(),
+        &NodePath::folder(Zone::Circle, old_chain),
+    );
+    assert_eq!(derived, expected, "old-parent derivation must survive");
+}
+
+#[then(expr = "the agent's read of {string} is rejected as outside its perimeter")]
+fn read_rejected_outside_perimeter(w: &mut ProtocolWorld, path: String) {
+    let r = w.agent_reads(&w.chain.clone(), AGENT, &path);
+    let err = r.expect_err("the old parent's grant must not cover the moved node");
+    assert!(err.contains("not covered"), "wrong rejection: {err}");
+}
+
+#[then("the folder carries a fresh key version at its new path")]
+fn fresh_version_at_new_path(w: &mut ProtocolWorld) {
+    let b = w.bundle.as_ref().unwrap();
+    let chain = b.resolve_folder(Zone::Circle, "projets/old").unwrap();
+    let node = NodePath::folder(Zone::Circle, chain);
+    let header: Header = read_json(b, &hdr_path_of(&node));
+    assert_eq!(header.node, node.to_string(), "header binds the new path");
+    assert_eq!(header.latest_version(), 2, "fresh key version");
+    assert!(
+        !header.key_versions.contains_key("1"),
+        "old versions stay at the old address"
+    );
+}
+
+#[then(expr = "the agent reads new content at {string} with its unchanged keypair")]
+fn survivor_reads_new_content(w: &mut ProtocolWorld, folder: String) {
+    // The owner writes NEW content after the move; the direct line was
+    // re-sealed as a survivor, so the same keypair keeps reading.
+    w.add_named_section(&folder, "note2", &[]);
+    let r = w.agent_reads(&w.chain.clone(), AGENT, &format!("{folder}/note2"));
+    assert_eq!(r.as_deref(), Ok(BODY), "survivor read fails: {r:?}");
+}
+
+#[then(expr = "the agent reads {string} through the wrap posted under {string}")]
+fn reads_through_parent_wrap(w: &mut ProtocolWorld, path: String, parent: String) {
+    let b = w.bundle.as_ref().unwrap();
+    let p_chain = b.resolve_folder(Zone::Circle, &parent).unwrap();
+    let m_chain = b
+        .resolve_folder(Zone::Circle, &format!("{parent}/old"))
+        .unwrap();
+    let via = NodePath::folder(Zone::Circle, p_chain);
+    let node = NodePath::folder(Zone::Circle, m_chain);
+    assert!(
+        b.store.get(&wrap_path_of(&via, &node)).unwrap().is_some(),
+        "the up-link wrap must hang under the new parent"
+    );
+    let r = w.agent_reads(&w.chain.clone(), AGENT, &path);
+    assert_eq!(r.as_deref(), Ok(BODY), "wrap read fails: {r:?}");
+}
+
 // ------------------------------------------------------------------ main
 
 fn main() {

@@ -238,6 +238,195 @@ impl<S: Store> Bundle<S> {
         self.put_json("e/circle/index.json", &index)
     }
 
+    /// The owner's view of a folder's CURRENT key: the header's owner line
+    /// at its latest version when the node was ever granted or rotated,
+    /// plain derivation from the zone root otherwise. Returns `(version, dk)`.
+    pub(crate) fn owner_folder_key_latest(
+        &self,
+        owner: &OwnerKeys,
+        node: &NodePath,
+    ) -> Result<(u64, [u8; 32])> {
+        if let Some(bytes) = self.store.get(&hdr_file(node.zone, node)).ok().flatten() {
+            if let Ok(header) = serde_json::from_slice::<Header>(&bytes) {
+                let (v, dk) = header.open_latest(&self.did, "owner-kex", &owner.owner_kex)?;
+                return Ok((v, dk));
+            }
+        }
+        Ok((KV, node_key(&self.zone_dk(node.zone, owner)?, node)))
+    }
+
+    // ---------------------------------------------------- move (§02.9)
+
+    /// Move a circle folder under a new parent (§02.9): move IS a rotation,
+    /// because derivation cannot be un-taught. Re-parents the index row (the
+    /// sid is stable — every label below M is unchanged), seals a fresh DK'
+    /// at M's NEW canonical path to exactly the previous line holders (a move
+    /// cuts nobody with a direct line — cutting is what revocation is for),
+    /// posts the up-link wrap under the NEW parent, and re-encrypts M's
+    /// subtree at the new version. Old-parent holders are cut by physics
+    /// (fresh key) and by policy (§04.2 nodal containment) at once.
+    /// Fail-closed: never the zone root, never into M's own subtree, never
+    /// beside a same-named sibling, never a same-parent no-op.
+    pub fn move_folder(
+        &mut self,
+        owner: &OwnerKeys,
+        display_folder: &str,
+        new_parent_display: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        let zone = Zone::Circle;
+        let folders_m = self.resolve_folder(zone, display_folder)?;
+        let Some(&m_last) = folders_m.last() else {
+            return Err(Error::InvalidPath("cannot move the zone root".to_owned()));
+        };
+        let new_parent: Vec<Sid> = if new_parent_display.split('/').all(str::is_empty) {
+            vec![]
+        } else {
+            self.resolve_folder(zone, new_parent_display)?
+        };
+        if new_parent.len() >= folders_m.len() && new_parent[..folders_m.len()] == folders_m[..] {
+            return Err(Error::InvalidPath(
+                "cannot move a folder into its own subtree".to_owned(),
+            ));
+        }
+        let m_sid = m_last.to_string();
+        let new_parent_sid = new_parent.last().map(ToString::to_string);
+
+        let mut index: ZoneIndex = self.get_json("e/circle/index.json")?;
+        let row = index
+            .folders
+            .iter()
+            .find(|f| f.sid == m_sid)
+            .ok_or_else(|| Error::InvalidPath(format!("no folder row for {m_sid}")))?;
+        if row.parent_sid == new_parent_sid {
+            return Err(Error::InvalidPath(
+                "folder already sits under that parent".to_owned(),
+            ));
+        }
+        let m_name = row.name.clone();
+        if index
+            .folders
+            .iter()
+            .any(|f| f.sid != m_sid && f.parent_sid == new_parent_sid && f.name == m_name)
+        {
+            return Err(Error::InvalidPath(format!(
+                "a folder named {m_name} already sits under the destination"
+            )));
+        }
+
+        let old_node = NodePath::folder(zone, folders_m.clone());
+        let mut new_chain = new_parent.clone();
+        new_chain.push(m_last);
+        let new_node = NodePath::folder(zone, new_chain.clone());
+
+        // M's current key and its full current line set (owner always there).
+        let (old_v, old_dk, survivors) =
+            match self.store.get(&hdr_file(zone, &old_node)).ok().flatten() {
+                Some(bytes) => {
+                    let header: Header = serde_json::from_slice(&bytes)
+                        .map_err(|e| Error::SealRejected(format!("old header: {e}")))?;
+                    let v = header.latest_version();
+                    let dk = header.open(&self.did, v, "owner-kex", &owner.owner_kex)?;
+                    let kv = header
+                        .key_versions
+                        .get(&v.to_string())
+                        .ok_or_else(|| Error::SealRejected("no current version".to_owned()))?;
+                    let mut survivors = Vec::new();
+                    for line in &kv.lines {
+                        if line.to == "owner" {
+                            survivors.push(self.owner_kex_recipient()?);
+                        } else {
+                            let ed = wire::multibase_to_ed25519_pub(&line.to)?;
+                            let vk = VerifyingKey::from_bytes(&ed)
+                                .map_err(|_| Error::SealRejected("bad survivor key".to_owned()))?;
+                            survivors.push(Recipient {
+                                to: line.to.clone(),
+                                kid: line.kid.clone(),
+                                pubkey: ed2x(&vk),
+                            });
+                        }
+                    }
+                    (v, dk, survivors)
+                }
+                None => (
+                    KV,
+                    node_key(&self.zone_dk(zone, owner)?, &old_node),
+                    vec![self.owner_kex_recipient()?],
+                ),
+            };
+        let new_v = old_v + 1;
+
+        // Re-parent the row: the sid is stable, only the spine changes.
+        for f in &mut index.folders {
+            if f.sid == m_sid {
+                f.parent_sid = new_parent_sid.clone();
+            }
+        }
+        self.put_json("e/circle/index.json", &index)?;
+
+        // Fresh DK' sealed at the NEW canonical path to exactly the old line
+        // set (§03.4 discipline across files: nobody added, nobody dropped).
+        // The old header file stays put — an immutable record of the
+        // versions sealed at the old address.
+        let new_dk = ent.e32();
+        let eph: Vec<[u8; 32]> = survivors.iter().map(|_| ent.e32()).collect();
+        let nonces: Vec<[u8; 24]> = survivors.iter().map(|_| ent.e24()).collect();
+        let header_new = Header::build_at(
+            &self.did,
+            &new_node.to_string(),
+            new_v,
+            &new_dk,
+            &survivors,
+            &eph,
+            &nonces,
+        )?;
+        self.put_json(&hdr_file(zone, &new_node), &header_new)?;
+
+        // Up-link wrap under the NEW parent (§02.9): its holders — and any
+        // ancestor deriving the parent's key — read M through the wrap.
+        let parent_node = NodePath::folder(zone, new_parent.clone());
+        let (_, parent_key) = self.owner_folder_key_latest(owner, &parent_node)?;
+        let wrap = Wrap::seal(
+            &self.did,
+            &parent_node.to_string(),
+            &parent_key,
+            &new_node.to_string(),
+            new_v,
+            &new_dk,
+            ent.e24(),
+        );
+        self.put_json(&wrap_file(zone, &parent_node, &new_node), &wrap)?;
+
+        // Re-encrypt M's subtree at new_v bound to the new path (eager,
+        // like rotate_folder). The index is already re-parented: rows come
+        // back with their new chains; the old chain is the old spine + rest.
+        let versions: std::collections::BTreeMap<String, u64> = index
+            .sections
+            .iter()
+            .map(|r| (r.sid.clone(), r.key_version))
+            .collect();
+        for (row_folders, sid) in self.sections_under(zone, &new_chain, None)? {
+            let rest: Vec<Sid> = row_folders[new_chain.len()..].to_vec();
+            let below = |leaf_folders: &[Sid]| NodePath {
+                zone,
+                folders: leaf_folders.to_vec(),
+                leaf: Leaf::Section(sid),
+            };
+            let mut old_folders = folders_m.clone();
+            old_folders.extend_from_slice(&rest);
+            let old_section = NodePath::section(zone, old_folders, sid);
+            let new_section = NodePath::section(zone, row_folders.clone(), sid);
+            let old_key = node_key(&old_dk, &below(&rest));
+            let new_key = node_key(&new_dk, &below(&rest));
+            let row_v = versions.get(&sid.to_string()).copied().unwrap_or(KV);
+            let file = format!("e/circle/blobs/{sid}.enc");
+            let pt = self.open_blob_v(&file, &old_key, &old_section, row_v)?;
+            let sha = self.put_blob_v(&file, &new_key, &new_section, new_v, &pt, ent)?;
+            self.bump_section_version(sid, new_v, &sha)?;
+        }
+        Ok(())
+    }
+
     // --------------------------------------------- revocation-aware reads
 
     /// Read a circle section at its stored key version, resolving the folder
