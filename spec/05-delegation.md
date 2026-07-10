@@ -39,8 +39,10 @@ in every request and gamma entry.
 2. **Window containment.** `parent.nb ≤ child.nb ≤ child.na ≤ parent.na`.
 3. **Constraint monotonicity.** Child constraints are ≥ strict: numeric caps ≤ parent,
    `domains ⊆`, `counter_sign/binding ⊇`, `obligations ⊇` (a sub-mandate may add
-   an obligation, never drop one, §4.12), `heartbeat` at least as tight, `freshness`
-   ≤ parent, `first_party_only` not weakened.
+   an obligation, never drop one, §4.12 — an inherited obligation MUST be
+   JCS-identical to the parent's, decided 2026-07-10; tightening is expressed by
+   *adding* a stricter obligation, the conjunction is the tightening), `heartbeat`
+   at least as tight, `freshness` ≤ parent, `first_party_only` not weakened.
 4. **Depth.** child `issue#depth=m` ⇒ `m ≤ n−1`; chain length in links ≤ root depth.
 5. **Signature & identity.** child.signature verifies under parent.grantee.pubkey;
    `child.issued_by == parent.grantee.pubkey`; `child.grantee.pubkey ≠ child.issued_by`.

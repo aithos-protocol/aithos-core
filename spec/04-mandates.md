@@ -206,12 +206,15 @@ prepares the action, obtains the owner's live co-signature (out of band — the
 human approves), then emits it with the gamma entry. This is how "the AI may
 act, but a commitment needs me in the loop" is expressed.
 
-The `co_sign` receipt signs `{mandate_id, action, args_hash, at}` — the general
-obligation payload (§4.12) specialized to owner-approve (its `obligation`/`verdict`
-implicit), so every anti-replay property carries over identically: one-shot
-(nonce-bound), logged, and fresh-bound — valid only if
-`|entry.at − co_sign.at| ≤ Δ_cosign` (normative default **5 minutes**), so a
-stored "fresh" co-signature cannot be replayed later. `binding` additionally
+`counter_sign` desugars to the reserved obligation id **`co_sign`** — attestor =
+the owner content key, `verdict: "approve"`, `max_age` = Δ_cosign (normative
+default **5 minutes**). The receipt signs the full §4.12 payload
+`{obligation: "co_sign", mandate_id, action, args_hash, verdict,
+presented_digest?, at}` — **one wire shape** (decided 2026-07-10): *implicit*
+lives in the shorthand declaration, never in the signed bytes. Every
+anti-replay property is §4.12's: one-shot (`args_hash`-bound), logged, and
+fresh-bound — valid only if `|entry.at − receipt.at| ≤ max_age`, so a stored
+"fresh" co-signature cannot be replayed later. `binding` additionally
 marks the action as a commitment (implies `counter_sign`). Enforcement is
 **tier V** (§4.5 step 7): a signed file artifact verified offline like any
 obligation, not handed to a runtime executor.
@@ -383,7 +386,10 @@ in the chain whose `applies_to` covers the entry's action, the entry MUST carry 
 the entry. The signed payload `{obligation, mandate_id, action, args_hash, verdict,
 presented_digest?, at}` is a **superset** of the §4.6 `co_sign` payload: binding
 `args_hash` makes the receipt single-use, binding `mandate_id`+`action` blocks
-cross-mandate and cross-action replay. When present, `presented_digest` sits inside
+cross-mandate and cross-action replay. `mandate_id` is the **entry's
+`authorized_by`** — the leaf mandate acting (decided 2026-07-10) — so a receipt
+never transfers between sibling sub-mandates, even when the obligation is
+declared on a shared ancestor. When present, `presented_digest` sits inside
 the signed set, so the rendered-vs-executed (WYSIWYS) binding cannot be altered
 after the fact; comparing it to a re-render is an off-protocol audit step.
 
@@ -402,10 +408,12 @@ never *why*. The core stays a signature checker, not a workflow engine.
 
 **Discharge order.** Authorize first (`covers_act`, pure, §4.5); then discharge —
 run the check / obtain the signature (I/O, gateway-side, never the agent); then
-append+consume with the receipt. A blocked or missing receipt consumes nothing and
-is logged as a refusal. Waiting on a human is a **pre-condition, not a deferred
-duty**: the log only ever holds the committed action carrying its receipt, or
-nothing (§07 has no "pending" state), so verification stays deterministic offline.
+append+consume with the receipt. A blocked or missing receipt consumes nothing:
+the core **rejects the append** (fail-closed, a dedicated error) — the *refusal
+log* is the gateway's operational duty, off-protocol (decided 2026-07-10).
+Waiting on a human is a **pre-condition, not a deferred duty**: the log only
+ever holds the committed action carrying its receipt, or nothing (§07 has no
+"pending" state), so verification stays deterministic offline.
 
 **Attenuation.** A sub-mandate may only ADD obligations, never drop a parent's
 (§05.3): delegation can tighten a gate, never strip it.
