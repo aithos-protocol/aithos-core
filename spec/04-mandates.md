@@ -136,11 +136,13 @@ counter-signature.
 | `max_sessions: N` | at most N session keys simultaneously certified by the grantee's long-term key (§4.7) — blocks silent duplication of one mandate across N machines | V |
 | `max_actions_per: {window,N}` | ≤ N actions per rolling window (`"1h"`,`"1d"`) | V+X |
 | `rate_limit: {action,window,N}` | per-action-kind rate cap | V+X |
-| `active_hours: {tz, ranges[]}` | actions only within given local time ranges | X |
+| `active_windows: [window]` | union of absolute arithmetic windows (§4.10); acting outside every window is invalid — replaces the former `active_hours` (calendar/timezone live in the issuing tool, never in the verifier) | V |
+| `budgets: [profile]` | OR-composed budget profiles (§4.11): model list, token budget, windows, action cap, attestation hook; actions and inferences MUST cite a `budget_ref` | V+X |
+| `log_reads: true` | the grantee MUST journalize its reads as `ethos.read` entries (§07.9); off by default — reading is not logged under I5. Physics cannot force a reader's pen: an honest verifier of a *read presentation* requires the entry; a silent read stays possible and is exactly what this flag makes contractually visible | V+X |
 | `counter_sign: [actions]` | listed actions require a fresh owner co-signature (§4.6) | C |
 | `binding: [actions]` | actions that constitute a commitment; implies counter_sign | C |
 | `domains: [patterns]` | connector actions may touch only these domains/recipients | X |
-| `action_params: {action: predicates}` | per-action argument predicates (e.g. reply only on an existing thread, no attachments, recipient cap) — generalizes `domains` | X |
+| `action_params: {action: predicates}` | per-action argument predicates (allow-listed recipients, subject patterns, no-attachments, numeric caps) — generalizes `domains`. Enforced on the real args by the container (X); **auditable at V** through the sealed args body of the entry (§07.9): the owner reopens the args and re-evaluates the predicates | X (+V audit) |
 | `disclose_agency: true` | the agent MUST identify itself as an agent in every outbound communication of a connector action (transparency; EU-AI-Act-aligned) | X |
 | `notify: [events]` | out-of-band owner alert on the listed events; best effort, never a validity condition | X |
 | `purpose: "<text>" ` | signed statement of intent; actions cite it; audited | V+X |
@@ -226,3 +228,91 @@ assumed risk: revocation then waits on the owner's return or the succession key
 Certificates live at `certs/<id>.json`, are world-readable, and MAY be transported
 by any channel. The signature is what matters, not secrecy — but a certificate reveals
 which agents a subject trusts, so treat its distribution as mildly sensitive.
+
+## 4.10 Absolute active windows
+
+> Decided 2026-07-10 (F+). Time in the verifier is interval arithmetic — no
+> timezone, no DST, no calendar. "Every Thursday 14–18 Paris time" is the
+> ISSUING TOOL's problem; it expands to arithmetic windows at grant time.
+
+One window:
+
+```jsonc
+{ "anchor": "2026-07-02T14:00:00Z",   // RFC 3339 Z — start of occurrence 0
+  "duration": "4h",                   // §07 duration grammar (<n>d|h|m|s)
+  "period": "7d",                     // optional: repeats every period
+  "until": "2026-09-01T00:00:00Z",    // optional: no occurrence STARTS after this
+  "count": 8 }                        // optional: at most `count` occurrences
+```
+
+Semantics (normative):
+
+- Occurrence *k* (k ≥ 0) is the half-open interval
+  `[anchor + k·period, anchor + k·period + duration)` — **start inclusive,
+  end exclusive**. No `period` ⇒ only k = 0. `until` bounds occurrence
+  *starts*; `count` bounds *k < count*; both may combine (conjunction).
+- `T` satisfies a window iff it falls in some occurrence; several windows in
+  `active_windows` compose as a **union**; the whole constraint conjoins with
+  the validity window and every other constraint (rolling limits stay a
+  distinct mechanism: relative sliding durations vs absolute slots).
+- Wire format: instants are RFC 3339 Zulu strings, never epoch integers —
+  RFC 8785 serializes numbers as IEEE 754 doubles, so a nanosecond epoch
+  (> 2^53) would silently lose precision inside signed bytes. Arithmetic is
+  exact integer seconds internally; finer granularity would be a `v` bump.
+- **Attenuation (§05.3).** A sub-mandate's windows may only tighten: every
+  occurrence of every child window, clipped to the child's validity window,
+  MUST be contained in some occurrence of a parent window (parent without
+  `active_windows` covers anything). Verification enumerates the child's
+  occurrences — finite, since validity windows are — and fails **closed**
+  above an implementation bound (an unverifiable containment is a rejection,
+  never a pass).
+
+## 4.11 Budget profiles
+
+> Decided 2026-07-10 (F+). One mandate, several ways to pay: profiles
+> compose with OR, everything inside a profile conjoins.
+
+```jsonc
+"budgets": [
+  { "id": "haiku",
+    "models": ["claude-haiku"],          // allow-list; absent = any model
+    "token_budget": 10000,               // lifetime, subtree-counted (§07.4)
+    "active_windows": [ … ],             // §4.10, scoped to this profile
+    "max_actions": 1,                    // actions citing this profile
+    "require_attestation": true,         // §4.11.1
+    "attestation_key": "z6Mk…" },        // provider key the receipts must bear
+  { "id": "gemma", "models": ["gemma"], "token_budget": 25000 } ]
+```
+
+- When a mandate carries `budgets`, every `action` and `inference` entry
+  under it MUST cite `budget_ref: "<profile id>"` — an uncited entry, or one
+  citing an unknown id, is invalid. The cited profile must be satisfied in
+  full: model in list, `T` inside the profile's windows, action count and
+  token tally not exhausted.
+- **Tallies are subtree counts over gamma** (§07.4): actions citing the
+  profile count against `max_actions`; declared `tokens` of actions plus
+  `tokens_in + tokens_out` of `inference` entries citing the profile count
+  against `token_budget`. The check applies **per budgets-bearing mandate in
+  the chain** — a delegate never multiplies an ancestor's budget.
+- **Enforcement tiers, stated plainly:** the verifier counts *declared*
+  values (V). The truth of model and token numbers is the container's duty
+  (X, §08): credentials live in the vault, the container builds the request,
+  reads real usage, refuses at the budget. A-posteriori reconciliation
+  (provider invoice vs log) closes the loop.
+
+### 4.11.1 Attestation receipts
+
+The optional bridge from X back to V: a provider-signed usage receipt.
+
+```jsonc
+"receipt": { "args_hash": "sha256:…",   // MUST equal the entry's args_hash
+             "model": "claude-haiku",   // MUST equal the entry's model
+             "tokens": 8412,            // real usage; OVERRIDES the declaration
+             "sig": "<hex ed25519 over JCS of the three fields above>" }
+```
+
+A profile with `require_attestation: true` rejects any citing entry without
+a receipt that verifies under the profile's `attestation_key`. The
+`args_hash` binding makes receipts single-use: a receipt never transfers to
+another action. Where receipts exist, tallies use the attested `tokens`,
+not the declaration.

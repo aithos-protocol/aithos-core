@@ -23,7 +23,8 @@ mutations, a **sealed body** carrying everything else (§7.3):
   "prev": "sha256:…",                        // hash of the previous entry's JCS
   "at": "2026-07-08T10:12:00Z",
   "kind": "section.add" | "section.modify" | "section.delete" | "section.redact"
-        | "action" | "heartbeat" | "grant" | "revoke" | "rotate" | "merge",
+        | "action" | "inference" | "ethos.read"
+        | "heartbeat" | "grant" | "revoke" | "rotate" | "merge",   // registry §7.9
   "target": "x.gmail" | "mandate_01JZ…",     // clear for action/structural kinds only;
                                              // for section.* kinds it lives in body_enc
   "authorized_by": "mandate_01JZ…",          // omitted for owner-signed entries
@@ -71,12 +72,14 @@ deterministically derivable **only by holders of the target node's key**
 holds and matches entries in O(1); a stranger learns nothing but equality of
 hidden targets. (Same design stance as `self` structure secrecy, §02.8.)
 
-**Clear payloads (action & structural kinds).** `action`, `grant`, `revoke`,
-`rotate`, `heartbeat` and `merge` entries carry clear payloads of ids, versions,
-sequence numbers and hashes — no secrets by construction (§7.4's action payload
-hashes its args). They stay clear because third-party verifiers must count them
-(budgets, children, liveness) before committed count roots exist (forward note,
-§7.1).
+**Clear payloads (action & structural kinds).** `action`, `inference`, `grant`,
+`revoke`, `rotate`, `heartbeat` and `merge` entries carry clear payloads of ids,
+versions, sequence numbers, counters and hashes — no secrets by construction
+(§7.4's action payload hashes its args). They stay clear because third-party
+verifiers must count them (budgets, children, liveness) before committed count
+roots exist (forward note, §7.1). An `action` entry MAY additionally carry a
+sealed `body_enc` holding its full arguments for a-posteriori audit (§7.9.3):
+the clear `args_hash` pins the sealed args, the counting skeleton never grows.
 
 **Who reads what (defaults).** The owner derives every node key from S and reads
 everything. A grantee's subtree read grant (§04.3 header lines) opens exactly the
@@ -120,6 +123,11 @@ Consequences, all verifier-checkable offline:
   clear `payload.action` — a per-action-kind budget. Composing mandates gives the
   same effect structurally: a mandate whose perimeter covers a single
   `act.x.<c>.<action>` makes *any* of its counters de-facto per-action.
+- `budgets` (§04.11) ⇒ every `action`/`inference` entry cites `budget_ref`;
+  per profile, count citing actions against `max_actions` and tally declared
+  `tokens` (actions) plus `tokens_in + tokens_out` (inferences) against
+  `token_budget` — subtree counts, per budgets-bearing mandate in the chain.
+  Attested `tokens` (§04.11.1) override declarations in the tally.
 - `binding`/`counter_sign` ⇒ entry MUST carry a valid `co_sign` (§04.6) or it is
   invalid (and any effect it claims is unattributable).
 - `purpose` ⇒ entry cites `purpose_ref`; audit trails intent.
@@ -192,3 +200,57 @@ hit the chain. A wrong index can waste time, never forge history.
 
 The certificate half of log access is the `read.gamma` perimeter entry (§04.2);
 its physics half is the node-key material the grantee already holds (§7.3).
+
+## 7.9 Inference metering, the kind registry, sealed args
+
+> Decided 2026-07-10 (F+).
+
+### 7.9.1 `inference` entries
+
+Every LLM call made under a mandate MUST append one light `inference` entry,
+written by the container (§08), clear payload:
+
+```jsonc
+{ "kind": "inference", "target": "x.llm",
+  "authorized_by": "mandate_…", "authorized_via": [ … ],
+  "payload": { "provider": "anthropic", "model": "claude-haiku",
+               "tokens_in": 1200, "tokens_out": 300,
+               "budget_ref": "haiku", "receipt": { … }? } }
+```
+
+**Prompt and response text NEVER enter gamma.** They live in the agent cache
+(`/k/`, outside the canonical bundle); the log carries only the meter. Volume
+is absorbed by monthly segmentation and the light clear format. Inference
+tallies feed `budgets` (§04.11) exactly like action tokens.
+
+### 7.9.2 Kind registry (normative)
+
+Kinds are a closed registry — an unregistered kind fails the entry (fail-
+closed). Naming: `<domain>.<verb>`, lowercase.
+
+| Kind | Class | Payload |
+|---|---|---|
+| `section.add/modify/delete/redact` | `ethos.write` | sealed body (keyed zones) |
+| `ethos.read` | `ethos.read` | sealed body naming the section read |
+| `action` | `act` | clear: action, args_hash, budget_ref?, tokens?, receipt? (+ sealed args body, §7.9.3) |
+| `inference` | `act` | clear counters (§7.9.1) |
+| `grant` / `revoke` / `rotate` / `merge` | structural | clear ids/versions |
+| `heartbeat` | liveness | clear `{seq}` |
+
+**Classes** are query-level groupings: filtering on `kind=ethos.write` matches
+every `section.*` entry — wire kinds do not change (frozen vectors stay
+frozen). `ethos.read` entries exist only under a `log_reads` mandate (§04.4):
+reading is not journalized by default (I5 logs *acts*, not looks), and physics
+cannot force a reader's pen — the flag makes read-logging a contractual duty,
+checkable on presentations, honest about silent reads.
+
+### 7.9.3 Sealed args (verifiable a-posteriori audit)
+
+Where `action_params` predicates (§04.4) matter, the acting agent seals the
+full argument object into the entry's `body_enc` — the F two-layer envelope
+reused: clear counting header + `args_hash`, sealed `{target: "x.<connector>",
+payload: <args>}` under the **connector's audit key** (the vault node
+`x/<connector>`, owner-derivable, grantable like any node). The owner — or an
+audit mandate holding the key — reopens the args, recomputes `args_hash`, and
+re-evaluates the predicates against the mandate. A stranger sees the hash and
+nothing else. Mismatched hash = tampered audit trail = rejection.
