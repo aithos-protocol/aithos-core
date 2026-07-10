@@ -160,3 +160,26 @@ Feature: The gamma log
       Given an agent granted action rights and no read grant
       When the agent appends an action entry knowing only the pinned log head
       Then the entry chains and verifies
+
+  Rule: Auditing and searching gamma — the owner by default, others by mandate
+
+    @wip
+    Scenario: The owner searches its log by filter
+      Given a bundle whose log records mutations and actions over two months
+      When the owner queries actions of kind "action" on "x.gmail" from day 10 to day 40
+      Then exactly the matching entries come back
+      And the owner opens every sealed body among them
+
+    @wip
+    Scenario: An audit mandate opens the whole log
+      Given logged mutations by the owner and by an agent under "projets"
+      When the owner grants an auditor read.gamma with the zone keys
+      Then the auditor opens every entry body, including acts it never made
+
+    @wip
+    Scenario: A scoped audit mandate is honored dimension by dimension
+      Given an auditor granted read.gamma on action "reply" from day 1 to day 30
+      When the auditor queries replies of day 20
+      Then the matching entries come back
+      But a query for day 40 is refused
+      And a query for action "send" is refused

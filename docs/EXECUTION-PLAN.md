@@ -119,9 +119,12 @@ ouvre exactement ses entrées, l'append est aveugle (gamma_head suffit).
 Signatures owner/délégué, comptage sous-arbre `authorized_via` (max_actions),
 fenêtré (`max_actions_per`, `rate_limit` par action), `grant` compté
 (max_children) + grant non loggé = chaîne morte, heartbeat (§07.5), ancre de
-fraîcheur (§07.7). Pas encore : merge entries (→ I), `read.gamma` enforcement
-+ `log query` owner (→ post-F, grammaire réservée §04.2).
-**CLI :** `action`, `heartbeat`, `log show|verify`.
+fraîcheur (§07.7). **Tiré dans F (recul 2026-07-10)** : `read.gamma` complet
+(grammaire + covers dims gamma dont `action=`, mandat d'audit total ou scopé
+date/action) et `log query` owner scan-based (date/kind/action/dir/tag/mandat).
+Pas encore : merge entries (→ I), index/caches optimisés et preuves de
+complétude (→ H).
+**CLI :** `action`, `heartbeat`, `log show|verify|query`.
 **Manuel :** 3 actions avec `max_actions: 3` → la 4ᵉ rejetée ; owner silencieux
 au-delà de every+grace → mandat heartbeat suspendu.
 **Done :** F1–F3 verts ; features étendues (action comptée, budget épuisé).
