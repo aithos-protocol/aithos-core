@@ -157,6 +157,90 @@ enum Command {
         #[arg(long, default_value_t = 1)]
         version: u64,
     },
+    /// Grant an agent CONNECTOR ACTION rights (certificate only — actions
+    /// need no content keys). Counting constraints are enforced by gamma.
+    GrantAct {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+        #[arg(long)]
+        agent_seed_hex: String,
+        #[arg(long, default_value = "agent")]
+        label: String,
+        /// Connector name, e.g. gmail → perimeter act.x.gmail.<action>
+        connector: String,
+        /// Action pattern (an action name, or * for the read/act class).
+        #[arg(default_value = "*")]
+        action_pat: String,
+        #[arg(long, default_value_t = 7)]
+        ttl_days: u32,
+        /// Lifetime action budget (spec 04.4, counted by gamma 07.4).
+        #[arg(long)]
+        max_actions: Option<u64>,
+        /// Dead-man heartbeat, e.g. --heartbeat-every 30d --heartbeat-grace 72h
+        #[arg(long)]
+        heartbeat_every: Option<String>,
+        #[arg(long)]
+        heartbeat_grace: Option<String>,
+    },
+    /// Log a connector action under a mandate chain (leaf last). The gamma
+    /// entry IS the authorization evidence — no entry, no action (I5).
+    Action {
+        #[arg(long)]
+        dir: String,
+        /// Certificate file(s), root first, leaf last.
+        #[arg(long = "cert")]
+        certs: Vec<String>,
+        #[arg(long)]
+        agent_seed_hex: String,
+        connector: String,
+        action: String,
+        /// Free-form action arguments; only their hash enters the log.
+        #[arg(long, default_value = "")]
+        args: String,
+    },
+    /// Publish an owner liveness beacon (spec 07.5).
+    Heartbeat {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+        #[arg(long, default_value_t = 1)]
+        seq: u64,
+    },
+    /// Print the log's counting skeleton (what any file-holder sees).
+    LogShow {
+        #[arg(long)]
+        dir: String,
+    },
+    /// Verify the whole gamma chain and every entry signature. No keys needed.
+    LogVerify {
+        #[arg(long)]
+        dir: String,
+    },
+    /// Owner search over the log (spec 07.8): every present filter narrows.
+    LogQuery {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        action: Option<String>,
+        #[arg(long)]
+        since: Option<String>,
+        #[arg(long)]
+        until: Option<String>,
+        /// Display folder path in circle, e.g. projets/perso
+        #[arg(long)]
+        folder: Option<String>,
+        #[arg(long)]
+        tag: Option<String>,
+        #[arg(long)]
+        mandate: Option<String>,
+    },
 }
 
 use aithos_bundle::bundle::{Bundle, SectionSpec};
@@ -341,11 +425,173 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 issue_depth,
                 &mut OsEntropy,
             )?;
+            // Issuance is never silent (spec 07.4).
+            bundle.log_owner_grant(&owner, &m.id, &now_string(), &mut OsEntropy)?;
+            println!("granted; cert = certs/{}.json", m.id);
+            Ok(())
+        }
+        Command::GrantAct {
+            dir,
+            seed_hex,
+            agent_seed_hex,
+            label,
+            connector,
+            action_pat,
+            ttl_days,
+            max_actions,
+            heartbeat_every,
+            heartbeat_grace,
+        } => {
+            let owner = owner_from(&seed_hex)?;
+            let agent = ed25519_dalek::SigningKey::from_bytes(
+                &<[u8; 32]>::try_from(hex::decode(agent_seed_hex)?)
+                    .map_err(|_| "agent-seed-hex: 32 bytes")?,
+            );
+            let start = now_secs();
+            let (nb, na) = (ts(start), ts(start + u64::from(ttl_days) * 86_400));
+            let mut bundle = bundle_at(&dir)?;
+            let mut constraints = serde_json::Map::new();
+            if let Some(n) = max_actions {
+                constraints.insert("max_actions".into(), n.into());
+            }
+            if let (Some(every), Some(grace)) = (&heartbeat_every, &heartbeat_grace) {
+                constraints.insert(
+                    "heartbeat".into(),
+                    serde_json::json!({"every": every, "grace": grace}),
+                );
+            }
+            let mut nonce = [0u8; 16];
+            getrandom(&mut nonce)?;
+            let mut id_bytes = [0u8; 16];
+            getrandom(&mut id_bytes)?;
+            let m = aithos_core::mandate::Mandate::build_root(
+                &owner.root_sign,
+                &aithos_core::mandate::MandateSpec {
+                    id: format!(
+                        "mandate_{}",
+                        aithos_core::ids::Sid(ulid::Ulid::from(u128::from_be_bytes(id_bytes)))
+                    ),
+                    subject: bundle.did.clone(),
+                    grantee_id: format!("urn:aithos:agent:{label}"),
+                    grantee_label: label,
+                    grantee_pub: &agent.verifying_key(),
+                    perimeter: vec![aithos_core::mandate::PerimeterEntry::parse(&format!(
+                        "act.x.{connector}.{action_pat}"
+                    ))?],
+                    constraints: serde_json::Value::Object(constraints),
+                    not_before: nb,
+                    not_after: na,
+                    issued_at: ts(start),
+                    nonce: hex::encode(nonce),
+                },
+            )?;
+            std::fs::create_dir_all(format!("{dir}/certs"))?;
             std::fs::write(
                 format!("{dir}/certs/{}.json", m.id),
                 serde_json::to_vec_pretty(&m)?,
             )?;
+            bundle.log_owner_grant(&owner, &m.id, &now_string(), &mut OsEntropy)?;
             println!("granted; cert = certs/{}.json", m.id);
+            Ok(())
+        }
+        Command::Action {
+            dir,
+            certs,
+            agent_seed_hex,
+            connector,
+            action,
+            args,
+        } => {
+            let mut bundle = bundle_at(&dir)?;
+            let chain: Vec<aithos_core::mandate::Mandate> = certs
+                .iter()
+                .map(|c| -> Result<_, Box<dyn std::error::Error>> {
+                    Ok(serde_json::from_slice(&std::fs::read(c)?)?)
+                })
+                .collect::<Result<_, _>>()?;
+            let agent = ed25519_dalek::SigningKey::from_bytes(
+                &<[u8; 32]>::try_from(hex::decode(agent_seed_hex)?)
+                    .map_err(|_| "agent-seed-hex: 32 bytes")?,
+            );
+            let args_hash = format!(
+                "sha256:{}",
+                aithos_bundle::manifest::sha256_hex(args.as_bytes())
+            );
+            let entry = bundle.log_action(
+                &chain,
+                &agent,
+                &aithos_bundle::log::ActionSpec {
+                    connector: &connector,
+                    action: &action,
+                    args_hash: &args_hash,
+                    now: &now_string(),
+                },
+                &mut OsEntropy,
+            )?;
+            println!("action logged: {}", entry.id);
+            Ok(())
+        }
+        Command::Heartbeat { dir, seed_hex, seq } => {
+            let owner = owner_from(&seed_hex)?;
+            let mut bundle = bundle_at(&dir)?;
+            bundle.log_heartbeat(&owner, seq, &now_string(), &mut OsEntropy)?;
+            println!("beacon {seq} published");
+            Ok(())
+        }
+        Command::LogShow { dir } => {
+            let bundle = bundle_at(&dir)?;
+            for e in bundle.gamma_entries()? {
+                let author = e.authorized_by.as_deref().unwrap_or("owner");
+                let target = match (&e.target, &e.body_enc) {
+                    (Some(t), _) => t.as_str(),
+                    (None, Some(_)) => "(sealed)",
+                    (None, None) => "-",
+                };
+                println!(
+                    "{}  {}  {:<14}  {:<10}  {}",
+                    e.id, e.at, e.kind, author, target
+                );
+            }
+            println!("head: {}", bundle.gamma_head()?);
+            Ok(())
+        }
+        Command::LogVerify { dir } => {
+            bundle_at(&dir)?.gamma_verify()?;
+            println!("gamma chain: OK");
+            Ok(())
+        }
+        Command::LogQuery {
+            dir,
+            seed_hex,
+            kind,
+            action,
+            since,
+            until,
+            folder,
+            tag,
+            mandate,
+        } => {
+            let owner = owner_from(&seed_hex)?;
+            let bundle = bundle_at(&dir)?;
+            let filter = aithos_bundle::log::LogFilter {
+                kind,
+                action,
+                since,
+                until,
+                zone_dir: folder.map(|f| (Zone::Circle, f)),
+                tag,
+                mandate,
+            };
+            for hit in bundle.log_query_owner(&owner, &filter)? {
+                let e = &hit.entry;
+                let target = hit
+                    .body
+                    .as_ref()
+                    .map(|b| b.target.clone())
+                    .or_else(|| e.target.clone())
+                    .unwrap_or_default();
+                println!("{}  {}  {:<14}  {}", e.id, e.at, e.kind, target);
+            }
             Ok(())
         }
         Command::MandateVerify { dir, cert, at } => {

@@ -5,8 +5,8 @@
 use aithos_core::did::DidDocument;
 use aithos_core::error::Error;
 use aithos_core::gamma::{
-    check_action_append, check_grant_append, count_actions, count_children, grant_logged,
-    ts_epoch, Entry,
+    check_action_append, check_grant_append, count_actions, count_children, grant_logged, ts_epoch,
+    Entry,
 };
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
 use aithos_core::mandate::Mandate;
@@ -172,11 +172,16 @@ fn windowed_budgets_replenish() {
 fn per_action_rate_counts_only_its_kind() {
     let f = fixture();
     let trimmed: Vec<Entry> = f.entries[..3].to_vec(); // two replies logged
-    // At 07-03T03:00 both logged actions fall outside the 24h
-    // max_actions_per window (T-24h, T]; only the 72h reply rate refuses.
+                                                       // At 07-03T03:00 both logged actions fall outside the 24h
+                                                       // max_actions_per window (T-24h, T]; only the 72h reply rate refuses.
     let third_reply = candidate("2026-07-03T03:00:00Z", &[&f.root], "reply");
     assert!(matches!(
-        check_action_append(&trimmed, &third_reply, std::slice::from_ref(&f.root), &f.doc),
+        check_action_append(
+            &trimmed,
+            &third_reply,
+            std::slice::from_ref(&f.root),
+            &f.doc
+        ),
         Err(Error::GammaBudgetExhausted(_))
     ));
     // Another action kind passes the rate limit (but must clear the 24h

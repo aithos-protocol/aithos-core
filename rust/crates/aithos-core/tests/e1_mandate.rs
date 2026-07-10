@@ -96,9 +96,9 @@ fn e1_chain_verifies_and_kex_is_checked() {
     )
     .unwrap();
     // Inside window.
-    verify_chain(&[m.clone()], &doc, "2026-07-02T00:00:00Z").expect("valid at day 1");
+    verify_chain(std::slice::from_ref(&m), &doc, "2026-07-02T00:00:00Z").expect("valid at day 1");
     // Past expiry.
-    assert!(verify_chain(&[m.clone()], &doc, "2026-07-09T00:00:00Z").is_err());
+    assert!(verify_chain(std::slice::from_ref(&m), &doc, "2026-07-09T00:00:00Z").is_err());
     // Tampered kex binding → rejected.
     let mut bad = m;
     bad.grantee.kex_pubkey = "z6LSbogus".to_owned();

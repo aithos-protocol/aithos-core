@@ -1620,10 +1620,12 @@ impl ProtocolWorld {
             .log_action(
                 &chain,
                 &sk,
-                "gmail",
-                action,
-                "sha256:00",
-                at,
+                &aithos_bundle::log::ActionSpec {
+                    connector: "gmail",
+                    action,
+                    args_hash: "sha256:00",
+                    now: at,
+                },
                 &mut ent,
             )
             .map(|e| e.id)
@@ -1991,12 +1993,7 @@ fn forge_beacon(w: &mut ProtocolWorld) {
             .to_bytes(),
     );
     let seg = "gamma/2026-07.jsonl";
-    let mut bytes = w
-        .gbundle()
-        .store
-        .get(seg)
-        .unwrap()
-        .unwrap_or_default();
+    let mut bytes = w.gbundle().store.get(seg).unwrap().unwrap_or_default();
     bytes.extend_from_slice(aithos_core::jcs::canonicalize(&forged).unwrap().as_bytes());
     bytes.push(b'\n');
     w.gbundle().store.put(seg, &bytes).unwrap();
@@ -2410,8 +2407,9 @@ fn entry_chains_verifies(w: &mut ProtocolWorld) {
 fn matching_come_back(w: &mut ProtocolWorld) {
     let hits = w.query_hits.as_ref().unwrap().as_ref().unwrap();
     assert_eq!(hits.len(), 2, "day-4 action and the mutation must be out");
-    assert!(hits.iter().all(|h| h.entry.kind == "action"
-        && h.entry.target.as_deref() == Some("x.gmail")));
+    assert!(hits
+        .iter()
+        .all(|h| h.entry.kind == "action" && h.entry.target.as_deref() == Some("x.gmail")));
 }
 
 #[then("the owner opens every sealed body among them")]
@@ -2440,7 +2438,10 @@ fn auditor_opens_all(w: &mut ProtocolWorld) {
     let sealed = hits.iter().filter(|h| h.entry.body_enc.is_some()).count();
     let opened = hits.iter().filter(|h| h.body.is_some()).count();
     assert_eq!(sealed, 2, "both owner mutations are in view");
-    assert_eq!(opened, sealed, "every sealed body must open for the auditor");
+    assert_eq!(
+        opened, sealed,
+        "every sealed body must open for the auditor"
+    );
 }
 
 #[then("the matching entries come back")]

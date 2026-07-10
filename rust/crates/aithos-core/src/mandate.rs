@@ -208,10 +208,9 @@ impl PerimeterEntry {
     pub fn to_entry_string(&self) -> String {
         match self {
             PerimeterEntry::Issue { depth } => format!("issue#depth={depth}"),
-            PerimeterEntry::Act { connector, action } => format!(
-                "act.x.{connector}.{}",
-                action.as_deref().unwrap_or("*")
-            ),
+            PerimeterEntry::Act { connector, action } => {
+                format!("act.x.{connector}.{}", action.as_deref().unwrap_or("*"))
+            }
             PerimeterEntry::Gamma {
                 dir,
                 id,

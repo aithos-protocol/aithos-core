@@ -565,10 +565,7 @@ pub fn check_action_append(
 
 /// May a new sub-mandate be minted under `minting_mandate_id`? (§07.4:
 /// `max_children` counts logged grants; the grant entry itself is the act.)
-pub fn check_grant_append(
-    existing: &[Entry],
-    minting_mandate: &Mandate,
-) -> Result<()> {
+pub fn check_grant_append(existing: &[Entry], minting_mandate: &Mandate) -> Result<()> {
     if let Some(n) = constraint_u64(minting_mandate, "max_children") {
         if count_children(existing, &minting_mandate.id) as u64 + 1 > n {
             return Err(Error::GammaBudgetExhausted(format!(
@@ -620,12 +617,7 @@ fn check_heartbeat_constraint(
 }
 
 /// Standalone heartbeat validity of one mandate at `T` (§07.5).
-pub fn heartbeat_ok(
-    entries: &[Entry],
-    m: &Mandate,
-    at: &str,
-    did_doc: &DidDocument,
-) -> Result<()> {
+pub fn heartbeat_ok(entries: &[Entry], m: &Mandate, at: &str, did_doc: &DidDocument) -> Result<()> {
     check_heartbeat_constraint(entries, m, ts_epoch(at)?, did_doc)
 }
 
@@ -676,8 +668,13 @@ pub fn parse_duration(s: &str) -> Result<i64> {
 pub fn ts_epoch(at: &str) -> Result<i64> {
     let err = || Error::InvalidGammaEntry(format!("bad timestamp: {at}"));
     let b = at.as_bytes();
-    if b.len() != 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || b[13] != b':'
-        || b[16] != b':' || b[19] != b'Z'
+    if b.len() != 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+        || b[19] != b'Z'
     {
         return Err(err());
     }

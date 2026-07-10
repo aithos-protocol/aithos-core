@@ -147,7 +147,12 @@ fn anchor_verdicts_match_python() {
     }
     // An anchor that is not on the log fails closed.
     assert!(matches!(
-        check_anchor(&log, "sha256:deadbeef", &f.v.freshness, "2026-07-01T00:00:00Z"),
+        check_anchor(
+            &log,
+            "sha256:deadbeef",
+            &f.v.freshness,
+            "2026-07-01T00:00:00Z"
+        ),
         Err(Error::GammaStaleAnchor(_))
     ));
 }

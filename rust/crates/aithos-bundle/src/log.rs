@@ -47,6 +47,17 @@ pub struct LogHit {
     pub body: Option<Body>,
 }
 
+/// Parameters of one logged connector action (§07.4).
+#[derive(Debug, Clone, Copy)]
+pub struct ActionSpec<'a> {
+    pub connector: &'a str,
+    pub action: &'a str,
+    /// SHA-256 of the action arguments — the log never carries the args.
+    pub args_hash: &'a str,
+    /// Injected timestamp of the entry.
+    pub now: &'a str,
+}
+
 impl<S: Store> Bundle<S> {
     // ------------------------------------------------------------ storage
 
@@ -109,7 +120,10 @@ impl<S: Store> Bundle<S> {
     }
 
     fn next_gamma_id(&self, ent: &mut dyn EntropySource) -> String {
-        format!("gamma_{}", Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16()))))
+        format!(
+            "gamma_{}",
+            Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
+        )
     }
 
     // ------------------------------------------------------ owner appends
@@ -139,14 +153,7 @@ impl<S: Store> Bundle<S> {
             },
             _ => {
                 let key = node_key(&self.zone_dk(node.zone, owner)?, node);
-                let body = seal_body(
-                    &key,
-                    &self.did,
-                    &node.to_string(),
-                    KV,
-                    &payload,
-                    &ent.e24(),
-                )?;
+                let body = seal_body(&key, &self.did, &node.to_string(), KV, &payload, &ent.e24())?;
                 EntrySpec {
                     id: self.next_gamma_id(ent),
                     prev,
@@ -234,10 +241,7 @@ impl<S: Store> Bundle<S> {
         &mut self,
         chain: &[Mandate],
         agent_sk: &SigningKey,
-        connector: &str,
-        action: &str,
-        args_hash: &str,
-        now: &str,
+        spec: &ActionSpec<'_>,
         ent: &mut dyn EntropySource,
     ) -> Result<Entry> {
         let doc = self.did_doc()?;
@@ -247,12 +251,12 @@ impl<S: Store> Bundle<S> {
             EntrySpec {
                 id: self.next_gamma_id(ent),
                 prev: gamma::head(&entries)?,
-                at: now.to_owned(),
+                at: spec.now.to_owned(),
                 kind: Kind::Action,
-                target: Some(format!("x.{connector}")),
+                target: Some(format!("x.{}", spec.connector)),
                 payload: Some(serde_json::json!({
-                    "action": action,
-                    "args_hash": args_hash,
+                    "action": spec.action,
+                    "args_hash": spec.args_hash,
                 })),
                 body_enc: None,
             },
@@ -437,7 +441,11 @@ impl<S: Store> Bundle<S> {
                     continue; // unreadable body cannot prove it matches — skip
                 };
                 let opened = open_body(key, &self.did, &node.to_string(), KV, enc)?;
-                if !self.target_matches(&opened.target, filter.zone_dir.as_ref(), filter.tag.as_deref())? {
+                if !self.target_matches(
+                    &opened.target,
+                    filter.zone_dir.as_ref(),
+                    filter.tag.as_deref(),
+                )? {
                     continue;
                 }
                 body = Some(opened);
@@ -497,7 +505,11 @@ impl<S: Store> Bundle<S> {
                     continue;
                 };
                 let opened = open_body(key, &self.did, &node.to_string(), KV, enc)?;
-                if !self.target_matches(&opened.target, filter.zone_dir.as_ref(), filter.tag.as_deref())? {
+                if !self.target_matches(
+                    &opened.target,
+                    filter.zone_dir.as_ref(),
+                    filter.tag.as_deref(),
+                )? {
                     continue;
                 }
                 body = Some(opened);
@@ -515,9 +527,9 @@ impl<S: Store> Bundle<S> {
         agent_sk: &SigningKey,
         entry: &Entry,
     ) -> Result<Body> {
-        let leaf = chain.last().ok_or_else(|| {
-            Error::InvalidGammaEntry("empty chain".to_owned())
-        })?;
+        let leaf = chain
+            .last()
+            .ok_or_else(|| Error::InvalidGammaEntry("empty chain".to_owned()))?;
         let kid = leaf.grantee.pubkey.clone();
         let kex = grantee_kex_secret(agent_sk);
         let enc = entry
