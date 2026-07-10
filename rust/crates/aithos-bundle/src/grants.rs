@@ -13,7 +13,7 @@ use aithos_core::header::{Header, Recipient, Wrap};
 use aithos_core::ids::Sid;
 use aithos_core::keys::{grantee_kex_secret, OwnerKeys};
 use aithos_core::mandate::{verify_op, Mandate, MandateSpec, Op, PerimeterEntry, Verb};
-use aithos_core::path::{NodePath, Zone};
+use aithos_core::path::{Leaf, NodePath, Zone};
 use aithos_core::wire;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::collections::BTreeMap;
@@ -27,7 +27,7 @@ pub struct GrantSpec {
     pub tag: Option<String>,
 }
 
-fn hdr_file(zone: Zone, node: &NodePath) -> String {
+pub(crate) fn hdr_file(zone: Zone, node: &NodePath) -> String {
     let digest = blake3::hash(node.to_string().as_bytes());
     format!(
         "e/{}/hdr/{}.json",
@@ -36,7 +36,7 @@ fn hdr_file(zone: Zone, node: &NodePath) -> String {
     )
 }
 
-fn wrap_file(zone: Zone, via: &NodePath, node: &NodePath) -> String {
+pub(crate) fn wrap_file(zone: Zone, via: &NodePath, node: &NodePath) -> String {
     let digest = blake3::hash(format!("{via}\u{0}{node}").as_bytes());
     format!(
         "e/{}/wraps/{}.json",
@@ -59,7 +59,7 @@ impl<S: Store> Bundle<S> {
         self.get_json("did.json")
     }
 
-    fn owner_kex_recipient(&self) -> Result<Recipient> {
+    pub(crate) fn owner_kex_recipient(&self) -> Result<Recipient> {
         let doc = self.did_doc()?;
         let bytes = wire::multibase_to_x25519_pub(&doc.keys.kex)?;
         Ok(Recipient::owner(bytes.into()))
@@ -84,7 +84,7 @@ impl<S: Store> Bundle<S> {
 
     /// Every section whose folder chain starts with `dir` and which carries
     /// `tag` (if given). Returns (row folder-chain, section sid, tags).
-    fn sections_under(
+    pub(crate) fn sections_under(
         &self,
         zone: Zone,
         dir: &[Sid],
@@ -298,6 +298,8 @@ impl<S: Store> Bundle<S> {
         at: &str,
     ) -> Result<String> {
         let doc = self.did_doc()?;
+        let revs = self.active_revocations()?;
+        aithos_core::mandate::verify_chain_revocable(chain, &doc, at, &revs)?;
         let (row, folders) = self.resolve_clear(zone, display_path)?;
         let op = Op {
             verb: Verb::Read,
@@ -313,7 +315,7 @@ impl<S: Store> Bundle<S> {
         let sid = Sid::parse(&row.sid)?;
         let section = NodePath::section(zone, folders.clone(), sid);
 
-        let k_section = match self.agent_node_key(&kid, &kex, &section) {
+        let k_section = match self.agent_section_key(&kid, &kex, &folders, sid, row.key_version) {
             Ok(k) => k,
             Err(_) => {
                 // Tag views granted to this leaf whose dir covers the section.
@@ -348,14 +350,63 @@ impl<S: Store> Bundle<S> {
             }
         };
 
-        let pt = self.open_blob(
+        let pt = self.open_blob_v(
             &format!("e/{}/blobs/{}.enc", zone.as_str(), row.sid),
             &k_section,
             &section,
+            row.key_version,
         )?;
         let v: serde_json::Value = serde_json::from_slice(&pt)
             .map_err(|e| Error::SealRejected(format!("blob json: {e}")))?;
         Ok(v["md"].as_str().unwrap_or_default().to_owned())
+    }
+
+    pub(crate) fn agent_section_key(
+        &self,
+        kid: &str,
+        kex: &x25519_dalek::StaticSecret,
+        folders: &[Sid],
+        sid: Sid,
+        version: u64,
+    ) -> Result<[u8; 32]> {
+        let zone = Zone::Circle;
+        let section = NodePath::section(zone, folders.to_vec(), sid);
+        for depth in (0..=folders.len()).rev() {
+            let ancestor = NodePath::folder(zone, folders[..depth].to_vec());
+            let Some(bytes) = self.store.get(&hdr_file(zone, &ancestor)).ok().flatten() else {
+                continue;
+            };
+            let Ok(header) = serde_json::from_slice::<Header>(&bytes) else {
+                continue;
+            };
+            let v = if header.key_versions.contains_key(&version.to_string()) {
+                version
+            } else {
+                header.latest_version()
+            };
+            if let Ok(base) = header.open(&self.did, v, kid, kex) {
+                let rest = NodePath {
+                    zone,
+                    folders: folders[depth..].to_vec(),
+                    leaf: Leaf::Section(sid),
+                };
+                return Ok(node_key(&base, &rest));
+            }
+            let zroot = NodePath::zone_root(zone);
+            if let Ok(zone_dk) = self.agent_node_key(kid, kex, &zroot) {
+                if let Ok(wrap) = self.get_json::<Wrap>(&wrap_file(zone, &zroot, &ancestor)) {
+                    if let Ok(folder_dk) = wrap.open(&self.did, &zone_dk) {
+                        let rest = NodePath {
+                            zone,
+                            folders: folders[depth..].to_vec(),
+                            leaf: Leaf::Section(sid),
+                        };
+                        return Ok(node_key(&folder_dk, &rest));
+                    }
+                }
+            }
+        }
+        self.agent_node_key(kid, kex, &section)
     }
 
     /// Delegation (§05.2): the parent mints and signs the sub-mandate and

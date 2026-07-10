@@ -10,6 +10,7 @@ pub mod entropy;
 pub mod grants;
 pub mod log;
 pub mod manifest;
+pub mod revoke;
 
 use std::collections::BTreeMap;
 use std::io;

@@ -8,7 +8,6 @@ Feature: Revocation — the full ladder, with no server in any trust role
 
   Rule: The founding cut — revoke the step-E agent, nobody else notices
 
-    @wip
     Scenario: One atomic revocation, three verdicts
       Given two agents granted read on circle folder "projets" and a zone holder
       When the owner revokes the first agent with rotation
@@ -18,21 +17,18 @@ Feature: Revocation — the full ladder, with no server in any trust role
 
   Rule: Every revocation is a signed, anchored gamma entry
 
-    @wip
     Scenario: The revocation entry chains onto the log
       Given an agent granted action rights
       When the owner revokes the agent's mandate
       Then a "revoke" entry signed by the owner chains onto the log
       And the log verifies offline
 
-    @wip
     Scenario: A revoked chain is refused at verification time
       Given an agent granted action rights
       And the owner revokes the agent's mandate
       When the agent presents its chain after the revocation instant
       Then the chain is rejected as revoked
 
-    @wip
     Scenario: Revocation is forward-only — the past stays attributable
       Given an agent that acted before being revoked
       Then the action logged before revoked_at still verifies at its own timestamp
@@ -40,20 +36,17 @@ Feature: Revocation — the full ladder, with no server in any trust role
 
   Rule: Authority to revoke is ancestry, checkable from certificates alone
 
-    @wip
     Scenario: The issuer revokes its own delegate
       Given an agent with issue depth 1 that delegated to a helper
       When the agent revokes the helper's mandate
       Then the helper's chain is rejected as revoked
 
-    @wip
     Scenario: A stranger's revocation entry is rejected
       Given two unrelated agents granted action rights
       When the first agent forges a revocation of the second's mandate
       Then the revocation entry is rejected
       And the second agent's chain still verifies
 
-    @wip
     Scenario: A watchdog cuts actions while holding no key at all
       Given a watchdog granted only the revoke right over circle "projets"
       When the watchdog revokes the projets agent's mandate
@@ -62,27 +55,23 @@ Feature: Revocation — the full ladder, with no server in any trust role
 
   Rule: Rotation — a fresh key the revoked cannot derive (rung 2)
 
-    @wip
     Scenario: The new version seals to every survivor and never to the revoked
       Given two agents holding lines on circle folder "projets"
       When the owner revokes the first agent with rotation
       Then the folder's header gains a version without the revoked line
       And the survivor opens the new version with its unchanged keypair
 
-    @wip
     Scenario: The up-link wrap restores derivation for ancestors
       Given a zone holder reading folder "projets" by pure derivation
       When the owner rotates "projets" out of a revoked agent
       Then the zone holder keeps reading through the up-link wrap
       And the wrap is bound to the node and its new key version
 
-    @wip
     Scenario: A rotation that smuggles in a new recipient is rejected
       Given a rotated header version for folder "projets"
       When the new version claims a line for a key absent from the old version
       Then header verification is rejected
 
-    @wip
     Scenario: An up-link wrap authored by a non-holder is rejected
       Given a rotated folder "projets" under the circle zone
       When someone without the parent key posts an up-link wrap
@@ -90,7 +79,6 @@ Feature: Revocation — the full ladder, with no server in any trust role
 
   Rule: Expiry lingers, rotation cleans — and re-encryption erases (rungs 0 and 3)
 
-    @wip
     Scenario: An expired agent still holds yesterday's key until hygiene passes
       Given an agent whose mandate expired yesterday
       Then the agent's actions are rejected by every verifier
@@ -98,7 +86,6 @@ Feature: Revocation — the full ladder, with no server in any trust role
       When a manager rotates the node in passing
       Then the old key opens nothing written since
 
-    @wip
     Scenario: Re-encryption moves existing content beyond the revoked key
       Given an agent that exfiltrated nothing but held folder "projets"
       When the owner revokes it with rotation and re-encryption
@@ -107,13 +94,11 @@ Feature: Revocation — the full ladder, with no server in any trust role
 
   Rule: Cascade and re-adoption — delegation trees fail closed, recover cheap
 
-    @wip
     Scenario: Revoking a parent cascades to its delegates
       Given an agent with issue depth 1 that delegated to a helper
       When the owner revokes the agent's mandate
       Then the helper's chain is rejected as revoked
 
-    @wip
     Scenario: The owner re-adopts a cascaded delegate at one line
       Given a helper cut by its parent's revocation
       When the owner grants the helper a fresh mandate on the same folder
@@ -121,7 +106,6 @@ Feature: Revocation — the full ladder, with no server in any trust role
 
   Rule: Move is a rotation — derivation cannot be un-taught (spec 02.9)
 
-    @wip
     Scenario: Moving a folder rotates its key
       Given an agent granted read on circle folder "archives/old"
       When the owner moves the folder under "projets"

@@ -137,7 +137,7 @@ impl<S: Store> Bundle<S> {
         self.store.put(&seg, &bytes).map_err(io_err)
     }
 
-    fn next_gamma_id(&self, ent: &mut dyn EntropySource) -> String {
+    pub(crate) fn next_gamma_id(&self, ent: &mut dyn EntropySource) -> String {
         format!(
             "gamma_{}",
             Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
@@ -303,6 +303,13 @@ impl<S: Store> Bundle<S> {
             agent_sk,
         )?;
         verify_delegated_entry(&entry, chain, &doc)?;
+        // Revocation (§06.4): a cut chain cannot act.
+        aithos_core::mandate::verify_chain_revocable(
+            chain,
+            &doc,
+            spec.now,
+            &self.active_revocations()?,
+        )?;
         check_action_append(&entries, &entry, chain, &doc)?;
         self.gamma_append(&entry)?;
         Ok(entry)
@@ -500,6 +507,18 @@ impl<S: Store> Bundle<S> {
                         .map(|id| self.get_json(&format!("certs/{id}.json")))
                         .collect::<Result<_>>()?;
                     verify_delegated_entry(e, &chain, &doc)?;
+                    // A delegated `revoke` entry must also carry authority
+                    // over its target (§06.4) — a forged revocation never
+                    // survives verification.
+                    if e.kind == "revoke" {
+                        if let Some(target) = &e.target {
+                            let target_chain = self.cert_chain(target)?;
+                            aithos_core::revocation::check_revoke_authority(
+                                Some(&chain),
+                                &target_chain,
+                            )?;
+                        }
+                    }
                 }
             }
         }

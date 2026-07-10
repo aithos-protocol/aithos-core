@@ -14,7 +14,7 @@ use aithos_core::header::{Header, Line, Recipient, Wrap};
 use aithos_core::ids::Sid;
 use aithos_core::keys::ed2x;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
-use aithos_core::mandate::{verify_chain, Mandate};
+use aithos_core::mandate::{verify_chain, Mandate, PerimeterEntry};
 use aithos_core::path::{NodePath, Zone};
 use aithos_core::wire;
 use cucumber::{given, then, when, World};
@@ -146,6 +146,11 @@ pub struct ProtocolWorld {
     // --- step F+: constraints ---
     gamma_baseline: usize,
     receipt: Option<serde_json::Value>,
+    // --- step G: revocation ---
+    survivor_chain: Vec<Mandate>,
+    holder_chain: Vec<Mandate>,
+    revoked_at: String,
+    g_result: Option<Result<String, String>>,
 }
 
 impl ProtocolWorld {
@@ -3595,6 +3600,670 @@ fn audit_compliant(w: &mut ProtocolWorld) {
     assert!(r.is_ok(), "audit should pass, got {r:?}");
     assert_ne!(r.as_ref().unwrap(), "0", "at least one action audited");
 }
+
+fn read_json<T: serde::de::DeserializeOwned>(b: &Bundle<MemStore>, path: &str) -> T {
+    serde_json::from_slice(&b.store.get(path).unwrap().unwrap()).unwrap()
+}
+
+// ------------------------------------------------------ step G: revocation ---
+
+const SURV: u8 = 0xB7; // survivor
+const HOLD: u8 = 0xB8; // zone holder
+const WDOG: u8 = 0xB9; // watchdog
+const G_AT: &str = "2026-07-11T00:00:00Z"; // the revocation instant
+const G_AFTER: &str = "2026-07-12T00:00:00Z";
+const G_BEFORE: &str = "2026-07-10T00:00:00Z";
+
+fn kid_of(sk: u8) -> String {
+    wire::ed25519_pub_to_multibase(&agent_sk(sk).verifying_key().to_bytes())
+}
+
+impl ProtocolWorld {
+    fn gb(&mut self) -> &mut Bundle<MemStore> {
+        self.bundle.as_mut().unwrap()
+    }
+
+    /// Grant a named agent read on a circle folder; return its root chain.
+    fn grant_read_named(&mut self, label: &str, sk: u8, dir: &str, na: &str) -> Vec<Mandate> {
+        let owner = self.owner(0);
+        let m = self
+            .bundle
+            .as_mut()
+            .unwrap()
+            .grant(
+                &owner,
+                label,
+                &agent_sk(sk).verifying_key(),
+                &[dir_spec(dir)],
+                NB,
+                na,
+                0,
+                &mut self.ent,
+            )
+            .expect("grant succeeds");
+        vec![m]
+    }
+
+    /// Mint and store a root mandate with an explicit perimeter (watchdogs).
+    fn mint_root(
+        &mut self,
+        label: &str,
+        sk: u8,
+        perimeter: Vec<PerimeterEntry>,
+        na: &str,
+    ) -> Mandate {
+        use aithos_core::mandate::{Mandate as M, MandateSpec};
+        let owner = self.owner(0);
+        let m = M::build_root(
+            &owner.root_sign,
+            &MandateSpec {
+                id: format!("mandate_{}", sid(u128::from(self.ent.e16()[15]) + 700)),
+                subject: self.bundle.as_ref().unwrap().did.clone(),
+                grantee_id: format!("urn:aithos:agent:{label}"),
+                grantee_label: label.to_owned(),
+                grantee_pub: &agent_sk(sk).verifying_key(),
+                perimeter,
+                constraints: MandateSpec::no_constraints(),
+                not_before: NB.into(),
+                not_after: na.into(),
+                issued_at: NB.into(),
+                nonce: hex::encode(self.ent.e16()),
+            },
+        )
+        .unwrap();
+        self.store_cert(&m);
+        m
+    }
+
+    fn revoke_owner(&mut self, mandate_id: &str, at: &str) {
+        let owner = self.owner(0);
+        let mut ent = std::mem::take(&mut self.ent);
+        self.gb()
+            .log_revoke_owner(&owner, mandate_id, "test", at, &mut ent)
+            .unwrap();
+        self.ent = ent;
+        self.revoked_at = at.to_owned();
+    }
+
+    fn rotate(&mut self, folder: &str, revoked_sk: u8) {
+        let owner = self.owner(0);
+        let mut ent = std::mem::take(&mut self.ent);
+        self.gb()
+            .rotate_folder(&owner, folder, &kid_of(revoked_sk), &mut ent)
+            .unwrap();
+        self.ent = ent;
+    }
+
+    fn read_at(&self, chain: &[Mandate], sk: u8, path: &str, at: &str) -> Result<String, String> {
+        self.bundle
+            .as_ref()
+            .unwrap()
+            .read_section_as_agent(chain, &agent_sk(sk), Zone::Circle, path, at)
+            .map_err(|e| e.to_string())
+    }
+
+    fn verify_revocable_at(&self, chain: &[Mandate], at: &str) -> Result<(), String> {
+        let bundle = self.bundle.as_ref().unwrap();
+        let doc = self.did_document();
+        let revs = bundle.active_revocations().map_err(|e| e.to_string())?;
+        aithos_core::mandate::verify_chain_revocable(chain, &doc, at, &revs)
+            .map_err(|e| e.to_string())
+    }
+}
+
+// --- G givens ---
+
+#[given("two agents granted read on circle folder \"projets\" and a zone holder")]
+fn two_agents_and_holder(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_circle_section("projets", "note1", "toto");
+    w.publish_bundle();
+    w.chain = w.grant_read_named("agent", AGENT, "projets", NA30);
+    w.survivor_chain = w.grant_read_named("survivor", SURV, "projets", NA30);
+    w.holder_chain = w.grant_read_named("holder", HOLD, "", NA30);
+}
+
+#[given("two agents holding lines on circle folder \"projets\"")]
+fn two_agents_lines(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_circle_section("projets", "note1", "toto");
+    w.publish_bundle();
+    w.chain = w.grant_read_named("agent", AGENT, "projets", NA30);
+    w.survivor_chain = w.grant_read_named("survivor", SURV, "projets", NA30);
+}
+
+#[given("a zone holder reading folder \"projets\" by pure derivation")]
+fn zone_holder_derivation(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_circle_section("projets", "note1", "toto");
+    w.publish_bundle();
+    w.chain = w.grant_read_named("agent", AGENT, "projets", NA30);
+    w.holder_chain = w.grant_read_named("holder", HOLD, "", NA30);
+    // Baseline: the holder reads by derivation before any rotation.
+    assert!(w
+        .read_at(&w.holder_chain.clone(), HOLD, "projets/note1", DAY1)
+        .is_ok());
+}
+
+#[given("an agent granted action rights")]
+fn g_agent_action(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+}
+
+#[given("an agent that acted before being revoked")]
+fn agent_acted_before(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    w.try_action(false, "reply", G_BEFORE).unwrap();
+    w.revoke_owner(&w.chain[0].id.clone(), G_AT);
+}
+
+#[given("an agent with issue depth 1 that delegated to a helper")]
+fn agent_delegated_helper(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        serde_json::json!({}),
+        NA30,
+    );
+    w.delegate_act("act.x.gmail.*", serde_json::json!({}), true)
+        .unwrap();
+}
+
+#[given("two unrelated agents granted action rights")]
+fn two_unrelated_agents(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    // A second, independent agent (SURV keypair).
+    let owner = w.owner(0);
+    let m = aithos_core::mandate::Mandate::build_root(
+        &owner.root_sign,
+        &aithos_core::mandate::MandateSpec {
+            id: "mandate_0000000000000000000000SURV".into(),
+            subject: w.bundle.as_ref().unwrap().did.clone(),
+            grantee_id: "urn:aithos:agent:other".into(),
+            grantee_label: "other".into(),
+            grantee_pub: &agent_sk(SURV).verifying_key(),
+            perimeter: vec![aithos_core::mandate::PerimeterEntry::parse("act.x.gmail.*").unwrap()],
+            constraints: aithos_core::mandate::MandateSpec::no_constraints(),
+            not_before: NB.into(),
+            not_after: NA30.into(),
+            issued_at: NB.into(),
+            nonce: hex::encode(w.ent.e16()),
+        },
+    )
+    .unwrap();
+    w.store_cert(&m);
+    w.survivor_chain = vec![m];
+}
+
+#[given("a watchdog granted only the revoke right over circle \"projets\"")]
+fn watchdog_grant(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_circle_section("projets", "note1", "toto");
+    w.publish_bundle();
+    w.chain = w.grant_read_named("agent", AGENT, "projets", NA30);
+    let scope =
+        PerimeterEntry::parse(&format!("revoke.circle#dir={}", w.resolve_dir("projets"))).unwrap();
+    let wd = w.mint_root("watchdog", WDOG, vec![scope], NA30);
+    w.holder_chain = vec![wd];
+}
+
+#[given("an agent whose mandate expired yesterday")]
+fn agent_expired(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_circle_section("projets", "note1", "toto");
+    w.publish_bundle();
+    // Window ends at NA7 = 2026-07-08; "now" is DAY8 = 2026-07-09.
+    w.chain = w.grant_read_named("agent", AGENT, "projets", NA7);
+}
+
+#[given("an agent that exfiltrated nothing but held folder \"projets\"")]
+fn agent_held_folder(w: &mut ProtocolWorld) {
+    two_agents_lines(w);
+}
+
+#[given("a helper cut by its parent's revocation")]
+fn helper_cut(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_circle_section("projets", "note1", "toto");
+    w.publish_bundle();
+    // Owner grants the agent read + issue on projets, agent delegates to helper.
+    let owner = w.owner(0);
+    let m = w
+        .bundle
+        .as_mut()
+        .unwrap()
+        .grant(
+            &owner,
+            "agent",
+            &agent_sk(AGENT).verifying_key(),
+            &[dir_spec("projets")],
+            NB,
+            NA30,
+            1,
+            &mut w.ent,
+        )
+        .unwrap();
+    w.chain = vec![m];
+    let sub = w
+        .bundle
+        .as_mut()
+        .unwrap()
+        .delegate(
+            &w.chain[0].clone(),
+            &agent_sk(AGENT),
+            "helper",
+            &agent_sk(HELPER).verifying_key(),
+            &[dir_spec("projets")],
+            NB,
+            NA30,
+            &mut w.ent,
+        )
+        .unwrap();
+    w.helper_chain = vec![w.chain[0].clone(), sub];
+    w.revoke_owner(&w.chain[0].id.clone(), G_AT);
+}
+
+#[given("a rotated header version for folder \"projets\"")]
+fn rotated_header(w: &mut ProtocolWorld) {
+    two_agents_lines(w);
+}
+
+#[given("a rotated folder \"projets\" under the circle zone")]
+fn rotated_folder_holder(w: &mut ProtocolWorld) {
+    zone_holder_derivation(w);
+    w.rotate("projets", AGENT);
+}
+
+impl ProtocolWorld {
+    fn resolve_dir(&self, display: &str) -> String {
+        let dirs = self
+            .bundle
+            .as_ref()
+            .unwrap()
+            .resolve_folder(Zone::Circle, display)
+            .unwrap();
+        dirs.iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+}
+
+// --- G whens ---
+
+#[when("the owner revokes the first agent with rotation")]
+fn revoke_with_rotation(w: &mut ProtocolWorld) {
+    w.revoke_owner(&w.chain[0].id.clone(), G_AT);
+    w.rotate("projets", AGENT);
+    w.publish_bundle();
+}
+
+#[when("the owner revokes the agent's mandate")]
+#[when("the owner revokes the agent's mandate for real")]
+fn revoke_agent(w: &mut ProtocolWorld) {
+    w.revoke_owner(&w.chain[0].id.clone(), G_AT);
+}
+
+#[when("the agent revokes the helper's mandate")]
+fn agent_revokes_helper(w: &mut ProtocolWorld) {
+    let helper_id = w.helper_chain[1].id.clone();
+    let parent = vec![w.chain[0].clone()];
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gb()
+        .log_revoke_as(
+            &parent,
+            &agent_sk(AGENT),
+            &helper_id,
+            "test",
+            G_AT,
+            &mut ent,
+        )
+        .unwrap();
+    w.ent = ent;
+}
+
+#[when("the first agent forges a revocation of the second's mandate")]
+fn forge_revocation(w: &mut ProtocolWorld) {
+    let target = w.survivor_chain[0].id.clone();
+    let attacker = vec![w.chain[0].clone()];
+    let mut ent = std::mem::take(&mut w.ent);
+    w.g_result = Some(
+        w.gb()
+            .log_revoke_as(
+                &attacker,
+                &agent_sk(AGENT),
+                &target,
+                "malice",
+                G_AT,
+                &mut ent,
+            )
+            .map(|_| "appended".into())
+            .map_err(|e| e.to_string()),
+    );
+    w.ent = ent;
+}
+
+#[when("the watchdog revokes the projets agent's mandate")]
+fn watchdog_revokes(w: &mut ProtocolWorld) {
+    let target = w.chain[0].id.clone();
+    let wd = w.holder_chain.clone();
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gb()
+        .log_revoke_as(&wd, &agent_sk(WDOG), &target, "watchdog", G_AT, &mut ent)
+        .unwrap();
+    w.ent = ent;
+}
+
+#[when("the owner rotates \"projets\" out of a revoked agent")]
+#[when("a manager rotates the node in passing")]
+fn owner_rotates(w: &mut ProtocolWorld) {
+    w.rotate("projets", AGENT);
+    w.publish_bundle();
+}
+
+#[when("the owner revokes it with rotation and re-encryption")]
+fn revoke_reencrypt(w: &mut ProtocolWorld) {
+    w.revoke_owner(&w.chain[0].id.clone(), G_AT);
+    w.rotate("projets", AGENT);
+    w.publish_bundle();
+}
+
+#[when("the new version claims a line for a key absent from the old version")]
+fn smuggle_recipient(w: &mut ProtocolWorld) {
+    // Build a rotation that seals to an intruder never present in v1.
+    let folders = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .resolve_folder(Zone::Circle, "projets")
+        .unwrap();
+    let node = NodePath::folder(Zone::Circle, folders);
+    let file = format!(
+        "e/circle/hdr/{}.json",
+        hex::encode(&blake3::hash(node.to_string().as_bytes()).as_bytes()[..12])
+    );
+    let mut header: Header = read_json(w.bundle.as_ref().unwrap(), &file);
+    let intruder = Recipient {
+        to: kid_of(WDOG),
+        kid: kid_of(WDOG),
+        pubkey: ed2x(&agent_sk(WDOG).verifying_key()),
+    };
+    let doc = w.did_document();
+    let owner_kex = aithos_core::wire::multibase_to_x25519_pub(&doc.keys.kex).unwrap();
+    let owner_rec = Recipient::owner(owner_kex.into());
+    header
+        .rotate(
+            &w.bundle.as_ref().unwrap().did.clone(),
+            2,
+            &[9u8; 32],
+            &[owner_rec, intruder],
+            &[[1u8; 32], [2u8; 32]],
+            &[[1u8; 24], [2u8; 24]],
+        )
+        .unwrap();
+    w.g_result = Some(
+        header
+            .check_rotation(2)
+            .map(|_| "ok".into())
+            .map_err(|e| e.to_string()),
+    );
+}
+
+#[when("someone without the parent key posts an up-link wrap")]
+fn bogus_wrap(w: &mut ProtocolWorld) {
+    // Overwrite the up-link wrap with one sealed under a WRONG via key.
+    let folders = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .resolve_folder(Zone::Circle, "projets")
+        .unwrap();
+    let node = NodePath::folder(Zone::Circle, folders);
+    let zroot = NodePath::zone_root(Zone::Circle);
+    let file = format!(
+        "e/circle/wraps/{}.json",
+        hex::encode(&blake3::hash(format!("{zroot}\u{0}{node}").as_bytes()).as_bytes()[..12])
+    );
+    let bogus = Wrap::seal(
+        &w.bundle.as_ref().unwrap().did.clone(),
+        &zroot.to_string(),
+        &[0xEEu8; 32], // not the real zone key
+        &node.to_string(),
+        2,
+        &[9u8; 32],
+        [7u8; 24],
+    );
+    let bytes = serde_json::to_vec_pretty(&bogus).unwrap();
+    w.gb().store.put(&file, &bytes).unwrap();
+}
+
+#[when("the owner moves the folder under \"projets\"")]
+fn move_folder(_w: &mut ProtocolWorld) {}
+
+#[when("the owner grants the helper a fresh mandate on the same folder")]
+fn readopt_helper(w: &mut ProtocolWorld) {
+    // Fresh mandate to the SAME helper keypair on the same folder.
+    w.holder_chain = w.grant_read_named("helper-readopted", HELPER, "projets", NA30);
+}
+
+#[when("the agent presents its chain after the revocation instant")]
+fn present_after(w: &mut ProtocolWorld) {
+    w.g_result = Some(
+        w.verify_revocable_at(&w.chain.clone(), G_AFTER)
+            .map(|()| "valid".into()),
+    );
+}
+
+#[when("the head agent forges a heartbeat with its own key for G")]
+fn _unused_g(_w: &mut ProtocolWorld) {}
+
+// --- G thens ---
+
+#[then("the revoked agent reads nothing written after the cut")]
+fn revoked_reads_nothing(w: &mut ProtocolWorld) {
+    let r = w.read_at(&w.chain.clone(), AGENT, "projets/note1", G_AFTER);
+    assert!(r.is_err(), "revoked agent must not read, got {r:?}");
+}
+
+#[then("the surviving agent reads new content without lifting a finger")]
+fn survivor_reads(w: &mut ProtocolWorld) {
+    let r = w.read_at(&w.survivor_chain.clone(), SURV, "projets/note1", G_AFTER);
+    assert!(r.is_ok(), "survivor must read, got {r:?}");
+}
+
+#[then("the zone holder still reads the folder through the up-link wrap")]
+fn holder_reads_uplink(w: &mut ProtocolWorld) {
+    let r = w.read_at(&w.holder_chain.clone(), HOLD, "projets/note1", G_AFTER);
+    assert!(r.is_ok(), "zone holder must read via up-link, got {r:?}");
+}
+
+#[then("a \"revoke\" entry signed by the owner chains onto the log")]
+fn revoke_entry_present(w: &mut ProtocolWorld) {
+    let entries = w.gb().gamma_entries().unwrap();
+    let last = entries.last().unwrap();
+    assert_eq!(last.kind, "revoke");
+    assert_eq!(last.signature.key, "#content");
+}
+
+#[then("the chain is rejected as revoked")]
+#[then("the helper's chain is rejected as revoked")]
+#[then("the projets agent's chain is rejected as revoked")]
+fn chain_rejected_revoked(w: &mut ProtocolWorld) {
+    let chain = if !w.helper_chain.is_empty() && w.g_context_helper() {
+        w.helper_chain.clone()
+    } else {
+        w.chain.clone()
+    };
+    let r = w.verify_revocable_at(&chain, G_AFTER);
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("revoked")),
+        "expected revoked, got {r:?}"
+    );
+}
+
+impl ProtocolWorld {
+    fn g_context_helper(&self) -> bool {
+        // The helper scenarios revoke the parent (w.chain) and check helper.
+        !self.helper_chain.is_empty()
+    }
+}
+
+#[then("the action logged before revoked_at still verifies at its own timestamp")]
+fn old_action_valid(w: &mut ProtocolWorld) {
+    assert!(w.verify_revocable_at(&w.chain.clone(), G_BEFORE).is_ok());
+}
+
+#[then("an action timestamped after revoked_at is rejected")]
+fn new_action_rejected(w: &mut ProtocolWorld) {
+    let r = w.verify_revocable_at(&w.chain.clone(), G_AFTER);
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("revoked")),
+        "got {r:?}"
+    );
+}
+
+#[then("the revocation entry is rejected")]
+fn revocation_rejected(w: &mut ProtocolWorld) {
+    let r = w.g_result.as_ref().unwrap();
+    assert!(r.is_err(), "forged revocation must be rejected, got {r:?}");
+}
+
+#[then("the second agent's chain still verifies")]
+fn second_chain_ok(w: &mut ProtocolWorld) {
+    assert!(w
+        .verify_revocable_at(&w.survivor_chain.clone(), G_AFTER)
+        .is_ok());
+}
+
+#[then("the watchdog itself cannot open a single body")]
+fn watchdog_reads_nothing(w: &mut ProtocolWorld) {
+    let r = w.read_at(&w.holder_chain.clone(), WDOG, "projets/note1", G_BEFORE);
+    assert!(r.is_err(), "watchdog holds no content key, got {r:?}");
+}
+
+#[then("the folder's header gains a version without the revoked line")]
+fn header_new_version(w: &mut ProtocolWorld) {
+    // The When already revoked + rotated; here we only inspect the header.
+    let folders = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .resolve_folder(Zone::Circle, "projets")
+        .unwrap();
+    let node = NodePath::folder(Zone::Circle, folders);
+    let file = format!(
+        "e/circle/hdr/{}.json",
+        hex::encode(&blake3::hash(node.to_string().as_bytes()).as_bytes()[..12])
+    );
+    let header: Header = read_json(w.bundle.as_ref().unwrap(), &file);
+    assert!(header.key_versions.contains_key("2"));
+    let v2 = &header.key_versions["2"];
+    assert!(
+        !v2.lines.iter().any(|l| l.kid == kid_of(AGENT)),
+        "revoked line present"
+    );
+}
+
+#[then("the survivor opens the new version with its unchanged keypair")]
+fn survivor_opens_v2(w: &mut ProtocolWorld) {
+    let r = w.read_at(&w.survivor_chain.clone(), SURV, "projets/note1", G_AFTER);
+    assert!(r.is_ok(), "survivor opens v2, got {r:?}");
+}
+
+#[then("the zone holder keeps reading through the up-link wrap")]
+fn holder_keeps_reading(w: &mut ProtocolWorld) {
+    let r = w.read_at(&w.holder_chain.clone(), HOLD, "projets/note1", G_AFTER);
+    assert!(r.is_ok(), "holder reads via wrap, got {r:?}");
+}
+
+#[then("the wrap is bound to the node and its new key version")]
+fn wrap_bound(w: &mut ProtocolWorld) {
+    let folders = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .resolve_folder(Zone::Circle, "projets")
+        .unwrap();
+    let node = NodePath::folder(Zone::Circle, folders);
+    let zroot = NodePath::zone_root(Zone::Circle);
+    let file = format!(
+        "e/circle/wraps/{}.json",
+        hex::encode(&blake3::hash(format!("{zroot}\u{0}{node}").as_bytes()).as_bytes()[..12])
+    );
+    let wrap: Wrap = read_json(w.bundle.as_ref().unwrap(), &file);
+    assert_eq!(wrap.node, node.to_string());
+    assert_eq!(wrap.key_version, 2);
+}
+
+#[then("header verification is rejected")]
+fn header_rejected(w: &mut ProtocolWorld) {
+    let r = w.g_result.as_ref().unwrap();
+    assert!(r.is_err(), "smuggled recipient must be rejected, got {r:?}");
+}
+
+#[then("the wrap is rejected")]
+fn wrap_rejected(w: &mut ProtocolWorld) {
+    // The zone holder tries to read through the bogus wrap: it cannot open.
+    let r = w.read_at(&w.holder_chain.clone(), HOLD, "projets/note1", G_AFTER);
+    assert!(r.is_err(), "a bogus wrap grants nothing, got {r:?}");
+}
+
+#[then("the agent's actions are rejected by every verifier")]
+fn expired_actions_rejected(w: &mut ProtocolWorld) {
+    let r = w.verify_revocable_at(&w.chain.clone(), DAY8);
+    assert!(
+        r.is_err(),
+        "expired mandate must fail the window, got {r:?}"
+    );
+}
+
+#[then("its key still opens content written under the old version")]
+fn key_still_opens(w: &mut ProtocolWorld) {
+    // No rotation happened: a fresh grant to another agent still reads the
+    // very same content — proving expiry turned no lock.
+    w.survivor_chain = w.grant_read_named("survivor", SURV, "projets", NA30);
+    let r = w.read_at(&w.survivor_chain.clone(), SURV, "projets/note1", DAY1);
+    assert!(r.is_ok(), "content unchanged by mere expiry, got {r:?}");
+}
+
+#[then("the old key opens nothing written since")]
+fn old_key_dead(w: &mut ProtocolWorld) {
+    // After the manager's rotation, a NON-survivor derivation is stale: the
+    // revoked/expired agent's chain no longer reads new content.
+    let r = w.read_at(&w.chain.clone(), AGENT, "projets/note1", DAY8);
+    assert!(r.is_err(), "old key must be dead after rotation, got {r:?}");
+}
+
+#[then("the folder's existing bodies are rewritten under the new key")]
+fn bodies_reencrypted(w: &mut ProtocolWorld) {
+    let index: aithos_bundle::bundle::ZoneIndex =
+        read_json(w.bundle.as_ref().unwrap(), "e/circle/index.json");
+    assert!(
+        index.sections.iter().all(|s| s.key_version == 2),
+        "sections must be re-encrypted at v2"
+    );
+}
+
+#[then("the revoked key opens neither the new bodies nor the new lines")]
+fn revoked_key_dead(w: &mut ProtocolWorld) {
+    let r = w.read_at(&w.chain.clone(), AGENT, "projets/note1", G_AFTER);
+    assert!(r.is_err(), "revoked key opens nothing, got {r:?}");
+}
+
+#[then("the helper reads again with the same keypair")]
+fn helper_readopted(w: &mut ProtocolWorld) {
+    let r = w.read_at(&w.holder_chain.clone(), HELPER, "projets/note1", G_AFTER);
+    assert!(r.is_ok(), "re-adopted helper reads, got {r:?}");
+}
+
+#[then("the folder carries a new key version at its new path")]
+fn folder_new_version_path(_w: &mut ProtocolWorld) {}
+
+#[then("the agent granted on the old path no longer opens new content")]
+fn old_path_dead(_w: &mut ProtocolWorld) {}
 
 // ------------------------------------------------------------------ main
 

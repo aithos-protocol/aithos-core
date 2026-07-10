@@ -220,6 +220,65 @@ impl Header {
         )))
     }
 
+    /// Highest key version present (§03.4/§03.5): reads always target the
+    /// newest lock.
+    #[must_use]
+    pub fn latest_version(&self) -> u64 {
+        self.key_versions
+            .keys()
+            .filter_map(|k| k.parse::<u64>().ok())
+            .max()
+            .unwrap_or(1)
+    }
+
+    /// Open one's line in the LATEST version — the post-rotation reader path.
+    /// Returns `(version, dk)`.
+    pub fn open_latest(
+        &self,
+        subject_did: &str,
+        kid: &str,
+        secret: &StaticSecret,
+    ) -> Result<(u64, [u8; 32])> {
+        let v = self.latest_version();
+        Ok((v, self.open(subject_did, v, kid, secret)?))
+    }
+
+    /// Rotation well-formedness (§03.4): the new version's recipient set MUST
+    /// equal the previous version's minus the revoked (owner always kept). A
+    /// smuggled-in recipient — one whose kid is absent from the prior version
+    /// — makes the rotation invalid, fail-closed.
+    pub fn check_rotation(&self, new_version: u64) -> Result<()> {
+        if new_version <= 1 {
+            return Ok(());
+        }
+        let err = |m: String| Error::GammaRevocationRejected(m);
+        let prev = self
+            .key_versions
+            .get(&(new_version - 1).to_string())
+            .ok_or_else(|| err(format!("{}: no predecessor version", self.node)))?;
+        let new = self
+            .key_versions
+            .get(&new_version.to_string())
+            .ok_or_else(|| err(format!("{}: missing new version", self.node)))?;
+        let prev_kids: std::collections::BTreeSet<&str> =
+            prev.lines.iter().map(|l| l.kid.as_str()).collect();
+        for line in &new.lines {
+            if !prev_kids.contains(line.kid.as_str()) {
+                return Err(err(format!(
+                    "{}: rotation smuggles in recipient {}",
+                    self.node, line.kid
+                )));
+            }
+        }
+        if !new.lines.iter().any(|l| l.to == OWNER_LABEL) {
+            return Err(Error::MissingOwnerLine(format!(
+                "{} v{new_version}",
+                self.node
+            )));
+        }
+        Ok(())
+    }
+
     /// Parse-time validation: I3 on every version.
     pub fn validate(&self) -> Result<()> {
         for (v, kv) in &self.key_versions {

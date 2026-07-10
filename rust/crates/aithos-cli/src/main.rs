@@ -252,6 +252,25 @@ enum Command {
         #[arg(long, default_value_t = 1)]
         seq: u64,
     },
+    /// Revoke a mandate (spec 06): one signed, anchored gamma entry. With
+    /// --rotate <folder>, also turns the lock (rung 2/3) — fresh key sealed
+    /// to survivors, up-link wrap, re-encryption.
+    Revoke {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        seed_hex: String,
+        /// The mandate id to revoke.
+        mandate_id: String,
+        #[arg(long, default_value = "revoked")]
+        reason: String,
+        /// Also rotate this circle folder out of the revoked grantee.
+        #[arg(long)]
+        rotate: Option<String>,
+        /// The revoked grantee's Ed25519 seed (to compute its header kid).
+        #[arg(long)]
+        revoked_seed_hex: Option<String>,
+    },
     /// Print the log's counting skeleton (what any file-holder sees).
     LogShow {
         #[arg(long)]
@@ -661,6 +680,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut bundle = bundle_at(&dir)?;
             bundle.log_heartbeat(&owner, seq, &now_string(), &mut OsEntropy)?;
             println!("beacon {seq} published");
+            Ok(())
+        }
+        Command::Revoke {
+            dir,
+            seed_hex,
+            mandate_id,
+            reason,
+            rotate,
+            revoked_seed_hex,
+        } => {
+            let owner = owner_from(&seed_hex)?;
+            let mut bundle = bundle_at(&dir)?;
+            let entry = bundle.log_revoke_owner(
+                &owner,
+                &mandate_id,
+                &reason,
+                &now_string(),
+                &mut OsEntropy,
+            )?;
+            println!("revoked; entry = {}", entry.id);
+            if let Some(folder) = rotate {
+                let seed = revoked_seed_hex
+                    .ok_or("--rotate needs --revoked-seed-hex to compute the revoked kid")?;
+                let revoked = ed25519_dalek::SigningKey::from_bytes(
+                    &<[u8; 32]>::try_from(hex::decode(seed)?)
+                        .map_err(|_| "revoked-seed-hex: 32 bytes")?,
+                );
+                let kid = aithos_core::wire::ed25519_pub_to_multibase(
+                    &revoked.verifying_key().to_bytes(),
+                );
+                bundle.rotate_folder(&owner, &folder, &kid, &mut OsEntropy)?;
+                println!("rotated {folder} out of the revoked grantee");
+            }
+            bundle.publish(&owner, &now_string())?;
             Ok(())
         }
         Command::LogShow { dir } => {

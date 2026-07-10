@@ -94,6 +94,11 @@ pub enum PerimeterEntry {
     Issue {
         depth: u32,
     },
+    /// Revocation right (§06.7): the authority to publish `revoke` entries,
+    /// carrying no key. `None` scope = the issuer's whole revocable reach.
+    Revoke {
+        scope: Option<Box<PerimeterEntry>>,
+    },
 }
 
 impl PerimeterEntry {
@@ -121,6 +126,16 @@ impl PerimeterEntry {
         }
         if s == "read.gamma" || s.starts_with("read.gamma#") {
             return Self::parse_gamma(s.strip_prefix("read.gamma").expect("prefix checked"));
+        }
+        if s == "revoke" {
+            return Ok(PerimeterEntry::Revoke { scope: None });
+        }
+        if let Some(rest) = s.strip_prefix("revoke.") {
+            // `revoke.<zone>[#selector]` reuses the ethos parser for its scope.
+            let inner = PerimeterEntry::parse(&format!("read.{rest}"))?;
+            return Ok(PerimeterEntry::Revoke {
+                scope: Some(Box::new(inner)),
+            });
         }
         let (head, selector) = match s.split_once('#') {
             Some((h, sel)) => (h, Some(sel)),
@@ -270,6 +285,12 @@ impl PerimeterEntry {
                 }
                 out
             }
+            PerimeterEntry::Revoke { scope: None } => "revoke".to_owned(),
+            PerimeterEntry::Revoke { scope: Some(s) } => {
+                // Render the inner ethos scope, then swap read→revoke.
+                let inner = s.to_entry_string();
+                format!("revoke.{}", inner.trim_start_matches("read."))
+            }
         }
     }
 
@@ -359,9 +380,22 @@ impl PerimeterEntry {
                         (Some(_), None) => false,
                     }
             }
+            (PerimeterEntry::Revoke { scope: ps }, PerimeterEntry::Revoke { scope: cs }) => {
+                match (ps, cs) {
+                    (None, _) => true, // a bare revoke covers any revoke scope
+                    (Some(a), Some(b)) => a.covers(b),
+                    (Some(_), None) => false,
+                }
+            }
             _ => false,
         }
     }
+}
+
+/// Free-function containment, for callers that hold two entries (§06.7).
+#[must_use]
+pub fn covers(parent: &PerimeterEntry, child: &PerimeterEntry) -> bool {
+    parent.covers(child)
 }
 
 /// The operation a verifier is asked about.
@@ -623,13 +657,26 @@ impl Mandate {
 
 // ---------------------------------------------------------------- chains
 
-/// Offline chain verification (§04.5 + §05.3) at injected time `at`.
-/// Fail any ⇒ reject.
+/// Offline chain verification (§04.5 + §05.3) at injected time `at`, with no
+/// revocation state — structural, window, and attenuation checks only.
 pub fn verify_chain(chain: &[Mandate], did_doc: &DidDocument, at: &str) -> Result<()> {
+    verify_chain_revocable(chain, did_doc, at, &[])
+}
+
+/// Full offline verification (§04.5, all four steps) including revocation
+/// (step 4): none of the chain's ids is revoked at `T` (§06.4). Revocation
+/// state is injected — the pure core never reads the log itself.
+pub fn verify_chain_revocable(
+    chain: &[Mandate],
+    did_doc: &DidDocument,
+    at: &str,
+    revocations: &[crate::revocation::Revocation],
+) -> Result<()> {
     let err = |m: String| Error::InvalidMandate(m);
     if chain.is_empty() {
         return Err(err("empty chain".into()));
     }
+    crate::revocation::chain_revoked_at(chain, revocations, at)?;
     did_doc.verify()?;
 
     // Root link.

@@ -28,6 +28,7 @@ pub mod jcs;
 pub mod keys;
 pub mod mandate;
 pub mod path;
+pub mod revocation;
 pub mod seal;
 pub mod wire;
 

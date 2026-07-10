@@ -170,8 +170,21 @@ impl<S: Store> Bundle<S> {
         plaintext: &[u8],
         ent: &mut dyn EntropySource,
     ) -> Result<String> {
+        self.put_blob_v(file, key, node, KV, plaintext, ent)
+    }
+
+    /// Seal a blob at an explicit key version (rotation, §03.4/§06).
+    pub(crate) fn put_blob_v(
+        &mut self,
+        file: &str,
+        key: &[u8; 32],
+        node: &NodePath,
+        version: u64,
+        plaintext: &[u8],
+        ent: &mut dyn EntropySource,
+    ) -> Result<String> {
         let nonce = ent.e24();
-        let aad = blob_aad(&self.did, &node.to_string(), KV);
+        let aad = blob_aad(&self.did, &node.to_string(), version);
         let c = blob_seal(key, plaintext, &nonce, &aad);
         let mut file_bytes = nonce.to_vec();
         file_bytes.extend_from_slice(&c);
@@ -180,12 +193,23 @@ impl<S: Store> Bundle<S> {
     }
 
     pub(crate) fn open_blob(&self, file: &str, key: &[u8; 32], node: &NodePath) -> Result<Vec<u8>> {
+        self.open_blob_v(file, key, node, KV)
+    }
+
+    /// Open a blob sealed at an explicit key version.
+    pub(crate) fn open_blob_v(
+        &self,
+        file: &str,
+        key: &[u8; 32],
+        node: &NodePath,
+        version: u64,
+    ) -> Result<Vec<u8>> {
         let bytes = self.get(file)?;
         if bytes.len() < 25 {
             return Err(Error::SealRejected(format!("blob too short: {file}")));
         }
         let nonce: [u8; 24] = bytes[..24].try_into().expect("checked");
-        let aad = blob_aad(&self.did, &node.to_string(), KV);
+        let aad = blob_aad(&self.did, &node.to_string(), version);
         blob_open(key, &bytes[24..], &nonce, &aad)
     }
 

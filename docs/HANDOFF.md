@@ -3,8 +3,8 @@
 **But.** Reprendre l'implémentation de référence d'aithos-core sans rien reperdre.
 Résume où on en est, comment on travaille, et la prochaine étape exacte.
 
-**Branche : `feat/f-plus`** (F mergée sur master en fast-forward ; F+ complète
-sur cette branche, merge = décision Mathieu). Repo : `code/aithos-core/`.
+**Branche : `feat/f-plus`** (F mergée sur master ; F+ et G complètes sur cette
+branche, merge = décision Mathieu). Repo : `code/aithos-core/`.
 
 ---
 
@@ -54,7 +54,7 @@ rejet) ; wire figé étape 0 (multibase base58btc, JCS RFC 8785, AAD §00.3).
   À H : racines committées → preuves O(log n), option de sceller kind/via (champ
   `v` prêt). Crypto-erasure par destruction de clé.
 
-## 4. État du code (8 étapes closes sur 12)
+## 4. État du code (9 étapes closes sur 12)
 
 Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 `aithos-cli`, `aithos-wasm`.
@@ -69,13 +69,13 @@ Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 | E Mandats | ✅ | mandate.rs, grants.rs — E1 |
 | **F Gamma** | ✅ | gamma.rs (chaîne, enveloppe, compteur, heartbeat, ancre), log.rs (segments, appends autorisés, query owner/agent), PerimeterEntry::{Act,Gamma}, covers_act/covers_gamma_query, manifest.gamma_head, SectionSpec/ActionSpec (dette params réglée) — F1, F2, F3 |
 | **F+ Contraintes avancées** | ✅ | constraints.rs (Window arithmétique half-open, BudgetProfile OU, reçus d'attestation, action_params), kinds inference/ethos.read + classes registry, atténuation fenêtres dans verify_chain, vault d'audit (`e/x/header.json`) + args scellés §7.9.3, log_inference/log_read_as_agent, audit owner (audit_action_args, audit_log_against) — vecteur F+ |
-| G Révocation | ⏳ **prochaine** | révocations = entrées gamma (kind déjà dans le registre) |
+| **G Révocation** | ✅ | revocation.rs (set actif, forward-only, autorité issuer/ancêtre/watchdog), PerimeterEntry::Revoke, verify_chain_revocable (état injecté, §04.5 step 4), rotation.rs bundle (rotate_folder : versions header, survivants, up-link 2bis, ré-encryption, lecture version-aware), log_revoke owner/délégué, CLI `revoke [--rotate]` — G1, G2. **Reste @wip : move-as-rotation (§02.9)** — 1 scénario, sa propre passe |
 | H Merkle | ⬜ | racines zones + **racines gamma** (segments + trie mandate_id→count) |
 | I Concurrence | ⬜ | merge disjoint, fork, entrées merge |
 | K Intégration | ⬜ | scénario K, Docker, npm |
 
-**Tests : 105 scénarios / 369 steps cucumber + vecteurs A1/A2/B2/C1/E1/F1/F2/F3/F+
-+ 12 tests de surface CLI (cli_surface.rs), tous verts ; `clippy --all-targets
+**Tests : 120 scénarios / 426 steps cucumber (+1 skip move @wip) + vecteurs
+A→F+/G1/G2 + 12 tests de surface CLI, tous verts ; `clippy --all-targets
 -- -D warnings` clean ; `cargo fmt` passé.**
 
 CLI : `grant-act` (--max-actions, --heartbeat-every/grace, **--budgets-json,
@@ -113,16 +113,24 @@ précédente peuvent appartenir à `nobody` (illisibles). Setup qui marche :
   erreur depuis B ; l'historique garde le poids — réécriture = décision à part).
   `.gitignore` couvre `rust/target*/`.
 
-## 6. Prochaine étape : G — Révocation (spec 06)
+## 6. Prochaine étape : finir G (move-as-rotation) puis H — Merkle
 
-Révocations = entrées gamma (kind `revoke` déjà dans le registre §7.9.2).
-Échelle complète du plan : cert (entrée gamma ancrée), rotation atomique +
-re-scellement survivants + up-link wrap (§03.4 2bis), re-chiffrement, cascade,
-ré-adoption, watchdog (verbe revoke sans clé), move-as-rotation (§02.9).
-CLI : `revoke [--mode]`, `adopt`, `folder move`. Rituel : feature G d'abord.
+**G reste 1 sous-item** : `move-as-rotation` (§02.9) — le scénario Gherkin
+"Moving a folder rotates its key" est tagué `@wip`. Move = re-parenter la
+folder-row (sids stables) + rotation du nœud (la dérivation depuis l'ancien
+parent ne peut être désapprise). Sémantique à clarifier : un grantee avec une
+LIGNE directe survit (comme une rotation ordinaire) ; seul le lecteur par
+DÉRIVATION depuis l'ancien parent perd l'accès. Mérite sa propre passe.
 
-Spec F+ gravée le 2026-07-10 : §04.4 (table mise à jour), §04.10 (fenêtres),
-§04.11 (+§04.11.1 reçus), §07.9 (inference, registre kinds, args scellés).
+**Décision G gravée** : révocation = UNE entrée gamma `revoke` (pas de doc
+autonome §6.4). `verify_chain_revocable(chain, doc, at, revs)` = §04.5 étape 4,
+état injecté (pureté core). `verify_chain` inchangée appelle avec revs vide →
+zéro régression. Rotation version-aware : la clé de section se résout par le
+header de la folder à `row.key_version` (up-link wrap pour les dérivants).
+
+**H — Merkle** ensuite (spec §02.10 + racines gamma) : `H_leaf/H_node`, racines
+par zone + racines gamma (segments + trie mandate_id→count), preuves O(log n),
+diff par descente.
 
 ## 7. Points ouverts / dette assumée (non bloquants)
 

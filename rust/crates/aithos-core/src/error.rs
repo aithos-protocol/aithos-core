@@ -58,6 +58,12 @@ pub enum Error {
 
     #[error("stale freshness anchor: {0}")]
     GammaStaleAnchor(String),
+
+    #[error("mandate revoked: {0}")]
+    MandateRevoked(String),
+
+    #[error("revocation rejected — signer lacks authority: {0}")]
+    GammaRevocationRejected(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
