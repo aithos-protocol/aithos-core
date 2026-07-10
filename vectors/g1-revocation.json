@@ -1,0 +1,23 @@
+{
+  "vector": "G1",
+  "description": "Owner-signed revoke gamma entry (spec 06.4, one artifact): canonical JCS + content signature; authority and forward-only verdicts. Generated independently (Python blake3+PyNaCl).",
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "agent_sk_hex": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "revoked_mandate_id": "mandate_0000000000000000000000000M",
+  "entry_jcs": "{\"at\":\"2026-07-10T12:00:00Z\",\"id\":\"gamma_0000000000000000000000000R\",\"kind\":\"revoke\",\"payload\":{\"reason\":\"device_lost\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#content\",\"value\":\"1f53f246b0517b315ea96a65e16f02a048a183e85fa5bf1b423f59174b6c8b9d836b59fa456c9bb8a09cfe4b470d3aaf9bd20981b6b8266bddfa73dbd8b4ec07\"},\"target\":\"mandate_0000000000000000000000000M\",\"v\":1}",
+  "entry_hash": "sha256:13025f3944b2209bb0eb09bc6a3fa1b4e4351bbc793b507739f5ae6044a2b97f",
+  "authority": {
+    "owner_entry": "valid",
+    "issuer_leaf_matches_issued_by": "valid",
+    "leaf_id_in_revoked_ancestry": "valid",
+    "unrelated_sibling": "GammaRevocationRejected",
+    "watchdog_covering_perimeter": "valid",
+    "watchdog_outside_perimeter": "GammaRevocationRejected"
+  },
+  "forward_only": {
+    "revoked_at": "2026-07-10T12:00:00Z",
+    "2026-07-10T11:59:59Z": "valid",
+    "2026-07-10T12:00:00Z": "MandateRevoked",
+    "2026-07-11T00:00:00Z": "MandateRevoked"
+  }
+}

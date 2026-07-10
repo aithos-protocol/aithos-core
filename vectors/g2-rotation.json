@@ -1,0 +1,27 @@
+{
+  "vector": "G2",
+  "description": "Mechanical rotation rule (spec 03.4): survivor line sets, smuggled-recipient rejection, and the up-link wrap bytes (step 2bis, tag-wrap primitive). Generated independently (Python blake3+PyNaCl).",
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "old_kids": [
+    "owner-kex",
+    "zAGENT1",
+    "zAGENT2"
+  ],
+  "revoked_kid": "zAGENT1",
+  "expected_survivor_kids": [
+    "owner-kex",
+    "zAGENT2"
+  ],
+  "smuggled_new_kid": "zINTRUS",
+  "smuggled_must_fail": "GammaRevocationRejected",
+  "missing_owner_must_fail": "MissingOwnerLine",
+  "uplink": {
+    "via_key_hex": "5555555555555555555555555555555555555555555555555555555555555555",
+    "new_dk_hex": "6666666666666666666666666666666666666666666666666666666666666666",
+    "nonce_hex": "777777777777777777777777777777777777777777777777",
+    "node": "/e/circle/d/00000000000000000000000001",
+    "key_version": 2,
+    "subject_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+    "cipher_hex": "fea47b8b4845b1955de48a78609862ecdb0e6e1ac264567680e382ace8b5b1bd74ef936a87ae79f69c61d03df56d34cd"
+  }
+}
