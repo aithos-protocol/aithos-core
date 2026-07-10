@@ -129,6 +129,40 @@ complétude (→ H).
 au-delà de every+grace → mandat heartbeat suspendu.
 **Done :** F1–F3 verts ; features étendues (action comptée, budget épuisé).
 
+### F+ — Contraintes agentiques avancées (spec 04.4 + 07.4, à graver après F)
+Enrichissement **purement additif** du vocabulaire de contraintes (le champ
+`constraints` du mandat est extensible : unknown keys non-breaking, §04.4). Réutilise
+le moteur de comptage sous-arbre de F (somme sur `authorized_via`) et le verifier
+tier V de E — rien à réécrire. Trois blocs (discutés 2026-07-10) :
+
+1. **Modèle temporel unifié `active_windows`** (remplace `active_hours`). Une union
+   de **fenêtres arithmétiques absolues** `{anchor, duration, period?, until?|count?}`
+   en epoch (unité fixe, ns proposé) : occurrence k = `[anchor+k·period,
+   +duration]`, test `T∈fenêtre` en O(1), **déterministe, zéro fuseau, zéro DST**,
+   granularité libre (ms→années). La complexité calendaire (lundi/Paris/DST) vit dans
+   l'outil d'émission qui expanse en fenêtres ; le verifier ne fait que de
+   l'arithmétique d'intervalles. Unifie aussi `not_before/not_after` (fenêtre unique).
+   **N'entre pas en conflit avec le rolling-window de F** (`max_actions_per` = durée
+   glissante relative, mécanisme distinct des créneaux absolus).
+2. **Profils de budget `budgets: [profile]`** (logique OU). Chaque profil = conjonction
+   `{id, model:[…], token_budget, active_windows, max_actions, require_attestation?}` ;
+   l'action cite `budget_ref` + déclare `model`/`tokens` ; autorisée si ≥1 profil
+   satisfait et non épuisé ; comptage par `budget_ref` (tokens comme max_actions).
+   Exemple cible : « 10k tokens Haiku jeudi 14-18h sur 1 action OU 25k tokens Gemma ».
+3. **Enforcement modèle via container** (tier X). Credentials provider dans le vault
+   `/x/`, jamais chez l'agent ; le container = passage obligé qui construit la requête
+   (impose `model`, lit l'`usage` réel, refuse au budget). Hook `attestation`
+   (reçu signé du provider) optionnel → passe la véracité de tier X à tier V le jour
+   où un provider signe ses reçus.
+
+**Tiers d'enforcement (à graver nettement)** : déclaration + comptage des valeurs
+*déclarées* = tier V (offline) ; véracité modèle/tokens réels = tier X (container) +
+audit a posteriori (réconciliation facture) ; attestation = pont vers tier V futur.
+**CLI :** `grant --budget …`, `action --model --tokens --budget-ref`.
+**Done :** vecteur F+ (fenêtres + profils), scénarios (fenêtre hors-plage → refus ;
+budget tokens épuisé → refus ; OU bascule sur profil 2 ; modèle hors liste → refus).
+**Note coordination :** graver spec 04/07 quand l'agent F a fini (éviter conflit git).
+
 ### G — Révocation (spec 06) — après F : les révocations sont des entrées gamma
 Échelle complète : cert (entrée gamma ancrée), rotation atomique + re-scellement
 survivants + up-link wrap (§03.4 2bis), re-chiffrement, cascade, ré-adoption,
