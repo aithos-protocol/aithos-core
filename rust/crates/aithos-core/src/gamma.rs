@@ -29,6 +29,8 @@ pub enum Kind {
     SectionDelete,
     SectionRedact,
     Action,
+    Inference,
+    EthosRead,
     Heartbeat,
     Grant,
     Revoke,
@@ -44,6 +46,8 @@ impl Kind {
             "section.delete" => Kind::SectionDelete,
             "section.redact" => Kind::SectionRedact,
             "action" => Kind::Action,
+            "inference" => Kind::Inference,
+            "ethos.read" => Kind::EthosRead,
             "heartbeat" => Kind::Heartbeat,
             "grant" => Kind::Grant,
             "revoke" => Kind::Revoke,
@@ -61,6 +65,8 @@ impl Kind {
             Kind::SectionDelete => "section.delete",
             Kind::SectionRedact => "section.redact",
             Kind::Action => "action",
+            Kind::Inference => "inference",
+            Kind::EthosRead => "ethos.read",
             Kind::Heartbeat => "heartbeat",
             Kind::Grant => "grant",
             Kind::Revoke => "revoke",
@@ -76,6 +82,19 @@ impl Kind {
             self,
             Kind::SectionAdd | Kind::SectionModify | Kind::SectionDelete | Kind::SectionRedact
         )
+    }
+
+    /// Registry class (§07.9.2) — the query-level grouping; wire kinds
+    /// never change.
+    #[must_use]
+    pub fn class(self) -> &'static str {
+        match self {
+            k if k.is_mutation() => "ethos.write",
+            Kind::EthosRead => "ethos.read",
+            Kind::Action | Kind::Inference => "act",
+            Kind::Heartbeat => "liveness",
+            _ => "structural",
+        }
     }
 }
 
@@ -152,11 +171,15 @@ impl Entry {
         }
         ts_epoch(&self.at)?;
         let kind = self.kind()?;
-        match (kind.is_mutation(), &self.payload, &self.body_enc) {
-            // Mutation on a keyed zone: sealed body, nothing clear.
+        let sealed_only = kind.is_mutation() || kind == Kind::EthosRead;
+        match (sealed_only, &self.payload, &self.body_enc) {
+            // Mutation (or logged read) on a keyed zone: sealed body only.
             (true, None, Some(_)) if self.target.is_none() => Ok(()),
             // Mutation on public (no zone key, §07.3): clear, like structural.
-            (true, Some(_), None) if self.target.is_some() => Ok(()),
+            (true, Some(_), None) if self.target.is_some() && kind != Kind::EthosRead => Ok(()),
+            // Actions may add a sealed args body next to the clear payload
+            // (§07.9.3); every other clear kind stays clear-only.
+            (false, Some(_), Some(_)) if kind == Kind::Action => Ok(()),
             (false, Some(_), None) => Ok(()),
             _ => Err(err("payload/body_enc do not match the kind".into())),
         }
@@ -519,6 +542,9 @@ pub fn check_action_append(
     did_doc: &DidDocument,
 ) -> Result<()> {
     let at_t = ts_epoch(&candidate.at)?;
+    // Action-plane counters cap ACTIONS; an `inference` candidate is bounded
+    // by budgets/windows only (§04.11, §07.9.1).
+    let is_action = candidate.kind()? == Kind::Action;
     let action = candidate
         .payload
         .as_ref()
@@ -531,8 +557,17 @@ pub fn check_action_append(
         }
     }
     for m in chain {
+        // Absolute windows (§04.10) conjoin with everything else.
+        crate::constraints::check_windows(
+            crate::constraints::parse_windows(&m.constraints)?.as_deref(),
+            &candidate.at,
+        )?;
+        // Budget profiles (§04.11) — actions and inferences alike.
+        if let Some(profiles) = crate::constraints::parse_budgets(&m.constraints)? {
+            crate::constraints::check_budgets(existing, candidate, &m.id, &profiles)?;
+        }
         if let Some(n) = constraint_u64(m, "max_actions") {
-            if count_actions(existing, &m.id, None, None) as u64 + 1 > n {
+            if is_action && count_actions(existing, &m.id, None, None) as u64 + 1 > n {
                 return Err(Error::GammaBudgetExhausted(format!(
                     "{}: max_actions {n} spent",
                     m.id
@@ -540,7 +575,7 @@ pub fn check_action_append(
             }
         }
         if let Some((_, secs, n)) = constraint_window(m, "max_actions_per")? {
-            if count_actions(existing, &m.id, None, Some((secs, at_t))) as u64 + 1 > n {
+            if is_action && count_actions(existing, &m.id, None, Some((secs, at_t))) as u64 + 1 > n {
                 return Err(Error::GammaBudgetExhausted(format!(
                     "{}: max_actions_per {n} spent in window",
                     m.id

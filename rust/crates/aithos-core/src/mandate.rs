@@ -679,6 +679,14 @@ pub fn verify_chain(chain: &[Mandate], did_doc: &DidDocument, at: &str) -> Resul
         if m.not_before < parent.not_before || m.not_after > parent.not_after {
             return Err(err(format!("{}: window exceeds its parent's", m.id)));
         }
+        // Absolute windows only tighten (§04.10 attenuation).
+        crate::constraints::windows_attenuate(
+            crate::constraints::parse_windows(&parent.constraints)?.as_deref(),
+            crate::constraints::parse_windows(&m.constraints)?.as_deref(),
+            &m.not_before,
+            &m.not_after,
+        )
+        .map_err(|e| err(format!("{}: {e}", m.id)))?;
         // Issuing right and depth (§05.1, §05.3 rule 4).
         let parent_perimeter = parent.parsed_perimeter()?;
         let parent_depth = parent_perimeter
