@@ -162,6 +162,22 @@ impl<S: Store> Bundle<S> {
         self.gamma_append(&entry)
     }
 
+    /// Log an owner modification of an existing section by display path
+    /// (§07.3): sealed on keyed zones, clear on public.
+    pub fn log_section_modify(
+        &mut self,
+        owner: &OwnerKeys,
+        zone: Zone,
+        display_path: &str,
+        payload: serde_json::Value,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        let (row, folders) = self.resolve_clear(zone, display_path)?;
+        let node = NodePath::section(zone, folders, Sid::parse(&row.sid)?);
+        self.log_owner_mutation(owner, Kind::SectionModify, &node, payload, now, ent)
+    }
+
     /// Owner liveness beacon (§07.5).
     pub fn log_heartbeat(
         &mut self,

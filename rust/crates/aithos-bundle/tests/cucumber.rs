@@ -3,8 +3,9 @@
 //! docs/EXECUTION-PLAN.md and are never rewritten, only extended.
 
 use aithos_bundle::bundle::{Bundle, SectionSpec};
-use aithos_bundle::entropy::SeqEntropy;
+use aithos_bundle::entropy::{EntropySource, SeqEntropy};
 use aithos_bundle::grants::GrantSpec;
+use aithos_bundle::log::{LogFilter, LogHit};
 use aithos_bundle::manifest::{sha256_hex, Manifest};
 use aithos_bundle::{MemStore, Store};
 use aithos_core::derive::{derive_key, node_key, section_label};
@@ -137,6 +138,11 @@ pub struct ProtocolWorld {
     chain_result: Option<Result<(), String>>,
     granted_folder: String,
     e_folders: Vec<String>,
+    // --- step F: gamma ---
+    gamma_result: Option<Result<String, String>>,
+    audit_chain: Vec<Mandate>,
+    query_hits: Option<Result<Vec<LogHit>, String>>,
+    sealed_probe: Vec<Result<aithos_core::gamma::Body, String>>,
 }
 
 impl ProtocolWorld {
@@ -1485,6 +1491,998 @@ fn rejected_with(w: &mut ProtocolWorld, expected: String) {
         w.identities.is_empty(),
         "no identity may exist after rejection"
     );
+}
+
+// ------------------------------------------------------- step F: gamma ---
+
+const AUDITOR: u8 = 0xA4;
+const NA_FAR: &str = "2027-07-01T00:00:00Z";
+const D0: &str = "2026-07-01T00:00:00Z"; // "day 0" of the F scenarios
+
+fn day(n: u32, hms: &str) -> String {
+    // Days relative to D0 (July 2026 has 31 days) — enough for two months.
+    let (mo, d) = if n < 31 { (7, n + 1) } else { (8, n - 30) };
+    format!("2026-{mo:02}-{d:02}T{hms}Z")
+}
+
+impl ProtocolWorld {
+    fn gbundle(&mut self) -> &mut Bundle<MemStore> {
+        self.bundle.as_mut().unwrap()
+    }
+
+    fn did_document(&self) -> DidDocument {
+        let bytes = self
+            .bundle
+            .as_ref()
+            .unwrap()
+            .store
+            .get("did.json")
+            .unwrap()
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    fn store_cert(&mut self, m: &Mandate) {
+        let bytes = serde_json::to_vec_pretty(m).unwrap();
+        self.gbundle()
+            .store
+            .put(&format!("certs/{}.json", m.id), &bytes)
+            .unwrap();
+    }
+
+    /// Root mandate over connector actions (and optionally more entries),
+    /// certificate + stored — the act-plane sibling of `grant_to_agent`.
+    fn grant_act(
+        &mut self,
+        extra: Vec<aithos_core::mandate::PerimeterEntry>,
+        constraints: serde_json::Value,
+        na: &str,
+    ) {
+        use aithos_core::mandate::{Mandate as M, MandateSpec, PerimeterEntry};
+        let owner = self.owner(0);
+        let mut perimeter = vec![PerimeterEntry::parse("act.x.gmail.*").unwrap()];
+        perimeter.extend(extra);
+        let m = M::build_root(
+            &owner.root_sign,
+            &MandateSpec {
+                id: format!("mandate_{}", sid(u128::from(self.ent.e16()[15]) + 900)),
+                subject: self.bundle.as_ref().unwrap().did.clone(),
+                grantee_id: "urn:aithos:agent:agent".into(),
+                grantee_label: "agent".into(),
+                grantee_pub: &agent_sk(AGENT).verifying_key(),
+                perimeter,
+                constraints,
+                not_before: NB.into(),
+                not_after: na.into(),
+                issued_at: NB.into(),
+                nonce: hex::encode(self.ent.e16()),
+            },
+        )
+        .unwrap();
+        self.store_cert(&m);
+        self.chain = vec![m];
+    }
+
+    /// Sub-mandate over an action pattern, minted by the AGENT for HELPER;
+    /// logging the grant is the caller's (spec-mandated) duty.
+    fn delegate_act(&mut self, pattern: &str, log_grant: bool) -> Result<String, String> {
+        use aithos_core::mandate::{Mandate as M, MandateSpec, PerimeterEntry};
+        let parent = self.chain[0].clone();
+        let child = M::build_sub(
+            &parent,
+            &agent_sk(AGENT),
+            &MandateSpec {
+                id: format!("mandate_{}", sid(u128::from(self.ent.e16()[15]) + 950)),
+                subject: parent.subject.clone(),
+                grantee_id: "urn:aithos:agent:helper".into(),
+                grantee_label: "helper".into(),
+                grantee_pub: &agent_sk(HELPER).verifying_key(),
+                perimeter: vec![PerimeterEntry::parse(pattern).unwrap()],
+                constraints: MandateSpec::no_constraints(),
+                not_before: NB.into(),
+                not_after: parent.not_after.clone(),
+                issued_at: NB.into(),
+                nonce: hex::encode(self.ent.e16()),
+            },
+        )
+        .unwrap();
+        self.store_cert(&child);
+        self.helper_chain = vec![parent.clone(), child.clone()];
+        if log_grant {
+            let mut ent = std::mem::take(&mut self.ent);
+            let r = self
+                .gbundle()
+                .log_delegated_grant(
+                    &[parent],
+                    &agent_sk(AGENT),
+                    &child.id,
+                    &day(1, "00:30:00"),
+                    &mut ent,
+                )
+                .map(|()| child.id.clone())
+                .map_err(|e| e.to_string());
+            self.ent = ent;
+            return r;
+        }
+        Ok(child.id)
+    }
+
+    fn try_action(&mut self, helper: bool, action: &str, at: &str) -> Result<String, String> {
+        let chain = if helper {
+            self.helper_chain.clone()
+        } else {
+            self.chain.clone()
+        };
+        let sk = agent_sk(if helper { HELPER } else { AGENT });
+        let mut ent = std::mem::take(&mut self.ent);
+        let r = self
+            .gbundle()
+            .log_action(
+                &chain,
+                &sk,
+                "gmail",
+                action,
+                "sha256:00",
+                at,
+                &mut ent,
+            )
+            .map(|e| e.id)
+            .map_err(|e| e.to_string());
+        self.ent = ent;
+        r
+    }
+
+    fn beacon(&mut self, seq: u64, at: &str) {
+        let owner = self.owner(0);
+        let mut ent = std::mem::take(&mut self.ent);
+        self.gbundle()
+            .log_heartbeat(&owner, seq, at, &mut ent)
+            .unwrap();
+        self.ent = ent;
+    }
+
+    fn segment_lines(&mut self, seg: &str) -> Vec<Vec<u8>> {
+        self.gbundle()
+            .store
+            .get(seg)
+            .unwrap()
+            .unwrap()
+            .split(|b| *b == b'\n')
+            .filter(|l| !l.is_empty())
+            .map(<[u8]>::to_vec)
+            .collect()
+    }
+}
+
+// --- F givens ---
+
+#[given("a bundle with a three-entry log")]
+fn three_entry_log(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    for (i, hms) in ["01:00:00", "02:00:00", "03:00:00"].iter().enumerate() {
+        w.beacon(i as u64 + 1, &day(8, hms));
+    }
+}
+
+#[given("a bundle with entries logged in two different months")]
+fn two_month_log(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.beacon(1, D0);
+    w.beacon(2, &day(35, "00:00:00"));
+    w.publish_bundle();
+}
+
+#[given(expr = "an agent granted action rights on connector {string}")]
+fn act_grant_connector(w: &mut ProtocolWorld, _connector: String) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+}
+
+#[given("an agent granted action rights for 7 days")]
+fn act_grant_7d(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA7);
+}
+
+#[given("an agent granted action rights with max_actions 3")]
+fn act_grant_budget(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({"max_actions": 3}), NA30);
+}
+
+#[given("an agent granted action rights with max_actions 3 and issue depth 1")]
+fn act_grant_budget_issue(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        serde_json::json!({"max_actions": 3}),
+        NA30,
+    );
+}
+
+#[given("the agent delegates its perimeter to a helper")]
+fn delegates_perimeter(w: &mut ProtocolWorld) {
+    w.delegate_act("act.x.gmail.*", true).unwrap();
+}
+
+#[given("an agent granted action rights with max_actions_per 2 per 24 hours")]
+fn act_grant_window(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({"max_actions_per": {"window": "24h", "n": 2}}),
+        NA30,
+    );
+}
+
+#[given(expr = "an agent granted gmail actions with rate_limit 2 {string} per 72 hours")]
+fn act_grant_rate(w: &mut ProtocolWorld, action: String) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({"rate_limit": {"action": action, "window": "72h", "n": 2}}),
+        NA30,
+    );
+}
+
+#[given("an agent granted issue rights with max_children 2")]
+fn act_grant_children(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        serde_json::json!({"max_children": 2}),
+        NA30,
+    );
+}
+
+#[given("an agent that minted a sub-mandate without logging the grant")]
+fn minted_unlogged(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        serde_json::json!({}),
+        NA30,
+    );
+    w.delegate_act("act.x.gmail.reply", false).unwrap();
+}
+
+#[given("a head mandate with heartbeat every 30 days grace 72 hours")]
+fn head_mandate(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![],
+        serde_json::json!({"heartbeat": {"every": "30d", "grace": "72h"}}),
+        NA_FAR,
+    );
+}
+
+#[given("an owner beacon at day 0")]
+fn beacon_day0(w: &mut ProtocolWorld) {
+    w.beacon(1, D0);
+}
+
+#[given("a head mandate suspended by owner silence")]
+fn suspended_mandate(w: &mut ProtocolWorld) {
+    head_mandate(w);
+    beacon_day0(w);
+    // Day 34 sits beyond every+grace (33d): the mandate is suspended.
+    w.gamma_result = Some(w.try_action(false, "reply", &day(34, "00:00:00")));
+    assert!(w.gamma_result.as_ref().unwrap().is_err());
+}
+
+#[given("an agent under a mandate with freshness 24 hours")]
+fn freshness_mandate(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({"freshness": "24h"}), NA30);
+    w.beacon(1, D0); // the anchor entry
+}
+
+#[given("a published bundle with a circle section")]
+fn published_circle_section(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_circle_section("projets", "note1", "toto");
+    w.publish_bundle();
+}
+
+#[given("a bundle whose log records mutations and actions")]
+fn log_with_mutations_and_actions(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_circle_section("projets", "note1", "toto"); // sealed mutation @NOW
+    w.grant_act(vec![], serde_json::json!({"max_actions": 5}), NA30);
+    w.try_action(false, "reply", &day(14, "01:00:00")).unwrap();
+}
+
+#[given(expr = "logged mutations on sections under {string} and under {string}")]
+fn mutations_two_folders(w: &mut ProtocolWorld, f1: String, f2: String) {
+    w.init_bundle();
+    w.add_named_section(&f1, "note1", &[]);
+    w.add_named_section(&f2, "note2", &[]);
+    w.e_folders = vec![f1, f2];
+}
+
+#[given("an agent granted action rights and no read grant")]
+fn act_no_read(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_circle_section("projets", "note1", "toto"); // a sealed entry exists
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+}
+
+#[given("a bundle whose log records mutations and actions over two months")]
+fn log_two_months(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA_FAR);
+    w.try_action(false, "reply", &day(4, "00:00:00")).unwrap(); // day 4: outside
+    w.add_circle_section("projets", "note1", "toto"); // NOW = day 8: mutation
+    w.try_action(false, "reply", &day(14, "00:00:00")).unwrap(); // inside
+    w.try_action(false, "label", &day(35, "00:00:00")).unwrap(); // inside
+}
+
+#[given(expr = "logged mutations by the owner and by an agent under {string}")]
+fn mutations_for_audit(w: &mut ProtocolWorld, folder: String) {
+    w.init_bundle();
+    w.add_named_section(&folder, "note1", &[]);
+    w.add_named_section(&folder, "note2", &[]);
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    w.try_action(false, "reply", &day(14, "01:00:00")).unwrap();
+}
+
+#[given(expr = "an auditor granted read.gamma on action {string} from day 1 to day 30")]
+fn scoped_auditor(w: &mut ProtocolWorld, action: String) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    w.try_action(false, &action, &day(19, "12:00:00")).unwrap();
+    let owner = w.owner(0);
+    let entry = format!(
+        "read.gamma#action={action}&since={}&until={}",
+        day(0, "00:00:00"),
+        day(29, "23:59:59")
+    );
+    let m = Mandate::build_root(
+        &owner.root_sign,
+        &aithos_core::mandate::MandateSpec {
+            id: "mandate_000000000000000000000AUDIT".into(),
+            subject: w.bundle.as_ref().unwrap().did.clone(),
+            grantee_id: "urn:aithos:agent:auditor".into(),
+            grantee_label: "auditor".into(),
+            grantee_pub: &agent_sk(AUDITOR).verifying_key(),
+            perimeter: vec![aithos_core::mandate::PerimeterEntry::parse(&entry).unwrap()],
+            constraints: aithos_core::mandate::MandateSpec::no_constraints(),
+            not_before: NB.into(),
+            not_after: NA30.into(),
+            issued_at: NB.into(),
+            nonce: hex::encode(w.ent.e16()),
+        },
+    )
+    .unwrap();
+    w.store_cert(&m);
+    w.audit_chain = vec![m];
+}
+
+// --- F whens ---
+
+#[when("the owner appends a section addition and a heartbeat")]
+fn owner_appends_both(w: &mut ProtocolWorld) {
+    w.add_circle_section("projets", "note1", "toto");
+    w.beacon(1, NOW);
+    w.publish_bundle();
+}
+
+#[when("one byte of the middle entry is altered")]
+fn tamper_middle_entry(w: &mut ProtocolWorld) {
+    let seg = "gamma/2026-07.jsonl";
+    let mut lines = w.segment_lines(seg);
+    let line = &mut lines[1];
+    let idx = line
+        .windows(9)
+        .position(|win| win == b"\"value\":\"")
+        .expect("signature field")
+        + 9;
+    line[idx] = if line[idx] == b'0' { b'1' } else { b'0' };
+    let mut joined: Vec<u8> = Vec::new();
+    for l in &lines {
+        joined.extend_from_slice(l);
+        joined.push(b'\n');
+    }
+    w.gbundle().store.put(seg, &joined).unwrap();
+}
+
+#[when("an entry is appended whose prev is not the current head")]
+fn append_wrong_prev(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let rogue = aithos_core::gamma::owner_entry(
+        aithos_core::gamma::EntrySpec {
+            id: "gamma_000000000000000000000ROGUE".into(),
+            prev: entries[0].chain_hash().unwrap(), // not the head
+            at: day(8, "04:00:00"),
+            kind: aithos_core::gamma::Kind::Heartbeat,
+            target: None,
+            payload: Some(serde_json::json!({"seq": 99})),
+            body_enc: None,
+        },
+        &owner.content_sign,
+    )
+    .unwrap();
+    let seg = "gamma/2026-07.jsonl";
+    let mut bytes = w.gbundle().store.get(seg).unwrap().unwrap();
+    bytes.extend_from_slice(aithos_core::jcs::canonicalize(&rogue).unwrap().as_bytes());
+    bytes.push(b'\n');
+    w.gbundle().store.put(seg, &bytes).unwrap();
+}
+
+#[when("the owner appends a section addition")]
+fn owner_appends_section(w: &mut ProtocolWorld) {
+    w.add_circle_section("projets", "note1", "toto");
+}
+
+#[when("the agent appends an action entry")]
+fn agent_appends_action(w: &mut ProtocolWorld) {
+    w.gamma_result = Some(w.try_action(false, "reply", DAY1));
+}
+
+#[when("the agent appends an action entry timestamped at day 8")]
+fn agent_appends_day8(w: &mut ProtocolWorld) {
+    w.gamma_result = Some(w.try_action(false, "reply", DAY8));
+}
+
+#[when("the agent appends three action entries")]
+fn agent_appends_three(w: &mut ProtocolWorld) {
+    for hms in ["01:00:00", "02:00:00", "03:00:00"] {
+        w.try_action(false, "reply", &day(1, hms)).unwrap();
+    }
+}
+
+#[when("the agent appends one action and the helper appends two")]
+fn subtree_appends(w: &mut ProtocolWorld) {
+    w.try_action(false, "reply", &day(1, "01:00:00")).unwrap();
+    w.try_action(true, "reply", &day(1, "02:00:00")).unwrap();
+    w.try_action(true, "reply", &day(1, "03:00:00")).unwrap();
+}
+
+#[when("the agent appends two actions on day 1")]
+fn two_actions_day1(w: &mut ProtocolWorld) {
+    w.try_action(false, "reply", &day(1, "01:00:00")).unwrap();
+    w.try_action(false, "label", &day(1, "02:00:00")).unwrap();
+}
+
+#[when(expr = "the agent appends two {string} actions on day 1")]
+fn two_kind_actions_day1(w: &mut ProtocolWorld, action: String) {
+    w.try_action(false, &action, &day(1, "01:00:00")).unwrap();
+    w.try_action(false, &action, &day(1, "02:00:00")).unwrap();
+}
+
+#[when("the agent delegates twice, each grant logged")]
+fn delegates_twice(w: &mut ProtocolWorld) {
+    w.delegate_act("act.x.gmail.reply", true).unwrap();
+    w.delegate_act("act.x.gmail.label", true).unwrap();
+}
+
+#[when("the helper presents an action under that chain")]
+fn helper_presents(w: &mut ProtocolWorld) {
+    w.gamma_result = Some(w.try_action(true, "reply", &day(1, "05:00:00")));
+}
+
+#[when("the head agent forges a heartbeat with its own key")]
+fn forge_beacon(w: &mut ProtocolWorld) {
+    use ed25519_dalek::Signer;
+    let head = w.gbundle().gamma_head().unwrap();
+    let mut forged = aithos_core::gamma::Entry {
+        v: 1,
+        id: "gamma_000000000000000000000FORGE".into(),
+        prev: head,
+        at: day(2, "00:00:00"),
+        kind: "heartbeat".into(),
+        target: None,
+        authorized_by: None,
+        authorized_via: None,
+        payload: Some(serde_json::json!({"seq": 77})),
+        body_enc: None,
+        signature: aithos_core::did::SignatureBlock {
+            alg: "ed25519".into(),
+            key: "#content".into(),
+            value: String::new(),
+        },
+    };
+    let mut unsigned = forged.clone();
+    unsigned.signature.value = String::new();
+    forged.signature.value = hex::encode(
+        agent_sk(AGENT)
+            .sign(&aithos_core::jcs::canonical_bytes(&unsigned).unwrap())
+            .to_bytes(),
+    );
+    let seg = "gamma/2026-07.jsonl";
+    let mut bytes = w
+        .gbundle()
+        .store
+        .get(seg)
+        .unwrap()
+        .unwrap_or_default();
+    bytes.extend_from_slice(aithos_core::jcs::canonicalize(&forged).unwrap().as_bytes());
+    bytes.push(b'\n');
+    w.gbundle().store.put(seg, &bytes).unwrap();
+}
+
+#[when("the owner beacons again")]
+fn owner_beacons_again(w: &mut ProtocolWorld) {
+    w.beacon(2, &day(40, "00:00:00"));
+}
+
+#[when("the agent presents a request anchored to the current log head")]
+fn present_fresh_anchor(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let head = aithos_core::gamma::head(&entries).unwrap();
+    w.gamma_result = Some(
+        aithos_core::gamma::check_anchor(&entries, &head, "24h", &day(0, "12:00:00"))
+            .map(|()| "fresh".into())
+            .map_err(|e| e.to_string()),
+    );
+}
+
+#[when("the agent presents a request anchored to a head 48 hours old")]
+fn present_stale_anchor(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let head = aithos_core::gamma::head(&entries).unwrap();
+    w.gamma_result = Some(
+        aithos_core::gamma::check_anchor(&entries, &head, "24h", &day(2, "00:00:00"))
+            .map(|()| "fresh".into())
+            .map_err(|e| e.to_string()),
+    );
+}
+
+#[when("the owner logs a modification of that section")]
+fn owner_logs_modification(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gbundle()
+        .log_section_modify(
+            &owner,
+            Zone::Circle,
+            "projets/note1",
+            serde_json::json!({"change": "reworded"}),
+            &day(9, "00:00:00"),
+            &mut ent,
+        )
+        .unwrap();
+    w.ent = ent;
+}
+
+#[when("someone with no key reads the log files")]
+fn stranger_reads(_w: &mut ProtocolWorld) {
+    // Nothing to acquire: verification below runs on public files alone.
+}
+
+impl ProtocolWorld {
+    /// Try to open every sealed entry body with the agent's keys (physics
+    /// probe, scenario "A subtree grant opens exactly its entries").
+    fn probe_sealed_entries(&mut self) {
+        if !self.sealed_probe.is_empty() {
+            return;
+        }
+        let entries = self.gbundle().gamma_entries().unwrap();
+        let chain = self.chain.clone();
+        self.sealed_probe = entries
+            .iter()
+            .filter(|e| e.body_enc.is_some())
+            .map(|e| {
+                self.bundle
+                    .as_ref()
+                    .unwrap()
+                    .open_entry_as_agent(&chain, &agent_sk(AGENT), e)
+                    .map_err(|e| e.to_string())
+            })
+            .collect();
+    }
+}
+
+#[when("the agent appends an action entry knowing only the pinned log head")]
+fn blind_append(w: &mut ProtocolWorld) {
+    w.gamma_result = Some(w.try_action(false, "reply", &day(14, "02:00:00")));
+}
+
+#[when(expr = "the owner queries actions of kind {string} on {string} from day 10 to day 40")]
+fn owner_queries(w: &mut ProtocolWorld, kind: String, _connector: String) {
+    let owner = w.owner(0);
+    let filter = LogFilter {
+        kind: Some(kind),
+        since: Some(day(10, "00:00:00")),
+        until: Some(day(40, "23:59:59")),
+        ..LogFilter::default()
+    };
+    w.query_hits = Some(
+        w.bundle
+            .as_ref()
+            .unwrap()
+            .log_query_owner(&owner, &filter)
+            .map_err(|e| e.to_string()),
+    );
+}
+
+#[when("the owner grants an auditor read.gamma with the zone keys")]
+fn grant_auditor(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    // Physics: a zone-root read grant delivers the circle keys.
+    w.bundle
+        .as_mut()
+        .unwrap()
+        .grant(
+            &owner,
+            "auditor",
+            &agent_sk(AUDITOR).verifying_key(),
+            &[dir_spec("")],
+            NB,
+            NA30,
+            0,
+            &mut w.ent,
+        )
+        .unwrap();
+    // Certificate: the read.gamma mandate, full log.
+    let m = Mandate::build_root(
+        &owner.root_sign,
+        &aithos_core::mandate::MandateSpec {
+            id: "mandate_00000000000000000000AUDIT2".into(),
+            subject: w.bundle.as_ref().unwrap().did.clone(),
+            grantee_id: "urn:aithos:agent:auditor".into(),
+            grantee_label: "auditor".into(),
+            grantee_pub: &agent_sk(AUDITOR).verifying_key(),
+            perimeter: vec![aithos_core::mandate::PerimeterEntry::parse("read.gamma").unwrap()],
+            constraints: aithos_core::mandate::MandateSpec::no_constraints(),
+            not_before: NB.into(),
+            not_after: NA30.into(),
+            issued_at: NB.into(),
+            nonce: hex::encode(w.ent.e16()),
+        },
+    )
+    .unwrap();
+    w.store_cert(&m);
+    w.audit_chain = vec![m];
+}
+
+#[when("the auditor queries replies of day 20")]
+fn auditor_queries_day20(w: &mut ProtocolWorld) {
+    let query = aithos_core::mandate::GammaQuery {
+        action: Some("reply".into()),
+        since: Some(day(19, "00:00:00")),
+        until: Some(day(20, "23:59:59")),
+        ..Default::default()
+    };
+    let filter = LogFilter {
+        action: Some("reply".into()),
+        since: Some(day(19, "00:00:00")),
+        until: Some(day(20, "23:59:59")),
+        ..LogFilter::default()
+    };
+    w.query_hits = Some(
+        w.bundle
+            .as_ref()
+            .unwrap()
+            .log_query_as_agent(&w.audit_chain, &agent_sk(AUDITOR), &query, &filter, DAY1)
+            .map_err(|e| e.to_string()),
+    );
+}
+
+// --- F thens ---
+
+#[then("the log verifies offline")]
+fn log_verifies(w: &mut ProtocolWorld) {
+    w.bundle.as_ref().unwrap().gamma_verify().unwrap();
+}
+
+#[then("the manifest pins the log head")]
+fn manifest_pins_head(w: &mut ProtocolWorld) {
+    let latest = w.latest_manifest();
+    let head = w.bundle.as_ref().unwrap().gamma_head().unwrap();
+    assert!(!head.is_empty(), "log should not be empty");
+    assert_eq!(latest.gamma_head, head, "manifest must pin the log tip");
+}
+
+#[then("the log lives in two pinned segment files")]
+fn two_segments_pinned(w: &mut ProtocolWorld) {
+    let latest = w.latest_manifest();
+    let segs: Vec<&String> = latest
+        .files
+        .keys()
+        .filter(|p| p.starts_with("gamma/"))
+        .collect();
+    assert_eq!(segs.len(), 2, "expected two pinned segments, got {segs:?}");
+}
+
+#[then("the whole chain verifies across the boundary")]
+fn chain_across_boundary(w: &mut ProtocolWorld) {
+    w.bundle.as_ref().unwrap().gamma_verify().unwrap();
+}
+
+#[then("log verification is rejected")]
+fn log_verification_rejected(w: &mut ProtocolWorld) {
+    if let Some(Err(_)) = &w.gamma_result {
+        return; // the append itself was refused — fail-closed upstream
+    }
+    assert!(
+        w.bundle.as_ref().unwrap().gamma_verify().is_err(),
+        "log verification should reject"
+    );
+}
+
+#[then("the entry verifies with no mandate attached")]
+fn owner_entry_verifies(w: &mut ProtocolWorld) {
+    let doc = w.did_document();
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let last = entries.last().unwrap();
+    assert!(last.authorized_by.is_none() && last.authorized_via.is_none());
+    aithos_core::gamma::verify_owner_entry(last, &doc).unwrap();
+}
+
+#[then("the entry verifies against the chain at its own timestamp")]
+fn delegated_entry_verifies(w: &mut ProtocolWorld) {
+    assert!(w.gamma_result.as_ref().unwrap().is_ok());
+    let doc = w.did_document();
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let last = entries.last().unwrap();
+    aithos_core::gamma::verify_delegated_entry(last, &w.chain, &doc).unwrap();
+}
+
+#[then("a fourth action entry is rejected")]
+fn fourth_rejected(w: &mut ProtocolWorld) {
+    let r = w.try_action(false, "reply", &day(1, "04:00:00"));
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("budget")),
+        "expected budget exhaustion, got {r:?}"
+    );
+}
+
+#[then("a further action by either key is rejected")]
+fn either_key_rejected(w: &mut ProtocolWorld) {
+    for helper in [false, true] {
+        let r = w.try_action(helper, "reply", &day(1, "06:00:00"));
+        assert!(
+            r.as_ref().is_err_and(|e| e.contains("budget")),
+            "helper={helper}: expected budget exhaustion, got {r:?}"
+        );
+    }
+}
+
+#[then("a third action on day 1 is rejected")]
+fn third_day1_rejected(w: &mut ProtocolWorld) {
+    let r = w.try_action(false, "reply", &day(1, "03:00:00"));
+    assert!(r.as_ref().is_err_and(|e| e.contains("budget")), "got {r:?}");
+}
+
+#[then("an action on day 2 verifies")]
+fn day2_verifies(w: &mut ProtocolWorld) {
+    w.try_action(false, "reply", &day(2, "03:00:01")).unwrap();
+}
+
+#[then(expr = "a third {string} on day 2 is rejected")]
+fn third_kind_rejected(w: &mut ProtocolWorld, action: String) {
+    let r = w.try_action(false, &action, &day(2, "01:00:00"));
+    assert!(r.as_ref().is_err_and(|e| e.contains("budget")), "got {r:?}");
+}
+
+#[then(expr = "a {string} action on day 2 verifies")]
+fn kind_day2_verifies(w: &mut ProtocolWorld, action: String) {
+    w.try_action(false, &action, &day(2, "02:00:00")).unwrap();
+}
+
+#[then("a third delegation is rejected")]
+fn third_delegation_rejected(w: &mut ProtocolWorld) {
+    let r = w.delegate_act("act.x.gmail.send", true);
+    assert!(r.as_ref().is_err_and(|e| e.contains("budget")), "got {r:?}");
+}
+
+#[then("the action is rejected")]
+fn action_rejected(w: &mut ProtocolWorld) {
+    let r = w.gamma_result.as_ref().unwrap();
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("grant never logged")),
+        "expected the unlogged-grant rejection, got {r:?}"
+    );
+}
+
+#[then("an action at day 20 verifies")]
+fn action_day20(w: &mut ProtocolWorld) {
+    w.try_action(false, "reply", &day(20, "00:00:00")).unwrap();
+}
+
+#[then("an action at day 34 is rejected")]
+fn action_day34(w: &mut ProtocolWorld) {
+    let r = w.try_action(false, "reply", &day(34, "00:00:00"));
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("heartbeat stale")),
+        "got {r:?}"
+    );
+}
+
+#[then("the next action verifies")]
+fn next_action_verifies(w: &mut ProtocolWorld) {
+    w.try_action(false, "reply", &day(41, "00:00:00")).unwrap();
+}
+
+#[then("the beacon is rejected")]
+fn beacon_rejected(w: &mut ProtocolWorld) {
+    assert!(
+        w.bundle.as_ref().unwrap().gamma_verify().is_err(),
+        "a forged beacon must fail log verification"
+    );
+    // And it never counts as liveness: the mandate stays suspended.
+    let doc = w.did_document();
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let ok = entries
+        .iter()
+        .filter(|e| e.kind == "heartbeat")
+        .filter(|e| aithos_core::gamma::verify_owner_entry(e, &doc).is_ok())
+        .count();
+    assert_eq!(ok, 0, "no verifiable beacon should exist");
+}
+
+#[then("the request verifies")]
+fn request_verifies(w: &mut ProtocolWorld) {
+    assert!(w.gamma_result.as_ref().unwrap().is_ok());
+}
+
+#[then("the request is rejected")]
+fn request_rejected(w: &mut ProtocolWorld) {
+    let r = w.gamma_result.as_ref().unwrap();
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("stale")),
+        "expected a stale anchor, got {r:?}"
+    );
+}
+
+#[then("a reader of that section opens the entry body")]
+fn reader_opens_body(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let hits = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .log_query_owner(
+            &owner,
+            &LogFilter {
+                kind: Some("section.modify".into()),
+                ..LogFilter::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    let body = hits[0].body.as_ref().expect("body opens");
+    assert_eq!(body.payload["change"], "reworded");
+}
+
+#[then("the entry alone reveals only kind, time and author — not the target")]
+fn entry_reveals_nothing(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let last = entries.last().unwrap();
+    assert_eq!(last.kind, "section.modify");
+    assert!(last.target.is_none(), "target must live inside the body");
+    assert!(last.payload.is_none(), "payload must be sealed");
+    assert!(last.body_enc.is_some());
+}
+
+#[then("the chain and the budgets still verify")]
+fn skeleton_verifies(w: &mut ProtocolWorld) {
+    // Public files alone: chain, signatures, and countable headers.
+    w.bundle.as_ref().unwrap().gamma_verify().unwrap();
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let n = aithos_core::gamma::count_actions(&entries, &w.chain[0].id, None, None);
+    assert_eq!(n, 1, "the skeleton must stay countable");
+}
+
+#[then("no target, tag or content is revealed")]
+fn nothing_revealed(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    for e in entries.iter().filter(|e| e.kind.starts_with("section.")) {
+        assert!(e.target.is_none() && e.payload.is_none() && e.body_enc.is_some());
+    }
+}
+
+#[then(expr = "the agent opens the bodies of the {string} entries by their hints")]
+fn agent_opens_granted(w: &mut ProtocolWorld, folder: String) {
+    w.probe_sealed_entries();
+    let opened: Vec<&aithos_core::gamma::Body> = w
+        .sealed_probe
+        .iter()
+        .filter_map(|r| r.as_ref().ok())
+        .collect();
+    assert_eq!(opened.len(), 1, "exactly the granted subtree opens");
+    let dir = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .resolve_folder(Zone::Circle, &folder)
+        .unwrap();
+    let node = NodePath::parse(&opened[0].target).unwrap();
+    assert!(node.folders.starts_with(&dir));
+}
+
+#[then(expr = "the {string} entry bodies stay sealed to it")]
+fn other_stays_sealed(w: &mut ProtocolWorld, _folder: String) {
+    w.probe_sealed_entries();
+    let sealed = w.sealed_probe.iter().filter(|r| r.is_err()).count();
+    assert_eq!(sealed, 1, "the out-of-perimeter body must not open");
+}
+
+#[then("the entry chains and verifies")]
+fn entry_chains_verifies(w: &mut ProtocolWorld) {
+    assert!(w.gamma_result.as_ref().unwrap().is_ok());
+    w.bundle.as_ref().unwrap().gamma_verify().unwrap();
+}
+
+#[then("exactly the matching entries come back")]
+fn matching_come_back(w: &mut ProtocolWorld) {
+    let hits = w.query_hits.as_ref().unwrap().as_ref().unwrap();
+    assert_eq!(hits.len(), 2, "day-4 action and the mutation must be out");
+    assert!(hits.iter().all(|h| h.entry.kind == "action"
+        && h.entry.target.as_deref() == Some("x.gmail")));
+}
+
+#[then("the owner opens every sealed body among them")]
+fn owner_opens_all(w: &mut ProtocolWorld) {
+    let hits = w.query_hits.as_ref().unwrap().as_ref().unwrap();
+    assert!(hits
+        .iter()
+        .filter(|h| h.entry.body_enc.is_some())
+        .all(|h| h.body.is_some()));
+}
+
+#[then("the auditor opens every entry body, including acts it never made")]
+fn auditor_opens_all(w: &mut ProtocolWorld) {
+    let hits = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .log_query_as_agent(
+            &w.audit_chain,
+            &agent_sk(AUDITOR),
+            &aithos_core::mandate::GammaQuery::default(),
+            &LogFilter::default(),
+            DAY1,
+        )
+        .unwrap();
+    let sealed = hits.iter().filter(|h| h.entry.body_enc.is_some()).count();
+    let opened = hits.iter().filter(|h| h.body.is_some()).count();
+    assert_eq!(sealed, 2, "both owner mutations are in view");
+    assert_eq!(opened, sealed, "every sealed body must open for the auditor");
+}
+
+#[then("the matching entries come back")]
+fn scoped_matching(w: &mut ProtocolWorld) {
+    let hits = w.query_hits.as_ref().unwrap().as_ref().unwrap();
+    assert_eq!(hits.len(), 1);
+}
+
+#[then("a query for day 40 is refused")]
+fn day40_refused(w: &mut ProtocolWorld) {
+    let query = aithos_core::mandate::GammaQuery {
+        action: Some("reply".into()),
+        since: Some(day(39, "00:00:00")),
+        until: Some(day(40, "23:59:59")),
+        ..Default::default()
+    };
+    let r = w.bundle.as_ref().unwrap().log_query_as_agent(
+        &w.audit_chain,
+        &agent_sk(AUDITOR),
+        &query,
+        &LogFilter::default(),
+        DAY1,
+    );
+    assert!(r.is_err(), "an out-of-window query must be refused");
+}
+
+#[then(expr = "a query for action {string} is refused")]
+fn action_refused(w: &mut ProtocolWorld, action: String) {
+    let query = aithos_core::mandate::GammaQuery {
+        action: Some(action),
+        since: Some(day(19, "00:00:00")),
+        until: Some(day(20, "23:59:59")),
+        ..Default::default()
+    };
+    let r = w.bundle.as_ref().unwrap().log_query_as_agent(
+        &w.audit_chain,
+        &agent_sk(AUDITOR),
+        &query,
+        &LogFilter::default(),
+        DAY1,
+    );
+    assert!(r.is_err(), "an out-of-perimeter action must be refused");
 }
 
 // ------------------------------------------------------------------ main

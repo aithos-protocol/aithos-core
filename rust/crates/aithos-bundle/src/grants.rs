@@ -66,7 +66,7 @@ impl<S: Store> Bundle<S> {
     }
 
     /// Resolve a display folder path to its sid chain (clear zones).
-    pub(crate) fn resolve_folder(&self, zone: Zone, display: &str) -> Result<Vec<Sid>> {
+    pub fn resolve_folder(&self, zone: Zone, display: &str) -> Result<Vec<Sid>> {
         let index: ZoneIndex = self.get_json(&format!("e/{}/index.json", zone.as_str()))?;
         let mut parent: Option<String> = None;
         let mut chain = Vec::new();
