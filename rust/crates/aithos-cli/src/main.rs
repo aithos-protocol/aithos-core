@@ -195,6 +195,15 @@ enum Command {
         /// arguments (spec 07.9.3).
         #[arg(long, default_value_t = false)]
         audit: bool,
+        /// Obligations as raw JSON (spec 04.12), e.g. '[{"id":"approval",
+        /// "check":"human.approve","attestor":["z6Mk…"],"applies_to":
+        /// "act.x.social.publish","verdict":"approve","max_age":"5m"}]'
+        #[arg(long)]
+        obligations_json: Option<String>,
+        /// Action(s) requiring a fresh owner co-signature (spec 04.6,
+        /// desugars to the reserved co_sign obligation). Repeatable.
+        #[arg(long = "counter-sign")]
+        counter_sign: Vec<String>,
     },
     /// Log a connector action under a mandate chain (leaf last). The gamma
     /// entry IS the authorization evidence — no entry, no action (I5).
@@ -225,6 +234,45 @@ enum Command {
         /// key for a-posteriori audit (spec 07.9.3). Overrides --args.
         #[arg(long)]
         args_json: Option<String>,
+        /// Obligation receipt(s) as raw JSON (spec 04.12), as printed by
+        /// `approve`. Repeatable; rides in the entry's checks[].
+        #[arg(long = "check-json")]
+        checks_json: Vec<String>,
+    },
+    /// Sign an obligation receipt (spec 04.12): the attestor's verdict,
+    /// bound to one mandate+action+args. Prints the checks[] JSON for
+    /// `action --check-json`. With --owner-seed-hex, signs the owner
+    /// co_sign instance (spec 04.6) with the content key.
+    Approve {
+        /// The approver's device-held Ed25519 seed (hex, 32 bytes).
+        #[arg(long, conflicts_with = "owner_seed_hex")]
+        approver_seed_hex: Option<String>,
+        /// Owner mode: derive the content key and sign a co_sign receipt.
+        #[arg(long)]
+        owner_seed_hex: Option<String>,
+        /// Obligation id to discharge (defaults to co_sign in owner mode).
+        #[arg(long)]
+        obligation: Option<String>,
+        /// The LEAF mandate id the entry will cite (its authorized_by).
+        #[arg(long)]
+        mandate: String,
+        action: String,
+        /// The exact action arguments the agent will log (same --args).
+        #[arg(long, default_value = "")]
+        args: String,
+        #[arg(long, default_value = "approve")]
+        verdict: String,
+        /// What was shown on the device; hashed into presented_digest
+        /// inside the signed payload (WYSIWYS).
+        #[arg(long)]
+        presented: Option<String>,
+        /// Receipt instant (RFC 3339 Z); defaults to now.
+        #[arg(long)]
+        at: Option<String>,
+        /// Print the attestor public key (multibase) and exit — pin it in
+        /// --obligations-json at grant time.
+        #[arg(long, default_value_t = false)]
+        key_only: bool,
     },
     /// Log one metered LLM call (spec 07.9.1): counters only, never text.
     Inference {
@@ -533,6 +581,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             budgets_json,
             windows_json,
             audit,
+            obligations_json,
+            counter_sign,
         } => {
             let owner = owner_from(&seed_hex)?;
             let agent = ed25519_dalek::SigningKey::from_bytes(
@@ -557,6 +607,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if let Some(wjs) = &windows_json {
                 constraints.insert("active_windows".into(), serde_json::from_str(wjs)?);
+            }
+            if let Some(objs) = &obligations_json {
+                constraints.insert("obligations".into(), serde_json::from_str(objs)?);
+            }
+            if !counter_sign.is_empty() {
+                constraints.insert("counter_sign".into(), serde_json::json!(counter_sign));
             }
             let mut nonce = [0u8; 16];
             getrandom(&mut nonce)?;
@@ -608,6 +664,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             tokens,
             receipt_json,
             args_json,
+            checks_json,
         } => {
             let mut bundle = bundle_at(&dir)?;
             let chain: Vec<aithos_core::mandate::Mandate> = certs
@@ -637,7 +694,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(r) = &receipt_json {
                 budget.insert("receipt".into(), serde_json::from_str(r)?);
             }
-            let entry = bundle.log_action(
+            let checks: Vec<serde_json::Value> = checks_json
+                .iter()
+                .map(|c| serde_json::from_str(c))
+                .collect::<Result<_, _>>()?;
+            let entry = bundle.log_action_with_checks(
                 &chain,
                 &agent,
                 &aithos_bundle::log::ActionSpec {
@@ -648,9 +709,76 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     budget: (!budget.is_empty()).then_some(serde_json::Value::Object(budget)),
                     sealed_args: args_json.as_deref().map(serde_json::from_str).transpose()?,
                 },
+                (!checks.is_empty()).then_some(serde_json::Value::Array(checks)),
                 &mut OsEntropy,
             )?;
             println!("action logged: {}", entry.id);
+            Ok(())
+        }
+        Command::Approve {
+            approver_seed_hex,
+            owner_seed_hex,
+            obligation,
+            mandate,
+            action,
+            args,
+            verdict,
+            presented,
+            at,
+            key_only,
+        } => {
+            use ed25519_dalek::Signer;
+            let (sk, default_ob) = match (&approver_seed_hex, &owner_seed_hex) {
+                (Some(seed), None) => (
+                    ed25519_dalek::SigningKey::from_bytes(
+                        &<[u8; 32]>::try_from(hex::decode(seed)?)
+                            .map_err(|_| "approver-seed-hex: 32 bytes")?,
+                    ),
+                    None,
+                ),
+                (None, Some(seed)) => (
+                    owner_from(seed)?.content_sign.clone(),
+                    Some("co_sign".to_owned()),
+                ),
+                _ => return Err("exactly one of --approver-seed-hex / --owner-seed-hex".into()),
+            };
+            if key_only {
+                println!(
+                    "{}",
+                    aithos_core::wire::ed25519_pub_to_multibase(&sk.verifying_key().to_bytes())
+                );
+                return Ok(());
+            }
+            let obligation = obligation
+                .or(default_ob)
+                .ok_or("--obligation is required (unless owner co_sign mode)")?;
+            let args_hash = format!(
+                "sha256:{}",
+                aithos_bundle::manifest::sha256_hex(args.as_bytes())
+            );
+            let at = at.unwrap_or_else(now_string);
+            let mut payload = serde_json::json!({
+                "obligation": obligation, "mandate_id": mandate, "action": action,
+                "args_hash": args_hash, "verdict": verdict, "at": at,
+            });
+            if let Some(p) = &presented {
+                payload["presented_digest"] = serde_json::json!(format!(
+                    "sha256:{}",
+                    aithos_bundle::manifest::sha256_hex(p.as_bytes())
+                ));
+            }
+            let sig = hex::encode(
+                sk.sign(&aithos_core::jcs::canonical_bytes(&payload)?)
+                    .to_bytes(),
+            );
+            let mut receipt = serde_json::json!({
+                "obligation": obligation, "args_hash": args_hash,
+                "verdict": verdict, "at": at, "sig": sig,
+            });
+            if let Some(d) = payload.get("presented_digest") {
+                receipt["presented_digest"] = d.clone();
+            }
+            println!("{}", serde_json::to_string_pretty(&receipt)?);
             Ok(())
         }
         Command::Inference {

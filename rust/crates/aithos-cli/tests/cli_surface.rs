@@ -277,6 +277,231 @@ fn the_budget_refuses_the_action_after_the_last_one() {
 }
 
 #[test]
+fn an_obligation_gates_the_action_on_a_signed_receipt() {
+    const APPROVER: &str = "b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5";
+    let dir = init_bundle();
+    // The approver's public key, pinned at grant time.
+    let key_out = ac()
+        .args([
+            "approve",
+            "--approver-seed-hex",
+            APPROVER,
+            "--mandate",
+            "-",
+            "--key-only",
+            "publish",
+        ])
+        .output()
+        .unwrap();
+    assert!(key_out.status.success());
+    let approver_pub = String::from_utf8(key_out.stdout).unwrap().trim().to_owned();
+    assert!(approver_pub.starts_with("z6Mk"), "got: {approver_pub}");
+    let obligations = format!(
+        r#"[{{"id":"publish-approval","check":"human.approve","attestor":["{approver_pub}"],"applies_to":"act.x.social.publish","verdict":"approve","max_age":"5m"}}]"#
+    );
+    ac().args([
+        "grant-act",
+        "--dir",
+        &d(&dir),
+        "--seed-hex",
+        OWNER,
+        "--agent-seed-hex",
+        AGENT,
+        "--obligations-json",
+        &obligations,
+        "social",
+        "*",
+    ])
+    .assert()
+    .success();
+    let cert = last_cert(&dir);
+    let mandate_id = serde_json::from_slice::<serde_json::Value>(&std::fs::read(&cert).unwrap())
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // Without a receipt the in-scope action is refused, fail-closed.
+    ac().args([
+        "action",
+        "--dir",
+        &d(&dir),
+        "--cert",
+        &cert,
+        "--agent-seed-hex",
+        AGENT,
+        "social",
+        "publish",
+        "--args",
+        "post hello",
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("GammaObligationUnsatisfied"));
+    // The approver signs what was shown; the receipt leaks no seed.
+    let approve_out = ac()
+        .args([
+            "approve",
+            "--approver-seed-hex",
+            APPROVER,
+            "--obligation",
+            "publish-approval",
+            "--mandate",
+            &mandate_id,
+            "--args",
+            "post hello",
+            "--presented",
+            "rendered: post hello",
+            "publish",
+        ])
+        .output()
+        .unwrap();
+    assert!(approve_out.status.success());
+    let receipt_text = String::from_utf8(approve_out.stdout).unwrap();
+    assert!(
+        !receipt_text.contains(APPROVER),
+        "the approver seed must never leak into the receipt"
+    );
+    let receipt: serde_json::Value = serde_json::from_str(&receipt_text).unwrap();
+    // The receipted action appends; the receipt rides in checks[].
+    ac().args([
+        "action",
+        "--dir",
+        &d(&dir),
+        "--cert",
+        &cert,
+        "--agent-seed-hex",
+        AGENT,
+        "social",
+        "publish",
+        "--args",
+        "post hello",
+        "--check-json",
+        &receipt.to_string(),
+    ])
+    .assert()
+    .success();
+    assert!(
+        gamma_raw(&dir).contains("publish-approval"),
+        "the receipt must be recorded in the entry"
+    );
+    // A replay on other args dies in the signature.
+    ac().args([
+        "action",
+        "--dir",
+        &d(&dir),
+        "--cert",
+        &cert,
+        "--agent-seed-hex",
+        AGENT,
+        "social",
+        "publish",
+        "--args",
+        "post SOMETHING ELSE",
+        "--check-json",
+        &receipt.to_string(),
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("GammaObligationUnsatisfied"));
+}
+
+#[test]
+fn counter_sign_requires_the_owner_co_signature() {
+    let dir = init_bundle();
+    ac().args([
+        "grant-act",
+        "--dir",
+        &d(&dir),
+        "--seed-hex",
+        OWNER,
+        "--agent-seed-hex",
+        AGENT,
+        "--counter-sign",
+        "send",
+        "gmail",
+        "*",
+    ])
+    .assert()
+    .success();
+    let cert = last_cert(&dir);
+    let mandate_id = serde_json::from_slice::<serde_json::Value>(&std::fs::read(&cert).unwrap())
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // Binding action without the owner in the loop: refused.
+    ac().args([
+        "action",
+        "--dir",
+        &d(&dir),
+        "--cert",
+        &cert,
+        "--agent-seed-hex",
+        AGENT,
+        "gmail",
+        "send",
+        "--args",
+        "wire the funds",
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("GammaObligationUnsatisfied"));
+    // A non-binding action under the same mandate rides free.
+    ac().args([
+        "action",
+        "--dir",
+        &d(&dir),
+        "--cert",
+        &cert,
+        "--agent-seed-hex",
+        AGENT,
+        "gmail",
+        "reply",
+        "--args",
+        "just a reply",
+    ])
+    .assert()
+    .success();
+    // The owner co-signs (content key, desugared co_sign instance).
+    let approve_out = ac()
+        .args([
+            "approve",
+            "--owner-seed-hex",
+            OWNER,
+            "--mandate",
+            &mandate_id,
+            "--args",
+            "wire the funds",
+            "--presented",
+            "SEND: wire the funds",
+            "send",
+        ])
+        .output()
+        .unwrap();
+    assert!(approve_out.status.success());
+    let receipt: serde_json::Value =
+        serde_json::from_str(&String::from_utf8(approve_out.stdout).unwrap()).unwrap();
+    assert_eq!(receipt["obligation"], "co_sign");
+    ac().args([
+        "action",
+        "--dir",
+        &d(&dir),
+        "--cert",
+        &cert,
+        "--agent-seed-hex",
+        AGENT,
+        "gmail",
+        "send",
+        "--args",
+        "wire the funds",
+        "--check-json",
+        &receipt.to_string(),
+    ])
+    .assert()
+    .success();
+}
+
+#[test]
 fn owner_silence_suspends_and_the_next_beacon_resumes() {
     let dir = init_bundle();
     ac().args([
