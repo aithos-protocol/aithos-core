@@ -22,13 +22,48 @@
    exactement le nom de son concept dans la spec (Mandate, Perimeter, NodePath,
    Edition, GammaEntry, …) ; les frontières de crates/modules suivent les
    chapitres. Aucun concept de code sans concept de spec, et réciproquement.
-4. **Checkpoint manuel CLI par étape** (non bloquant). Chaque étape livre son
-   verbe CLI et une mini-checklist copier-coller « à la main » pour Mathieu —
-   idéalement dérivée des scénarios Gherkin de la phase. La CI ne dépend jamais
-   de ces checks ; ils servent à *sentir* le produit.
-5. **Une étape = une PR mentale.** Feature co-écrite → vecteurs verts (natif +
-   wasm32 check) → scénarios cucumber verts → clippy/fmt verts → commit(s) →
-   validation de Mathieu → étape suivante.
+4. **Deux niveaux de test — bibliothèque + surface CLI.**
+   - **Gherkin sur la bibliothèque** (`aithos-bundle/tests/cucumber.rs`) = la
+     *logique du protocole*. Rapide, exhaustif ; appelle le code Rust en direct,
+     jamais le binaire. C'est le gros du test.
+   - **`assert_cmd` sur le binaire** (`aithos-cli/tests/cli_surface.rs`, à créer)
+     = la *surface CLI*. Lance le binaire réel (`Command::cargo_bin`), asserte
+     stdout/stderr/exit ; dev-deps `assert_cmd` + `predicates` + `tempfile`
+     (bundle jetable par test). Reste dans `cargo test --workspace`.
+     **Bloquant en CI** pour les parcours critiques et les invariants de surface
+     (voir §Sécurité de surface). Décidé 2026-07-10 (le checkpoint manuel devient
+     un vrai test pour ce qui porte de la sécurité).
+5. **Checkpoint manuel CLI** (non bloquant) : la mini-checklist copier-coller
+   reste, pour *sentir* le produit — mais ne remplace plus le test automatique.
+6. **Une étape = une PR mentale.** Feature co-écrite → vecteurs verts (natif +
+   wasm32 check) → scénarios cucumber verts → tests CLI verts → clippy/fmt verts →
+   commit(s) → validation de Mathieu → étape suivante.
+
+## Sécurité de surface (CLI / container) — décidé 2026-07-10
+
+Le protocole (core) est agnostique : il reçoit des clés et vérifie des signatures,
+sans savoir ce qu'est un LLM ou un container. Deux garanties vivent donc **au-dessus
+du core**, dans la CLI et le container, et sont testées par `cli_surface.rs` :
+
+- **La clé de l'agent n'est jamais détenue par le LLM.** C'est la CLI/le container
+  qui tient la clé (ou une clé de session, §04.7) et signe ; le LLM produit des
+  intentions, jamais des signatures. Zéro impact protocole (contrainte de
+  déploiement, pas de wire). Sans elle, un agent pourrait forger n'importe quelle
+  entrée — avec elle, il ne peut pas signer du tout.
+- **Le kind est imposé par l'opération, jamais choisi par l'agent.** `section edit`
+  → `ethos.edit`, toujours ; la CLI/le container construit l'entrée gamma avec le
+  kind canonique. Même modèle que l'enforcement d'action (§F+). Testé : chaque verbe
+  produit le kind attendu, la clé n'apparaît jamais en sortie, inputs invalides
+  fail-closed.
+
+**Défense en profondeur, plus tard (non bloquant) — « no mislabeled effects ».**
+Un durcissement *offline* possible à H : le vérificateur d'édition croise les
+mutations de blobs avec les entrées gamma et exige une entrée du kind canonique par
+mutation. **Purement additif** (plus strict, aucun breaking wire, pas de
+re-signature), applicable seulement aux effets *intra-bundle* (les actions externes
+n'ont pas d'empreinte). Utile un jour pour vérifier le log d'un container tiers sans
+lui faire confiance ; inutile pour son propre container. À ce stade : **zéro impact**
+(non implémenté).
 
 ## Décisions figées d'avance (anti-retour-arrière)
 

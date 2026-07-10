@@ -131,5 +131,18 @@ Spec F+ gravée le 2026-07-10 : §04.4 (table mise à jour), §04.10 (fenêtres)
   manifests connecteurs (§08.1) — TODO noté dans covers_act.
 - Index/caches de query optimisés : post-F (le scan segmenté suffit) ; preuves de
   complétude pour mirrors : H.
+- **Tests CLI : AUCUN aujourd'hui** (le harnais cucumber teste la bibliothèque, pas
+  le binaire). À créer : `rust/crates/aithos-cli/tests/cli_surface.rs` avec dev-deps
+  `assert_cmd` + `predicates` + `tempfile` (`Command::cargo_bin("aithos-core")`,
+  bundle jetable par `TempDir`). Doit couvrir les invariants de **sécurité de
+  surface** (décidés 2026-07-10, voir plan §Sécurité de surface) : (a) le kind est
+  imposé par l'opération (`section edit` → toujours `ethos.edit`), (b) la clé
+  n'apparaît jamais en sortie, (c) inputs invalides fail-closed. Le checkpoint manuel
+  reste, non bloquant. Rituel mis à jour : tests CLI = niveau de test à part entière.
+- **Décision d'archi de déploiement (2026-07-10)** : la clé de l'agent est détenue
+  par la CLI/le container, jamais par le LLM (qui produit des intentions, pas des
+  signatures). Contrainte hors protocole (le core reste agnostique). Durcissement
+  offline « no mislabeled effects » rangé en défense en profondeur pour H (additif,
+  sans breaking wire) — voir plan.
 - Merge entries / éditions concurrentes : I. Manifest à pins plats jusqu'à H.
 - Artefact de récupération combiné (S ‖ succession) : couche présentation, plus tard.
