@@ -233,7 +233,6 @@
       <button class="on" data-view="agents" onclick="go('agents')"><span class="ic">◈</span> Agents <span class="dim" style="margin-left:auto">3</span></button>
       <button data-view="connectors" onclick="go('connectors')"><span class="ic">⇄</span> Gateway · Coffre</button>
       <button data-view="gamma" onclick="go('gamma')"><span class="ic">▤</span> Gamma (journal)</button>
-      <button data-view="providers" onclick="go('providers')"><span class="ic">◍</span> Modèles &amp; caches</button>
     </nav>
 
     <div class="side-foot">
@@ -431,7 +430,7 @@
       <div id="t-model" class="tabpane hide">
         <div class="section">
           <div class="sec-head"><h2>Modèles autorisés &amp; budgets de tokens</h2><span class="tier V">🔒 V · comptés en gamma</span></div>
-          <p class="hint" style="margin-top:0">Les modèles tournent via des <b>agents-fournisseurs tiers</b> (Anthropic, OpenAI…). Le budget de tokens est une contrainte protocolaire, comptée dans le journal gamma comme <span class="mono">max_actions</span>.</p>
+          <p class="hint" style="margin-top:0">Budgets, modèles et caches sont <b>cantonnés à cet agent</b> — jamais globaux. Les modèles tournent via des <b>agents-fournisseurs tiers</b> (Anthropic, OpenAI…) ; le budget de tokens est une contrainte protocolaire, comptée dans le journal gamma comme <span class="mono">max_actions</span>. Le cache provider est propre à l'agent et se vide ici.</p>
 
           <div class="prov">
             <div style="display:flex;justify-content:space-between;align-items:baseline"><b>Anthropic · Sonnet 5.0</b><span class="mono muted">64 200 / 100 000 tok · jour</span></div>
@@ -587,17 +586,6 @@
       </div>
     </section>
 
-    <!-- ---------- VIEW: PROVIDERS ---------- -->
-    <section id="view-providers" class="hide">
-      <h1>Modèles &amp; caches</h1>
-      <p class="sub">Les modèles LLM tournent via des agents-fournisseurs tiers. Budgets de tokens = contraintes protocolaires (V, comptées en gamma). Les caches provider sont du runtime : visibles et nettoyables, jamais signés dans un mandat.</p>
-      <div class="section">
-        <div class="prov"><div style="display:flex;justify-content:space-between;align-items:baseline"><b>Anthropic · Sonnet 5.0</b><span class="mono muted">64 200 / 100 000 tok · jour</span></div><div class="bar"><i style="width:64%"></i></div><div class="cache-line"><span class="muted" style="font-size:12.5px">Cache <span class="mono">claude-opus-4-8</span> · 2,4 Mo</span><button class="btn danger sm" onclick="toast('Cache vidé.')">Vider</button></div></div>
-        <div class="prov"><div style="display:flex;justify-content:space-between;align-items:baseline"><b>Anthropic · Haiku 3.5</b><span class="mono muted">18,2 M / 100 M tok</span></div><div class="bar"><i style="width:18%"></i></div><div class="cache-line"><span class="muted" style="font-size:12.5px">Cache <span class="mono">claude-haiku-4-5</span> · 0,9 Mo</span><button class="btn danger sm" onclick="toast('Cache vidé.')">Vider</button></div></div>
-        <div class="prov"><div style="display:flex;justify-content:space-between;align-items:baseline"><b>OpenAI · GPT-5.2</b><span class="mono muted">— non budgété</span></div><div class="cache-line"><span class="muted" style="font-size:12.5px">Cache <span class="mono">chatgpt-5.2</span> · 5,1 Mo</span><button class="btn danger sm" onclick="toast('Cache vidé.')">Vider</button></div></div>
-      </div>
-    </section>
-
   </main>
 </div>
 
@@ -689,7 +677,7 @@
 
 <script>
 /* ---------- view routing ---------- */
-const views = ['agents','detail','connectors','gamma','providers'];
+const views = ['agents','detail','connectors','gamma'];
 function go(v){
   views.forEach(x=>document.getElementById('view-'+x).classList.toggle('hide', x!==v));
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.view===v));
