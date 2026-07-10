@@ -750,6 +750,9 @@ pub fn verify_chain_revocable(
             &m.not_after,
         )
         .map_err(|e| err(format!("{}: {e}", m.id)))?;
+        // Obligations only ADD (§05.3, §04.12): inherited ones JCS-identical.
+        crate::constraints::obligations_attenuate(&parent.constraints, &m.constraints)
+            .map_err(|e| err(format!("{}: {e}", m.id)))?;
         // Issuing right and depth (§05.1, §05.3 rule 4).
         let parent_perimeter = parent.parsed_perimeter()?;
         let parent_depth = parent_perimeter

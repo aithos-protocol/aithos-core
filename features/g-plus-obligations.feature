@@ -13,33 +13,28 @@ Feature: Obligations — the general gate (spec 04.12)
 
   Rule: A guardrail obligation gates in-scope actions on a pass verdict
 
-    @wip
     Scenario: An action carrying a valid guardrail pass receipt appends
       Given an agent granted social publish under a guardrail obligation
       When the agent publishes with a receipt whose verdict is "pass"
       Then the action appends with the receipt recorded in its checks
 
-    @wip
     Scenario: A guardrail block verdict refuses the append
       Given an agent granted social publish under a guardrail obligation
       When the agent publishes with a receipt whose verdict is "block"
       Then the action is refused as obligation unsatisfied
       And the log gains no entry
 
-    @wip
     Scenario: An action outside the obligation's scope needs no receipt
       Given an agent granted gmail send and social publish under a publish-only guardrail obligation
       When the agent sends a mail without any receipt
       Then the action appends with no checks recorded
 
-    @wip
     Scenario: A wildcard obligation gates every action of the connector
       Given an agent granted social actions under a guardrail obligation on every social action
       When the agent deletes a post with a receipt whose verdict is "pass"
       Then the action appends with the receipt recorded in its checks
       But deleting a post without any receipt is refused as obligation unsatisfied
 
-    @wip
     Scenario: No max_age means no time limit — an aged receipt still discharges
       Given an agent granted social publish under a guardrail obligation with no max_age
       When the agent publishes with a pass receipt signed 2 days earlier
@@ -47,75 +42,63 @@ Feature: Obligations — the general gate (spec 04.12)
 
   Rule: Human approval (Model 1) — a pinned device key signs what was shown
 
-    @wip
     Scenario: An approved action inside max_age appends
       Given an agent granted social publish requiring human approval within 5 minutes
       When the approver signs the prepared publish 2 minutes before the entry
       Then the action appends with the receipt recorded in its checks
 
-    @wip
     Scenario: A reject verdict refuses the append
       Given an agent granted social publish requiring human approval within 5 minutes
       When the approver signs the prepared publish with verdict "reject"
       Then the action is refused as obligation unsatisfied
 
-    @wip
     Scenario: A missing receipt refuses the append
       Given an agent granted social publish requiring human approval within 5 minutes
       When the agent publishes without any receipt
       Then the action is refused as obligation unsatisfied
       And the log gains no entry
 
-    @wip
     Scenario: A stale receipt is refused — approval does not age
       Given an agent granted social publish requiring human approval within 5 minutes
       When the approver signs the prepared publish 6 minutes before the entry
       Then the action is refused as obligation unsatisfied
 
-    @wip
     Scenario: A receipt bound to different args is refused
       Given an agent granted social publish requiring human approval within 5 minutes
       When the agent presents an approval receipt bound to other args
       Then the action is refused as obligation unsatisfied
 
-    @wip
     Scenario: A tampered presented_digest breaks the receipt signature
       Given an agent granted social publish requiring human approval within 5 minutes
       And the approver signed a receipt over what was shown on the device
       When the agent swaps the receipt's presented_digest before appending
       Then the action is refused as obligation unsatisfied
 
-    @wip
     Scenario: A receipt signed by a non-pinned key is refused
       Given an agent granted social publish requiring human approval within 5 minutes
       When the agent presents an approval receipt signed by a stranger key
       Then the action is refused as obligation unsatisfied
 
-    @wip
     Scenario: Any key of the pinned attestor set satisfies
       Given an agent granted social publish requiring approval by one of two approvers
       When the second approver signs the prepared publish
       Then the action appends with the receipt recorded in its checks
 
-    @wip
     Scenario: Freshness is symmetric — a receipt slightly ahead of the entry clock verifies
       Given an agent granted social publish requiring human approval within 5 minutes
       When the approver signs the prepared publish 2 minutes after the entry's clock
       Then the action appends with the receipt recorded in its checks
 
-    @wip
     Scenario: presented_digest is optional — an approval without it still binds
       Given an agent granted social publish requiring human approval within 5 minutes
       When the approver signs the prepared publish without a presented digest
       Then the action appends with the receipt recorded in its checks
 
-    @wip
     Scenario: A receipt citing another obligation does not discharge this one
       Given an agent granted social publish requiring human approval within 5 minutes
       When the agent presents an approval receipt citing a different obligation id
       Then the action is refused as obligation unsatisfied
 
-    @wip
     Scenario: A receipt for another action does not transfer
       Given an agent granted social actions requiring human approval on publish
       When the approver's receipt for a delete is presented on a publish with identical args
@@ -123,19 +106,16 @@ Feature: Obligations — the general gate (spec 04.12)
 
   Rule: counter_sign is the owner instance — one wire shape, no special case
 
-    @wip
     Scenario: A binding action carrying the owner's co_sign receipt appends
       Given an agent granted gmail send with counter_sign on send
       When the owner co-signs the prepared send and the agent appends it
       Then the action appends with the co_sign receipt recorded in its checks
 
-    @wip
     Scenario: A binding action without the owner's co-signature is refused
       Given an agent granted gmail send with counter_sign on send
       When the agent sends a mail without any receipt
       Then the action is refused as obligation unsatisfied
 
-    @wip
     Scenario: A receipt is leaf-bound — it never transfers to a sibling mandate
       Given two sibling sub-mandates that may publish under an ancestor approval obligation
       When the first sibling's approval receipt is presented by the second sibling with identical args
@@ -143,7 +123,6 @@ Feature: Obligations — the general gate (spec 04.12)
 
   Rule: Dual control — a second agent's key as attestor
 
-    @wip
     Scenario: A four-eyes action appends only with the second agent's receipt
       Given an agent granted social publish under dual control with a second agent
       When the second agent signs the prepared publish
@@ -151,7 +130,6 @@ Feature: Obligations — the general gate (spec 04.12)
 
   Rule: Obligations conjoin — every covering obligation must discharge
 
-    @wip
     Scenario: Two obligations on one mandate both gate the action
       Given an agent granted social publish under both a guardrail and a human approval obligation
       When the agent publishes with both receipts
@@ -160,27 +138,23 @@ Feature: Obligations — the general gate (spec 04.12)
 
   Rule: Delegation may add obligations, never drop or alter them
 
-    @wip
     Scenario: A sub-mandate adding an obligation tightens the gate
       Given a head mandate requiring human approval on publish
       And a sub-mandate that adds a guardrail obligation on publish
       When the sub-agent publishes with both receipts
       Then the action appends with both receipts recorded in its checks
 
-    @wip
     Scenario: An added obligation alone does not discharge the inherited one
       Given a head mandate requiring human approval on publish
       And a sub-mandate that adds a guardrail obligation on publish
       When the sub-agent publishes with only the guardrail receipt
       Then the action is refused as obligation unsatisfied
 
-    @wip
     Scenario: A sub-mandate dropping its parent's obligation is refused
       Given a head mandate requiring human approval on publish
       When a sub-mandate is minted with no obligations
       Then the chain is refused at verification time
 
-    @wip
     Scenario: A sub-mandate altering an inherited obligation is refused
       Given a head mandate requiring human approval on publish
       When a sub-mandate is minted with the same obligation loosened to 1 hour

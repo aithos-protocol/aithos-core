@@ -56,6 +56,9 @@ pub enum Error {
     #[error("heartbeat stale — owner silent beyond every+grace: {0}")]
     GammaHeartbeatStale(String),
 
+    #[error("obligation unsatisfied — no valid receipt discharges the gate: {0}")]
+    GammaObligationUnsatisfied(String),
+
     #[error("stale freshness anchor: {0}")]
     GammaStaleAnchor(String),
 

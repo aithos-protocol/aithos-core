@@ -262,6 +262,20 @@ impl<S: Store> Bundle<S> {
         spec: &ActionSpec<'_>,
         ent: &mut dyn EntropySource,
     ) -> Result<Entry> {
+        self.log_action_with_checks(chain, agent_sk, spec, None, ent)
+    }
+
+    /// `log_action` carrying obligation receipts (§04.12): `checks` rides
+    /// in the entry's payload and is verified at append (tier V) beside the
+    /// budgets — a blocked or missing receipt appends nothing.
+    pub fn log_action_with_checks(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        spec: &ActionSpec<'_>,
+        checks: Option<serde_json::Value>,
+        ent: &mut dyn EntropySource,
+    ) -> Result<Entry> {
         let doc = self.did_doc()?;
         let entries = self.gamma_entries()?;
         let via: Vec<String> = chain.iter().map(|m| m.id.clone()).collect();
@@ -288,6 +302,14 @@ impl<S: Store> Bundle<S> {
                     p.insert(k.clone(), v.clone());
                 }
             }
+        }
+        if let Some(checks) = checks {
+            // Obligation receipts (§04.12) ride the action entry.
+            payload["checks"] = if checks.is_array() {
+                checks
+            } else {
+                serde_json::Value::Array(vec![checks])
+            };
         }
         let entry = delegated_entry(
             EntrySpec {

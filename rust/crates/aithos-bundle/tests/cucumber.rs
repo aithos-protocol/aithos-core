@@ -151,6 +151,9 @@ pub struct ProtocolWorld {
     holder_chain: Vec<Mandate>,
     revoked_at: String,
     g_result: Option<Result<String, String>>,
+    // --- step G+: obligations ---
+    gplus_checks: Option<serde_json::Value>,
+    sib_chains: Vec<Vec<Mandate>>,
 }
 
 impl ProtocolWorld {
@@ -4378,6 +4381,803 @@ fn reads_through_parent_wrap(w: &mut ProtocolWorld, path: String, parent: String
     );
     let r = w.agent_reads(&w.chain.clone(), AGENT, &path);
     assert_eq!(r.as_deref(), Ok(BODY), "wrap read fails: {r:?}");
+}
+
+// --- step G+: obligations (spec 04.12) ---
+
+const APPROVER: u8 = 0xB5;
+const APPROVER2: u8 = 0xB6;
+const GUARD: u8 = 0xD4;
+const DUAL: u8 = 0xB7;
+const SIB: u8 = 0xB8;
+const STRANGER: u8 = 0xEE;
+/// The G+ entry instant; receipts date relative to it.
+const GP_AT: &str = "2026-07-04T12:00:00Z";
+const G_ARGS: &str = "sha256:aa11";
+
+fn mb_of(b: u8) -> String {
+    wire::ed25519_pub_to_multibase(&agent_sk(b).verifying_key().to_bytes())
+}
+
+fn ob_json(
+    id: &str,
+    check: &str,
+    attestors: &[u8],
+    applies_to: &str,
+    verdict: &str,
+    max_age: Option<&str>,
+) -> serde_json::Value {
+    let mut o = serde_json::json!({
+        "id": id, "check": check,
+        "attestor": attestors.iter().map(|b| mb_of(*b)).collect::<Vec<_>>(),
+        "applies_to": applies_to, "verdict": verdict,
+    });
+    if let Some(d) = max_age {
+        o["max_age"] = serde_json::json!(d);
+    }
+    o
+}
+
+fn approval_ob() -> serde_json::Value {
+    ob_json(
+        "publish-approval",
+        "human.approve",
+        &[APPROVER],
+        "act.x.social.publish",
+        "approve",
+        Some("5m"),
+    )
+}
+
+fn guard_ob() -> serde_json::Value {
+    ob_json(
+        "pii-guard",
+        "guardrail.pii",
+        &[GUARD],
+        "act.x.social.publish",
+        "pass",
+        None,
+    )
+}
+
+/// Sign the §04.12 payload and return the checks[] rider.
+fn ob_receipt(
+    sk: &SigningKey,
+    obligation: &str,
+    coords: (&str, &str, &str), // (mandate_id, action, args_hash)
+    verdict: &str,
+    at: &str,
+    presented: Option<&str>,
+) -> serde_json::Value {
+    use ed25519_dalek::Signer;
+    let (mandate_id, action, args_hash) = coords;
+    let mut payload = serde_json::json!({
+        "obligation": obligation, "mandate_id": mandate_id, "action": action,
+        "args_hash": args_hash, "verdict": verdict, "at": at,
+    });
+    if let Some(d) = presented {
+        payload["presented_digest"] = serde_json::json!(d);
+    }
+    let sig = hex::encode(
+        sk.sign(&aithos_core::jcs::canonical_bytes(&payload).unwrap())
+            .to_bytes(),
+    );
+    let mut check = serde_json::json!({
+        "obligation": obligation, "args_hash": args_hash,
+        "verdict": verdict, "at": at, "sig": sig,
+    });
+    if let Some(d) = presented {
+        check["presented_digest"] = serde_json::json!(d);
+    }
+    check
+}
+
+fn approver_receipt(w: &ProtocolWorld, at: &str, presented: Option<&str>) -> serde_json::Value {
+    ob_receipt(
+        &agent_sk(APPROVER),
+        "publish-approval",
+        (&w.chain.last().unwrap().id, "publish", G_ARGS),
+        "approve",
+        at,
+        presented,
+    )
+}
+
+impl ProtocolWorld {
+    fn grant_act_patterns(
+        &mut self,
+        patterns: &[&str],
+        issue: Option<u32>,
+        constraints: serde_json::Value,
+    ) {
+        use aithos_core::mandate::{Mandate as M, MandateSpec, PerimeterEntry};
+        self.init_bundle();
+        let owner = self.owner(0);
+        let mut perimeter: Vec<PerimeterEntry> = patterns
+            .iter()
+            .map(|p| PerimeterEntry::parse(p).unwrap())
+            .collect();
+        if let Some(depth) = issue {
+            perimeter.push(PerimeterEntry::Issue { depth });
+        }
+        let m = M::build_root(
+            &owner.root_sign,
+            &MandateSpec {
+                id: format!("mandate_{}", sid(u128::from(self.ent.e16()[15]) + 970)),
+                subject: self.bundle.as_ref().unwrap().did.clone(),
+                grantee_id: "urn:aithos:agent:agent".into(),
+                grantee_label: "agent".into(),
+                grantee_pub: &agent_sk(AGENT).verifying_key(),
+                perimeter,
+                constraints,
+                not_before: NB.into(),
+                not_after: NA30.into(),
+                issued_at: NB.into(),
+                nonce: hex::encode(self.ent.e16()),
+            },
+        )
+        .unwrap();
+        self.store_cert(&m);
+        self.chain = vec![m];
+    }
+
+    /// Sub-mandate minted by AGENT — attenuation judged at verification,
+    /// never at mint (build_sub only builds and signs).
+    fn mint_sub(
+        &mut self,
+        grantee: u8,
+        label: &str,
+        pattern: &str,
+        constraints: serde_json::Value,
+        log_grant: bool,
+    ) -> Result<Vec<Mandate>, String> {
+        use aithos_core::mandate::{Mandate as M, MandateSpec, PerimeterEntry};
+        let parent = self.chain[0].clone();
+        let child = M::build_sub(
+            &parent,
+            &agent_sk(AGENT),
+            &MandateSpec {
+                id: format!("mandate_{}", sid(u128::from(self.ent.e16()[15]) + 980)),
+                subject: parent.subject.clone(),
+                grantee_id: format!("urn:aithos:agent:{label}"),
+                grantee_label: label.into(),
+                grantee_pub: &agent_sk(grantee).verifying_key(),
+                perimeter: vec![PerimeterEntry::parse(pattern).unwrap()],
+                constraints,
+                not_before: NB.into(),
+                not_after: parent.not_after.clone(),
+                issued_at: NB.into(),
+                nonce: hex::encode(self.ent.e16()),
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        self.store_cert(&child);
+        if log_grant {
+            let mut ent = std::mem::take(&mut self.ent);
+            let r = self.gbundle().log_delegated_grant(
+                std::slice::from_ref(&parent),
+                &agent_sk(AGENT),
+                &child.id,
+                &day(1, "00:40:00"),
+                &mut ent,
+            );
+            self.ent = ent;
+            r.map_err(|e| e.to_string())?;
+        }
+        Ok(vec![parent, child])
+    }
+
+    fn try_action_checked(
+        &mut self,
+        chain: &[Mandate],
+        sk: &SigningKey,
+        connector: &str,
+        action: &str,
+        checks: Option<serde_json::Value>,
+    ) -> Result<String, String> {
+        self.gamma_baseline = self.gbundle().gamma_entries().unwrap().len();
+        let mut ent = std::mem::take(&mut self.ent);
+        let r = self
+            .gbundle()
+            .log_action_with_checks(
+                chain,
+                sk,
+                &aithos_bundle::log::ActionSpec {
+                    connector,
+                    action,
+                    args_hash: G_ARGS,
+                    now: GP_AT,
+                    budget: None,
+                    sealed_args: None,
+                },
+                checks,
+                &mut ent,
+            )
+            .map(|e| e.id)
+            .map_err(|e| e.to_string());
+        self.ent = ent;
+        r
+    }
+
+    fn publish_with(&mut self, checks: Option<serde_json::Value>) {
+        let chain = self.chain.clone();
+        let r = self.try_action_checked(&chain, &agent_sk(AGENT), "social", "publish", checks);
+        self.gamma_result = Some(r);
+    }
+
+    fn appended_checks(&mut self) -> Option<serde_json::Value> {
+        let id = self
+            .gamma_result
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .expect("action should have appended")
+            .clone();
+        self.gbundle()
+            .gamma_entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.id == id)
+            .and_then(|e| e.payload.as_ref().and_then(|p| p.get("checks")).cloned())
+    }
+}
+
+// --- givens ---
+
+#[given("an agent granted social publish under a guardrail obligation")]
+#[given("an agent granted social publish under a guardrail obligation with no max_age")]
+fn gplus_guardrail_grant(w: &mut ProtocolWorld) {
+    w.grant_act_patterns(
+        &["act.x.social.*"],
+        None,
+        serde_json::json!({"obligations": [guard_ob()]}),
+    );
+}
+
+#[given("an agent granted gmail send and social publish under a publish-only guardrail obligation")]
+fn gplus_two_connectors(w: &mut ProtocolWorld) {
+    w.grant_act_patterns(
+        &["act.x.gmail.*", "act.x.social.*"],
+        None,
+        serde_json::json!({"obligations": [guard_ob()]}),
+    );
+}
+
+#[given("an agent granted social actions under a guardrail obligation on every social action")]
+fn gplus_wildcard_grant(w: &mut ProtocolWorld) {
+    let ob = ob_json(
+        "pii-guard",
+        "guardrail.pii",
+        &[GUARD],
+        "act.x.social.*",
+        "pass",
+        None,
+    );
+    w.grant_act_patterns(
+        &["act.x.social.*"],
+        None,
+        serde_json::json!({"obligations": [ob]}),
+    );
+}
+
+#[given("an agent granted social publish requiring human approval within 5 minutes")]
+fn gplus_approval_grant(w: &mut ProtocolWorld) {
+    w.grant_act_patterns(
+        &["act.x.social.*"],
+        None,
+        serde_json::json!({"obligations": [approval_ob()]}),
+    );
+}
+
+#[given("an agent granted social publish requiring approval by one of two approvers")]
+fn gplus_two_approvers(w: &mut ProtocolWorld) {
+    let ob = ob_json(
+        "publish-approval",
+        "human.approve",
+        &[APPROVER, APPROVER2],
+        "act.x.social.publish",
+        "approve",
+        Some("5m"),
+    );
+    w.grant_act_patterns(
+        &["act.x.social.*"],
+        None,
+        serde_json::json!({"obligations": [ob]}),
+    );
+}
+
+#[given("an agent granted social actions requiring human approval on publish")]
+fn gplus_approval_on_publish(w: &mut ProtocolWorld) {
+    w.grant_act_patterns(
+        &["act.x.social.*"],
+        None,
+        serde_json::json!({"obligations": [approval_ob()]}),
+    );
+}
+
+#[given("an agent granted gmail send with counter_sign on send")]
+fn gplus_counter_sign_grant(w: &mut ProtocolWorld) {
+    w.grant_act_patterns(
+        &["act.x.gmail.*"],
+        None,
+        serde_json::json!({"counter_sign": ["send"]}),
+    );
+}
+
+#[given("an agent granted social publish under dual control with a second agent")]
+fn gplus_dual_control(w: &mut ProtocolWorld) {
+    let ob = ob_json(
+        "four-eyes",
+        "agent.countersign",
+        &[DUAL],
+        "act.x.social.publish",
+        "approve",
+        None,
+    );
+    w.grant_act_patterns(
+        &["act.x.social.*"],
+        None,
+        serde_json::json!({"obligations": [ob]}),
+    );
+}
+
+#[given("an agent granted social publish under both a guardrail and a human approval obligation")]
+fn gplus_both_obligations(w: &mut ProtocolWorld) {
+    w.grant_act_patterns(
+        &["act.x.social.*"],
+        None,
+        serde_json::json!({"obligations": [guard_ob(), approval_ob()]}),
+    );
+}
+
+#[given("two sibling sub-mandates that may publish under an ancestor approval obligation")]
+fn gplus_siblings(w: &mut ProtocolWorld) {
+    w.grant_act_patterns(
+        &["act.x.social.*"],
+        Some(1),
+        serde_json::json!({"obligations": [approval_ob()]}),
+    );
+    let inherited = serde_json::json!({"obligations": [approval_ob()]});
+    let a = w
+        .mint_sub(
+            HELPER,
+            "sib-a",
+            "act.x.social.publish",
+            inherited.clone(),
+            true,
+        )
+        .unwrap();
+    let b = w
+        .mint_sub(SIB, "sib-b", "act.x.social.publish", inherited, true)
+        .unwrap();
+    w.sib_chains = vec![a, b];
+}
+
+#[given("a head mandate requiring human approval on publish")]
+fn gplus_head_mandate(w: &mut ProtocolWorld) {
+    w.grant_act_patterns(
+        &["act.x.social.*"],
+        Some(1),
+        serde_json::json!({"obligations": [approval_ob()]}),
+    );
+}
+
+#[given("a sub-mandate that adds a guardrail obligation on publish")]
+fn gplus_sub_adds(w: &mut ProtocolWorld) {
+    let child = serde_json::json!({"obligations": [approval_ob(), guard_ob()]});
+    let chain = w
+        .mint_sub(HELPER, "helper", "act.x.social.publish", child, true)
+        .unwrap();
+    w.helper_chain = chain;
+}
+
+#[given("the approver signed a receipt over what was shown on the device")]
+fn gplus_signed_wysiwys(w: &mut ProtocolWorld) {
+    w.gplus_checks = Some(approver_receipt(
+        w,
+        "2026-07-04T11:58:00Z",
+        Some("sha256:rendered-ship-it"),
+    ));
+}
+
+// --- whens ---
+
+#[when(expr = "the agent publishes with a receipt whose verdict is {string}")]
+fn gplus_publish_verdict(w: &mut ProtocolWorld, verdict: String) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(GUARD),
+        "pii-guard",
+        (&leaf, "publish", G_ARGS),
+        &verdict,
+        "2026-07-04T11:59:00Z",
+        None,
+    );
+    w.publish_with(Some(check));
+}
+
+#[when("the agent publishes with a pass receipt signed 2 days earlier")]
+fn gplus_publish_aged(w: &mut ProtocolWorld) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(GUARD),
+        "pii-guard",
+        (&leaf, "publish", G_ARGS),
+        "pass",
+        "2026-07-02T12:00:00Z",
+        None,
+    );
+    w.publish_with(Some(check));
+}
+
+#[when(expr = "the agent deletes a post with a receipt whose verdict is {string}")]
+fn gplus_delete_verdict(w: &mut ProtocolWorld, verdict: String) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(GUARD),
+        "pii-guard",
+        (&leaf, "delete", G_ARGS),
+        &verdict,
+        "2026-07-04T11:59:00Z",
+        None,
+    );
+    let chain = w.chain.clone();
+    let r = w.try_action_checked(&chain, &agent_sk(AGENT), "social", "delete", Some(check));
+    w.gamma_result = Some(r);
+}
+
+#[when("the agent sends a mail without any receipt")]
+fn gplus_send_bare(w: &mut ProtocolWorld) {
+    let chain = w.chain.clone();
+    let r = w.try_action_checked(&chain, &agent_sk(AGENT), "gmail", "send", None);
+    w.gamma_result = Some(r);
+}
+
+#[when("the agent publishes without any receipt")]
+fn gplus_publish_bare(w: &mut ProtocolWorld) {
+    w.publish_with(None);
+}
+
+#[when(expr = "the approver signs the prepared publish {int} minutes before the entry")]
+fn gplus_approve_before(w: &mut ProtocolWorld, minutes: u32) {
+    let at = format!("2026-07-04T11:{:02}:00Z", 60 - minutes);
+    let check = approver_receipt(w, &at, Some("sha256:rendered-ship-it"));
+    w.publish_with(Some(check));
+}
+
+#[when("the approver signs the prepared publish 2 minutes after the entry's clock")]
+fn gplus_approve_after(w: &mut ProtocolWorld) {
+    let check = approver_receipt(w, "2026-07-04T12:02:00Z", Some("sha256:rendered-ship-it"));
+    w.publish_with(Some(check));
+}
+
+#[when("the approver signs the prepared publish without a presented digest")]
+fn gplus_approve_no_digest(w: &mut ProtocolWorld) {
+    let check = approver_receipt(w, "2026-07-04T11:58:00Z", None);
+    w.publish_with(Some(check));
+}
+
+#[when(expr = "the approver signs the prepared publish with verdict {string}")]
+fn gplus_approve_verdict(w: &mut ProtocolWorld, verdict: String) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(APPROVER),
+        "publish-approval",
+        (&leaf, "publish", G_ARGS),
+        &verdict,
+        "2026-07-04T11:58:00Z",
+        Some("sha256:rendered-ship-it"),
+    );
+    w.publish_with(Some(check));
+}
+
+#[when("the agent presents an approval receipt bound to other args")]
+fn gplus_other_args(w: &mut ProtocolWorld) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(APPROVER),
+        "publish-approval",
+        (&leaf, "publish", "sha256:bb22"),
+        "approve",
+        "2026-07-04T11:58:00Z",
+        Some("sha256:rendered-ship-it"),
+    );
+    w.publish_with(Some(check));
+}
+
+#[when("the agent swaps the receipt's presented_digest before appending")]
+fn gplus_swap_digest(w: &mut ProtocolWorld) {
+    let mut check = w.gplus_checks.take().unwrap();
+    check["presented_digest"] = serde_json::json!("sha256:rendered-something-else");
+    w.publish_with(Some(check));
+}
+
+#[when("the agent presents an approval receipt signed by a stranger key")]
+fn gplus_stranger(w: &mut ProtocolWorld) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(STRANGER),
+        "publish-approval",
+        (&leaf, "publish", G_ARGS),
+        "approve",
+        "2026-07-04T11:58:00Z",
+        Some("sha256:rendered-ship-it"),
+    );
+    w.publish_with(Some(check));
+}
+
+#[when("the second approver signs the prepared publish")]
+fn gplus_second_approver(w: &mut ProtocolWorld) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(APPROVER2),
+        "publish-approval",
+        (&leaf, "publish", G_ARGS),
+        "approve",
+        "2026-07-04T11:58:00Z",
+        Some("sha256:rendered-ship-it"),
+    );
+    w.publish_with(Some(check));
+}
+
+#[when("the agent presents an approval receipt citing a different obligation id")]
+fn gplus_other_obligation(w: &mut ProtocolWorld) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(APPROVER),
+        "other-obligation",
+        (&leaf, "publish", G_ARGS),
+        "approve",
+        "2026-07-04T11:58:00Z",
+        None,
+    );
+    w.publish_with(Some(check));
+}
+
+#[when("the approver's receipt for a delete is presented on a publish with identical args")]
+fn gplus_cross_action(w: &mut ProtocolWorld) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(APPROVER),
+        "publish-approval",
+        (&leaf, "delete", G_ARGS),
+        "approve",
+        "2026-07-04T11:58:00Z",
+        None,
+    );
+    w.publish_with(Some(check));
+}
+
+#[when("the owner co-signs the prepared send and the agent appends it")]
+fn gplus_owner_cosign(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &owner.content_sign,
+        "co_sign",
+        (&leaf, "send", G_ARGS),
+        "approve",
+        "2026-07-04T11:58:00Z",
+        Some("sha256:rendered-mail-to-alice"),
+    );
+    let chain = w.chain.clone();
+    let r = w.try_action_checked(&chain, &agent_sk(AGENT), "gmail", "send", Some(check));
+    w.gamma_result = Some(r);
+}
+
+#[when(
+    "the first sibling's approval receipt is presented by the second sibling with identical args"
+)]
+fn gplus_sibling_replay(w: &mut ProtocolWorld) {
+    let a_leaf = w.sib_chains[0].last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(APPROVER),
+        "publish-approval",
+        (&a_leaf, "publish", G_ARGS),
+        "approve",
+        "2026-07-04T11:58:00Z",
+        Some("sha256:rendered-ship-it"),
+    );
+    let b_chain = w.sib_chains[1].clone();
+    let r = w.try_action_checked(&b_chain, &agent_sk(SIB), "social", "publish", Some(check));
+    w.gamma_result = Some(r);
+}
+
+#[when("the second agent signs the prepared publish")]
+fn gplus_dual_signs(w: &mut ProtocolWorld) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(DUAL),
+        "four-eyes",
+        (&leaf, "publish", G_ARGS),
+        "approve",
+        "2026-07-04T11:59:00Z",
+        None,
+    );
+    w.publish_with(Some(check));
+}
+
+#[when("the agent publishes with both receipts")]
+fn gplus_both_receipts(w: &mut ProtocolWorld) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let guard = ob_receipt(
+        &agent_sk(GUARD),
+        "pii-guard",
+        (&leaf, "publish", G_ARGS),
+        "pass",
+        "2026-07-04T11:59:00Z",
+        None,
+    );
+    let approve = approver_receipt(w, "2026-07-04T11:58:00Z", Some("sha256:rendered-ship-it"));
+    let chain = w.chain.clone();
+    let r = w.try_action_checked(
+        &chain,
+        &agent_sk(AGENT),
+        "social",
+        "publish",
+        Some(serde_json::json!([guard, approve])),
+    );
+    w.gamma_result = Some(r);
+}
+
+#[when("the sub-agent publishes with both receipts")]
+fn gplus_sub_both(w: &mut ProtocolWorld) {
+    let leaf = w.helper_chain.last().unwrap().id.clone();
+    let guard = ob_receipt(
+        &agent_sk(GUARD),
+        "pii-guard",
+        (&leaf, "publish", G_ARGS),
+        "pass",
+        "2026-07-04T11:59:00Z",
+        None,
+    );
+    let approve = ob_receipt(
+        &agent_sk(APPROVER),
+        "publish-approval",
+        (&leaf, "publish", G_ARGS),
+        "approve",
+        "2026-07-04T11:58:00Z",
+        Some("sha256:rendered-ship-it"),
+    );
+    let chain = w.helper_chain.clone();
+    let r = w.try_action_checked(
+        &chain,
+        &agent_sk(HELPER),
+        "social",
+        "publish",
+        Some(serde_json::json!([guard, approve])),
+    );
+    w.gamma_result = Some(r);
+}
+
+#[when("the sub-agent publishes with only the guardrail receipt")]
+fn gplus_sub_guard_only(w: &mut ProtocolWorld) {
+    let leaf = w.helper_chain.last().unwrap().id.clone();
+    let guard = ob_receipt(
+        &agent_sk(GUARD),
+        "pii-guard",
+        (&leaf, "publish", G_ARGS),
+        "pass",
+        "2026-07-04T11:59:00Z",
+        None,
+    );
+    let chain = w.helper_chain.clone();
+    let r = w.try_action_checked(&chain, &agent_sk(HELPER), "social", "publish", Some(guard));
+    w.gamma_result = Some(r);
+}
+
+#[when("a sub-mandate is minted with no obligations")]
+fn gplus_sub_drops(w: &mut ProtocolWorld) {
+    let chain = w
+        .mint_sub(
+            HELPER,
+            "helper",
+            "act.x.social.publish",
+            serde_json::json!({}),
+            false,
+        )
+        .unwrap();
+    w.chain_result = Some(w.verify_chain_at(&chain, GP_AT));
+}
+
+#[when("a sub-mandate is minted with the same obligation loosened to 1 hour")]
+fn gplus_sub_loosens(w: &mut ProtocolWorld) {
+    let mut loosened = approval_ob();
+    loosened["max_age"] = serde_json::json!("1h");
+    let chain = w
+        .mint_sub(
+            HELPER,
+            "helper",
+            "act.x.social.publish",
+            serde_json::json!({"obligations": [loosened]}),
+            false,
+        )
+        .unwrap();
+    w.chain_result = Some(w.verify_chain_at(&chain, GP_AT));
+}
+
+// --- thens ---
+
+#[then("the action appends with the receipt recorded in its checks")]
+#[then("the action appends with the co_sign receipt recorded in its checks")]
+fn gplus_appended_with_receipt(w: &mut ProtocolWorld) {
+    let checks = w.appended_checks().expect("entry should carry checks");
+    assert_eq!(
+        checks.as_array().map(Vec::len),
+        Some(1),
+        "one receipt rides"
+    );
+}
+
+#[then("the action appends with both receipts recorded in its checks")]
+fn gplus_appended_with_both(w: &mut ProtocolWorld) {
+    let checks = w.appended_checks().expect("entry should carry checks");
+    assert_eq!(
+        checks.as_array().map(Vec::len),
+        Some(2),
+        "two receipts ride"
+    );
+}
+
+#[then("the action appends with no checks recorded")]
+fn gplus_appended_bare(w: &mut ProtocolWorld) {
+    assert!(w.appended_checks().is_none(), "no checks should ride");
+}
+
+#[then("the action is refused as obligation unsatisfied")]
+fn gplus_refused(w: &mut ProtocolWorld) {
+    let r = w.gamma_result.as_ref().unwrap();
+    match r {
+        Err(e) => assert!(
+            e.contains("obligation unsatisfied"),
+            "want GammaObligationUnsatisfied, got: {e}"
+        ),
+        Ok(id) => panic!("action should be refused, appended {id}"),
+    }
+}
+
+#[then("the log gains no entry")]
+fn gplus_no_entry(w: &mut ProtocolWorld) {
+    let len = w.gbundle().gamma_entries().unwrap().len();
+    assert_eq!(
+        len, w.gamma_baseline,
+        "a refused action must append nothing"
+    );
+}
+
+#[then("deleting a post without any receipt is refused as obligation unsatisfied")]
+fn gplus_delete_bare_refused(w: &mut ProtocolWorld) {
+    let chain = w.chain.clone();
+    let r = w.try_action_checked(&chain, &agent_sk(AGENT), "social", "delete", None);
+    match r {
+        Err(e) => assert!(e.contains("obligation unsatisfied"), "got: {e}"),
+        Ok(id) => panic!("bare delete should be refused, appended {id}"),
+    }
+}
+
+#[then("publishing with only the guardrail receipt is refused as obligation unsatisfied")]
+fn gplus_guard_only_refused(w: &mut ProtocolWorld) {
+    let leaf = w.chain.last().unwrap().id.clone();
+    let guard = ob_receipt(
+        &agent_sk(GUARD),
+        "pii-guard",
+        (&leaf, "publish", G_ARGS),
+        "pass",
+        "2026-07-04T11:59:30Z",
+        None,
+    );
+    let chain = w.chain.clone();
+    let r = w.try_action_checked(&chain, &agent_sk(AGENT), "social", "publish", Some(guard));
+    match r {
+        Err(e) => assert!(e.contains("obligation unsatisfied"), "got: {e}"),
+        Ok(id) => panic!("guardrail alone should not discharge, appended {id}"),
+    }
+}
+
+#[then("the chain is refused at verification time")]
+fn gplus_chain_refused(w: &mut ProtocolWorld) {
+    let r = w.chain_result.as_ref().unwrap();
+    assert!(r.is_err(), "chain should be refused, got {r:?}");
 }
 
 // ------------------------------------------------------------------ main

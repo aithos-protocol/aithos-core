@@ -566,6 +566,15 @@ pub fn check_action_append(
         if let Some(profiles) = crate::constraints::parse_budgets(&m.constraints)? {
             crate::constraints::check_budgets(existing, candidate, &m.id, &profiles)?;
         }
+        // Obligations (§04.12) — every covering gate must be discharged by
+        // a valid receipt in checks[]; fail-closed, tier V.
+        if is_action {
+            crate::constraints::check_obligations(
+                candidate,
+                &m.constraints,
+                &did_doc.keys.content,
+            )?;
+        }
         if let Some(n) = constraint_u64(m, "max_actions") {
             if is_action && count_actions(existing, &m.id, None, None) as u64 + 1 > n {
                 return Err(Error::GammaBudgetExhausted(format!(

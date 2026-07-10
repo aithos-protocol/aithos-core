@@ -480,6 +480,312 @@ pub fn check_action_params(
     Ok(())
 }
 
+// ------------------------------------------------------------ obligations
+
+/// Reserved obligation id for the owner counter-signature (§4.6 desugared,
+/// decided 2026-07-10): one wire shape, no special case.
+pub const CO_SIGN_ID: &str = "co_sign";
+/// Δ_cosign — normative default freshness of an owner co-signature (§4.6).
+pub const CO_SIGN_MAX_AGE: &str = "5m";
+
+/// What an obligation gates (§04.12 `applies_to`). Declared obligations
+/// carry a perimeter `act.` pattern; desugared `counter_sign`/`binding`
+/// entries gate a bare action name on any connector.
+#[derive(Debug, Clone)]
+pub enum AppliesTo {
+    /// `act.x.<connector>.<action|*>` — perimeter grammar (§4.2).
+    Pattern(crate::mandate::PerimeterEntry),
+    /// Bare action name (counter_sign/binding shorthand).
+    Action(String),
+}
+
+impl AppliesTo {
+    fn covers(&self, op: &crate::mandate::ActOp) -> bool {
+        match self {
+            AppliesTo::Pattern(p) => crate::mandate::covers_act(core::slice::from_ref(p), op),
+            AppliesTo::Action(name) => *name == op.action,
+        }
+    }
+}
+
+/// One discharge requirement on a permit (§04.12): an in-scope action may
+/// consume only with a valid receipt from a pinned attestor whose verdict
+/// satisfies the predicate. The `check` id is opaque — the logic lives in
+/// the attestor, the protocol holds a signature.
+#[derive(Debug, Clone)]
+pub struct Obligation {
+    pub id: String,
+    pub attestor: Vec<String>,
+    pub applies_to: AppliesTo,
+    pub verdict: String,
+    pub max_age: Option<i64>,
+}
+
+impl Obligation {
+    fn from_json(v: &serde_json::Value) -> Result<Self> {
+        let err = |m: &str| Error::InvalidMandate(format!("obligation: {m}"));
+        let s = |k: &str| -> Result<String> {
+            v.get(k)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .ok_or_else(|| err(&format!("missing {k}")))
+        };
+        let applies_raw = s("applies_to")?;
+        if !applies_raw.starts_with("act.") {
+            return Err(err("applies_to must be an act. perimeter pattern"));
+        }
+        let attestor: Vec<String> = v
+            .get("attestor")
+            .and_then(serde_json::Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .ok_or_else(|| err("missing attestor"))?;
+        if attestor.is_empty() {
+            return Err(err("empty attestor set"));
+        }
+        s("check")?; // required by the shape, opaque to the verifier
+        Ok(Self {
+            id: s("id")?,
+            attestor,
+            applies_to: AppliesTo::Pattern(crate::mandate::PerimeterEntry::parse(&applies_raw)?),
+            verdict: s("verdict")?,
+            max_age: v
+                .get("max_age")
+                .map(|d| parse_duration(d.as_str().ok_or_else(|| err("bad max_age"))?))
+                .transpose()?,
+        })
+    }
+}
+
+/// Parse a mandate's obligations (§04.12) — the declared `obligations`
+/// array plus the `counter_sign`/`binding` shorthands desugared to the
+/// reserved `co_sign` instance (attestor = the owner content key, verdict
+/// "approve", Δ_cosign freshness). Malformed input fails closed.
+pub fn parse_obligations(
+    constraints: &serde_json::Value,
+    owner_content_key: &str,
+) -> Result<Vec<Obligation>> {
+    let mut out = Vec::new();
+    if let Some(list) = constraints.get("obligations") {
+        let list = list
+            .as_array()
+            .ok_or_else(|| Error::InvalidMandate("obligations: expected an array".into()))?;
+        for v in list {
+            out.push(Obligation::from_json(v)?);
+        }
+    }
+    for key in ["counter_sign", "binding"] {
+        if let Some(actions) = constraints.get(key) {
+            let actions = actions.as_array().ok_or_else(|| {
+                Error::InvalidMandate(format!("{key}: expected an array of actions"))
+            })?;
+            for a in actions {
+                let name = a.as_str().ok_or_else(|| {
+                    Error::InvalidMandate(format!("{key}: expected action names"))
+                })?;
+                out.push(Obligation {
+                    id: CO_SIGN_ID.to_owned(),
+                    attestor: vec![owner_content_key.to_owned()],
+                    applies_to: AppliesTo::Action(name.to_owned()),
+                    verdict: "approve".to_owned(),
+                    max_age: Some(parse_duration(CO_SIGN_MAX_AGE)?),
+                });
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The §04.12 signed payload, reconstructed from the ENTRY's coordinates —
+/// binding is enforcement: a receipt signed for another mandate, action, or
+/// args yields different bytes and the signature dies.
+#[derive(Serialize)]
+struct ObligationPayload<'a> {
+    obligation: &'a str,
+    mandate_id: &'a str,
+    action: &'a str,
+    args_hash: &'a str,
+    verdict: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    presented_digest: Option<&'a str>,
+    at: &'a str,
+}
+
+/// Verify ONE `checks[]` receipt against ONE obligation for the entry's
+/// coordinates (leaf `mandate_id` = the entry's `authorized_by`, decided
+/// 2026-07-10). Same Ed25519-over-JCS skeleton as `verify_receipt`
+/// (§4.11.1) — this one gates, that one meters.
+pub fn verify_obligation_receipt(
+    check: &serde_json::Value,
+    obligation: &Obligation,
+    mandate_id: &str,
+    action: &str,
+    entry_args_hash: &str,
+    entry_at: &str,
+) -> Result<()> {
+    let err = |m: String| Error::GammaObligationUnsatisfied(format!("{}: {m}", obligation.id));
+    let f = |k: &str| -> Result<&str> {
+        check
+            .get(k)
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| err(format!("receipt missing {k}")))
+    };
+    if f("obligation")? != obligation.id {
+        return Err(err("receipt cites another obligation".into()));
+    }
+    // Anti-replay: the receipt binds THIS entry's args.
+    if f("args_hash")? != entry_args_hash {
+        return Err(err("args_hash does not match the entry".into()));
+    }
+    let verdict = f("verdict")?;
+    if verdict != obligation.verdict {
+        return Err(err(format!("verdict '{verdict}' does not satisfy")));
+    }
+    let at = f("at")?;
+    if let Some(max_age) = obligation.max_age {
+        let delta = (ts_epoch(entry_at)? - ts_epoch(at)?).abs();
+        if delta > max_age {
+            return Err(err(format!("receipt is stale ({delta}s > {max_age}s)")));
+        }
+    }
+    let payload = ObligationPayload {
+        obligation: &obligation.id,
+        mandate_id,
+        action,
+        args_hash: entry_args_hash,
+        verdict,
+        presented_digest: check.get("presented_digest").and_then(|d| d.as_str()),
+        at,
+    };
+    let sig: [u8; 64] = hex::decode(f("sig")?)
+        .ok()
+        .and_then(|v| v.try_into().ok())
+        .ok_or_else(|| err("bad sig encoding".into()))?;
+    let bytes = jcs::canonical_bytes(&payload)?;
+    // A valid receipt from ANY pinned attestor satisfies (§04.12).
+    for key_mb in &obligation.attestor {
+        let key_bytes = crate::wire::multibase_to_ed25519_pub(key_mb)?;
+        let key =
+            VerifyingKey::from_bytes(&key_bytes).map_err(|_| err("malformed attestor".into()))?;
+        if key.verify(&bytes, &Signature::from_bytes(&sig)).is_ok() {
+            return Ok(());
+        }
+    }
+    Err(err("signature verifies under no pinned attestor".into()))
+}
+
+/// Obligation verdict for a candidate `action` entry against ONE mandate
+/// (§04.12, tier V): every obligation whose `applies_to` covers the entry's
+/// action must be discharged by a valid `checks[]` receipt. Fail-closed: a
+/// blocked or missing receipt rejects the append — the refusal log is the
+/// gateway's duty, off-protocol.
+pub fn check_obligations(
+    candidate: &Entry,
+    constraints: &serde_json::Value,
+    owner_content_key: &str,
+) -> Result<()> {
+    let obligations = parse_obligations(constraints, owner_content_key)?;
+    if obligations.is_empty() {
+        return Ok(());
+    }
+    let miss = Error::GammaObligationUnsatisfied;
+    let action = payload_str(candidate, "action")
+        .ok_or_else(|| miss("action entry without an action".into()))?;
+    let connector = candidate
+        .target
+        .as_deref()
+        .and_then(|t| t.strip_prefix("x."))
+        .ok_or_else(|| miss("action entry without an x.<connector> target".into()))?;
+    let op = crate::mandate::ActOp {
+        connector: connector.to_owned(),
+        action: action.to_owned(),
+    };
+    let leaf = candidate
+        .authorized_by
+        .as_deref()
+        .ok_or_else(|| miss("action entry without authorized_by".into()))?;
+    let args_hash = payload_str(candidate, "args_hash")
+        .ok_or_else(|| miss("action entry without args_hash".into()))?;
+    let empty = Vec::new();
+    let checks = candidate
+        .payload
+        .as_ref()
+        .and_then(|p| p.get("checks"))
+        .and_then(serde_json::Value::as_array)
+        .unwrap_or(&empty);
+    for ob in obligations.iter().filter(|o| o.applies_to.covers(&op)) {
+        let mut last = Error::GammaObligationUnsatisfied(format!(
+            "{}: entry carries no receipt for this obligation",
+            ob.id
+        ));
+        let mut ok = false;
+        for check in checks
+            .iter()
+            .filter(|c| c.get("obligation").and_then(|o| o.as_str()) == Some(ob.id.as_str()))
+        {
+            match verify_obligation_receipt(check, ob, leaf, &op.action, args_hash, &candidate.at) {
+                Ok(()) => {
+                    ok = true;
+                    break;
+                }
+                Err(e) => last = e,
+            }
+        }
+        if !ok {
+            return Err(last);
+        }
+    }
+    Ok(())
+}
+
+/// Attenuation of obligations along a delegation link (§05.3, decided
+/// 2026-07-10): every parent obligation must appear JCS-identical in the
+/// child — a sub-mandate may ADD, never drop or alter; tightening is
+/// expressed by adding. `counter_sign`/`binding` shorthands attenuate as
+/// action-name supersets.
+pub fn obligations_attenuate(parent: &serde_json::Value, child: &serde_json::Value) -> Result<()> {
+    let err = Error::InvalidMandate;
+    if let Some(list) = parent.get("obligations").and_then(|l| l.as_array()) {
+        let child_list = child
+            .get("obligations")
+            .and_then(|l| l.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let child_jcs: Vec<Vec<u8>> = child_list
+            .iter()
+            .map(jcs::canonical_bytes)
+            .collect::<Result<_>>()?;
+        for ob in list {
+            let bytes = jcs::canonical_bytes(ob)?;
+            if !child_jcs.contains(&bytes) {
+                let id = ob.get("id").and_then(|i| i.as_str()).unwrap_or("?");
+                return Err(err(format!(
+                    "obligation '{id}' dropped or altered by the sub-mandate"
+                )));
+            }
+        }
+    }
+    for key in ["counter_sign", "binding"] {
+        if let Some(actions) = parent.get(key).and_then(|a| a.as_array()) {
+            let child_set: Vec<&str> = child
+                .get(key)
+                .and_then(|a| a.as_array())
+                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                .unwrap_or_default();
+            for a in actions.iter().filter_map(|x| x.as_str()) {
+                if !child_set.contains(&a) {
+                    return Err(err(format!("{key} '{a}' dropped by the sub-mandate")));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
