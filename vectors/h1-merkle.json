@@ -1,0 +1,117 @@
+{
+  "vector": "H1",
+  "description": "Merkle state roots (spec 02.10): BLAKE3 domain-separated H_leaf/H_node, left-heavy mroot, node composition for section/folder/tag-view/zone-root/flat zones, v1 proof wire replayed to the root, tamper + splice negatives. Generated independently (Python blake3); self-checked against the committed B2 derive.",
+  "rows": {
+    "folder": {
+      "sid": "00000000000000000000000001",
+      "name": "notes",
+      "parent_sid": null
+    },
+    "s7": {
+      "sid": "00000000000000000000000007",
+      "name": "note1",
+      "folder_sid": "00000000000000000000000001",
+      "title": "Note 1",
+      "tags": [
+        "urgent"
+      ],
+      "blob_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "key_version": 1
+    },
+    "s8": {
+      "sid": "00000000000000000000000008",
+      "name": "note2",
+      "folder_sid": "00000000000000000000000001",
+      "title": "Note 2",
+      "tags": [],
+      "blob_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "key_version": 1
+    },
+    "s9": {
+      "sid": "00000000000000000000000009",
+      "name": "loose",
+      "folder_sid": null,
+      "title": "Loose",
+      "tags": [],
+      "blob_sha": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "key_version": 1
+    },
+    "header_f": {
+      "v": 2,
+      "lines": [
+        "granted-line-fixture"
+      ]
+    },
+    "wrap7": {
+      "sid": "00000000000000000000000007",
+      "wrap": "wrap-fixture-bytes"
+    },
+    "self_rows": [
+      {
+        "sid": "0000000000000000000000000B",
+        "key_version": 1
+      },
+      {
+        "sid": "0000000000000000000000000C",
+        "key_version": 3
+      },
+      {
+        "sid": "0000000000000000000000000D",
+        "key_version": 1
+      }
+    ]
+  },
+  "tree": {
+    "header_f_hash_hex": "2dab6fe12201584c9c03b81a4d11a71cb52d4a3a4740f1c9c5413dff860103d8",
+    "leaves": {
+      "s7": "1798987762cabf95a9000abcd01a9f0d431332319bf458a8756be074a6051861",
+      "s8": "5d24cd130ab4f52ad027375efabc8d8b94adc3d9abf8e4cacacecea1c37f5f07",
+      "s9": "b522bd62dc6282de0158d6d51bd80bdf47677a019d8f6dd1af966e20555d2487",
+      "wrap7": "586231ce4512f1be65ad96018f78b311fec36ed8bcce3db1fd99fa5dee4e3517",
+      "tag_urgent": "d0650e9e4a61b46a87344c9d14883ebd40fc16b5a6015ad48a5eb31e14e4c243",
+      "folder1": "5c32829c0c2fa7269bea96b89488dcbd784021375bf96f6a8799d914dd6951e6"
+    },
+    "folder_children_mroot_hex": "74a99c0ca7b325225de53d4c0aa4850787087c5ed0c564d986f67593db77fb55",
+    "root_children_mroot_hex": "fe73de2997b476fb4ce1e43f89c95c87e5d589f3d6f80219b9ddd33daa03db78",
+    "circle_root_hex": "11176c43932fe3e77c338643f030202978f5ff1dc93c1f701483184f84ac885a",
+    "self_root_hex": "9cdc5e99a415dd564dac8ca3f1a1712195f549a95474e9136c19d1df04b13298",
+    "empty_root_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+    "proof_s7": [
+      {
+        "node": {
+          "side": "right",
+          "hash": "5d24cd130ab4f52ad027375efabc8d8b94adc3d9abf8e4cacacecea1c37f5f07"
+        }
+      },
+      {
+        "wrap": {
+          "pre": "7b226e616d65223a226e6f746573222c22706172656e745f736964223a6e756c6c2c22736964223a223030303030303030303030303030303030303030303030303031227d2dab6fe12201584c9c03b81a4d11a71cb52d4a3a4740f1c9c5413dff860103d8",
+          "post": ""
+        }
+      },
+      {
+        "node": {
+          "side": "right",
+          "hash": "b522bd62dc6282de0158d6d51bd80bdf47677a019d8f6dd1af966e20555d2487"
+        }
+      },
+      {
+        "node": {
+          "side": "right",
+          "hash": "d0650e9e4a61b46a87344c9d14883ebd40fc16b5a6015ad48a5eb31e14e4c243"
+        }
+      },
+      {
+        "wrap": {
+          "pre": "7a2f636972636c650000000000000000000000000000000000000000000000000000000000000000",
+          "post": ""
+        }
+      }
+    ],
+    "negatives": {
+      "tampered_title": "Note 1 (tampered)",
+      "expected": "root mismatch (fail-closed)",
+      "leaf_as_node_differs": true
+    }
+  }
+}
