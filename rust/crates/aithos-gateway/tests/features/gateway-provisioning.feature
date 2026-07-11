@@ -15,7 +15,6 @@ Feature: Provisioned runner — an agent is born, equipped and routed
 
   Rule: The owner equips the agent from their side
 
-    @wip
     Scenario: The owner creates the agent's journal and grants its pen
       Given an enterprise master seed
       When the owner creates a journal for the agent's public key
@@ -23,7 +22,6 @@ Feature: Provisioned runner — an agent is born, equipped and routed
       And the agent holds a mandate to write its journal
       And the journal gamma records that a mandate was received
 
-    @wip
     Scenario: The owner grants a context to the agent's public key
       Given a context Ethos "company-brand" with tools "brand.read" and "brand.update"
       When the owner grants the agent read access to that context

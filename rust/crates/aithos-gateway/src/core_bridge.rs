@@ -61,12 +61,14 @@ pub fn gateway_pub_multibase(kh: &Keyholder) -> String {
     aithos_core::wire::ed25519_pub_to_multibase(&vk.to_bytes())
 }
 
-/// Non-secret state persisted at onboarding, reloaded by `open`.
+/// Non-secret state persisted at equip time, reloaded by `open`.
 #[derive(Debug, Serialize, Deserialize)]
 struct BridgeState {
     agent_mandate: String,
     gateway_mandate: String,
-    auditor_mandate: String,
+    /// Absent on ethos where no audit grant was made (e.g. journals).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    auditor_mandate: Option<String>,
 }
 
 /// What onboarding hands back to the operator. Secrets appear ONCE here
@@ -128,7 +130,7 @@ pub struct Bridge {
     keyholder: Keyholder,
     agent_chain: Vec<Mandate>,
     gateway_chain: Vec<Mandate>,
-    auditor_mandate: Mandate,
+    auditor_mandate: Option<Mandate>,
     entropy: Box<dyn EntropySource + Send>,
 }
 
@@ -221,7 +223,7 @@ impl Bridge {
         let state = BridgeState {
             agent_mandate: agent_mandate.id.clone(),
             gateway_mandate: gateway_mandate.id.clone(),
-            auditor_mandate: auditor_mandate.id.clone(),
+            auditor_mandate: Some(auditor_mandate.id.clone()),
         };
         bundle
             .store
@@ -245,7 +247,7 @@ impl Bridge {
             keyholder,
             agent_chain: vec![agent_mandate],
             gateway_chain: vec![gateway_mandate],
-            auditor_mandate,
+            auditor_mandate: Some(auditor_mandate),
             entropy,
         };
         Ok((bridge, outcome))
@@ -263,7 +265,10 @@ impl Bridge {
         let state: BridgeState = read_json(&bundle, STATE_PATH)?;
         let agent = read_json(&bundle, &cert_path(&state.agent_mandate))?;
         let gateway = read_json(&bundle, &cert_path(&state.gateway_mandate))?;
-        let auditor_mandate = read_json(&bundle, &cert_path(&state.auditor_mandate))?;
+        let auditor_mandate = match &state.auditor_mandate {
+            Some(id) => Some(read_json(&bundle, &cert_path(id))?),
+            None => None,
+        };
         Ok(Self {
             bundle,
             keyholder,
@@ -376,7 +381,11 @@ impl Bridge {
         now: &str,
     ) -> Result<String> {
         let auditor_sk = SigningKey::from_bytes(auditor_seed);
-        let chain = vec![self.auditor_mandate.clone()];
+        let auditor_mandate = self
+            .auditor_mandate
+            .as_ref()
+            .ok_or_else(|| GatewayError::AuditDenied("no audit grant on this ethos".into()))?;
+        let chain = vec![auditor_mandate.clone()];
         let query = GammaQuery {
             kind: kind.map(str::to_owned),
             ..GammaQuery::default()
@@ -392,7 +401,7 @@ impl Bridge {
         let entries: Vec<EntryView> = hits.iter().map(|h| view(&h.entry)).collect();
         let export = serde_json::json!({
             "exported_at": now,
-            "mandate": self.auditor_mandate.id,
+            "mandate": auditor_mandate.id,
             "scope": { "kind": kind },
             "entries": entries,
         });
@@ -431,6 +440,225 @@ impl Bridge {
     fn did_doc(&self) -> Result<DidDocument> {
         read_json(&self.bundle, "did.json")
     }
+}
+
+// ---------------------------------------------------------- owner tooling
+// Runs where the enterprise master seed lives — NEVER inside the runner.
+// One master anchors everything (decisions §6/§9): the owner keys of
+// journals and contexts derive by label; agent keys never derive.
+
+/// Derived owner keys for an enterprise-owned ethos (journal or context).
+fn derived_owner(master: &[u8; 32], kind: &str, label: &str) -> OwnerKeys {
+    OwnerKeys::genesis(&MasterSeed::from_bytes(aithos_core::derive::derive_key(
+        &format!("aithos-gw/v1/{kind}/{label}"),
+        master,
+    )))
+}
+
+fn derived_succession(master: &[u8; 32], kind: &str, label: &str) -> SigningKey {
+    succession_from_entropy(aithos_core::derive::derive_key(
+        &format!("aithos-gw/v1/{kind}/{label}/succession"),
+        master,
+    ))
+}
+
+/// What equipping an ethos hands back — identifiers only, never seeds
+/// (the auditor seed is the one exception, printed once by the caller).
+#[derive(Debug, Clone)]
+pub struct EquipOutcome {
+    pub ethos_did: String,
+    pub agent_mandate: String,
+    pub gateway_mandate: String,
+    pub auditor_mandate: Option<String>,
+    pub auditor_seed_hex: Option<String>,
+}
+
+/// Create the agent's journal: an isolated Ethos owned by the enterprise.
+/// The agent's key gets the xref pen (`act.x.xref.*`), the gateway its
+/// governance pen (`act.x.gateway.*`); both grants are logged — that IS
+/// the journal's « mandate received » record.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_init_journal(
+    master: &[u8; 32],
+    agent_label: &str,
+    agent_pub_mb: &str,
+    gateway_pub_mb: &str,
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<EquipOutcome> {
+    let owner = derived_owner(master, "journal", agent_label);
+    let succession = derived_succession(master, "journal", agent_label);
+    let bundle =
+        Bundle::init(store, &owner, &succession.verifying_key(), ent, now).map_err(bridge_err)?;
+    equip(
+        bundle,
+        &owner,
+        agent_pub_mb,
+        gateway_pub_mb,
+        &["act.x.xref.*".to_owned()],
+        false,
+        window,
+        now,
+        ent,
+    )
+}
+
+/// Create a context Ethos owned by the enterprise (demo/dev path — real
+/// contexts usually pre-exist with their own history).
+pub fn owner_init_context(
+    master: &[u8; 32],
+    label: &str,
+    store: GatewayStore,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<String> {
+    let owner = derived_owner(master, "context", label);
+    let succession = derived_succession(master, "context", label);
+    let bundle =
+        Bundle::init(store, &owner, &succession.verifying_key(), ent, now).map_err(bridge_err)?;
+    Ok(bundle.did)
+}
+
+/// Grant a context to the agent's PUBLIC key: read mandate on the listed
+/// tools, governance mandate for the gateway, scoped audit mandate.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_context(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    gateway_pub_mb: &str,
+    read_tools: &[String],
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<EquipOutcome> {
+    let owner = derived_owner(master, "context", label);
+    let bundle = Bundle::open(store).map_err(bridge_err)?;
+    let read_ops: Vec<String> = read_tools.iter().map(|t| op_for_tool(t)).collect();
+    equip(
+        bundle,
+        &owner,
+        agent_pub_mb,
+        gateway_pub_mb,
+        &read_ops,
+        true,
+        window,
+        now,
+        ent,
+    )
+}
+
+/// Shared equip path: mint the mandates towards the agent/gateway PUBLIC
+/// keys, log every grant (issuance is never silent), persist certs+state.
+#[allow(clippy::too_many_arguments)]
+fn equip(
+    mut bundle: Bundle<GatewayStore>,
+    owner: &OwnerKeys,
+    agent_pub_mb: &str,
+    gateway_pub_mb: &str,
+    agent_ops: &[String],
+    with_auditor: bool,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<EquipOutcome> {
+    let agent_pub = decode_pub(agent_pub_mb)?;
+    let gateway_pub = decode_pub(gateway_pub_mb)?;
+
+    let agent_mandate = mint(
+        owner, &bundle, ent, "agent", &agent_pub, agent_ops, window, now,
+    )?;
+    let gateway_mandate = mint(
+        owner,
+        &bundle,
+        ent,
+        "gateway",
+        &gateway_pub,
+        &["act.x.gateway.*".to_owned()],
+        window,
+        now,
+    )?;
+    let (auditor_mandate, auditor_seed_hex) = if with_auditor {
+        let seed = ent.e32();
+        let sk = SigningKey::from_bytes(&seed);
+        let m = mint(
+            owner,
+            &bundle,
+            ent,
+            "auditor",
+            &sk.verifying_key(),
+            &["read.gamma#kind=action".to_owned()],
+            window,
+            now,
+        )?;
+        (Some(m), Some(hex::encode(seed)))
+    } else {
+        (None, None)
+    };
+
+    let mut all = vec![&agent_mandate, &gateway_mandate];
+    if let Some(m) = &auditor_mandate {
+        all.push(m);
+    }
+    for m in all {
+        bundle
+            .store
+            .put(
+                &cert_path(&m.id),
+                &serde_json::to_vec_pretty(m).map_err(bridge_err)?,
+            )
+            .map_err(bridge_err)?;
+        bundle
+            .log_owner_grant(owner, &m.id, now, ent)
+            .map_err(bridge_err)?;
+    }
+    let state = BridgeState {
+        agent_mandate: agent_mandate.id.clone(),
+        gateway_mandate: gateway_mandate.id.clone(),
+        auditor_mandate: auditor_mandate.as_ref().map(|m| m.id.clone()),
+    };
+    bundle
+        .store
+        .put(
+            STATE_PATH,
+            &serde_json::to_vec_pretty(&state).map_err(bridge_err)?,
+        )
+        .map_err(bridge_err)?;
+
+    Ok(EquipOutcome {
+        ethos_did: bundle.did.clone(),
+        agent_mandate: agent_mandate.id,
+        gateway_mandate: gateway_mandate.id,
+        auditor_mandate: auditor_mandate.map(|m| m.id),
+        auditor_seed_hex,
+    })
+}
+
+fn decode_pub(multibase: &str) -> Result<ed25519_dalek::VerifyingKey> {
+    let bytes = aithos_core::wire::multibase_to_ed25519_pub(multibase).map_err(bridge_err)?;
+    ed25519_dalek::VerifyingKey::from_bytes(&bytes)
+        .map_err(|e| GatewayError::BridgeFailed(format!("bad agent public key: {e}")))
+}
+
+/// Owner/test-side view of any ethos gamma (opens the store read-only).
+pub fn gamma_view(store: GatewayStore) -> Result<Vec<EntryView>> {
+    let bundle = Bundle::open(store).map_err(bridge_err)?;
+    Ok(bundle
+        .gamma_entries()
+        .map_err(bridge_err)?
+        .iter()
+        .map(view)
+        .collect())
+}
+
+/// The grantee public key (multibase) named by a stored certificate.
+pub fn cert_grantee_pub(store: GatewayStore, mandate_id: &str) -> Result<String> {
+    let bundle = Bundle::open(store).map_err(bridge_err)?;
+    let m: Mandate = read_json(&bundle, &cert_path(mandate_id))?;
+    Ok(m.grantee.pubkey)
 }
 
 // ---------------------------------------------------------------- helpers

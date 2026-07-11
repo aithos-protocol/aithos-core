@@ -20,8 +20,9 @@ use tokio::sync::Mutex;
 
 use aithos_gateway::config::GatewayConfig;
 use aithos_gateway::core_bridge::{
-    agent_pub_multibase, gateway_pub_multibase, Bridge, EntropySource, EntryView, MandateWindow,
-    OnboardOutcome, SeqEntropy,
+    agent_pub_multibase, cert_grantee_pub, gamma_view, gateway_pub_multibase, owner_grant_context,
+    owner_init_context, owner_init_journal, Bridge, EntropySource, EntryView, EquipOutcome,
+    MandateWindow, OnboardOutcome, SeqEntropy,
 };
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
@@ -74,6 +75,15 @@ struct GatewayWorld {
     published: Option<String>,
     identity_file: Option<std::path::PathBuf>,
     scratch: Option<tempfile::TempDir>,
+    /// Provisioning scenarios (Phase B): owner side.
+    master: Option<[u8; 32]>,
+    agent_pub: Option<String>,
+    gateway_pub: Option<String>,
+    journal_store: Option<GatewayStore>,
+    journal_outcome: Option<EquipOutcome>,
+    /// Single equipped context for the grant scenario: (label, store,
+    /// read tool, write tool, outcome).
+    ctx: Option<(String, GatewayStore, String, String, Option<EquipOutcome>)>,
 }
 
 impl GatewayWorld {
@@ -91,6 +101,37 @@ impl GatewayWorld {
             published: None,
             identity_file: None,
             scratch: None,
+            master: None,
+            agent_pub: None,
+            gateway_pub: None,
+            journal_store: None,
+            journal_outcome: None,
+            ctx: None,
+        }
+    }
+
+    fn master(&mut self) -> [u8; 32] {
+        *self.master.get_or_insert([7u8; 32])
+    }
+
+    /// The runner's published public keys (born once per scenario).
+    fn pubs(&mut self) -> (String, String) {
+        if self.agent_pub.is_none() {
+            let mut ent = SeqEntropy::default();
+            let kh = Keyholder::from_entropy(ent.e32(), ent.e32());
+            self.agent_pub = Some(agent_pub_multibase(&kh));
+            self.gateway_pub = Some(gateway_pub_multibase(&kh));
+        }
+        (
+            self.agent_pub.clone().unwrap(),
+            self.gateway_pub.clone().unwrap(),
+        )
+    }
+
+    fn window() -> MandateWindow {
+        MandateWindow {
+            not_before: NOT_BEFORE.to_owned(),
+            not_after: NOT_AFTER.to_owned(),
         }
     }
 
@@ -472,31 +513,117 @@ async fn provision_has_no_seed(w: &mut GatewayWorld) {
 }
 
 #[given("an enterprise master seed")]
-async fn enterprise_master(_w: &mut GatewayWorld) {}
+async fn enterprise_master(w: &mut GatewayWorld) {
+    w.master = Some([7u8; 32]);
+}
 
 #[when("the owner creates a journal for the agent's public key")]
-async fn owner_creates_journal(_w: &mut GatewayWorld) {}
+async fn owner_creates_journal(w: &mut GatewayWorld) {
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let store = GatewayStore::in_memory();
+    let mut ent = SeqEntropy::default();
+    let outcome = owner_init_journal(
+        &master,
+        "leo",
+        &agent_pub,
+        &gateway_pub,
+        store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut ent,
+    )
+    .expect("journal created");
+    w.journal_store = Some(store);
+    w.journal_outcome = Some(outcome);
+}
 
 #[then("the journal is an isolated Ethos owned by the enterprise")]
-async fn journal_is_isolated(_w: &mut GatewayWorld) {}
+async fn journal_is_isolated(w: &mut GatewayWorld) {
+    let outcome = w.journal_outcome.as_ref().expect("journal outcome");
+    assert!(
+        outcome.ethos_did.starts_with("did:"),
+        "a full Ethos identity"
+    );
+    if let Some((_, _, _, _, Some(ctx))) = &w.ctx {
+        assert_ne!(outcome.ethos_did, ctx.ethos_did, "isolated from contexts");
+    }
+    assert!(
+        outcome.auditor_mandate.is_none(),
+        "no audit grant by default"
+    );
+}
 
 #[then("the agent holds a mandate to write its journal")]
-async fn agent_holds_journal_mandate(_w: &mut GatewayWorld) {}
+async fn agent_holds_journal_mandate(w: &mut GatewayWorld) {
+    let outcome = w.journal_outcome.as_ref().expect("journal outcome");
+    let store = w.journal_store.clone().expect("journal store");
+    let grantee = cert_grantee_pub(store, &outcome.agent_mandate).expect("cert readable");
+    assert_eq!(Some(grantee), w.agent_pub, "mandate names the agent key");
+}
 
 #[then("the journal gamma records that a mandate was received")]
-async fn journal_records_mandate(_w: &mut GatewayWorld) {}
+async fn journal_records_mandate(w: &mut GatewayWorld) {
+    let outcome = w.journal_outcome.as_ref().expect("journal outcome");
+    let entries = gamma_view(w.journal_store.clone().expect("store")).expect("gamma readable");
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.kind == "grant" && e.target.as_deref() == Some(&outcome.agent_mandate)),
+        "the agent grant is on the journal record"
+    );
+}
 
 #[given(expr = "a context Ethos {string} with tools {string} and {string}")]
-async fn context_ethos(_w: &mut GatewayWorld, _name: String, _read: String, _write: String) {}
+async fn context_ethos(w: &mut GatewayWorld, name: String, read: String, write: String) {
+    let master = w.master();
+    let store = GatewayStore::in_memory();
+    let mut ent = SeqEntropy::default();
+    owner_init_context(&master, &name, store.clone(), T0, &mut ent).expect("context created");
+    w.ctx = Some((name, store, read, write, None));
+}
 
 #[when("the owner grants the agent read access to that context")]
-async fn owner_grants_context(_w: &mut GatewayWorld) {}
+async fn owner_grants_context(w: &mut GatewayWorld) {
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let (label, store, read, _, _) = w.ctx.as_ref().expect("a context").clone();
+    let mut ent = SeqEntropy::default();
+    let outcome = owner_grant_context(
+        &master,
+        &label,
+        &agent_pub,
+        &gateway_pub,
+        &[read.clone()],
+        store,
+        &GatewayWorld::window(),
+        T0,
+        &mut ent,
+    )
+    .expect("context granted");
+    w.ctx.as_mut().expect("a context").4 = Some(outcome);
+}
 
 #[then("the context gamma records the grant")]
-async fn context_records_grant(_w: &mut GatewayWorld) {}
+async fn context_records_grant(w: &mut GatewayWorld) {
+    let (_, store, _, _, outcome) = w.ctx.as_ref().expect("a context");
+    let outcome = outcome.as_ref().expect("granted");
+    let entries = gamma_view(store.clone()).expect("gamma readable");
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.kind == "grant" && e.target.as_deref() == Some(&outcome.agent_mandate)),
+        "the agent grant is on the context record"
+    );
+}
 
 #[then("the granted certificate names the agent public key")]
-async fn cert_names_agent_pub(_w: &mut GatewayWorld) {}
+async fn cert_names_agent_pub(w: &mut GatewayWorld) {
+    let (_, store, _, _, outcome) = w.ctx.as_ref().expect("a context");
+    let outcome = outcome.as_ref().expect("granted");
+    let grantee = cert_grantee_pub(store.clone(), &outcome.agent_mandate).expect("cert readable");
+    assert_eq!(Some(grantee), w.agent_pub);
+}
 
 #[given(expr = "a runner provisioned with contexts {string} and {string}")]
 async fn runner_provisioned(_w: &mut GatewayWorld, _a: String, _b: String) {}

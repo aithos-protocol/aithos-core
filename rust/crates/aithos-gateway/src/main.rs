@@ -36,6 +36,56 @@ enum Command {
     /// Birth of the runner: generate the agent identity in place. Only
     /// the PUBLIC keys are printed — the seeds never leave the file.
     Keygen,
+    /// OWNER SIDE (never in the runner): create the agent's journal —
+    /// an enterprise-owned Ethos where the agent gets the xref pen.
+    OwnerInitJournal {
+        /// Enterprise master seed (DEV ONLY on the command line).
+        #[arg(long)]
+        master_seed_hex: String,
+        /// Stable agent label (derivation label of the journal keys).
+        #[arg(long)]
+        agent_label: String,
+        /// The agent public key published at birth (z…).
+        #[arg(long)]
+        agent_pub: String,
+        /// The gateway public key published at birth (z…).
+        #[arg(long)]
+        gateway_pub: String,
+        /// Filesystem root of the journal store.
+        #[arg(long)]
+        store_root: String,
+        #[arg(long, default_value_t = 30)]
+        ttl_days: u32,
+    },
+    /// OWNER SIDE: create a context Ethos (demo/dev — real contexts
+    /// usually pre-exist).
+    OwnerInitContext {
+        #[arg(long)]
+        master_seed_hex: String,
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        store_root: String,
+    },
+    /// OWNER SIDE: grant a context to the agent's public key (read
+    /// tools + gateway governance + scoped auditor).
+    OwnerGrantContext {
+        #[arg(long)]
+        master_seed_hex: String,
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        agent_pub: String,
+        #[arg(long)]
+        gateway_pub: String,
+        /// Tool granted for reading (repeatable).
+        #[arg(long = "read")]
+        read: Vec<String>,
+        #[arg(long)]
+        store_root: String,
+        #[arg(long, default_value_t = 30)]
+        ttl_days: u32,
+    },
     /// Initialise the ethos, mint identities, grant the read-only agent
     /// mandate, the gateway governance mandate and the scoped auditor
     /// mandate; print the endpoint to plug into the agent runtime.
@@ -88,12 +138,106 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // Owner-side commands run where the master seed lives; they need no
+    // gateway config, only a store root.
+    match &cli.command {
+        Command::OwnerInitJournal {
+            master_seed_hex,
+            agent_label,
+            agent_pub,
+            gateway_pub,
+            store_root,
+            ttl_days,
+        } => {
+            let master = decode_master(master_seed_hex)?;
+            let start = now_secs();
+            let outcome = aithos_gateway::core_bridge::owner_init_journal(
+                &master,
+                agent_label,
+                agent_pub,
+                gateway_pub,
+                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                    root: store_root.into(),
+                })?,
+                &MandateWindow {
+                    not_before: ts(start),
+                    not_after: ts(start + u64::from(*ttl_days) * 86_400),
+                },
+                &ts(start),
+                &mut OsEntropy,
+            )?;
+            println!("journal_did: {}", outcome.ethos_did);
+            println!("agent_mandate: {}", outcome.agent_mandate);
+            println!("gateway_mandate: {}", outcome.gateway_mandate);
+            return Ok(());
+        }
+        Command::OwnerInitContext {
+            master_seed_hex,
+            label,
+            store_root,
+        } => {
+            let master = decode_master(master_seed_hex)?;
+            let did = aithos_gateway::core_bridge::owner_init_context(
+                &master,
+                label,
+                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                    root: store_root.into(),
+                })?,
+                &ts(now_secs()),
+                &mut OsEntropy,
+            )?;
+            println!("context_did: {did}");
+            return Ok(());
+        }
+        Command::OwnerGrantContext {
+            master_seed_hex,
+            label,
+            agent_pub,
+            gateway_pub,
+            read,
+            store_root,
+            ttl_days,
+        } => {
+            let master = decode_master(master_seed_hex)?;
+            let start = now_secs();
+            let outcome = aithos_gateway::core_bridge::owner_grant_context(
+                &master,
+                label,
+                agent_pub,
+                gateway_pub,
+                read,
+                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                    root: store_root.into(),
+                })?,
+                &MandateWindow {
+                    not_before: ts(start),
+                    not_after: ts(start + u64::from(*ttl_days) * 86_400),
+                },
+                &ts(start),
+                &mut OsEntropy,
+            )?;
+            eprintln!("STORE the auditor seed COLD — shown ONCE.");
+            println!("context_did: {}", outcome.ethos_did);
+            println!("agent_mandate: {}", outcome.agent_mandate);
+            println!("gateway_mandate: {}", outcome.gateway_mandate);
+            if let (Some(m), Some(s)) = (&outcome.auditor_mandate, &outcome.auditor_seed_hex) {
+                println!("auditor_mandate: {m}");
+                println!("auditor_seed_hex: {s}");
+            }
+            return Ok(());
+        }
+        _ => {}
+    }
+
     let cfg_text = std::fs::read_to_string(&cli.config)
         .map_err(|e| format!("cannot read config `{}`: {e}", cli.config))?;
     let cfg = GatewayConfig::from_yaml(&cfg_text)?;
 
     match cli.command {
-        Command::Keygen => unreachable!("handled above"),
+        Command::Keygen
+        | Command::OwnerInitJournal { .. }
+        | Command::OwnerInitContext { .. }
+        | Command::OwnerGrantContext { .. } => unreachable!("handled above"),
         Command::Onboard { ttl_days } => {
             let mut ent = OsEntropy;
             let keyholder = Keyholder::from_entropy(ent.e32(), ent.e32());
@@ -170,6 +314,14 @@ fn print_onboard(o: &OnboardOutcome) {
     println!("agent_endpoint: {}", o.agent_endpoint);
     println!();
     println!("Point the agent's MCP client at agent_endpoint — nothing else changes.");
+}
+
+fn decode_master(hex_str: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    eprintln!("WARNING: --master-seed-hex on the command line is DEV ONLY.");
+    Ok(hex::decode(hex_str)
+        .ok()
+        .and_then(|v| <[u8; 32]>::try_from(v).ok())
+        .ok_or("master-seed-hex: want 32 hex bytes")?)
 }
 
 fn now_secs() -> u64 {
