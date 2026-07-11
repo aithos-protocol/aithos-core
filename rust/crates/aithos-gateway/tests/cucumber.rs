@@ -417,6 +417,66 @@ async fn export_scoped(w: &mut GatewayWorld) {
         .all(|e| e["kind"] != "grant"));
 }
 
+// ------------------------------------------ provisioning (Phase B, @wip)
+// Stubs for gateway-provisioning.feature — implemented lot by lot.
+
+#[when("a runner generates its agent identity")]
+async fn runner_keygen(_w: &mut GatewayWorld) {}
+
+#[then("it publishes the agent public key")]
+async fn pubkey_published(_w: &mut GatewayWorld) {}
+
+#[then("the provision artifacts contain no seed material")]
+async fn provision_has_no_seed(_w: &mut GatewayWorld) {}
+
+#[given("an enterprise master seed")]
+async fn enterprise_master(_w: &mut GatewayWorld) {}
+
+#[when("the owner creates a journal for the agent's public key")]
+async fn owner_creates_journal(_w: &mut GatewayWorld) {}
+
+#[then("the journal is an isolated Ethos owned by the enterprise")]
+async fn journal_is_isolated(_w: &mut GatewayWorld) {}
+
+#[then("the agent holds a mandate to write its journal")]
+async fn agent_holds_journal_mandate(_w: &mut GatewayWorld) {}
+
+#[then("the journal gamma records that a mandate was received")]
+async fn journal_records_mandate(_w: &mut GatewayWorld) {}
+
+#[given(expr = "a context Ethos {string} with tools {string} and {string}")]
+async fn context_ethos(_w: &mut GatewayWorld, _name: String, _read: String, _write: String) {}
+
+#[when("the owner grants the agent read access to that context")]
+async fn owner_grants_context(_w: &mut GatewayWorld) {}
+
+#[then("the context gamma records the grant")]
+async fn context_records_grant(_w: &mut GatewayWorld) {}
+
+#[then("the granted certificate names the agent public key")]
+async fn cert_names_agent_pub(_w: &mut GatewayWorld) {}
+
+#[given(expr = "a runner provisioned with contexts {string} and {string}")]
+async fn runner_provisioned(_w: &mut GatewayWorld, _a: String, _b: String) {}
+
+#[then(expr = "the act on {string} is logged in the {string} gamma only")]
+async fn act_logged_in_context_only(_w: &mut GatewayWorld, _tool: String, _ctx: String) {}
+
+#[then("the journal holds one cross-reference per act, joinable both ways")]
+async fn journal_xrefs_join(_w: &mut GatewayWorld) {}
+
+#[then("the call never reaches any upstream")]
+async fn no_upstream_reached(_w: &mut GatewayWorld) {}
+
+#[then(expr = "the {string} gamma gains one refusal entry")]
+async fn context_gains_refusal(_w: &mut GatewayWorld, _ctx: String) {}
+
+#[then("the journal gains one refusal entry")]
+async fn journal_gains_refusal(_w: &mut GatewayWorld) {}
+
+#[then("no context gamma gains any entry")]
+async fn no_context_entry(_w: &mut GatewayWorld) {}
+
 // ------------------------------------------------------------------ main
 
 #[tokio::main]
