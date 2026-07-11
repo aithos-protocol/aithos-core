@@ -27,8 +27,14 @@ pub struct Manifest {
     #[serde(rename = "aithos-core")]
     pub version: String,
     pub edition: Edition,
-    /// Flat file pins until step H replaces them with Merkle state roots.
+    /// Flat file pins — kept BESIDE the Merkle roots (decided 2026-07-11):
+    /// they still cover byte-rollback of sealed `self` blobs (§02.8).
     pub files: BTreeMap<String, String>,
+    /// Merkle state roots (§02.10, pass H1): `public`/`circle`/`self`/
+    /// `vault` → hex root. Empty on pre-H editions (absent from their
+    /// signed bytes, so old chain hashes are untouched).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub roots: BTreeMap<String, String>,
     /// `sha256:<hex>` of the last gamma entry's JCS (§02.7); empty when the
     /// log is empty.
     #[serde(default)]
@@ -59,6 +65,7 @@ impl Manifest {
         prev_hash: String,
         created_at: String,
         files: BTreeMap<String, String>,
+        roots: BTreeMap<String, String>,
         gamma_head: String,
     ) -> Result<Self> {
         let mut m = Manifest {
@@ -69,6 +76,7 @@ impl Manifest {
                 created_at,
             },
             files,
+            roots,
             gamma_head,
             signature: SignatureBlock {
                 alg: "ed25519".to_owned(),

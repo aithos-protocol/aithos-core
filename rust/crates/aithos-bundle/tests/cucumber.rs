@@ -154,6 +154,9 @@ pub struct ProtocolWorld {
     // --- step G+: obligations ---
     gplus_checks: Option<serde_json::Value>,
     sib_chains: Vec<Vec<Mandate>>,
+    // --- step H1: merkle ---
+    h_proof: Option<aithos_core::merkle::Proof>,
+    h_old_proof: Option<aithos_core::merkle::Proof>,
 }
 
 impl ProtocolWorld {
@@ -883,6 +886,7 @@ fn wrong_predecessor(w: &mut ProtocolWorld) {
         "0".repeat(64),
         NOW.to_owned(),
         latest.files.clone(),
+        latest.roots.clone(),
         latest.gamma_head.clone(),
     )
     .unwrap();
@@ -5178,6 +5182,435 @@ fn gplus_guard_only_refused(w: &mut ProtocolWorld) {
 fn gplus_chain_refused(w: &mut ProtocolWorld) {
     let r = w.chain_result.as_ref().unwrap();
     assert!(r.is_err(), "chain should be refused, got {r:?}");
+}
+
+// --- step H1: merkle state roots (spec 02.10) ---
+
+const H_NOW: &str = "2026-07-09T12:00:00Z";
+
+impl ProtocolWorld {
+    fn h_manifest(&mut self) -> Manifest {
+        let bytes = self
+            .gbundle()
+            .store
+            .get("manifest.json")
+            .unwrap()
+            .expect("an edition was published");
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    fn h_tree(&mut self, height: u64) -> aithos_bundle::state::StateTree {
+        let bytes = self
+            .gbundle()
+            .store
+            .get(&format!("manifests/tree-{height}.json"))
+            .unwrap()
+            .expect("tree sidecar");
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    fn h_root(&mut self, zone: &str) -> [u8; 32] {
+        let m = self.h_manifest();
+        <[u8; 32]>::try_from(hex::decode(&m.roots[zone]).unwrap()).unwrap()
+    }
+
+    fn h_add(&mut self, zone: Zone, folder: &str, name: &str) {
+        let owner = self.owner(0);
+        let mut ent = std::mem::take(&mut self.ent);
+        let b = self.gbundle();
+        if !folder.is_empty() {
+            b.ensure_folder(zone, folder, &owner, &mut ent).unwrap();
+        }
+        b.section_add(
+            &SectionSpec {
+                zone,
+                folder_path: folder,
+                name,
+                title: "note",
+                tags: &[],
+                body: BODY,
+                now: H_NOW,
+            },
+            &owner,
+            &mut ent,
+        )
+        .unwrap();
+        self.ent = ent;
+    }
+
+    fn h_publish(&mut self) {
+        let owner = self.owner(0);
+        self.gbundle().publish(&owner, H_NOW).unwrap();
+    }
+
+    fn h_diff(&mut self) -> std::collections::BTreeMap<String, &'static str> {
+        let h = self.h_manifest().edition.height;
+        let old = self.h_tree(h - 1);
+        let new = self.h_tree(h);
+        aithos_bundle::state::tree_diff(&old, &new)
+    }
+}
+
+// --- H1 givens ---
+
+#[given("a bundle with content in every zone")]
+#[given("a published edition with content in every zone")]
+fn h_full_bundle(w: &mut ProtocolWorld, step: &cucumber::gherkin::Step) {
+    w.init_bundle();
+    w.h_add(Zone::Public, "", "bio");
+    w.h_add(Zone::Circle, "projets", "note1");
+    w.h_add(Zone::Self_, "", "souvenir");
+    if step.value.starts_with("a published") {
+        w.h_publish();
+    }
+}
+
+#[given("a bundle whose self zone holds nothing")]
+fn h_empty_self(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.h_add(Zone::Public, "", "bio");
+}
+
+#[given("a published edition with a circle section under a folder")]
+fn h_folder_section(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.h_add(Zone::Circle, "projets", "note1");
+    w.h_add(Zone::Circle, "projets", "note2");
+    w.h_publish();
+}
+
+#[given("a published edition with three self blobs")]
+fn h_three_self(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    for name in ["a", "b", "c"] {
+        w.h_add(Zone::Self_, "", name);
+    }
+    w.h_publish();
+}
+
+#[given("a published edition with a circle folder \"archives/old\" holding a section")]
+fn h_movable(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.h_add(Zone::Circle, "archives/old", "note1");
+    w.h_add(Zone::Circle, "projets", "keep");
+    w.h_publish();
+}
+
+// --- H1 whens ---
+
+#[when("the owner publishes an edition")]
+fn h_when_publish(w: &mut ProtocolWorld) {
+    w.h_publish();
+}
+
+#[when("the owner adds a circle section and republishes")]
+fn h_add_circle_republish(w: &mut ProtocolWorld) {
+    w.h_add(Zone::Circle, "projets", "note-h");
+    w.h_publish();
+}
+
+#[when("the owner adds one more circle section and republishes")]
+fn h_add_one_republish(w: &mut ProtocolWorld) {
+    w.h_add(Zone::Circle, "projets", "fresh");
+    w.h_publish();
+}
+
+#[when("the owner republishes without any change")]
+fn h_republish(w: &mut ProtocolWorld) {
+    w.h_publish();
+}
+
+#[when("a verifier asks for the section's inclusion proof")]
+fn h_ask_proof(w: &mut ProtocolWorld) {
+    let p = w
+        .gbundle()
+        .prove_section(Zone::Circle, "projets/note1")
+        .unwrap();
+    w.h_proof = Some(p);
+}
+
+#[when("the mirror alters the section's title inside the proven row")]
+fn h_tamper_row(w: &mut ProtocolWorld) {
+    let mut p = w
+        .gbundle()
+        .prove_section(Zone::Circle, "projets/note1")
+        .unwrap();
+    let bytes = hex::decode(&p.payload).unwrap();
+    let (row, hh) = bytes.split_at(bytes.len() - 32);
+    let mut row: serde_json::Value = serde_json::from_slice(row).unwrap();
+    row["title"] = serde_json::json!("tampered");
+    let mut payload = aithos_core::jcs::canonical_bytes(&row).unwrap();
+    payload.extend_from_slice(hh);
+    p.payload = hex::encode(payload);
+    w.h_proof = Some(p);
+}
+
+#[when("the owner grants an agent the folder and republishes")]
+fn h_grant_republish(w: &mut ProtocolWorld) {
+    let old = w
+        .gbundle()
+        .prove_section(Zone::Circle, "projets/note1")
+        .unwrap();
+    w.h_old_proof = Some(old);
+    w.grant_to_agent(
+        &[GrantSpec {
+            zone: Zone::Circle,
+            dir: "projets".into(),
+            tag: None,
+        }],
+        NA30,
+        1,
+    );
+    w.h_publish();
+}
+
+#[when("the mirror forges a proof that treats a leaf hash as an interior node")]
+fn h_forge_leaf_as_node(w: &mut ProtocolWorld) {
+    let mut p = w
+        .gbundle()
+        .prove_section(Zone::Circle, "projets/note1")
+        .unwrap();
+    // replace the sibling H_node step with an H_leaf wrap over the same bytes
+    if let aithos_core::merkle::ProofStep::Node { hash, .. } = p.steps[0].clone() {
+        p.steps[0] = aithos_core::merkle::ProofStep::Wrap {
+            pre: String::new(),
+            post: hash,
+        };
+    }
+    w.h_proof = Some(p);
+}
+
+#[when("the mirror forges a proof that presents an interior hash as a leaf")]
+fn h_forge_node_as_leaf(w: &mut ProtocolWorld) {
+    let p = w
+        .gbundle()
+        .prove_section(Zone::Circle, "projets/note1")
+        .unwrap();
+    // claim the two sibling leaves' concatenation as a leaf payload and
+    // skip the H_node step: H_leaf(l ‖ r) ≠ H_node(l, r) by domain
+    let leaf = aithos_core::merkle::h_leaf(&hex::decode(&p.payload).unwrap());
+    let aithos_core::merkle::ProofStep::Node { hash, side } = p.steps[0].clone() else {
+        panic!("first step should be the sibling");
+    };
+    let sib: [u8; 32] = hex::decode(&hash).unwrap().try_into().unwrap();
+    let mut spliced = Vec::new();
+    match side {
+        aithos_core::merkle::Side::Right => {
+            spliced.extend_from_slice(&leaf);
+            spliced.extend_from_slice(&sib);
+        }
+        aithos_core::merkle::Side::Left => {
+            spliced.extend_from_slice(&sib);
+            spliced.extend_from_slice(&leaf);
+        }
+    }
+    let forged = aithos_core::merkle::Proof {
+        payload: hex::encode(spliced),
+        steps: p.steps[1..].to_vec(),
+        root: p.root,
+    };
+    w.h_proof = Some(forged);
+}
+
+#[when("a verifier asks for one self blob's inclusion proof")]
+fn h_ask_self_proof(w: &mut ProtocolWorld) {
+    let index: aithos_bundle::bundle::SelfIndex =
+        serde_json::from_slice(&w.gbundle().store.get("e/self/index.json").unwrap().unwrap())
+            .unwrap();
+    let sid = index.blobs[1].sid.clone();
+    let p = w.gbundle().prove_self(&sid).unwrap();
+    w.h_proof = Some(p);
+}
+
+#[when("the owner moves the folder under \"projets\" and republishes")]
+fn h_move_republish(w: &mut ProtocolWorld) {
+    let old = w
+        .gbundle()
+        .prove_section(Zone::Circle, "archives/old/note1")
+        .unwrap();
+    w.h_old_proof = Some(old);
+    let owner = w.owner(0);
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gbundle()
+        .move_folder(&owner, "archives/old", "projets", &mut ent)
+        .unwrap();
+    w.ent = ent;
+    w.h_publish();
+}
+
+// --- H1 thens ---
+
+#[then("the manifest pins a root for public, circle, self and the vault")]
+fn h_four_roots(w: &mut ProtocolWorld) {
+    let m = w.h_manifest();
+    for zone in ["public", "circle", "self", "vault"] {
+        let r = m.roots.get(zone).unwrap_or_else(|| panic!("{zone} root"));
+        assert_eq!(r.len(), 64, "{zone} root must be 32 hex bytes");
+    }
+}
+
+#[then("the flat file pins are still present and verify")]
+fn h_flat_pins_verify(w: &mut ProtocolWorld) {
+    assert!(
+        !w.h_manifest().files.is_empty(),
+        "flat pins ride beside roots"
+    );
+    w.gbundle().verify().expect("the edition must verify");
+}
+
+#[then("an independent recomputation from the store yields the same four roots")]
+fn h_recompute(w: &mut ProtocolWorld) {
+    let m = w.h_manifest();
+    let tree = w.gbundle().state_tree().unwrap();
+    assert_eq!(tree.roots, m.roots, "recomputed roots must match");
+}
+
+#[then("the self root is thirty-two zero bytes")]
+fn h_self_empty(w: &mut ProtocolWorld) {
+    assert_eq!(w.h_manifest().roots["self"], "00".repeat(32));
+}
+
+#[then("the circle root changes")]
+fn h_circle_changed(w: &mut ProtocolWorld) {
+    let h = w.h_manifest().edition.height;
+    let prev: Manifest = serde_json::from_slice(
+        &w.gbundle()
+            .store
+            .get(&format!("manifests/{}.json", h - 1))
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_ne!(w.h_manifest().roots["circle"], prev.roots["circle"]);
+}
+
+#[then("the public root and the self root are unchanged")]
+fn h_others_unchanged(w: &mut ProtocolWorld) {
+    let h = w.h_manifest().edition.height;
+    let prev: Manifest = serde_json::from_slice(
+        &w.gbundle()
+            .store
+            .get(&format!("manifests/{}.json", h - 1))
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    let m = w.h_manifest();
+    assert_eq!(m.roots["public"], prev.roots["public"]);
+    assert_eq!(m.roots["self"], prev.roots["self"]);
+}
+
+#[then("the proof verifies against the circle root of the signed manifest")]
+fn h_proof_ok(w: &mut ProtocolWorld) {
+    let root = w.h_root("circle");
+    let p = w.h_proof.as_ref().unwrap();
+    aithos_core::merkle::verify_proof(p, &root).expect("proof must verify");
+}
+
+#[then("the proof is refused")]
+fn h_proof_refused(w: &mut ProtocolWorld) {
+    let root = w.h_root("circle");
+    let p = w.h_proof.as_ref().unwrap();
+    let got = aithos_core::merkle::verify_proof(p, &root);
+    assert!(
+        matches!(got, Err(aithos_core::error::Error::MerkleProofInvalid(_))),
+        "expected MerkleProofInvalid, got {got:?}"
+    );
+}
+
+#[then("the old edition's proof for the folder no longer verifies against the new root")]
+#[then("the old edition's proof for the section no longer verifies against the new root")]
+fn h_old_proof_dead(w: &mut ProtocolWorld) {
+    let root = w.h_root("circle");
+    let p = w.h_old_proof.as_ref().unwrap();
+    assert!(
+        aithos_core::merkle::verify_proof(p, &root).is_err(),
+        "the old proof must die against the new root"
+    );
+}
+
+#[then("a fresh proof carries the new header hash and verifies")]
+fn h_fresh_proof(w: &mut ProtocolWorld) {
+    let p = w
+        .gbundle()
+        .prove_section(Zone::Circle, "projets/note1")
+        .unwrap();
+    let root = w.h_root("circle");
+    aithos_core::merkle::verify_proof(&p, &root).expect("fresh proof verifies");
+    let old = w.h_old_proof.as_ref().unwrap();
+    assert_ne!(
+        serde_json::to_string(&p.steps).unwrap(),
+        serde_json::to_string(&old.steps).unwrap(),
+        "the folder prefix must carry the new header"
+    );
+}
+
+#[then("the section proves against the new root through its new address")]
+fn h_proof_new_address(w: &mut ProtocolWorld) {
+    let p = w
+        .gbundle()
+        .prove_section(Zone::Circle, "projets/old/note1")
+        .unwrap();
+    let root = w.h_root("circle");
+    aithos_core::merkle::verify_proof(&p, &root).expect("new-address proof verifies");
+}
+
+#[then("the proof verifies against the self root")]
+fn h_self_proof_ok(w: &mut ProtocolWorld) {
+    let root = w.h_root("self");
+    let p = w.h_proof.as_ref().unwrap();
+    aithos_core::merkle::verify_proof(p, &root).expect("self proof verifies");
+}
+
+#[then("the proof carries no name, no path and no sibling row")]
+fn h_self_proof_opaque(w: &mut ProtocolWorld) {
+    let p = w.h_proof.as_ref().unwrap();
+    assert!(
+        p.steps
+            .iter()
+            .all(|s| matches!(s, aithos_core::merkle::ProofStep::Node { .. })),
+        "self proofs are sibling hashes only"
+    );
+    let json = serde_json::to_string(p).unwrap();
+    for leak in ["name", "title", "wrap", "souvenir"] {
+        assert!(!json.contains(leak), "self proof leaks '{leak}'");
+    }
+}
+
+#[then("the edition diff descends to exactly the new section")]
+fn h_diff_exact(w: &mut ProtocolWorld) {
+    let diff = w.h_diff();
+    let added: Vec<&String> = diff
+        .iter()
+        .filter(|(k, v)| **v == "added" && k.contains("/s/"))
+        .map(|(k, _)| k)
+        .collect();
+    assert_eq!(added.len(), 1, "exactly one section appears: {diff:?}");
+    assert!(added[0].starts_with("circle:d/"), "it is the circle one");
+}
+
+#[then("no other zone appears in the diff")]
+fn h_diff_one_zone(w: &mut ProtocolWorld) {
+    let diff = w.h_diff();
+    assert!(
+        diff.keys().all(|k| k.starts_with("circle:")),
+        "only circle may change: {diff:?}"
+    );
+}
+
+#[then("the edition diff descends into both the old and the new parent")]
+fn h_diff_both_parents(w: &mut ProtocolWorld) {
+    let diff = w.h_diff();
+    let removed = diff.values().filter(|v| **v == "removed").count();
+    let added = diff.values().filter(|v| **v == "added").count();
+    assert!(removed > 0, "the old parent loses the subtree: {diff:?}");
+    assert!(added > 0, "the new parent gains the subtree: {diff:?}");
+}
+
+#[then("the edition diff is empty")]
+fn h_diff_empty(w: &mut ProtocolWorld) {
+    let diff = w.h_diff();
+    assert!(diff.is_empty(), "no change, no diff: {diff:?}");
 }
 
 // ------------------------------------------------------------------ main

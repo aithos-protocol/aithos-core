@@ -27,6 +27,7 @@ pub mod ids;
 pub mod jcs;
 pub mod keys;
 pub mod mandate;
+pub mod merkle;
 pub mod path;
 pub mod revocation;
 pub mod seal;

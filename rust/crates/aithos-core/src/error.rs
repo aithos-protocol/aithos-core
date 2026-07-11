@@ -59,6 +59,12 @@ pub enum Error {
     #[error("obligation unsatisfied — no valid receipt discharges the gate: {0}")]
     GammaObligationUnsatisfied(String),
 
+    #[error("merkle proof invalid: {0}")]
+    MerkleProofInvalid(String),
+
+    #[error("merkle root mismatch: {0}")]
+    MerkleRootMismatch(String),
+
     #[error("stale freshness anchor: {0}")]
     GammaStaleAnchor(String),
 

@@ -911,6 +911,10 @@ impl<S: Store> Bundle<S> {
             let prev: Manifest = self.get_json(&format!("manifests/{}.json", height - 1))?;
             prev.chain_hash()?
         };
+        // Merkle state tree (§02.10): roots ride the signed manifest; the
+        // per-edition node map is a pinned sidecar for root-descent diffs.
+        let tree = self.state_tree()?;
+        self.put_json(&format!("manifests/tree-{height}.json"), &tree)?;
         let files = self.all_pinned_files(height)?;
         let gamma_head = self.gamma_head()?;
         let manifest = Manifest::build(
@@ -919,6 +923,7 @@ impl<S: Store> Bundle<S> {
             prev_hash,
             now.to_owned(),
             files,
+            tree.roots,
             gamma_head,
         )?;
         self.put_json(&format!("manifests/{height}.json"), &manifest)?;
@@ -983,6 +988,16 @@ impl<S: Store> Bundle<S> {
         aithos_core::gamma::verify_links(&entries)?;
         if aithos_core::gamma::head(&entries)? != latest.gamma_head {
             return Err(err("manifest gamma_head does not pin the log tip".into()));
+        }
+        // Merkle state roots (§02.10): recompute from the files alone and
+        // compare with the pinned roots. Pre-H editions carry none.
+        if !latest.roots.is_empty() {
+            let tree = self.state_tree()?;
+            if tree.roots != latest.roots {
+                return Err(Error::MerkleRootMismatch(
+                    "recomputed state roots do not match the manifest".into(),
+                ));
+            }
         }
         Ok(())
     }
