@@ -48,8 +48,8 @@ impl GatewayStore {
         GatewayStore::Mem(Arc::new(Mutex::new(MemStore::default())))
     }
 
-    fn fs(root: &PathBuf) -> FsStore {
-        FsStore::new(root.clone())
+    fn fs(root: &std::path::Path) -> FsStore {
+        FsStore::new(root.to_path_buf())
     }
 }
 
