@@ -301,6 +301,19 @@ enum Command {
         /// Display path (public/circle) or the blob sid (self).
         path: String,
     },
+    /// Build a count proof — or an absence proof — for a mandate against
+    /// the committed gamma counts root (spec 07.10), verified offline
+    /// before printing. Every TOTAL cap check rides one such proof.
+    LogProve {
+        #[arg(long)]
+        dir: String,
+        /// The mandate id whose counters are proven.
+        #[arg(long, conflicts_with = "absent")]
+        mandate: Option<String>,
+        /// Prove this id was NEVER counted (sorted-adjacency absence).
+        #[arg(long)]
+        absent: Option<String>,
+    },
     /// Root-descent diff between two editions (spec 02.10): the node
     /// labels added, removed or changed. Defaults to previous → latest.
     EditionDiff {
@@ -863,6 +876,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proof verifies against the signed {zone} root ({} steps)",
                 proof.steps.len()
             );
+            Ok(())
+        }
+        Command::LogProve { dir, mandate, absent } => {
+            let bundle = bundle_at(&dir)?;
+            let manifest: aithos_bundle::manifest::Manifest =
+                serde_json::from_slice(&std::fs::read(format!("{dir}/manifest.json"))?)?;
+            if manifest.gamma_counts_root.is_empty() {
+                return Err("no gamma counts root — publish an edition first".into());
+            }
+            let root: [u8; 32] = hex::decode(&manifest.gamma_counts_root)?
+                .try_into()
+                .map_err(|_| "malformed counts root")?;
+            let tallies = aithos_core::gamma::counts_tally(&bundle.gamma_entries()?);
+            match (mandate, absent) {
+                (Some(id), None) => {
+                    let proof = aithos_core::gamma::prove_count(&tallies, &id)?;
+                    let (_, counters) = aithos_core::gamma::verify_count_proof(&proof, &root)?;
+                    println!("{}", serde_json::to_string_pretty(&proof)?);
+                    eprintln!(
+                        "count proof verifies against the committed counts root: {}",
+                        serde_json::to_string(&counters)?
+                    );
+                }
+                (None, Some(id)) => {
+                    let proof = aithos_core::gamma::prove_absence(&tallies, &id)?;
+                    aithos_core::gamma::verify_absence(&id, &proof, &root)?;
+                    println!("{}", serde_json::to_string_pretty(&proof)?);
+                    eprintln!("absence proof verifies: {id} was never counted");
+                }
+                _ => return Err("pass exactly one of --mandate or --absent".into()),
+            }
             Ok(())
         }
         Command::EditionDiff { dir, from, to } => {

@@ -1089,3 +1089,77 @@ fn a_move_rotates_cuts_the_old_parent_and_keeps_the_direct_line() {
         .assert()
         .success();
 }
+
+/// H2 (spec 07.10): the committed counts trie serves offline count and
+/// absence proofs; a counted mandate can never be proven absent.
+#[test]
+fn log_prove_counts_and_absence_offline() {
+    let dir = init_bundle();
+    ac().args([
+        "grant-act",
+        "--dir",
+        &d(&dir),
+        "--seed-hex",
+        OWNER,
+        "--agent-seed-hex",
+        AGENT,
+        "gmail",
+        "reply",
+    ])
+    .assert()
+    .success();
+    let cert = last_cert(&dir);
+    let mandate_id = serde_json::from_str::<serde_json::Value>(
+        &std::fs::read_to_string(&cert).unwrap(),
+    )
+    .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    for i in 1..=2 {
+        ac().args([
+            "action",
+            "--dir",
+            &d(&dir),
+            "--cert",
+            &cert,
+            "--agent-seed-hex",
+            AGENT,
+            "gmail",
+            "reply",
+            "--args",
+            &format!("mail {i}"),
+        ])
+        .assert()
+        .success();
+    }
+    ac().args(["edition-publish", "--dir", &d(&dir), "--seed-hex", OWNER])
+        .assert()
+        .success();
+
+    // Count proof: two actions, proven against the committed root.
+    ac().args(["log-prove", "--dir", &d(&dir), "--mandate", &mandate_id])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"payload\""))
+        .stderr(predicate::str::contains("count proof verifies"))
+        .stderr(predicate::str::contains("\"actions\":2"));
+
+    // Absence proof for an id never counted.
+    ac().args([
+        "log-prove",
+        "--dir",
+        &d(&dir),
+        "--absent",
+        "mandate_zzzzzzzzzzzzzzzzzzzzzzzzzz",
+    ])
+    .assert()
+    .success()
+    .stderr(predicate::str::contains("was never counted"));
+
+    // A counted mandate cannot be proven absent — fail-closed.
+    ac().args(["log-prove", "--dir", &d(&dir), "--absent", &mandate_id])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("counted"));
+}
