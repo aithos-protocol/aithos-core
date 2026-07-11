@@ -166,6 +166,13 @@ pub struct ProtocolWorld {
     i_result: Option<Result<(), String>>,
     i_hashes: Vec<String>,
     i_surfaced: Option<Result<Vec<String>, String>>,
+    // --- step K: integration ---
+    k_reader: Vec<Mandate>,
+    k_gmail: Vec<Mandate>,
+    k_social: Vec<Mandate>,
+    k_night: Vec<Mandate>,
+    k_wd: Vec<Mandate>,
+    k_pristine: Option<MemStore>,
 }
 
 impl ProtocolWorld {
@@ -6652,6 +6659,1080 @@ fn i_then_resolution_refused(w: &mut ProtocolWorld) {
         .unwrap()
         .expect_err("the delegate is out of perimeter");
     assert!(err.contains("resolution rejected"), "got: {err}");
+}
+
+// --- step K: integration — the lived bundle (plan §K, spec §09) ---
+//
+// One walkthrough, one artifact. The K cast keeps its own keypairs and
+// chains; where a K step re-enacts an A–I mechanism it calls the same
+// bundle APIs (and, for Thens, sets the same world slots so the existing
+// assertions are reused verbatim). K time starts AFTER the creation
+// fixtures: kd(0) = 2026-07-10, everything stays inside July — one gamma
+// segment, no cross-month fork.
+
+const READER: u8 = 0xC1;
+const KGMAIL: u8 = 0xC2;
+const KNIGHT: u8 = 0xC3;
+
+fn kd(n: u32, hms: &str) -> String {
+    day(9 + n, hms)
+}
+
+impl ProtocolWorld {
+    /// Root mandate with an arbitrary perimeter + constraints, cert stored.
+    fn k_mint_root(
+        &mut self,
+        label: &str,
+        sk: u8,
+        perimeter: Vec<PerimeterEntry>,
+        constraints: serde_json::Value,
+    ) -> Mandate {
+        use aithos_core::mandate::{Mandate as M, MandateSpec};
+        let owner = self.owner(0);
+        let m = M::build_root(
+            &owner.root_sign,
+            &MandateSpec {
+                id: format!("mandate_{}", sid(u128::from(self.ent.e16()[15]) + 990)),
+                subject: self.bundle.as_ref().unwrap().did.clone(),
+                grantee_id: format!("urn:aithos:agent:{label}"),
+                grantee_label: label.to_owned(),
+                grantee_pub: &agent_sk(sk).verifying_key(),
+                perimeter,
+                constraints,
+                not_before: NB.into(),
+                not_after: NA30.into(),
+                issued_at: NB.into(),
+                nonce: hex::encode(self.ent.e16()),
+            },
+        )
+        .unwrap();
+        self.store_cert(&m);
+        m
+    }
+
+    /// Deliver read lines for a folder, then mint ONE cert carrying the
+    /// read entry plus connector actions and constraints ("one key, N
+    /// perimeters"). The line-delivery sidecar cert is not used as a chain.
+    fn k_grant_read_act(
+        &mut self,
+        label: &str,
+        sk: u8,
+        folder: &str,
+        acts: &[&str],
+        constraints: serde_json::Value,
+    ) -> Vec<Mandate> {
+        use aithos_core::mandate::Verb;
+        let owner = self.owner(0);
+        self.bundle
+            .as_mut()
+            .unwrap()
+            .grant(
+                &owner,
+                &format!("{label}-lines"),
+                &agent_sk(sk).verifying_key(),
+                &[dir_spec(folder)],
+                NB,
+                NA30,
+                0,
+                &mut self.ent,
+            )
+            .unwrap();
+        let dir = self
+            .bundle
+            .as_ref()
+            .unwrap()
+            .resolve_folder(Zone::Circle, folder)
+            .unwrap();
+        let mut perimeter = vec![PerimeterEntry::Ethos {
+            verb: Verb::Read,
+            zone: Zone::Circle,
+            dir,
+            tag: None,
+        }];
+        for a in acts {
+            perimeter.push(PerimeterEntry::parse(a).unwrap());
+        }
+        vec![self.k_mint_root(label, sk, perimeter, constraints)]
+    }
+
+    /// Append (or refuse) an action under a named chain at a K time,
+    /// setting the shared gamma slots so existing Thens read the result.
+    #[allow(clippy::too_many_arguments)] // same shape as grant()/log_action
+    fn k_act(
+        &mut self,
+        chain: &[Mandate],
+        sk: u8,
+        connector: &str,
+        action: &str,
+        at: &str,
+        checks: Option<serde_json::Value>,
+        sealed: Option<serde_json::Value>,
+    ) -> Result<String, String> {
+        self.gamma_baseline = self.gbundle().gamma_entries().unwrap().len();
+        let mut ent = std::mem::take(&mut self.ent);
+        let r = self
+            .gbundle()
+            .log_action_with_checks(
+                chain,
+                &agent_sk(sk),
+                &aithos_bundle::log::ActionSpec {
+                    connector,
+                    action,
+                    args_hash: G_ARGS,
+                    now: at,
+                    budget: None,
+                    sealed_args: sealed,
+                },
+                checks,
+                &mut ent,
+            )
+            .map(|e| e.id)
+            .map_err(|e| e.to_string());
+        self.ent = ent;
+        r
+    }
+
+    /// Owner adds a circle section at a K time (the fixture helper logs
+    /// at the D-era NOW, which would send `at` backward on the lived log).
+    fn k_add_section(&mut self, folder: &str, name: &str, at: &str) {
+        let owner = self.owner(0);
+        let mut ent = std::mem::take(&mut self.ent);
+        let bundle = self.bundle.as_mut().unwrap();
+        bundle
+            .ensure_folder(Zone::Circle, folder, &owner, &mut ent)
+            .unwrap();
+        bundle
+            .section_add(
+                &SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: folder,
+                    name,
+                    title: "note",
+                    tags: &[],
+                    body: BODY,
+                    now: at,
+                },
+                &owner,
+                &mut ent,
+            )
+            .unwrap();
+        self.ent = ent;
+    }
+
+    /// The approver's receipt over the prepared social publish, WYSIWYS.
+    fn k_approval(&mut self, at: &str) -> serde_json::Value {
+        let leaf = self.k_social.last().unwrap().id.clone();
+        ob_receipt(
+            &agent_sk(APPROVER),
+            "publish-approval",
+            (&leaf, "publish", G_ARGS),
+            "approve",
+            at,
+            Some("sha256:rendered-ship-it"),
+        )
+    }
+}
+
+// --- K1 whens: tree, grants, liveness ---
+
+#[when(expr = "I add a public section {string} in folder {string}")]
+fn k_add_public(w: &mut ProtocolWorld, name: String, folder: String) {
+    let owner = w.owner(0);
+    let bundle = w.bundle.as_mut().unwrap();
+    bundle
+        .ensure_folder(Zone::Public, &folder, &owner, &mut w.ent)
+        .unwrap();
+    bundle
+        .section_add(
+            &SectionSpec {
+                zone: Zone::Public,
+                folder_path: &folder,
+                name: &name,
+                title: "bio",
+                tags: &[],
+                body: PUB_BODY,
+                now: NOW,
+            },
+            &owner,
+            &mut w.ent,
+        )
+        .unwrap();
+}
+
+#[when(expr = "I add a self folder {string} with a section {string}")]
+fn k_add_self(w: &mut ProtocolWorld, folder: String, name: String) {
+    let owner = w.owner(0);
+    w.bundle
+        .as_mut()
+        .unwrap()
+        .section_add(
+            &SectionSpec {
+                zone: Zone::Self_,
+                folder_path: &folder,
+                name: &name,
+                title: "cicatrice au genou",
+                tags: &["sante".to_owned()],
+                body: SELF_BODY,
+                now: NOW,
+            },
+            &owner,
+            &mut w.ent,
+        )
+        .unwrap();
+}
+
+#[when(expr = "the owner grants a reader agent read on circle folder {string} with issue depth 1")]
+fn k_grant_reader(w: &mut ProtocolWorld, folder: String) {
+    let owner = w.owner(0);
+    let m = w
+        .bundle
+        .as_mut()
+        .unwrap()
+        .grant(
+            &owner,
+            "reader",
+            &agent_sk(READER).verifying_key(),
+            &[dir_spec(&folder)],
+            NB,
+            NA30,
+            1,
+            &mut w.ent,
+        )
+        .unwrap();
+    w.k_reader = vec![m];
+}
+
+#[when(
+    "the owner grants a gmail agent read on \"projets/perso\" plus gmail send and reply, max_actions 3, counter_sign on send"
+)]
+fn k_grant_gmail(w: &mut ProtocolWorld) {
+    w.k_gmail = w.k_grant_read_act(
+        "gmail",
+        KGMAIL,
+        "projets/perso",
+        &["act.x.gmail.send", "act.x.gmail.reply"],
+        serde_json::json!({"max_actions": 3, "counter_sign": ["send"]}),
+    );
+    // Sealed-args audit line (§7.9.3): the vault key the agent seals to.
+    let owner = w.owner(0);
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gbundle()
+        .grant_audit_line(&owner, &agent_sk(KGMAIL).verifying_key(), &mut ent)
+        .unwrap();
+    w.ent = ent;
+}
+
+#[when(
+    "the owner grants a social agent publish requiring human approval within 5 minutes, heartbeat every 7 days grace 3 days"
+)]
+fn k_grant_social(w: &mut ProtocolWorld) {
+    let m = w.k_mint_root(
+        "social",
+        AGENT,
+        vec![PerimeterEntry::parse("act.x.social.*").unwrap()],
+        serde_json::json!({
+            "obligations": [approval_ob()],
+            "heartbeat": {"every": "7d", "grace": "72h"}
+        }),
+    );
+    w.k_social = vec![m.clone()];
+    // The social agent IS the standard AGENT keypair: generic G+ steps
+    // ("the agent publishes without any receipt") reuse w.chain verbatim.
+    w.chain = vec![m];
+}
+
+#[when("the owner beacons at K day 0")]
+fn k_beacon0(w: &mut ProtocolWorld) {
+    w.beacon(1, &kd(0, "12:00:00"));
+}
+
+#[when("the owner beacons again at K day 20")]
+fn k_beacon20(w: &mut ProtocolWorld) {
+    w.beacon(2, &kd(20, "00:00:00"));
+}
+
+#[then(expr = "the reader agent reads the section under {string}")]
+fn k_reader_reads(w: &mut ProtocolWorld, folder: String) {
+    let r = w.agent_reads(&w.k_reader.clone(), READER, &format!("{folder}/note1"));
+    assert_eq!(r.as_deref(), Ok(BODY), "reader read fails: {r:?}");
+}
+
+// --- K1 whens: budgeted, counter-signed, approved, audited actions ---
+
+#[when("the owner co-signs the prepared send and the gmail agent appends it at K day 1")]
+fn k_cosigned_send(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let leaf = w.k_gmail.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &owner.content_sign,
+        "co_sign",
+        (&leaf, "send", G_ARGS),
+        "approve",
+        &kd(1, "11:58:00"),
+        Some("sha256:rendered-mail-to-alice"),
+    );
+    let chain = w.k_gmail.clone();
+    let r = w.k_act(
+        &chain,
+        KGMAIL,
+        "gmail",
+        "send",
+        &kd(1, "12:00:00"),
+        Some(check),
+        None,
+    );
+    w.gamma_result = Some(r);
+}
+
+#[when(expr = "the gmail agent replies with arguments naming recipient {string} at K day 2")]
+fn k_sealed_reply(w: &mut ProtocolWorld, addr: String) {
+    let chain = w.k_gmail.clone();
+    let r = w.k_act(
+        &chain,
+        KGMAIL,
+        "gmail",
+        "reply",
+        &kd(2, "01:00:00"),
+        None,
+        Some(serde_json::json!({"recipient": addr, "body": "hello"})),
+    );
+    w.gamma_result = Some(r);
+}
+
+#[when("the gmail agent appends one more reply at K day 2")]
+fn k_plain_reply(w: &mut ProtocolWorld) {
+    let chain = w.k_gmail.clone();
+    w.k_act(
+        &chain,
+        KGMAIL,
+        "gmail",
+        "reply",
+        &kd(2, "02:00:00"),
+        None,
+        None,
+    )
+    .expect("the third action fits the budget");
+}
+
+#[then("a fourth gmail action entry is rejected as budget spent")]
+fn k_fourth_rejected(w: &mut ProtocolWorld) {
+    let chain = w.k_gmail.clone();
+    let r = w.k_act(
+        &chain,
+        KGMAIL,
+        "gmail",
+        "reply",
+        &kd(2, "03:00:00"),
+        None,
+        None,
+    );
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("budget")),
+        "expected budget exhaustion, got {r:?}"
+    );
+}
+
+#[when("the social agent publishes without any receipt")]
+fn k_publish_bare(w: &mut ProtocolWorld) {
+    let chain = w.k_social.clone();
+    let r = w.k_act(
+        &chain,
+        AGENT,
+        "social",
+        "publish",
+        &kd(2, "11:00:00"),
+        None,
+        None,
+    );
+    w.gamma_result = Some(r);
+}
+
+#[when(
+    expr = "the approver signs the prepared publish and the social agent appends it at K day {int}"
+)]
+fn k_approved_publish(w: &mut ProtocolWorld, day_n: u32) {
+    let check = w.k_approval(&kd(day_n, "11:58:00"));
+    let chain = w.k_social.clone();
+    let r = w.k_act(
+        &chain,
+        AGENT,
+        "social",
+        "publish",
+        &kd(day_n, "12:00:00"),
+        Some(check),
+        None,
+    );
+    w.gamma_result = Some(r);
+}
+
+#[when("the social agent presents an approved publish at K day 12")]
+fn k_stale_publish(w: &mut ProtocolWorld) {
+    let check = w.k_approval(&kd(12, "11:58:00"));
+    let chain = w.k_social.clone();
+    let r = w.k_act(
+        &chain,
+        AGENT,
+        "social",
+        "publish",
+        &kd(12, "12:00:00"),
+        Some(check),
+        None,
+    );
+    w.gamma_result = Some(r);
+}
+
+#[then("the action is refused as heartbeat-stale")]
+fn k_stale_refused(w: &mut ProtocolWorld) {
+    let r = w.gamma_result.as_ref().unwrap();
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("heartbeat stale")),
+        "expected GammaHeartbeatStale, got {r:?}"
+    );
+}
+
+// --- K1: delegation, cut, move, revocation ---
+
+#[when(expr = "the reader agent delegates read on folder {string} to a helper")]
+fn k_reader_delegates(w: &mut ProtocolWorld, folder: String) {
+    let parent = w.k_reader[0].clone();
+    let sub = w
+        .bundle
+        .as_mut()
+        .unwrap()
+        .delegate(
+            &parent,
+            &agent_sk(READER),
+            "helper",
+            &agent_sk(HELPER).verifying_key(),
+            &[dir_spec(&folder)],
+            NB,
+            NA30,
+            &mut w.ent,
+        )
+        .unwrap();
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gbundle()
+        .log_delegated_grant(
+            std::slice::from_ref(&parent),
+            &agent_sk(READER),
+            &sub.id,
+            &kd(20, "13:00:00"),
+            &mut ent,
+        )
+        .unwrap();
+    w.ent = ent;
+    w.helper_chain = vec![parent, sub];
+}
+
+#[then(expr = "the helper reads {string} through its delegated line")]
+fn k_helper_reads(w: &mut ProtocolWorld, path: String) {
+    let r = w.agent_reads(&w.helper_chain.clone(), HELPER, &path);
+    assert_eq!(r.as_deref(), Ok(BODY), "helper read fails: {r:?}");
+}
+
+#[when("the reader agent revokes the helper's mandate")]
+fn k_reader_revokes_helper(w: &mut ProtocolWorld) {
+    let helper_id = w.helper_chain[1].id.clone();
+    let parent = vec![w.k_reader[0].clone()];
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gb()
+        .log_revoke_as(
+            &parent,
+            &agent_sk(READER),
+            &helper_id,
+            "cleanup",
+            &kd(20, "14:00:00"),
+            &mut ent,
+        )
+        .unwrap();
+    w.ent = ent;
+}
+
+#[then("the helper's chain is rejected as revoked from the cut")]
+fn k_helper_rejected(w: &mut ProtocolWorld) {
+    let r = w.verify_revocable_at(&w.helper_chain.clone(), &kd(20, "15:00:00"));
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("revoked")),
+        "expected revoked, got {r:?}"
+    );
+}
+
+#[then("the moved folder carries a fresh key version at its new address")]
+fn k_moved_fresh_version(w: &mut ProtocolWorld) {
+    let b = w.bundle.as_ref().unwrap();
+    let chain = b
+        .resolve_folder(Zone::Circle, "projets/archive/perso")
+        .unwrap();
+    let node = NodePath::folder(Zone::Circle, chain);
+    let header: Header = read_json(b, &hdr_path_of(&node));
+    assert_eq!(header.node, node.to_string(), "header binds the new path");
+    assert_eq!(header.latest_version(), 2, "fresh key version");
+    assert!(
+        !header.key_versions.contains_key("1"),
+        "old versions stay at the old address"
+    );
+}
+
+#[then(expr = "the reader agent reads new content at {string} with its unchanged keypair")]
+fn k_reader_reads_new(w: &mut ProtocolWorld, folder: String) {
+    w.k_add_section(&folder, "note2", &kd(20, "15:30:00"));
+    let r = w.agent_reads(&w.k_reader.clone(), READER, &format!("{folder}/note2"));
+    assert_eq!(r.as_deref(), Ok(BODY), "post-move reader read fails: {r:?}");
+}
+
+#[when("the owner revokes the gmail agent's mandate with rotation and re-encryption")]
+fn k_revoke_gmail(w: &mut ProtocolWorld) {
+    w.revoke_owner(&w.k_gmail[0].id.clone(), &kd(20, "16:00:00"));
+    w.rotate("projets/archive/perso", KGMAIL);
+}
+
+#[then("the revoked gmail key opens neither the new bodies nor the new lines")]
+fn k_revoked_gmail_dark(w: &mut ProtocolWorld) {
+    // No line at the fresh version…
+    let b = w.bundle.as_ref().unwrap();
+    let chain = b
+        .resolve_folder(Zone::Circle, "projets/archive/perso")
+        .unwrap();
+    let node = NodePath::folder(Zone::Circle, chain);
+    let header: Header = read_json(b, &hdr_path_of(&node));
+    let v = header.latest_version();
+    let kid = kid_of(KGMAIL);
+    let kex = aithos_core::keys::grantee_kex_secret(&agent_sk(KGMAIL));
+    assert!(
+        header.open(&b.did, v, &kid, &kex).is_err(),
+        "the revoked key must hold no line at v{v}"
+    );
+    // …and no read of content written since.
+    let r = w.read_at(
+        &w.k_gmail.clone(),
+        KGMAIL,
+        "projets/archive/perso/note2",
+        &kd(20, "17:00:00"),
+    );
+    assert!(r.is_err(), "revoked gmail key must not read, got {r:?}");
+}
+
+#[then("the reader agent reads new content without lifting a finger")]
+fn k_reader_survives(w: &mut ProtocolWorld) {
+    w.k_add_section("projets/archive/perso", "note3", &kd(20, "16:30:00"));
+    let r = w.agent_reads(&w.k_reader.clone(), READER, "projets/archive/perso/note3");
+    assert_eq!(r.as_deref(), Ok(BODY), "survivor read fails: {r:?}");
+}
+
+#[then("the gmail agent's actions logged before revoked_at still verify at their own timestamps")]
+fn k_gmail_old_actions_ok(w: &mut ProtocolWorld) {
+    assert!(
+        w.verify_revocable_at(&w.k_gmail.clone(), &kd(2, "12:30:00"))
+            .is_ok(),
+        "pre-revocation timestamps must stay valid"
+    );
+}
+
+// --- K1: commitments and proofs on the lived bundle ---
+
+#[then("the manifest commits a gamma root and entry count for each segment and a counts root")]
+fn k_gamma_commitments(w: &mut ProtocolWorld) {
+    let m = w.h_manifest();
+    assert!(!m.gamma_roots.is_empty(), "at least one committed segment");
+    for (month, seg) in &m.gamma_roots {
+        assert_eq!(seg.root.len(), 64, "{month}: 32-byte hex root");
+        assert!(seg.n >= 1, "{month}: committed entry count");
+    }
+    assert_eq!(m.gamma_counts_root.len(), 64, "counts root committed");
+    assert_ne!(m.gamma_counts_root, "0".repeat(64), "counts trie non-empty");
+}
+
+#[when("a verifier asks for the moved section's inclusion proof")]
+fn k_ask_moved_proof(w: &mut ProtocolWorld) {
+    let p = w
+        .gbundle()
+        .prove_section(Zone::Circle, "projets/archive/perso/note1")
+        .unwrap();
+    w.h_proof = Some(p);
+}
+
+#[then("the moved section proves against the new root through its new address")]
+fn k_moved_proof_new_root(w: &mut ProtocolWorld) {
+    let p = w
+        .gbundle()
+        .prove_section(Zone::Circle, "projets/archive/perso/note1")
+        .unwrap();
+    let root = w.h_root("circle");
+    aithos_core::merkle::verify_proof(&p, &root).expect("new-address proof verifies");
+}
+
+#[when("a verifier asks for the social mandate's count proof")]
+fn k_ask_count_proof(w: &mut ProtocolWorld) {
+    let id = w.k_social[0].id.clone();
+    let tallies = w.h2_tallies();
+    w.h2_proof = Some(prove_count(&tallies, &id).unwrap());
+}
+
+// --- K1: fork and merge on the lived bundle ---
+
+#[given("two copies of the lived bundle")]
+fn k_two_copies(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    w.gbundle().publish(&owner, &kd(20, "18:00:00")).unwrap();
+    let b = w.bundle.as_ref().unwrap();
+    w.i_other = Some(Bundle {
+        store: b.store.clone(),
+        did: b.did.clone(),
+    });
+}
+
+#[given("each copy adds a circle section under its own folder")]
+fn k_disjoint_adds(w: &mut ProtocolWorld) {
+    w.i_add_on(false, "alpha", "note-a", &kd(20, "19:00:00"));
+    w.i_add_on(true, "beta", "note-b", &kd(20, "19:30:00"));
+    w.i_publish_on(false, &kd(20, "20:00:00"));
+    w.i_publish_on(true, &kd(20, "20:00:00"));
+}
+
+#[when("either copy publishes the merge edition")]
+fn k_merge(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let other = w.i_other.take().unwrap();
+    let r = w
+        .gbundle()
+        .edition_merge(&other, &owner, &kd(20, "21:00:00"))
+        .map_err(|e| e.to_string());
+    w.i_other = Some(other);
+    w.i_result = Some(r);
+}
+
+// --- K1: the cold replay ---
+
+#[then("a cold verifier given only the files accepts the final edition and the full log")]
+fn k_cold_replay(w: &mut ProtocolWorld) {
+    let src = w.bundle.as_ref().unwrap();
+    let cold = Bundle {
+        store: src.store.clone(),
+        did: src.did.clone(),
+    };
+    cold.verify().expect("the cold edition verifies");
+    cold.gamma_verify().expect("the cold log verifies");
+}
+
+#[then("every logged action re-verifies against its mandate chain at its own timestamp")]
+fn k_replay_actions(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let chains: Vec<Vec<Mandate>> = [&w.k_gmail, &w.k_social, &w.k_night]
+        .iter()
+        .filter(|c| !c.is_empty())
+        .map(|c| (*c).clone())
+        .collect();
+    let mut replayed = 0;
+    for e in entries.iter().filter(|e| e.kind == "action") {
+        let by = e.authorized_by.as_ref().expect("actions carry a mandate");
+        let chain = chains
+            .iter()
+            .find(|c| &c.last().unwrap().id == by)
+            .unwrap_or_else(|| panic!("unknown mandate {by}"));
+        w.verify_revocable_at(chain, &e.at)
+            .unwrap_or_else(|err| panic!("action {} fails replay: {err}", e.id));
+        replayed += 1;
+    }
+    assert!(
+        replayed >= 5,
+        "the lived log replays its actions: {replayed}"
+    );
+}
+
+#[then("the revoked chains stay refused in the replay")]
+fn k_replay_revoked(w: &mut ProtocolWorld) {
+    for chain in [w.k_gmail.clone(), w.helper_chain.clone()] {
+        let r = w.verify_revocable_at(&chain, &kd(20, "22:00:00"));
+        assert!(
+            r.as_ref().is_err_and(|e| e.contains("revoked")),
+            "expected revoked in replay, got {r:?}"
+        );
+    }
+}
+
+// --- K2/K3/K4: the lived-bundle builder and fresh copies ---
+
+impl ProtocolWorld {
+    /// Re-run the full K walkthrough (mutating steps only) and snapshot
+    /// the pristine lived store for per-attack fresh copies.
+    fn k_build_lived(&mut self) {
+        self.init_bundle();
+        self.add_circle_section("projets/perso", "note1", "toto");
+        self.add_circle_section("projets/archive", "old2024", "done");
+        k_add_public(self, "readme".into(), "docs".into());
+        k_add_self(self, "sante".into(), "journal".into());
+        self.publish_bundle();
+        k_grant_reader(self, "projets/perso".into());
+        k_grant_gmail(self);
+        k_grant_social(self);
+        k_beacon0(self);
+        self.publish_bundle();
+        k_cosigned_send(self);
+        k_sealed_reply(self, "alice@example.com".into());
+        k_plain_reply(self);
+        k_approved_publish(self, 2);
+        k_beacon20(self);
+        k_approved_publish(self, 20);
+        k_reader_delegates(self, "projets/perso".into());
+        k_reader_revokes_helper(self);
+        owner_moves_folder(self, "projets/perso".into(), "projets/archive".into());
+        k_reader_reads_new(self, "projets/archive/perso".into());
+        k_revoke_gmail(self);
+        k_reader_survives(self);
+        self.h_publish();
+        k_two_copies(self);
+        k_disjoint_adds(self);
+        k_merge(self);
+        self.i_result
+            .clone()
+            .unwrap()
+            .expect("the lived merge holds");
+        self.k_pristine = Some(self.bundle.as_ref().unwrap().store.clone());
+    }
+
+    fn k_restore(&mut self) {
+        let pristine = self.k_pristine.clone().expect("lived bundle built");
+        self.bundle.as_mut().unwrap().store = pristine;
+        self.gamma_result = None;
+        self.h_proof = None;
+        self.h2_verdict = None;
+    }
+}
+
+#[given("a bundle that lived the full K walkthrough")]
+fn k_lived_bundle(w: &mut ProtocolWorld) {
+    w.k_build_lived();
+}
+
+#[given("a fresh copy of the lived bundle")]
+fn k_fresh_copy(w: &mut ProtocolWorld) {
+    w.k_restore();
+}
+
+// --- K2: the tamper battery on the lived artifact ---
+
+#[when("one byte of an entry inside the merged segment is altered")]
+fn k_tamper_merged_segment(w: &mut ProtocolWorld) {
+    let seg = "gamma/2026-07.jsonl";
+    let mut lines = w.segment_lines(seg);
+    let n = lines.len();
+    let line = &mut lines[n - 2]; // inside the merged layout, before the join
+    let idx = line
+        .windows(9)
+        .position(|win| win == b"\"value\":\"")
+        .expect("signature field")
+        + 9;
+    line[idx] = if line[idx] == b'0' { b'1' } else { b'0' };
+    let mut joined: Vec<u8> = Vec::new();
+    for l in &lines {
+        joined.extend_from_slice(l);
+        joined.push(b'\n');
+    }
+    w.gbundle().store.put(seg, &joined).unwrap();
+}
+
+#[when("the mirror forges a lived section proof that presents an interior hash as a leaf")]
+fn k_forge_lived_proof(w: &mut ProtocolWorld) {
+    let p = w
+        .gbundle()
+        .prove_section(Zone::Circle, "projets/archive/perso/note1")
+        .unwrap();
+    let leaf = aithos_core::merkle::h_leaf(&hex::decode(&p.payload).unwrap());
+    let aithos_core::merkle::ProofStep::Node { hash, side } = p.steps[0].clone() else {
+        panic!("first step should be the sibling");
+    };
+    let sib: [u8; 32] = hex::decode(&hash).unwrap().try_into().unwrap();
+    let mut spliced = Vec::new();
+    match side {
+        aithos_core::merkle::Side::Right => {
+            spliced.extend_from_slice(&leaf);
+            spliced.extend_from_slice(&sib);
+        }
+        aithos_core::merkle::Side::Left => {
+            spliced.extend_from_slice(&sib);
+            spliced.extend_from_slice(&leaf);
+        }
+    }
+    w.h_proof = Some(aithos_core::merkle::Proof {
+        payload: hex::encode(spliced),
+        steps: p.steps[1..].to_vec(),
+        root: p.root,
+    });
+}
+
+#[when("the mirror claims absence of a mandate id that was counted")]
+fn k_forge_absence(w: &mut ProtocolWorld) {
+    let tallies = w.h2_tallies();
+    let ids: Vec<String> = tallies.keys().cloned().collect();
+    assert!(ids.len() >= 3, "the lived trie counts several mandates");
+    let forged = AbsenceProof {
+        left: Some(prove_count(&tallies, &ids[0]).unwrap()),
+        right: Some(prove_count(&tallies, &ids[2]).unwrap()),
+    };
+    let pinned = w.h2_counts_root();
+    w.h2_verdict = Some(verify_absence(&ids[1], &forged, &pinned).map_err(|e| e.to_string()));
+}
+
+#[when("the social agent presents an approval receipt bound to other args")]
+fn k_receipt_other_args(w: &mut ProtocolWorld) {
+    let leaf = w.k_social.last().unwrap().id.clone();
+    let check = ob_receipt(
+        &agent_sk(APPROVER),
+        "publish-approval",
+        (&leaf, "publish", "sha256:bb22"),
+        "approve",
+        &kd(20, "21:58:00"),
+        Some("sha256:rendered-ship-it"),
+    );
+    let chain = w.k_social.clone();
+    let r = w.k_act(
+        &chain,
+        AGENT,
+        "social",
+        "publish",
+        &kd(20, "22:00:00"),
+        Some(check),
+        None,
+    );
+    w.gamma_result = Some(r);
+}
+
+#[when("the social agent forges a fresh heartbeat with its own key")]
+fn k_forge_beacon(w: &mut ProtocolWorld) {
+    use ed25519_dalek::Signer;
+    let head = w.gbundle().gamma_head().unwrap();
+    let mut forged = aithos_core::gamma::Entry {
+        v: 1,
+        id: "gamma_000000000000000000000FORGK".into(),
+        prev: head,
+        prevs: None,
+        at: kd(20, "22:30:00"),
+        kind: "heartbeat".into(),
+        target: None,
+        authorized_by: None,
+        authorized_via: None,
+        payload: Some(serde_json::json!({"seq": 99})),
+        body_enc: None,
+        signature: aithos_core::did::SignatureBlock {
+            alg: "ed25519".into(),
+            key: "#content".into(),
+            value: String::new(),
+        },
+    };
+    let mut unsigned = forged.clone();
+    unsigned.signature.value = String::new();
+    forged.signature.value = hex::encode(
+        agent_sk(AGENT)
+            .sign(&aithos_core::jcs::canonical_bytes(&unsigned).unwrap())
+            .to_bytes(),
+    );
+    let seg = "gamma/2026-07.jsonl";
+    let mut bytes = w.gbundle().store.get(seg).unwrap().unwrap();
+    bytes.extend_from_slice(aithos_core::jcs::canonicalize(&forged).unwrap().as_bytes());
+    bytes.push(b'\n');
+    w.gbundle().store.put(seg, &bytes).unwrap();
+}
+
+#[then("the forged beacon fails log verification")]
+fn k_forged_beacon_dies(w: &mut ProtocolWorld) {
+    assert!(
+        w.bundle.as_ref().unwrap().gamma_verify().is_err(),
+        "a forged beacon must fail log verification"
+    );
+}
+
+#[when("the social agent presents a request anchored to a stale head")]
+fn k_stale_anchor(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let anchor = entries[1].chain_hash().unwrap(); // an early, long-buried entry
+    w.gamma_result = Some(
+        aithos_core::gamma::check_anchor(&entries, &anchor, "24h", &kd(20, "23:00:00"))
+            .map(|()| "fresh".into())
+            .map_err(|e| e.to_string()),
+    );
+}
+
+// --- K3: the keyless view and the perimeters ---
+
+#[then("no keyed-zone target, tag or content is revealed")]
+fn k_nothing_revealed(w: &mut ProtocolWorld) {
+    // Two-layer envelope (§07): section.* bodies on KEYED zones are sealed
+    // — clear target/payload is the design for the public zone only.
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let mut sealed = 0;
+    for e in entries.iter().filter(|e| e.kind.starts_with("section.")) {
+        if e.body_enc.is_some() {
+            assert!(
+                e.target.is_none() && e.payload.is_none(),
+                "{}: a sealed entry leaks clear fields",
+                e.id
+            );
+            sealed += 1;
+        } else {
+            let t = e.target.as_deref().unwrap_or_default();
+            assert!(
+                t.starts_with("/e/public"),
+                "{}: only public entries may ride clear, target {t}",
+                e.id
+            );
+        }
+    }
+    assert!(
+        sealed >= 2,
+        "the lived log holds sealed mutations: {sealed}"
+    );
+}
+
+#[then("the sealed reply arguments open for no key but the owner's")]
+fn k_sealed_args_dark(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let sealed = entries
+        .iter()
+        .find(|e| e.kind == "action" && e.body_enc.is_some())
+        .expect("the lived log holds a sealed-args action")
+        .clone();
+    // The clear payload leaks nothing but the hash…
+    let clear = serde_json::to_string(sealed.payload.as_ref().unwrap()).unwrap();
+    assert!(!clear.contains("alice@example.com"), "args must not leak");
+    // …other keys open nothing…
+    for (chain, sk) in [(w.k_reader.clone(), READER), (w.k_social.clone(), AGENT)] {
+        assert!(
+            w.bundle
+                .as_ref()
+                .unwrap()
+                .open_entry_as_agent(&chain, &agent_sk(sk), &sealed)
+                .is_err(),
+            "only the owner audits sealed args"
+        );
+    }
+    // …the owner reopens them.
+    let args = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .audit_action_args(&owner, &sealed)
+        .unwrap();
+    assert_eq!(args["recipient"], "alice@example.com");
+}
+
+#[then("the revoked gmail key reads nothing written after the cut")]
+fn k_revoked_reads_nothing(w: &mut ProtocolWorld) {
+    let r = w.read_at(
+        &w.k_gmail.clone(),
+        KGMAIL,
+        "projets/archive/perso/note3",
+        &kd(20, "22:00:00"),
+    );
+    assert!(r.is_err(), "revoked key must not read, got {r:?}");
+}
+
+#[then("the gmail key still derives the folder's old key — it cannot be un-taught")]
+fn k_cannot_unteach(w: &mut ProtocolWorld) {
+    let b = w.bundle.as_ref().unwrap();
+    // The moved folder's sid is stable; its OLD header (v1, old address,
+    // old parent chain) stays on disk as archaeology.
+    let new_chain = b
+        .resolve_folder(Zone::Circle, "projets/archive/perso")
+        .unwrap();
+    let m_sid = *new_chain.last().unwrap();
+    let mut old_chain = b.resolve_folder(Zone::Circle, "projets").unwrap();
+    old_chain.push(m_sid);
+    let old_node = NodePath::folder(Zone::Circle, old_chain);
+    let header: Header = read_json(b, &hdr_path_of(&old_node));
+    let kid = kid_of(KGMAIL);
+    let kex = aithos_core::keys::grantee_kex_secret(&agent_sk(KGMAIL));
+    assert!(
+        header.open(&b.did, 1, &kid, &kex).is_ok(),
+        "the old line cannot be un-taught"
+    );
+}
+
+#[then(expr = "the section under {string} stays out of the reader's reach")]
+fn k_reader_contained(w: &mut ProtocolWorld, folder: String) {
+    let r = w.read_at(
+        &w.k_reader.clone(),
+        READER,
+        &format!("{folder}/old2024"),
+        &kd(20, "22:00:00"),
+    );
+    assert!(r.is_err(), "the reader's perimeter is projets/perso only");
+}
+
+// --- K4: the watchdog incident ---
+
+#[given("the owner grants a night agent gmail send with a watchdog appointed")]
+fn k_grant_night(w: &mut ProtocolWorld) {
+    let night = w.k_mint_root(
+        "night",
+        KNIGHT,
+        vec![PerimeterEntry::parse("act.x.gmail.send").unwrap()],
+        aithos_core::mandate::MandateSpec::no_constraints(),
+    );
+    w.k_night = vec![night.clone()];
+    // The Then "the action logged before revoked_at…" reads w.chain.
+    w.chain = vec![night];
+    let wd = w.k_mint_root(
+        "watchdog",
+        WDOG,
+        vec![PerimeterEntry::Revoke { scope: None }],
+        aithos_core::mandate::MandateSpec::no_constraints(),
+    );
+    w.k_wd = vec![wd];
+}
+
+#[when("the night agent acts once")]
+fn k_night_acts(w: &mut ProtocolWorld) {
+    let chain = w.k_night.clone();
+    let r = w.k_act(
+        &chain,
+        KNIGHT,
+        "gmail",
+        "send",
+        &kd(20, "22:00:00"),
+        None,
+        None,
+    );
+    w.gamma_result = Some(r);
+}
+
+#[when("the watchdog revokes the night agent's mandate")]
+fn k_watchdog_revokes(w: &mut ProtocolWorld) {
+    let target = w.k_night[0].id.clone();
+    let wd = w.k_wd.clone();
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gb()
+        .log_revoke_as(
+            &wd,
+            &agent_sk(WDOG),
+            &target,
+            "incident",
+            &kd(20, "22:30:00"),
+            &mut ent,
+        )
+        .unwrap();
+    w.ent = ent;
+}
+
+#[then("the night agent's chain is rejected as revoked from its cut")]
+fn k_night_rejected(w: &mut ProtocolWorld) {
+    let r = w.verify_revocable_at(&w.k_night.clone(), &kd(20, "23:00:00"));
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("revoked")),
+        "expected revoked, got {r:?}"
+    );
+}
+
+#[then("the watchdog opens no body anywhere in the bundle")]
+fn k_watchdog_dark(w: &mut ProtocolWorld) {
+    for path in [
+        "projets/archive/perso/note1",
+        "projets/archive/old2024",
+        "alpha/note-a",
+    ] {
+        let r = w.read_at(&w.k_wd.clone(), WDOG, path, &kd(20, "23:30:00"));
+        assert!(r.is_err(), "the watchdog holds no content key: {path}");
+    }
 }
 
 // ------------------------------------------------------------------ main
