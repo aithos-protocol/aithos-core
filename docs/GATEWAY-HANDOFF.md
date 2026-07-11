@@ -62,6 +62,42 @@ cargo clippy -p aithos-gateway --all-targets -- -D warnings      # clean
   (`gateway/keys.json`) — **v1 disque local uniquement ; passer par KMS/keystore
   scellé avant tout store cloud** (le refus S3 de v1 verrouille ça).
 
+## 3bis. Décisions produit du recul multi-Ethos (Mathieu, 2026-07-10)
+
+Gravées en discussion après le MVP ; elles redéfinissent la cible de la
+prochaine itération du gateway (le MVP actuel reste la démo mono-Ethos).
+
+1. **Stockage de l'ethos : local OU serveur de référence.** Le serveur n'est
+   qu'un backend `Store` de plus (`RemoteStore` à écrire) : requêtes signées
+   par la clé d'owner ou de mandataire — le mandat EST la clé d'API, le
+   serveur applique le même `covers()` qu'un verifier. Il n'est jamais une
+   partie de confiance (intégrité offline) : contrôle d'accès physique +
+   disponibilité seulement.
+2. **Le container ne crée ni clés d'owner ni mandats — il est provisionné.**
+   Au premier boot il génère SA keypair d'agent (la clé ne sort jamais, seule
+   la pubkey est publiée) ; l'owner émet les mandats vers cette pubkey depuis
+   SES outils (les clés d'owner ne touchent jamais le runtime) ; le container
+   reçoit N mandats de N Ethos différents (ex. full "company brand" + Figma
+   scopé "UI website designer"). Une clé, N contextes — natif protocole.
+   Chaque acte est loggé dans le gamma de l'Ethos dont le mandat le couvre.
+   → Remplace l'auto-mint `onboard` du MVP (raccourci de démo assumé).
+3. **Création d'un container = identité d'agent + Ethos de travail dédié.**
+   L'Ethos de travail (journal de bord, mémoire consolidée de l'agent) est
+   créé au provisioning, hébergé typiquement sur le provider (le container
+   est éphémère), mais **owné par l'humain** — l'agent n'y est que mandataire
+   en écriture. Souveraineté (révocation, succession, crypto-erasure) = owner.
+4. **Coffre décentralisé dans les Ethos, jamais chez le LLM.** Les credentials
+   tiers (Figma, Gmail…) vivent scellés dans le vault `/x/` de chaque Ethos,
+   chiffrés vers la clé du gateway (ligne grantée). Pas de coffre central :
+   les accès voyagent avec la donnée, le storage ne lit rien, le gateway
+   ouvre en mémoire, le LLM ne voit jamais un secret. Décision ferme : donner
+   les credentials au LLM (même chiffrés) casserait enforcement, traçabilité
+   et la brique audit — les API tierces ne vérifient pas les mandats Aithos,
+   seul le détenteur du credential applique le périmètre.
+5. **Point ouvert** : en multi-contexte, où logger les refus ? Proposition :
+   acte/refus rattachable à un contexte → gamma de ce contexte ; refus sans
+   contexte (outil inconnu) → gamma de l'Ethos de travail de l'agent.
+
 ## 4. Reste à faire (itérations suivantes, cf. GATEWAY-BOOTSTRAP §7)
 
 - Sceller les args des actes (`sealed_args` §07.9.3 — l'API `log_action` les
