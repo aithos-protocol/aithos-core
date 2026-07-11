@@ -168,7 +168,7 @@ prochaine itération du gateway (le MVP actuel reste la démo mono-Ethos).
 
 ## 4. Reste à faire — phasage v2 (mis à jour 2026-07-10, fin de session)
 
-**Phase B — cœur v2 (lots 0-3 verts au 2026-07-11).**
+**Phase B — cœur v2 : ✅ CLOSE (lot 4 soldé le 2026-07-11, 2ᵉ session gw).**
 Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
 - ✅ Lot 0 contrat ; Lot 1 naissance (`keygen`, identité fichier runner 0600,
   hors store, seuls les pubkeys sortent ; `Bridge::open` prend le keyholder) ;
@@ -190,7 +190,28 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
   NOMS d'outils déclarés (inputSchema objet ouvert, pas de proxy de
   schémas), toute autre méthode → -32601 (passthrough complet : Phase D).
   Suite : 11 scénarios / 57 steps, 16 unit, 4 CLI, 1 e2e, clippy clean.
-- ⬜ Lot 4 : tests surface owner-side, e2e réseau 2 contextes, docs.
+- ✅ Lot 4 (2026-07-11, clôture Phase B) : `tests/owner_surface.rs` (3 tests
+  assert_cmd, binaire réel — certs écrits et `grantee.pubkey` = LA pubkey
+  fournie au grant, grants loggés dans le gamma, auditor_seed_hex montrée
+  UNE fois à côté du warning « STORE COLD », master seed jamais échoé,
+  runner seeds jamais côté owner, warning DEV ONLY, inputs malformés
+  fail-closed) ; `audit-export --context <name>` (requis en config multi,
+  refusé en mono, contexte inconnu refusé — chaque contexte a SON gamma,
+  SON mandat et SA seed d'auditeur ; mono inchangé) ; `tests/e2e_multi.rs`
+  (1 e2e réseau : keygen → provisioning owner par le binaire → `run` multi
+  → JSON-RPC sur vraies sockets : chaque read routé vers SON faux MCP —
+  réponses distinctes observables sur le fil —, write refusé -32001,
+  inconnu default-deny, rien d'autre ne traverse → gammas vérifiés (acte
+  dans le contexte couvrant seulement, xref joignable dans les deux sens,
+  refus routés §3bis.8 : contexte+journal vs journal seul) → audit-export
+  par contexte + refus hors périmètre kind=grant). **Leçon notée** : la
+  seed d'auditeur ne gate PAS la lecture des en-têtes clairs (offline =
+  squelette lisible pour qui tient les fichiers ; la moitié certificat
+  gate la REQUÊTE, la seed ouvre les corps scellés) — un « refus
+  cross-contexte par seed » n'existe donc pas par construction, ne pas
+  le re-tester.
+  Suite finale Phase B : 11 scénarios / 57 steps, 16 unit, 4 CLI,
+  3 owner surface, 2 e2e réseau (mono + 2 contextes), clippy clean.
 
 **Phase C — la boucle « agent qui vit » (~1-2 sessions).** `proxy_llm`
 OpenAI-compat (kind `inference`, budgets tokens — F+ prêt côté core, creds
@@ -222,6 +243,21 @@ l'export d'audit dès son merge, sans travail gateway.
   empoisonne les builds suivants. Les GROS crates (tokio ~34 s) se buildent
   seuls : `cargo build -j 1 -p tokio` dans une tranche pleine.
 - SIGBUS rustc sporadiques (mmap sur FUSE) : retry, puis purge ciblée.
+- **2026-07-11 (2ᵉ session gw) : profil VM HYBRIDE, les recettes ci-dessus
+  sont mortes.** Egress coupé (000 partout) ET unlink interdit SUR LE
+  MONTAGE (cargo meurt en `failed to remove …rcgu.o`) — mais unlink OK
+  hors montage (/tmp) et la toolchain 1.96.1 de la session du 11/07
+  respire encore dans `/tmp/rustup` (inutile sans réseau ni target
+  writable). → **Protocole cloud+janitor du HANDOFF §5 core, à la
+  lettre** : `git archive HEAD` sur la VM → tar dans `_transfer/` du
+  montage (device_stage_files ne lit QUE sous le montage) → sha256 croisé
+  → build/test dans le conteneur cloud (rustup 1.96.1 minimal + clippy +
+  rustfmt, `CARGO_INCREMENTAL=0`, TARGET_DIR dédié, suite gateway ~2 min
+  à froid) → retour des fichiers modifiés par device_commit_files + `cp`
+  (jamais tar -x sur le montage) → commits git sur la VM avec janitor des
+  locks (`mv .git/*.lock` avant chaque commande qui écrit, jamais de
+  `git status` intercalé). Tester les DEUX sondes (egress + unlink sur le
+  MONTAGE, pas /tmp) avant de choisir le profil.
 
 ## 6. ⚠ Git : sessions parallèles, un seul working tree
 
@@ -236,4 +272,6 @@ par session, ou une seule session git-active à la fois.
 Même situation le 2026-07-11 : les commits du lot 3 (gateway) ont été posés
 sur **`feat/obligations`** (branche active de la session core du moment,
 consigne : ne jamais switcher). Fichiers disjoints (crate gateway + ce doc) ;
-à réordonner avec le reste au moment du merge global.
+à réordonner avec le reste au moment du merge global. Les commits du lot 4
+(clôture Phase B, 2ᵉ session gw du 2026-07-11) suivent la même consigne :
+posés sur `feat/obligations`, staging sélectif, fichiers disjoints du core.
