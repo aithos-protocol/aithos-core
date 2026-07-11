@@ -22,7 +22,7 @@ fn io_err(e: std::io::Error) -> Error {
     Error::SealRejected(format!("store i/o: {e}"))
 }
 
-fn segment_of(at: &str) -> Result<String> {
+pub(crate) fn segment_of(at: &str) -> Result<String> {
     gamma::ts_epoch(at)?; // strict format gate
     Ok(format!("gamma/{}.jsonl", &at[..7]))
 }

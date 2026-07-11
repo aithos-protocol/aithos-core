@@ -24,20 +24,20 @@ pub(crate) const KV: u64 = 1; // single key version until step G (revocation rot
 
 // ---------------------------------------------------------------- indexes
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ZoneIndex {
     pub folders: Vec<FolderRow>,
     pub sections: Vec<SectionRow>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FolderRow {
     pub sid: String,
     pub name: String,
     pub parent_sid: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SectionRow {
     pub sid: String,
     pub name: String,
@@ -51,12 +51,12 @@ pub struct SectionRow {
     pub sig: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelfIndex {
     pub blobs: Vec<SelfRow>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelfRow {
     pub sid: String,
     pub key_version: u64,
@@ -103,6 +103,15 @@ pub struct SectionSpec<'a> {
 pub struct Bundle<S: Store> {
     pub store: S,
     pub did: String,
+}
+
+/// What one signed edition commits (gathered by [`Bundle::publish_artifacts`]).
+pub(crate) struct EditionArtifacts {
+    pub files: BTreeMap<String, String>,
+    pub roots: BTreeMap<String, String>,
+    pub gamma_roots: BTreeMap<String, crate::manifest::GammaSegmentRoot>,
+    pub gamma_counts_root: String,
+    pub gamma_head: String,
 }
 
 impl<S: Store> std::fmt::Debug for Bundle<S> {
@@ -517,6 +526,91 @@ impl<S: Store> Bundle<S> {
         )
     }
 
+    /// Rewrite an existing circle section's body under its SAME sid (the
+    /// same-node op of §02.6): new blob under the governing ancestor's
+    /// current key, row updated in place, `section.modify` logged (§07.4).
+    pub fn section_rewrite(
+        &mut self,
+        zone: Zone,
+        display_path: &str,
+        body: &str,
+        owner: &OwnerKeys,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        if zone != Zone::Circle {
+            return Err(Error::InvalidPath(
+                "section_rewrite: circle only this pass".to_owned(),
+            ));
+        }
+        let (row, folders) = self.resolve_clear(zone, display_path)?;
+        let sid = Sid::parse(&row.sid)?;
+        let node = NodePath::section(zone, folders.clone(), sid);
+        let (kv, key) = self.owner_current_section_key(owner, &folders, sid)?;
+        let sig = owner_content_sig(owner, zone, display_path, &row.sid, body)?;
+        let blob = serde_json::json!({ "md": body, "sig": sig });
+        let sha = self.put_blob_v(
+            &format!("e/circle/blobs/{sid}.enc"),
+            &key,
+            &node,
+            kv,
+            &jcs::canonical_bytes(&blob)?,
+            ent,
+        )?;
+        let index_path = "e/circle/index.json";
+        let mut index: ZoneIndex = self.get_json(index_path)?;
+        let entry = index
+            .sections
+            .iter_mut()
+            .find(|r| r.sid == row.sid)
+            .ok_or_else(|| Error::InvalidPath(format!("no section {display_path}")))?;
+        entry.blob_sha = sha.clone();
+        entry.key_version = kv;
+        self.put_json(index_path, &index)?;
+        self.log_owner_mutation(
+            owner,
+            aithos_core::gamma::Kind::SectionModify,
+            &node,
+            serde_json::json!({ "blob_sha": sha }),
+            now,
+            ent,
+        )
+    }
+
+    /// Delete a circle section: the index row goes (the tree forgets the
+    /// node), `section.delete` is logged (§07.4). The sealed blob bytes
+    /// stay on disk — erasure is cryptographic (key destruction, §06), a
+    /// row-less blob is unreachable and unreadable.
+    pub fn section_delete(
+        &mut self,
+        zone: Zone,
+        display_path: &str,
+        owner: &OwnerKeys,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        if zone != Zone::Circle {
+            return Err(Error::InvalidPath(
+                "section_delete: circle only this pass".to_owned(),
+            ));
+        }
+        let (row, folders) = self.resolve_clear(zone, display_path)?;
+        let sid = Sid::parse(&row.sid)?;
+        let node = NodePath::section(zone, folders, sid);
+        let index_path = "e/circle/index.json";
+        let mut index: ZoneIndex = self.get_json(index_path)?;
+        index.sections.retain(|r| r.sid != row.sid);
+        self.put_json(index_path, &index)?;
+        self.log_owner_mutation(
+            owner,
+            aithos_core::gamma::Kind::SectionDelete,
+            &node,
+            serde_json::json!({ "name": row.name }),
+            now,
+            ent,
+        )
+    }
+
     // ------------------------------------------------------ self plumbing
 
     fn self_root_key(&self, owner: &OwnerKeys) -> Result<[u8; 32]> {
@@ -904,6 +998,36 @@ impl<S: Store> Bundle<S> {
         Ok(files)
     }
 
+    /// Everything a signed edition commits, written and gathered in one
+    /// place: the tree sidecar, the per-edition index snapshots (pass I —
+    /// the 3-way merge base, cache posture like the tree sidecar), the flat
+    /// pins and the gamma state. Shared by publish, merge and resolution.
+    pub(crate) fn publish_artifacts(&mut self, height: u64) -> Result<EditionArtifacts> {
+        // Merkle state tree (§02.10): roots ride the signed manifest; the
+        // per-edition node map is a pinned sidecar for root-descent diffs.
+        let tree = self.state_tree()?;
+        self.put_json(&format!("manifests/tree-{height}.json"), &tree)?;
+        // Index snapshots (§02.6, pass I): the exact index bytes of this
+        // edition — a future disjoint merge 3-ways against them as base.
+        for zone in ["public", "circle", "self"] {
+            let bytes = self.get(&format!("e/{zone}/index.json"))?;
+            self.store
+                .put(&format!("manifests/index-{zone}-{height}.json"), &bytes)
+                .map_err(io_err)?;
+        }
+        let files = self.all_pinned_files(height)?;
+        let gamma_head = self.gamma_head()?;
+        // Committed gamma roots (§07.10): segments + counts trie, additive.
+        let (gamma_roots, gamma_counts_root) = self.gamma_state()?;
+        Ok(EditionArtifacts {
+            files,
+            roots: tree.roots,
+            gamma_roots,
+            gamma_counts_root,
+            gamma_head,
+        })
+    }
+
     fn publish_at(&mut self, owner: &OwnerKeys, now: &str, height: u64) -> Result<()> {
         let prev_hash = if height == 1 {
             String::new()
@@ -911,24 +1035,17 @@ impl<S: Store> Bundle<S> {
             let prev: Manifest = self.get_json(&format!("manifests/{}.json", height - 1))?;
             prev.chain_hash()?
         };
-        // Merkle state tree (§02.10): roots ride the signed manifest; the
-        // per-edition node map is a pinned sidecar for root-descent diffs.
-        let tree = self.state_tree()?;
-        self.put_json(&format!("manifests/tree-{height}.json"), &tree)?;
-        let files = self.all_pinned_files(height)?;
-        let gamma_head = self.gamma_head()?;
-        // Committed gamma roots (§07.10): segments + counts trie, additive.
-        let (gamma_roots, gamma_counts_root) = self.gamma_state()?;
+        let a = self.publish_artifacts(height)?;
         let manifest = Manifest::build(
             &owner.root_sign,
             height,
             prev_hash,
             now.to_owned(),
-            files,
-            tree.roots,
-            gamma_roots,
-            gamma_counts_root,
-            gamma_head,
+            a.files,
+            a.roots,
+            a.gamma_roots,
+            a.gamma_counts_root,
+            a.gamma_head,
         )?;
         self.put_json(&format!("manifests/{height}.json"), &manifest)?;
         self.put_json("manifest.json", &manifest)
@@ -940,7 +1057,12 @@ impl<S: Store> Bundle<S> {
     }
 
     /// Offline verification: DID document, every manifest signature, the
-    /// hash chain, and the pinned files of the latest edition.
+    /// hash chain, and the pinned files of the latest edition. Merge-aware
+    /// (§02.6, pass I): merge editions must name two same-height parents
+    /// sharing a grandparent with disjoint changesets; fork resolutions must
+    /// be signed by an authority covering every touched node of BOTH
+    /// branches. A delegate signature is accepted ONLY on a resolving
+    /// edition (fail-closed — plain delegate publishing is a later pass).
     pub fn verify(&self) -> Result<()> {
         let err = |m: String| Error::SealRejected(format!("edition: {m}"));
         let doc: DidDocument = self.get_json("did.json")?;
@@ -949,7 +1071,13 @@ impl<S: Store> Bundle<S> {
         let mut prev: Option<Manifest> = None;
         for h in 1..=latest.edition.height {
             let m: Manifest = self.get_json(&format!("manifests/{h}.json"))?;
-            m.verify_signature(&doc)?;
+            if m.authorized_via.is_empty() {
+                m.verify_signature(&doc)?;
+            } else if m.resolves_fork.is_empty() {
+                return Err(err(format!(
+                    "height {h}: delegate-signed editions are accepted only as fork resolutions"
+                )));
+            }
             if m.edition.height != h {
                 return Err(err(format!("height mismatch at {h}")));
             }
@@ -964,6 +1092,18 @@ impl<S: Store> Bundle<S> {
                         return Err(err(format!("broken chain at height {h}")));
                     }
                 }
+            }
+            if !m.merges.is_empty() {
+                let low = prev
+                    .as_ref()
+                    .ok_or_else(|| err("a merge edition needs parents".into()))?;
+                self.verify_merge_edition(&m, low, h)?;
+            }
+            if !m.resolves_fork.is_empty() {
+                let winner = prev
+                    .as_ref()
+                    .ok_or_else(|| err("a resolving edition needs parents".into()))?;
+                self.verify_resolution_edition(&m, winner, h, &doc)?;
             }
             prev = Some(m);
         }

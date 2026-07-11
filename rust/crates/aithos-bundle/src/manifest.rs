@@ -47,6 +47,19 @@ pub struct Manifest {
     /// log is empty.
     #[serde(default)]
     pub gamma_head: String,
+    /// Disjoint-merge parents (§02.6, pass I): the two competing edition
+    /// hashes, ascending — `edition.prev_hash` pins the first. Additive:
+    /// absent from non-merge editions, pre-I chain hashes untouched.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub merges: Vec<String>,
+    /// Fork resolution (§02.6, pass I): the winning parent's edition hash —
+    /// this edition's own `prev_hash` — named by the nearest common manager.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub resolves_fork: String,
+    /// Delegate-signed editions (§02.6): the full mandate chain ids, leaf
+    /// last — mirrors gamma's `authorized_via`. Empty = root-signed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authorized_via: Vec<String>,
     pub signature: SignatureBlock,
 }
 
@@ -87,25 +100,54 @@ impl Manifest {
         gamma_counts_root: String,
         gamma_head: String,
     ) -> Result<Self> {
-        let mut m = Manifest {
-            version: CORE_VERSION.to_owned(),
-            edition: Edition {
+        Self::build_spec(
+            ManifestSpec {
                 height,
                 prev_hash,
                 created_at,
+                files,
+                roots,
+                gamma_roots,
+                gamma_counts_root,
+                gamma_head,
+                merges: Vec::new(),
+                resolves_fork: String::new(),
+                authorized_via: Vec::new(),
             },
-            files,
-            roots,
-            gamma_roots,
-            gamma_counts_root,
-            gamma_head,
+            ManifestSigner::Root(root_sign),
+        )
+    }
+
+    /// Build and sign a manifest from the full pass-I spec: plain editions,
+    /// disjoint merges (`merges`) and fork resolutions (`resolves_fork`),
+    /// root- or delegate-signed.
+    pub fn build_spec(spec: ManifestSpec, signer: ManifestSigner<'_>) -> Result<Self> {
+        let (key, sk) = match signer {
+            ManifestSigner::Root(sk) => ("#root".to_owned(), sk),
+            ManifestSigner::Delegate { key_multibase, sk } => (key_multibase, sk),
+        };
+        let mut m = Manifest {
+            version: CORE_VERSION.to_owned(),
+            edition: Edition {
+                height: spec.height,
+                prev_hash: spec.prev_hash,
+                created_at: spec.created_at,
+            },
+            files: spec.files,
+            roots: spec.roots,
+            gamma_roots: spec.gamma_roots,
+            gamma_counts_root: spec.gamma_counts_root,
+            gamma_head: spec.gamma_head,
+            merges: spec.merges,
+            resolves_fork: spec.resolves_fork,
+            authorized_via: spec.authorized_via,
             signature: SignatureBlock {
                 alg: "ed25519".to_owned(),
-                key: "#root".to_owned(),
+                key,
                 value: String::new(),
             },
         };
-        m.signature.value = hex::encode(root_sign.sign(&m.unsigned_jcs()?).to_bytes());
+        m.signature.value = hex::encode(sk.sign(&m.unsigned_jcs()?).to_bytes());
         Ok(m)
     }
 
@@ -124,4 +166,56 @@ impl Manifest {
         root.verify(&self.unsigned_jcs()?, &Signature::from_bytes(&sig_bytes))
             .map_err(|_| err("signature does not verify under the root key"))
     }
+
+    /// Verify a delegate-signed manifest (§02.6): the signature key IS the
+    /// leaf grantee key of the presented chain; chain validity and node
+    /// authority are the CALLER's checks (they need the certs and the trees).
+    pub fn verify_delegate_signature(&self, leaf: &aithos_core::mandate::Mandate) -> Result<()> {
+        let err = |m: &str| Error::InvalidDidDocument(format!("manifest: {m}"));
+        if self.authorized_via.is_empty() {
+            return Err(err("delegate verification on a root-signed manifest"));
+        }
+        if self.authorized_via.last() != Some(&leaf.id) {
+            return Err(err(
+                "authorized_via leaf does not match the presented chain",
+            ));
+        }
+        if self.signature.key != leaf.grantee.pubkey {
+            return Err(err("manifest is not signed by the leaf grantee key"));
+        }
+        let sig_bytes: [u8; 64] = hex::decode(&self.signature.value)
+            .ok()
+            .and_then(|v| v.try_into().ok())
+            .ok_or_else(|| err("bad signature encoding"))?;
+        leaf.grantee_pub()?
+            .verify(&self.unsigned_jcs()?, &Signature::from_bytes(&sig_bytes))
+            .map_err(|_| err("signature does not verify under the grantee key"))
+    }
+}
+
+/// Parameters of one signed edition (pass I) — `Manifest::build_spec`.
+#[derive(Debug, Clone)]
+pub struct ManifestSpec {
+    pub height: u64,
+    pub prev_hash: String,
+    pub created_at: String,
+    pub files: BTreeMap<String, String>,
+    pub roots: BTreeMap<String, String>,
+    pub gamma_roots: BTreeMap<String, GammaSegmentRoot>,
+    pub gamma_counts_root: String,
+    pub gamma_head: String,
+    pub merges: Vec<String>,
+    pub resolves_fork: String,
+    pub authorized_via: Vec<String>,
+}
+
+/// Who signs an edition: the owner root, or a delegate under its chain.
+pub enum ManifestSigner<'a> {
+    Root(&'a ed25519_dalek::SigningKey),
+    Delegate {
+        /// The leaf grantee's Ed25519 public key, multibase — the manifest's
+        /// `signature.key`.
+        key_multibase: String,
+        sk: &'a ed25519_dalek::SigningKey,
+    },
 }

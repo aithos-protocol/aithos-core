@@ -10,6 +10,7 @@ pub mod entropy;
 pub mod grants;
 pub mod log;
 pub mod manifest;
+pub mod merge;
 pub mod revoke;
 pub mod state;
 
@@ -26,8 +27,9 @@ pub trait Store {
     fn list(&self, prefix: &str) -> io::Result<Vec<String>>;
 }
 
-/// In-memory store for tests and vector replay.
-#[derive(Debug, Default)]
+/// In-memory store for tests and vector replay. `Clone` gives the
+/// "two copies of a published bundle" fixture of the concurrency pass (§02.6).
+#[derive(Debug, Default, Clone)]
 pub struct MemStore {
     objects: BTreeMap<String, Vec<u8>>,
 }
