@@ -155,6 +155,12 @@ impl<S: Store> Bundle<S> {
         let mut header: Header = self.get_json(&file)?;
         let old_v = header.latest_version();
         let new_v = old_v + 1;
+        // The folder's CURRENT key, via the owner line — captured BEFORE the
+        // rotation rewrites the header. A moved (or previously rotated)
+        // folder carries a fresh sealed key that pure derivation from the
+        // zone root can no longer reach — the same hole class section_add
+        // had before owner_current_section_key (step G).
+        let (_, old_folder_dk) = header.open_latest(&self.did, "owner-kex", &owner.owner_kex)?;
 
         // Survivors = current lines minus the revoked (owner always kept).
         let kv = header
@@ -212,8 +218,8 @@ impl<S: Store> Bundle<S> {
                 leaf: Leaf::Section(sid),
             };
             let new_key = node_key(&new_dk, &rest);
-            // Open the old blob with the old key (derive from the old folder DK).
-            let old_folder_dk = node_key(&zone_dk, &node);
+            // Open the old blob with the old key (derived below the folder's
+            // pre-rotation key, itself opened from the owner line above).
             let old_rest = NodePath {
                 zone,
                 folders: row_folders[folders.len()..].to_vec(),
