@@ -157,6 +157,10 @@ pub struct ProtocolWorld {
     // --- step H1: merkle ---
     h_proof: Option<aithos_core::merkle::Proof>,
     h_old_proof: Option<aithos_core::merkle::Proof>,
+    // --- step H2: gamma roots ---
+    h2_proof: Option<aithos_core::merkle::Proof>,
+    h2_counters: Vec<(String, aithos_core::gamma::GammaCounters)>,
+    h2_verdict: Option<Result<(), String>>,
 }
 
 impl ProtocolWorld {
@@ -5613,6 +5617,420 @@ fn h_diff_both_parents(w: &mut ProtocolWorld) {
 fn h_diff_empty(w: &mut ProtocolWorld) {
     let diff = w.h_diff();
     assert!(diff.is_empty(), "no change, no diff: {diff:?}");
+}
+
+// -------------------------------------- step H2: committed gamma roots
+// Spec 07.10 — per-segment roots + counts trie in the manifest, count /
+// absence / completeness proofs over the log (h2-gamma-roots.feature).
+
+use aithos_core::gamma::{
+    counts_tally, prove_absence, prove_count, prove_entry, segment_root, verify_absence,
+    verify_complete_actions, verify_count_proof, AbsenceProof, GammaCounters,
+};
+
+impl ProtocolWorld {
+    fn h2_tallies(&mut self) -> std::collections::BTreeMap<String, GammaCounters> {
+        counts_tally(&self.gbundle().gamma_entries().unwrap())
+    }
+
+    fn h2_counts_root(&mut self) -> [u8; 32] {
+        <[u8; 32]>::try_from(hex::decode(self.h_manifest().gamma_counts_root).unwrap()).unwrap()
+    }
+
+    fn h2_segment_root(&mut self, month: &str) -> [u8; 32] {
+        let hex_root = self.h_manifest().gamma_roots[month].root.clone();
+        <[u8; 32]>::try_from(hex::decode(hex_root).unwrap()).unwrap()
+    }
+
+    /// Inclusion proofs for every `action` entry running under `mandate_id`,
+    /// segment by segment — the mirror's honest answer.
+    fn h2_action_proofs(
+        &mut self,
+        mandate_id: &str,
+    ) -> Vec<(String, aithos_core::merkle::Proof)> {
+        let mut out = Vec::new();
+        let months: Vec<String> = self.h_manifest().gamma_roots.keys().cloned().collect();
+        for month in months {
+            let lines = self.segment_lines(&format!("gamma/{month}.jsonl"));
+            let refs: Vec<&[u8]> = lines.iter().map(Vec::as_slice).collect();
+            for (i, line) in lines.iter().enumerate() {
+                let e: aithos_core::gamma::Entry = serde_json::from_slice(line).unwrap();
+                let runs_under = e.kind == "action"
+                    && e.authorized_via
+                        .as_ref()
+                        .is_some_and(|v| v.iter().any(|m| m == mandate_id));
+                if runs_under {
+                    out.push((month.clone(), prove_entry(&refs, i).unwrap()));
+                }
+            }
+        }
+        out
+    }
+}
+
+#[given("a bundle whose log spans two months of delegated actions")]
+fn h2_two_months(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), "2026-08-31T00:00:00Z");
+    w.try_action(false, "reply", &day(1, "10:00:00")).unwrap();
+    w.try_action(false, "reply", &day(32, "10:00:00")).unwrap();
+}
+
+#[given("a bundle whose log is empty")]
+fn h2_empty_log(w: &mut ProtocolWorld) {
+    w.init_bundle();
+}
+
+#[given("a published edition whose log counts a delegated action")]
+fn h2_one_action(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    w.try_action(false, "reply", &day(1, "10:00:00")).unwrap();
+    w.h_publish();
+}
+
+#[given("a published edition whose log counts actions, a sub-grant and budget tokens under a mandate")]
+fn h2_full_meter(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        serde_json::json!({"budgets": [{"id": "haiku", "token_budget": 100000}]}),
+        NA30,
+    );
+    w.delegate_act("act.x.gmail.reply", serde_json::json!({}), true)
+        .unwrap();
+    w.try_action_full(
+        false,
+        "reply",
+        &day(1, "10:00:00"),
+        Some(serde_json::json!({"budget_ref": "haiku", "tokens": 2700})),
+        None,
+    )
+    .unwrap();
+    w.try_inference("claude-haiku", 1200, 300, Some("haiku"), &day(1, "11:00:00"))
+        .unwrap();
+    w.h_publish();
+}
+
+#[given("a published edition whose log holds an action by a sub-delegate")]
+#[given("a published edition whose log counts two mandates apart in id order")]
+fn h2_sub_delegate(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        serde_json::json!({}),
+        NA30,
+    );
+    w.delegate_act("act.x.gmail.reply", serde_json::json!({}), true)
+        .unwrap();
+    w.try_action(true, "reply", &day(1, "10:00:00")).unwrap();
+    w.h_publish();
+}
+
+#[given("a published edition whose log counts three mandates")]
+fn h2_three_mandates(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        serde_json::json!({}),
+        NA30,
+    );
+    w.delegate_act("act.x.gmail.reply", serde_json::json!({}), true)
+        .unwrap();
+    let first_chain = w.helper_chain.clone();
+    w.delegate_act("act.x.gmail.label", serde_json::json!({}), true)
+        .unwrap();
+    w.try_action(true, "label", &day(1, "10:00:00")).unwrap();
+    w.helper_chain = first_chain;
+    w.try_action(true, "reply", &day(2, "10:00:00")).unwrap();
+    w.h_publish();
+    assert_eq!(w.h2_tallies().len(), 3, "root and two children counted");
+}
+
+#[given("a published edition whose log counts three actions under a mandate")]
+fn h2_three_actions(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    for (d, hms) in [(1, "10:00:00"), (2, "10:00:00"), (3, "10:00:00")] {
+        w.try_action(false, "reply", &day(d, hms)).unwrap();
+    }
+    w.h_publish();
+}
+
+#[given("a published edition whose log spans one month")]
+fn h2_one_month(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    w.try_action(false, "reply", &day(1, "10:00:00")).unwrap();
+    w.try_action(false, "reply", &day(2, "10:00:00")).unwrap();
+    w.h_publish();
+}
+
+#[then("the manifest commits a gamma root and entry count for each of the two segments")]
+fn h2_two_segments_committed(w: &mut ProtocolWorld) {
+    let m = w.h_manifest();
+    let months: Vec<String> = m.gamma_roots.keys().cloned().collect();
+    assert_eq!(months, ["2026-07", "2026-08"], "one root per non-empty month");
+    for (month, seg) in &m.gamma_roots {
+        assert_eq!(seg.root.len(), 64, "{month}: hex root");
+        assert!(seg.n > 0, "{month}: committed entry count");
+    }
+}
+
+#[then("the manifest commits a gamma counts root")]
+fn h2_counts_root_committed(w: &mut ProtocolWorld) {
+    let m = w.h_manifest();
+    assert_eq!(m.gamma_counts_root.len(), 64);
+    assert_ne!(m.gamma_counts_root, "0".repeat(64), "mandates were counted");
+}
+
+#[then("the content roots and the flat file pins still verify")]
+fn h2_additive(w: &mut ProtocolWorld) {
+    let m = w.h_manifest();
+    assert_eq!(m.roots.len(), 4, "the §02.10 roots still ride");
+    assert!(!m.files.is_empty(), "the flat pins still ride");
+    w.gbundle().verify().unwrap();
+}
+
+#[then("an independent recomputation from the store yields the same gamma roots and counts root")]
+fn h2_recompute_identical(w: &mut ProtocolWorld) {
+    let m = w.h_manifest();
+    let (roots, counts) = w.gbundle().gamma_state().unwrap();
+    assert_eq!(roots, m.gamma_roots);
+    assert_eq!(counts, m.gamma_counts_root);
+}
+
+#[then("the manifest commits no gamma segment roots")]
+fn h2_no_segments(w: &mut ProtocolWorld) {
+    assert!(w.h_manifest().gamma_roots.is_empty());
+}
+
+#[then("the gamma counts root is thirty-two zero bytes")]
+fn h2_zero_counts_root(w: &mut ProtocolWorld) {
+    assert_eq!(w.h_manifest().gamma_counts_root, "0".repeat(64));
+}
+
+#[when("a mirror rewrites a clear counter field inside the last log entry")]
+fn h2_tamper_last_entry(w: &mut ProtocolWorld) {
+    let seg = "gamma/2026-07.jsonl";
+    let mut lines = w.segment_lines(seg);
+    let mut entry: serde_json::Value = serde_json::from_slice(lines.last().unwrap()).unwrap();
+    entry["payload"]["action"] = serde_json::Value::String("send".into());
+    *lines.last_mut().unwrap() = aithos_core::jcs::canonical_bytes(&entry).unwrap();
+    let mut bytes = Vec::new();
+    for line in &lines {
+        bytes.extend_from_slice(line);
+        bytes.push(b'\n');
+    }
+    w.gbundle().store.put(seg, &bytes).unwrap();
+}
+
+#[then("edition verification is refused")]
+fn h2_verify_refused(w: &mut ProtocolWorld) {
+    // Root recomputation ALONE catches it (the rule under test)…
+    let m = w.h_manifest();
+    let (roots, _) = w.gbundle().gamma_state().unwrap();
+    assert_ne!(roots, m.gamma_roots, "the recomputed segment root died");
+    // …and full verification is refused, fail-closed.
+    assert!(w.gbundle().verify().is_err());
+}
+
+#[when("a verifier asks for the action entry's inclusion proof")]
+fn h2_prove_entry(w: &mut ProtocolWorld) {
+    let lines = w.segment_lines("gamma/2026-07.jsonl");
+    let refs: Vec<&[u8]> = lines.iter().map(Vec::as_slice).collect();
+    let idx = lines
+        .iter()
+        .position(|l| {
+            serde_json::from_slice::<aithos_core::gamma::Entry>(l).unwrap().kind == "action"
+        })
+        .expect("the fixture logged an action");
+    w.h2_proof = Some(prove_entry(&refs, idx).unwrap());
+}
+
+#[then("the gamma proof verifies offline against the committed segment root")]
+fn h2_entry_proof_ok(w: &mut ProtocolWorld) {
+    let root = w.h2_segment_root("2026-07");
+    let proof = w.h2_proof.as_ref().unwrap();
+    aithos_core::merkle::verify_proof(proof, &root).unwrap();
+}
+
+#[when("the mirror alters the entry's action name inside the proven bytes")]
+fn h2_tamper_proven_bytes(w: &mut ProtocolWorld) {
+    h2_prove_entry(w);
+    let proof = w.h2_proof.as_mut().unwrap();
+    let mut entry: serde_json::Value =
+        serde_json::from_slice(&hex::decode(&proof.payload).unwrap()).unwrap();
+    entry["payload"]["action"] = serde_json::Value::String("send".into());
+    proof.payload = hex::encode(aithos_core::jcs::canonical_bytes(&entry).unwrap());
+}
+
+#[then("the gamma proof is refused")]
+fn h2_entry_proof_refused(w: &mut ProtocolWorld) {
+    let root = w.h2_segment_root("2026-07");
+    let proof = w.h2_proof.as_ref().unwrap();
+    let err = aithos_core::merkle::verify_proof(proof, &root).unwrap_err();
+    assert!(matches!(err, aithos_core::error::Error::MerkleProofInvalid(_)));
+}
+
+#[when("a verifier asks for the mandate's count proof")]
+fn h2_prove_count(w: &mut ProtocolWorld) {
+    let id = w.chain[0].id.clone();
+    let tallies = w.h2_tallies();
+    w.h2_proof = Some(prove_count(&tallies, &id).unwrap());
+}
+
+#[then("the count proof verifies offline against the committed counts root")]
+fn h2_count_proof_ok(w: &mut ProtocolWorld) {
+    let root = w.h2_counts_root();
+    let proof = w.h2_proof.clone().unwrap();
+    let (id, counters) = verify_count_proof(&proof, &root).unwrap();
+    w.h2_counters = vec![(id, counters)];
+}
+
+#[then("the proven counters equal the raw tallies of the chain")]
+fn h2_counters_equal_tallies(w: &mut ProtocolWorld) {
+    let (id, counters) = w.h2_counters[0].clone();
+    let entries = w.gbundle().gamma_entries().unwrap();
+    assert_eq!(
+        counters.actions,
+        aithos_core::gamma::count_actions(&entries, &id, None, None) as u64,
+        "actions == raw subtree tally"
+    );
+    assert_eq!(
+        counters.children,
+        aithos_core::gamma::count_children(&entries, &id) as u64,
+        "children == raw tally"
+    );
+    let haiku = &counters.budgets["haiku"];
+    assert_eq!(
+        haiku.actions,
+        aithos_core::constraints::count_profile_entries(&entries, &id, "haiku") as u64,
+        "budget actions == raw tally"
+    );
+    assert_eq!(
+        haiku.tokens,
+        aithos_core::constraints::tally_tokens(&entries, &id, "haiku"),
+        "budget tokens == raw tally (attested override included)"
+    );
+    let raw_entries = entries
+        .iter()
+        .filter(|e| {
+            e.authorized_via
+                .as_ref()
+                .is_some_and(|v| v.iter().any(|m| *m == id))
+        })
+        .count() as u64;
+    assert_eq!(counters.entries, raw_entries, "entries == the audit total");
+}
+
+#[when("a verifier proves the counts of the root mandate and of the leaf mandate")]
+fn h2_prove_both(w: &mut ProtocolWorld) {
+    let root_id = w.chain[0].id.clone();
+    let leaf_id = w.helper_chain[1].id.clone();
+    let tallies = w.h2_tallies();
+    let pinned = w.h2_counts_root();
+    w.h2_counters = [root_id, leaf_id]
+        .iter()
+        .map(|id| {
+            let proof = prove_count(&tallies, id).unwrap();
+            verify_count_proof(&proof, &pinned).unwrap()
+        })
+        .collect();
+}
+
+#[then("both count leaves carry that action")]
+fn h2_both_carry(w: &mut ProtocolWorld) {
+    for (id, counters) in &w.h2_counters {
+        assert_eq!(counters.actions, 1, "{id}: the sub-delegate's action counts");
+    }
+}
+
+#[when("a verifier asks whether an id between them was ever counted")]
+fn h2_ask_absence(w: &mut ProtocolWorld) {
+    let tallies = w.h2_tallies();
+    let ids: Vec<&String> = tallies.keys().collect();
+    assert_eq!(ids.len(), 2);
+    let absent = format!("{}0", ids[0]); // strictly between the two, byte order
+    assert!(ids[0] < &absent && &absent < ids[1]);
+    let pinned = w.h2_counts_root();
+    let proof = prove_absence(&tallies, &absent).unwrap();
+    assert!(proof.left.is_some() && proof.right.is_some(), "two bracketing leaves");
+    w.h2_verdict = Some(verify_absence(&absent, &proof, &pinned).map_err(|e| e.to_string()));
+}
+
+#[then("the mirror proves absence with two adjacent leaves bracketing the id")]
+fn h2_absence_ok(w: &mut ProtocolWorld) {
+    assert_eq!(w.h2_verdict.clone().unwrap(), Ok(()));
+}
+
+#[when("the mirror claims absence of the middle one with the outer two leaves")]
+fn h2_forge_absence(w: &mut ProtocolWorld) {
+    let tallies = w.h2_tallies();
+    let ids: Vec<String> = tallies.keys().cloned().collect();
+    let forged = AbsenceProof {
+        left: Some(prove_count(&tallies, &ids[0]).unwrap()),
+        right: Some(prove_count(&tallies, &ids[2]).unwrap()),
+    };
+    let pinned = w.h2_counts_root();
+    w.h2_verdict = Some(verify_absence(&ids[1], &forged, &pinned).map_err(|e| e.to_string()));
+}
+
+#[then("the absence proof is refused")]
+fn h2_absence_refused(w: &mut ProtocolWorld) {
+    let msg = w.h2_verdict.clone().unwrap().unwrap_err();
+    assert!(msg.contains("absence proof invalid"), "{msg}");
+}
+
+#[when("a mirror answers the mandate's action query with only two proven entries")]
+fn h2_withhold_answer(w: &mut ProtocolWorld) {
+    let id = w.chain[0].id.clone();
+    let proofs = w.h2_action_proofs(&id);
+    assert_eq!(proofs.len(), 3, "the honest answer would be three");
+    let tallies = w.h2_tallies();
+    let count_proof = prove_count(&tallies, &id).unwrap();
+    let pinned = w.h2_counts_root();
+    let m = w.h_manifest();
+    let segment_roots = m
+        .gamma_roots
+        .iter()
+        .map(|(month, seg)| {
+            let root = <[u8; 32]>::try_from(hex::decode(&seg.root).unwrap()).unwrap();
+            (month.clone(), root)
+        })
+        .collect();
+    w.h2_verdict = Some(
+        verify_complete_actions(&id, &count_proof, &proofs[..2], &segment_roots, &pinned)
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+    );
+}
+
+#[then("the answer is refused against the proven count of three")]
+fn h2_withhold_refused(w: &mut ProtocolWorld) {
+    let msg = w.h2_verdict.clone().unwrap().unwrap_err();
+    assert!(msg.contains("withhold detected"), "{msg}");
+    assert!(msg.contains("proven count of 3"), "{msg}");
+}
+
+#[when("a mirror serves the segment with one entry withheld")]
+fn h2_withhold_segment(w: &mut ProtocolWorld) {
+    let lines = w.segment_lines("gamma/2026-07.jsonl");
+    let served: Vec<&[u8]> = lines.iter().take(lines.len() - 1).map(Vec::as_slice).collect();
+    let committed = w.h_manifest().gamma_roots["2026-07"].clone();
+    let recomputed = segment_root(&served);
+    w.h2_verdict = Some(
+        if hex::encode(recomputed) == committed.root || served.len() as u64 == committed.n {
+            Ok(())
+        } else {
+            Err("segment omission died on root and count".into())
+        },
+    );
+}
+
+#[then("the recomputed segment root dies against the committed root and count")]
+fn h2_segment_omission_dies(w: &mut ProtocolWorld) {
+    assert!(w.h2_verdict.clone().unwrap().is_err());
 }
 
 // ------------------------------------------------------------------ main
