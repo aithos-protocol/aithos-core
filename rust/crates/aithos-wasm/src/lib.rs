@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 //! WASM surface over `aithos-core`. Thin by design: no logic lives here,
-//! only (de)serialization at the JS boundary. Published as `@aithos/core`.
+//! only (de)serialization at the JS boundary. Packaged locally as
+//! `@aithos/core` (wasm-pack); publishing is a separate, explicit decision.
 
 use aithos_core::keys::{MasterSeed, OwnerKeys};
 use wasm_bindgen::prelude::*;

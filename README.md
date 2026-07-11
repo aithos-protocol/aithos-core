@@ -27,12 +27,12 @@ docker/        Multi-stage build → static binary in a FROM scratch image.
 | `aithos-core` | Pure protocol logic: keys, derivation, paths, headers, mandates, verifier, revocation, gamma, Merkle | **No.** No clock, no RNG, no network, no disk — time `T`, randomness and storage are injected by the caller |
 | `aithos-bundle` | Bundle layout (§02.3), editions, `Store` trait (`mem`, `fs`; `s3` later) | Yes — the only crate that touches I/O |
 | `aithos-cli` | The `aithos-core` binary (spec §09.1) | Yes (surface) |
-| `aithos-wasm` | Thin WASM bindings, published as `@aithos/core` | No (surface, no logic) |
+| `aithos-wasm` | Thin WASM bindings, packaged as `@aithos/core` (local `wasm-pack` build; publishing is a separate, explicit decision) | No (surface, no logic) |
 
 The purity rule is what makes every operation deterministic, replayable
 against `vectors/`, and compilable to WASM unchanged: **one canonical core**
-serves the CLI, the Docker container, the provider, and the browser
-extension.
+serves the CLI, the Docker image and the WASM surface — everything in this
+repository, and nothing outside it.
 
 ## Build & test
 

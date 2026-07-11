@@ -276,8 +276,14 @@ identique des racines Merkle par le mergeur et les vérificateurs.
 Scénario K de la spec complet dans la suite de features (il l'est presque
 déjà par accumulation), vecteurs de perf §09.3 en bench, image Docker (`FROM scratch`),
 paquet npm `@aithos/core` (wasm-pack), conformance levels §09.4 documentés.
+**Bornage (décidé 2026-07-11) : tout reste dans aithos-core.** Le paquet npm
+est un `npm pack` LOCAL de la crate `aithos-wasm` de ce repo (aucune
+publication registre — décision séparée) ; l'image Docker se construit du
+seul contenu du repo (base épinglée) et n'est poussée nulle part ; aucun
+élément d'un projet Aithos antérieur n'est utilisé.
 **Manuel :** dérouler le scénario K entier au CLI, chronométrer les cibles.
-**Done :** tout vert, bench dans les cibles, image < 15 Mo, npm importable.
+**Done :** tout vert, bench dans les cibles, image < 15 Mo, npm importable
+depuis le tarball local.
 
 ## Suivi
 

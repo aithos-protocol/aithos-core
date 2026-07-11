@@ -2,7 +2,7 @@
 name = "aithos-wasm"
 version.workspace = true
 edition.workspace = true
-description = "WASM bindings over aithos-core — the same canonical core for provider, extension and Lambda."
+description = "Thin WASM bindings over aithos-core — surface only, no logic. Packaged locally as @aithos/core; publishing is a separate, explicit decision."
 
 [lib]
 crate-type = ["cdylib", "rlib"]
