@@ -241,6 +241,39 @@ Le protocole vérifie une signature liée (mandat feuille + action + args + at),
 jamais la logique : guardrail, humain qui tape « approve » ou second agent,
 même wire. La logique vit dans l'attestor, hors protocole.
 
+## 13. Racines Merkle — preuves & diff (H1, spec 02.10)
+
+```bash
+ac section-add --dir $D --seed-hex $S circle projets/note1 --title N1 --body "secret"
+ac section-add --dir $D --seed-hex $S circle projets/note2 --title N2 --body "autre"
+ac edition-publish --dir $D --seed-hex $S
+python3 -c "import json; print(json.load(open('$D/manifest.json'))['roots'])"
+# → 4 racines (public, circle, self, vault) À CÔTÉ des pins plats ;
+#   self vide = 32×00
+
+ac prove --dir $D circle projets/note1
+# → le proof JSON (payload = row+header_hash, steps node/wrap) ; la CLI le
+#   re-vérifie hors-ligne contre la racine signée avant de l'imprimer
+
+ac section-add --dir $D --seed-hex $S circle projets/note3 --title N3 --body "3e"
+ac edition-publish --dir $D --seed-hex $S
+ac edition-diff --dir $D
+# → descente de racines : circle:z changed, le dossier changed, la
+#   nouvelle section added — rien d'autre, aucune autre zone
+
+python3 - <<'EOF'   # trafique une row d'index…
+import json; p='$D/e/circle/index.json'; v=json.load(open(p))
+v['sections'][0]['title']='HACKED'; json.dump(v, open(p,'w'))
+EOF
+ac edition-verify --dir $D
+# → Error "pinned file altered" (les pins plats) ; la racine recalculée
+#   divergerait aussi (MerkleRootMismatch) — ceinture et bretelles
+```
+
+Une preuve montre l'inclusion dans une édition signée, jamais la fraîcheur
+(limite honnête §02.10) : la staleness reste bornée par `freshness` et les
+chaînes édition + gamma.
+
 ## Récap des invariants que tu viens de toucher
 
 | Bloc | Invariant prouvé |
@@ -255,3 +288,4 @@ même wire. La logique vit dans l'attestor, hors protocole.
 | 10 | la recherche suit ce que tes clés ouvrent, rien de plus |
 | 11 | le périmètre suit le nœud, pas l'adresse ; la dérivation ne se désapprend pas |
 | 12 | un permis peut exiger sa décharge : reçu signé, lié, single-use, vérifié des fichiers seuls |
+| 13 | tout mirror peut prouver une row en O(log n) sans être cru ; un splice meurt sur le domaine |
