@@ -87,8 +87,28 @@ rejet) ; wire figé étape 0 (multibase base58btc, JCS RFC 8785, AAD §00.3).
   vérificateur reconstruit le payload depuis les coordonnées de l'ENTRÉE —
   toute divergence (mandat, action, args, digest) tue la signature, zéro
   comparaison à la main.
+- **Racines gamma §7.10 — 4 décisions gravées (Mathieu, 2026-07-11, round
+  H2)** : (1) **wire additif + n par segment** — `gamma_roots: {"<YYYY-MM>":
+  {root, n}}` + `gamma_counts_root` à côté de gamma_head (posture H1, hashes
+  pré-H2 intouchés) ; le `n` committé borne l'énumération ; (2) **trie
+  compteur complet** — `mandate_id → {entries, actions, children, budgets:
+  {ref → {actions, tokens}}}`, zéros et maps vides OMIS ; `entries` (total
+  toutes-kinds sous authorized_via) ajouté au round : c'est lui qui porte la
+  complétude « toutes les entrées de M », pas seulement les actions ; tokens
+  post-override (reçu atteste > déclaré) ; (3) **verifier-side cette
+  passe** — publish committe, verify recompute et compare, check_budgets/
+  check_action_append gardent le tally brut (l'appendeur détient le log) ;
+  test croisé trie == tallys dans la suite ; (4) **proof wire v1 réutilisé
+  tel quel** — segments en ordre de chaîne H_leaf(octets exacts de la
+  ligne), feuilles du trie H_leaf(mandate_id ‖ 0x00 ‖ JCS) triées par id,
+  absence = 2 feuilles ADJACENTES encadrant l'id (adjacence vérifiable des
+  deux preuves seules : suffixe commun au-dessus de la divergence,
+  cross-replay des siblings à la divergence, all-left/all-right en dessous),
+  rims = all-right (première feuille) / all-left (dernière), trie vide =
+  racine 32×0x00. Complétude : compte prouvé k + k inclusions distinctes.
+  Sceller kind/via (bump `v`) : DIFFÉRÉ, conforme à la forward note.
 
-## 4. État du code (11 étapes closes sur 13 — H = H1 close, H2 racines gamma restante)
+## 4. État du code (12 étapes closes sur 13 — H entièrement close, H1+H2)
 
 Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 `aithos-cli`, `aithos-wasm`.
@@ -106,13 +126,14 @@ Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 | **G Révocation** | ✅ | revocation.rs (set actif, forward-only, autorité issuer/ancêtre/watchdog), PerimeterEntry::Revoke, verify_chain_revocable (état injecté, §04.5 step 4), revoke.rs bundle (rotate_folder : versions header, survivants, up-link 2bis, ré-encryption, lecture version-aware), log_revoke owner/délégué, CLI `revoke [--rotate]` — G1, G2. **Move-as-rotation (§02.9) SOLDÉ (2026-07-10)** : `move_folder` (re-parentage sid stable, DK' au nouveau chemin scellée à l'ancien line set, wrap via NOUVEAU parent, ré-encryption), coverage nodale `dir_covers` (§04.2), écritures circle version-aware (`section_add` via `owner_current_section_key` — trou réel : écrire à v1 sous un dossier tourné/déplacé rendait le contenu à l'ancien parent), marche de clé agent descendante (wraps parent→enfant + zroot), `Header::build_at`, 3 scénarios, vecteur G3, CLI `move` + test surface |
 | **G+ Obligations** | ✅ | **SOLDÉ (2026-07-10 soir)** : constraints.rs (Obligation/AppliesTo, parse_obligations + désugarage counter_sign/binding → instance `co_sign`, verify_obligation_receipt — payload RECONSTRUIT des coordonnées de l'entrée, le rejeu cross-mandat/action/args meurt dans la signature —, check_obligations, obligations_attenuate JCS-strict), branché check_action_append (gamma.rs, à côté de check_budgets, clé content injectée du DID doc) + verify_chain (mandate.rs, add-only par maillon), log_action_with_checks (log.rs, additif — ActionSpec intact, le gateway build inchangé), GammaObligationUnsatisfied fail-closed. CLI grant-act --obligations-json/--counter-sign, action --check-json, **approve** (--approver-seed-hex ou --owner-seed-hex co_sign, --presented WYSIWYS, --key-only). Vecteur G+ Python indépendant (gen-gplus.py auto-validé contre le reçu F+) : JCS byte-identique, 6 reçus valides, 8 négatifs, atténuation. 26 scénarios, 2 tests de surface |
 | **H1 Merkle contenu** | ✅ | **SOLDÉ (2026-07-11)** : merkle.rs pur (h_leaf/h_node BLAKE3 domain-separated, mroot left-heavy, mroot_path, proof wire v1 node/wrap, verify_proof depuis les octets DÉCLARÉS — le splice meurt sur le domaine, deux sens), state.rs bundle (arbre recalculable des fichiers seuls : zones hiérarchiques avec headers foldés + tag views ancrées + wraps mroot'és, self plat, vault par chemin de storage ; prove_section/prove_self ; tree_diff par descente), manifest.roots À CÔTÉ des pins plats (serde default : chain hashes pré-H intouchés), sidecar d'arbre pinné par édition, verify recompare les racines. Vecteur H1 Python (gen-h.py auto-validé contre B2). 14 scénarios (dont move-as-rotation traqué par l'arbre). CLI prove / edition-diff |
-| H2 Racines gamma | ⬜ | forward note §7.1 à graver en spec (par segment + trie mandate_id→count, preuves de complétude) — round de décisions dédié |
+| **H2 Racines gamma** | ✅ | **SOLDÉ (2026-07-11)** : spec §7.10 gravée (5d7ab89) ; gamma.rs section roots pure (segment_root en ordre de chaîne sur les octets EXACTS des lignes, counts_tally → GammaCounters {entries, actions, children, budgets} avec omission des zéros, counts_root, prove/verify count + entry + absence par adjacence triée + verify_complete_actions), manifest.gamma_roots {mois → {root, n}} + gamma_counts_root ADDITIFS (posture H1, serde default), log.rs gamma_state (publish committe, verify recompute et compare — GammaRootMismatch), 3 variants d'erreur fail-closed. Vecteur H2 Python (gen-h2.py, TRIPLE ancrage : B2 blake3, H1 conventions mroot byte-identiques, F2 = le segment 2026-07 EST les entrées committées de F2 et les tallies reproduisent ses expected). 12 scénarios. CLI log-prove (compte + absence) + test de surface |
 | I Concurrence | ⬜ | merge disjoint, fork, entrées merge |
 | K Intégration | ⬜ | scénario K, Docker, npm |
 
-**Tests : 163 scénarios / 570 steps cucumber (zéro skip) + vecteurs
-A→F+/G1/G2/G3/G+/H1 + 15 tests de surface CLI, tous verts ; `clippy
---workspace --all-targets -- -D warnings` clean ; `cargo fmt` passé.**
+**Tests : 175 scénarios / 610 steps cucumber (zéro skip) + vecteurs
+A→F+/G1/G2/G3/G+/H1/H2 + 16 tests de surface CLI, tous verts ; `clippy
+--workspace --all-targets -- -D warnings` clean ; `cargo fmt` passé ;
+gateway vérifié vert (5 scénarios / 29 steps, jamais touché).**
 
 Deux trous de discipline découverts et soldés (2026-07-10) : (1) le scénario
 « A revoked chain is refused at verification time » était silencieusement
@@ -139,6 +160,13 @@ Checkpoint G+ déroulé (bloc 12 du guide) : publish sans reçu → refus fail-c
 approve WYSIWYS → logged ; rejeu autres args → « args_hash does not match » ;
 reçu 12 min / max_age 5m → « stale (720s > 300s) » ; counter_sign : send refusé,
 reply passe, co_sign owner → logged ; log-verify OK. ✔
+Checkpoint H2 déroulé (bloc 14 du guide) : publish → gamma_roots {2026-07 :
+{root, n:3}} + counts_root au manifest ; log-prove --mandate →
+{"entries":2,"actions":2} vérifié offline ; --absent id fantôme → prouvé ;
+--absent id compté → refus fail-closed ; tamper de la dernière entrée →
+edition-verify refuse (pin plat en première ligne ; la racine recalculée
+diverge aussi — le scénario « caught by root recomputation alone » couvre le
+cas mirror sans pins). ✔
 
 ## 5. Comment builder / tester
 
@@ -169,26 +197,47 @@ recyclage, lire AVANT de builder)** :
 - `rust/target` a été PURGÉ du tracking git (7938 fichiers macOS committés par
   erreur depuis B ; l'historique garde le poids — réécriture = décision à part).
   `.gitignore` couvre `rust/target*/` et `rust/cargo-linux/`.
+- **Session H2 (2026-07-11)** : cargo a été bumpé à 1.96.1 dans la VM → cache
+  entièrement invalidé, tout recompile. Pièges neufs : (a) le couple
+  cucumber+aithos-gateway ne tient PAS dans une tranche -j1 de 43s (le
+  pipelining démarre gateway pendant le codegen de cucumber ; un kill déchire
+  le .rlib de cucumber → recompile éternelle). Recette qui a convergé :
+  `cargo clean -p cucumber -p aithos-gateway` puis tranches **-j 2** de
+  `cargo build -p aithos-gateway --tests` SANS clean entre les tranches —
+  cucumber survit à la 1ʳᵉ, gateway finit à la 2ᵉ ; (b) ne JAMAIS builder
+  `-p cucumber` standalone (ICE du résolveur de features cargo) ; (c) les
+  builds en arrière-plan (`nohup … &`) MEURENT à la fin de l'appel bash —
+  et `pgrep -f "cargo build"` matche ta propre commande (faux positif) ;
+  (d) /tmp est sur / (100 % plein) : un log nohup vers /tmp écrit zéro
+  octet, silencieusement.
 
-## 6. Prochaine étape : H2 — racines gamma, puis I — Concurrence
+## 6. Prochaine étape : I — Concurrence
 
-**H1 est close (2026-07-11, cette session).** Trois décisions validées par
-Mathieu : H1 contenu d'abord (racines gamma = passe H2 dédiée avec son graving
-§7.10), racines ADDITIVES à côté des pins plats (SelfRow ne pinne pas blob_sha
-— les pins couvrent le rollback de ciphertext self), « no mislabeled effects »
-différé. Conventions wire gravées §2.10 (bef83ab, 5e3e222) : mroot left-heavy
-⌈n/2⌉, tri d < s < t, wraps H_leaf(sid‖0x00‖b3(JCS)), zone root = label
-littéral « z/<zone> », zones plates = mroot(leaves), proof wire v1 (octets
-déclarés + steps node/wrap — le domaine fait la défense anti-splice). Rituel
-intégral : feature (bbba1c1, +2 scénarios move sur question de Mathieu) →
-vecteur Python (0f364c2, auto-validé B2) → impl (76050ee) → CLI (4b29c2c) →
-checkpoint bloc 13 ✔ (preuve 3 steps vérifiée offline, diff par descente,
-tamper attrapé).
+**H2 est close (2026-07-11, cette session) — H est donc ENTIÈREMENT soldée.**
+Rituel intégral déroulé : 4 points de décision validés par Mathieu (voir §3)
+→ spec §7.10 gravée AVANT le code (5d7ab89 ; forward note §7.1 remplacée par
+un pointeur, §7.8 mis à jour — le withhold des mirrors est fermé) → feature
+committée avant le code, validée par Mathieu (3515564, 12 scénarios) →
+vecteur Python indépendant TRIPLE-ancré (562bab8 : blake3 vs B2, conventions
+mroot byte-identiques vs H1 committé, segment 2026-07 = les entrées
+committées de F2 dont les tallies reproduisent les expected de F2) → impl
+core+bundle (07a07de, 6 tests de vecteur verts du premier coup, y compris
+l'égalité JSON des preuves Rust == Python) → scénarios verts et dé-taggés
+(1563371) → CLI log-prove + surface (4a81a5c) → fmt/clippy + guide bloc 14
+(2460ee3) → checkpoint manuel ✔. `verify_op`/gateway jamais touchés ; le
+tally brut de l'appendeur est INCHANGÉ (mêmes octets, même résultat) — les
+racines servent les verifiers et les mirrors.
 
-**H2 — racines gamma** : graver la forward note §7.1 en spec normative (racines
-par segment + trie mandate_id→count committés au manifest, comptage de budgets
-par preuve O(log n), complétude prouvable pour les mirrors, option de sceller
-kind/via via bump `v`) — round de décisions AVANT le code, comme toujours.
+**I — Concurrence (spec 02.6, 07.6)** : merge déterministe d'éditions
+disjointes, fork same-node + résolution par plus proche gestionnaire commun,
+entrées gamma `merge` (`prevs: [head_a, head_b]` — la seule entrée à deux
+prédécesseurs), reconstruction identique des racines Merkle (contenu §2.10
+ET gamma §7.10 — le mergeur recompte, les verifiers reproduisent) par le
+mergeur et les vérificateurs. Attention au point de contact H2 : les racines
+de segment hashent les LIGNES du fichier en ordre de chaîne — un merge qui
+réordonne physiquement un segment est un changement de racine assumé (le
+manifest de l'édition de merge recommitte) ; le set reachable (§7.6) reste
+la vérité des comptes. CLI : `edition merge` (ou auto dans publish).
 
 ## 6bis. Étape précédente : G+ — Obligations
 
@@ -212,10 +261,10 @@ doc autonome §6.4). `verify_chain_revocable(chain, doc, at, revs)` = §04.5
 vide → zéro régression. Rotation version-aware : la clé de section se résout
 par le header de la folder à `row.key_version` (up-link wrap pour les dérivants).
 
-**H — Merkle** (spec §02.10 + racines gamma) : `H_leaf/H_node` domain-separated,
-racines par zone + racines gamma (segments + trie mandate_id→count), preuves
-O(log n), diff par descente. + le durcissement offline « no mislabeled effects »
-rangé en défense en profondeur (additif, sans breaking wire — voir plan §H).
+**H — Merkle : ENTIÈREMENT close** (H1 contenu + H2 racines gamma, toutes deux
+2026-07-11, voir tableau §4). Reste de l'idée H : le durcissement offline « no
+mislabeled effects » demeure rangé en défense en profondeur, différé (additif,
+sans breaking wire — voir plan §H).
 
 ## 7. Points ouverts / dette assumée (non bloquants)
 
@@ -269,3 +318,16 @@ rangé en défense en profondeur (additif, sans breaking wire — voir plan §H)
   cible directe (leur header est attesté transitivement par la preuve d'une
   section dessous) ; (d) le diff rapporte les labels sid-based, la
   résolution en chemins d'affichage est côté outil.
+- **H2 (dette assumée, non bloquante)** : (a) `verify_complete_actions`
+  couvre les ACTIONS (le mètre §7.4) ; « tout kind sous M » a son compte
+  committé (`entries`) mais pas encore de verifier composé — un client le
+  compose des mêmes briques (compte prouvé + inclusions) ; (b) fenêtres
+  ROULANTES (max_actions_per, rate_limit) volontairement hors trie — un
+  compteur statique ne porte pas une fenêtre glissante ; les scans de
+  segments restent bornés par root+n (documenté §7.10) ; (c) CLI log-prove
+  = compte + absence ; les preuves d'inclusion d'ENTRÉE et les réponses de
+  complétude sont des APIs core (prove_entry, verify_complete_actions) sans
+  surface CLI dédiée ; (d) sceller kind/via = bump `v`, différé (décision
+  du round) ; (e) les racines de segment hashent les lignes du FICHIER en
+  ordre de chaîne — la cohabitation avec les entrées `merge` à deux prevs
+  se règle en I (le reachable set §7.6 reste la vérité des comptes).
