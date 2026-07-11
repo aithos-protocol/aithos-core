@@ -234,6 +234,10 @@ Wire conventions (graved 2026-07-11, pass H1 — they condition the hashed bytes
   zones sort by sid.
 - Tag-view wraps: `mroot` over `H_leaf(section_sid ‖ 0x00 ‖ BLAKE3(JCS(wrap)))`,
   sorted by section sid.
+- Zone root node: the zone root has no index row — its literal label takes the
+  row's place: `H_leaf("z/"+zone ‖ header_hash(zone root) ‖ mroot(children))`.
+  Flat zones (`self`, the vault) have no folder payload at all:
+  `root = mroot(leaves)` directly, leaves sorted by sid (vault: by node label).
 - Roots ride the manifest **beside** the flat file pins (additive, decided
   2026-07-11): `roots: {public, circle, self, vault}` next to `gamma_head`;
   the flat pins keep covering byte-rollback of sealed `self` blobs (§2.8 rows
