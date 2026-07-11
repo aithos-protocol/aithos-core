@@ -104,6 +104,11 @@ enum Command {
         /// Kind scope of the query (the granted scope is `action`).
         #[arg(long, default_value = "action")]
         kind: String,
+        /// Multi-context config: the context to audit — each context has
+        /// its OWN gamma, auditor mandate and auditor seed. Required with
+        /// `contexts`, refused with the mono shape.
+        #[arg(long)]
+        context: Option<String>,
     },
 }
 
@@ -300,10 +305,30 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::AuditExport {
             auditor_seed_hex,
             kind,
+            context,
         } => {
+            // The store to audit: a named context's in the multi shape
+            // (each context carries its own gamma and audit grant), the
+            // single store in the mono shape. Any mismatch fails closed.
+            let store_cfg = match (&cfg.contexts, &context) {
+                (Some(contexts), Some(name)) => contexts
+                    .iter()
+                    .find(|c| &c.name == name)
+                    .map(|c| &c.store)
+                    .ok_or_else(|| format!("audit-export: unknown context `{name}`"))?,
+                (Some(_), None) => {
+                    return Err(
+                        "audit-export: a multi-context config needs --context <name>".into(),
+                    )
+                }
+                (None, Some(_)) => {
+                    return Err("audit-export: --context needs a `contexts` config".into())
+                }
+                (None, None) => cfg.mono_store()?,
+            };
             let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
             let bridge = Bridge::open(
-                GatewayStore::from_config(cfg.mono_store()?)?,
+                GatewayStore::from_config(store_cfg)?,
                 Arc::new(keyholder),
                 Box::new(OsEntropy),
             )?;
