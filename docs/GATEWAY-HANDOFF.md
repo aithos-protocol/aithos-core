@@ -213,11 +213,33 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
   Suite finale Phase B : 11 scénarios / 57 steps, 16 unit, 4 CLI,
   3 owner surface, 2 e2e réseau (mono + 2 contextes), clippy clean.
 
-**Phase C — la boucle « agent qui vit » (~1-2 sessions).** `proxy_llm`
-OpenAI-compat (kind `inference`, budgets tokens — F+ prêt côté core, creds
-vault `/x/`), consolidation : l'agent écrit sa mémoire dans son journal.
-Piste d'implémentation : le gateway expose des outils MCP aithos-natifs
-(`journal.write`, `journal.search`) mappés sur des `ethos.write` mandatés.
+**Phase C — la boucle « agent qui vit » (OUVERTE 2026-07-11, proxy_llm ✅).**
+- ✅ `proxy_llm` OpenAI-compat (2026-07-11, contrat
+  `tests/features/gateway-inference.feature` — 7 scénarios verts, écrits
+  AVANT le code et committés seuls) : le gateway détient la clé API
+  (config `llm:` v1, multi-shape uniquement ; vault `/x/` = cible §3bis.4,
+  même couture), **impose le modèle** (le choix de l'agent est écrasé),
+  lit l'usage RÉEL du provider, logge une entrée `inference` par appel
+  dans le JOURNAL (méta seulement : provider/model/tokens_in/tokens_out/
+  budget_ref — JAMAIS le prompt), budgets tokens F+. Mécanique :
+  - **Pen d'inférence SÉPARÉ** : `owner-init-journal --token-budget N`
+    mint un 3ᵉ mandat vers la pubkey agent (`act.x.llm.*`, constraints
+    `budgets: [{id: "llm", token_budget: N}]`) — séparé exprès : un
+    mandat à budgets force chaque entrée à citer un budget_ref, le stylo
+    xref doit rester budget-free. Pas de pen → pas de LLM (fail-closed).
+  - **Robinet fail-closed des deux côtés du provider** : avant = headroom
+    (pen présent, chaîne valide, spent < budget) sans round-trip ; après
+    = usage absent OU dépassement à l'append → complétion RETENUE +
+    refus journal (`llm.chat`, usage_missing / log_append_refused).
+  - **Un seul Runner partagé** (`Arc<Mutex<Runner>>` entre McpRouter et
+    LlmProxy — jamais deux bridges sur un même store, risque de fork) ;
+    endpoint `/v1/chat/completions` sur le même listener que `/mcp`.
+  Suite : 18 scénarios / 91 steps, 19 unit, 4 CLI, 3 owner surface,
+  2 e2e réseau, clippy clean.
+- ⬜ Reste Phase C : outils MCP aithos-natifs (`journal.write`,
+  `journal.search` → `ethos.write` mandatés) pour la consolidation
+  mémoire ; surfaces (e2e réseau llm avec faux provider + owner surface
+  `--token-budget`) ; creds vers le vault `/x/`.
 
 **Phase D — industrialisation.** Args scellés (quick win : `log_action` les
 accepte, manque `grant_audit_line` + flag), `tools/list` filtré, passthrough
