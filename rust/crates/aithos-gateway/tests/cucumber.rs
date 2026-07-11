@@ -594,7 +594,7 @@ async fn owner_grants_context(w: &mut GatewayWorld) {
         &label,
         &agent_pub,
         &gateway_pub,
-        &[read.clone()],
+        std::slice::from_ref(&read),
         store,
         &GatewayWorld::window(),
         T0,
