@@ -168,19 +168,28 @@ prochaine itération du gateway (le MVP actuel reste la démo mono-Ethos).
 
 ## 4. Reste à faire — phasage v2 (mis à jour 2026-07-10, fin de session)
 
-**Phase B — cœur v2 (EN COURS, lots 0-2 verts au 2026-07-10 soir).**
-Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 3 verts).
+**Phase B — cœur v2 (lots 0-3 verts au 2026-07-11).**
+Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
 - ✅ Lot 0 contrat ; Lot 1 naissance (`keygen`, identité fichier runner 0600,
   hors store, seuls les pubkeys sortent ; `Bridge::open` prend le keyholder) ;
   Lot 2 outillage owner (`owner-init-journal` — clés d'owner dérivées §9,
   stylo xref à l'agent ; `owner-init-context` ; `owner-grant-context` vers
   une PUBKEY : read tools + gouvernance + auditeur ; grants loggés ;
   `GatewayStore` clonable, mem partagé pour les tests).
-- ⬜ Lot 3 (PROCHAIN) : config v2 `contexts:` (store+upstream+tools par
-  contexte, collisions inter-contextes rejetées), N bridges + routage
-  outil→contexte dans proxy_mcp, journal branché au runtime : xref après
-  chaque acte (`act.x.xref.*`, payload `{ethos_did, entry_id}`), refus
-  routés §3bis.8. Le `onboard` mono-Ethos reste tel quel (démo).
+- ✅ Lot 3 (2026-07-11) : config v2 `contexts:`+`journal:` (formes mono/multi
+  exclusives fail-closed, collisions inter-contextes rejetées — 16 tests
+  unitaires), `Runner` multi-Ethos dans core_bridge (keyholder partagé
+  `Arc` entre N bridges — custody intacte ; xref `act.x.xref.ref` payload
+  clair `{ethos_did, entry_id, tool}` après chaque acte ; refus routés
+  §3bis.8 : journal TOUJOURS + contexte quand l'outil en désigne un),
+  `McpRouter`/`process_multi` dans proxy_mcp (log-before-relay ×2 : acte
+  contexte puis xref journal, tout échec d'append refuse ; relay vers
+  l'upstream DU contexte), `run` multi dans le binaire (mono inchangé).
+  **Simplification v1 assumée** : le routeur multi ne sert que
+  `tools/call` — `initialize` répond statique, `tools/list` agrège les
+  NOMS d'outils déclarés (inputSchema objet ouvert, pas de proxy de
+  schémas), toute autre méthode → -32601 (passthrough complet : Phase D).
+  Suite : 11 scénarios / 57 steps, 16 unit, 4 CLI, 1 e2e, clippy clean.
 - ⬜ Lot 4 : tests surface owner-side, e2e réseau 2 contextes, docs.
 
 **Phase C — la boucle « agent qui vit » (~1-2 sessions).** `proxy_llm`
@@ -223,3 +232,8 @@ SUR `feat/gateway`, intercalés entre les commits gateway. Fichiers disjoints,
 rien ne se conflicte, mais à réordonner à la fin (cherry-pick vers feat/f-plus
 ou merge global — décision Mathieu). Éviter à l'avenir : `git worktree add`
 par session, ou une seule session git-active à la fois.
+
+Même situation le 2026-07-11 : les commits du lot 3 (gateway) ont été posés
+sur **`feat/obligations`** (branche active de la session core du moment,
+consigne : ne jamais switcher). Fichiers disjoints (crate gateway + ce doc) ;
+à réordonner avec le reste au moment du merge global.
