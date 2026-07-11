@@ -163,6 +163,17 @@ only forks entirely inside its own authority, so a compromised delegate cannot
 rewrite log order beyond its perimeter — and never past entries, which stay pinned by
 hash.
 
+Wire (graved 2026-07-11, pass I): a merge entry keeps `prev` = the tip of the
+parent with the LOWEST edition hash — the same parent the manifest's
+`prev_hash` pins (§02.6) — and carries the additive `prevs: [head_a, head_b]`,
+the only entry kind allowed the field (fail-closed form check). The merged
+segment file lists parent A's sub-chain first (A = lowest edition hash), then
+parent B's, then the merge entry — existing entries byte-identical, never
+rewritten. `at` monotonicity is relaxed at the join (the signed merge entry
+documents it); chain truth stays the `prev`/`prevs` links. The merge edition
+recommits the §7.10 segment roots and counts trie over the merged layout, and
+every verifier reproduces them from the files alone.
+
 ## 7.7 Freshness anchor (anti-backdating)
 
 Chained entries cannot be backdated once published — `prev` pins their order. The

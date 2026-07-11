@@ -131,6 +131,33 @@ rules, enforceable by any verifier:
 - Verifiers presented with an unresolved fork MUST refuse to treat either branch as
   canonical for delegated writes and surface the conflict.
 
+Wire conventions (graved 2026-07-11, pass I — they condition the signed bytes):
+
+- **Merge edition.** `prev_hash` pins the parent with the LOWEST edition hash;
+  `merges: [hash_a, hash_b]` (ascending) rides beside it — additive like the
+  §2.10 roots, absent from pre-I editions whose chain hashes are untouched. A
+  linear-chain walker sees a valid link; a merge-aware verifier ALSO demands:
+  both parents at the same height sharing the same grandparent (`prev_hash`),
+  disjoint changesets (below), and a merged state it reproduces byte-for-byte
+  (content roots §2.10 and gamma roots §7.10 recommitted over the merge).
+- **Changesets and disjointness.** A parent's changeset is its §2.10
+  root-descent diff against the common ancestor; two changesets are disjoint
+  iff their touched node-label sets do not intersect. A shared **index file**
+  does not break disjointness: index rows merge **3-way by sid** — base = the
+  common ancestor's index; a row changed on one branch is taken from that
+  branch; rows added on either side are unioned; deletions hold (a row absent
+  from the changing branch stays absent — no resurrection); the existing sort
+  orders the result and JCS makes it byte-identical for every merger. The SAME
+  sid changed on both branches IS a same-node conflict — a fork, never merged.
+- **Fork resolution.** The resolving edition carries `resolves_fork:
+  <winning prev_hash>` (additive), is signed by the nearest common manager —
+  an authority whose perimeter covers every node touched by BOTH branches
+  (§04.2 nodal coverage; a delegate qualifies only inside its own authority,
+  the owner root always qualifies) — and its content extends the winning
+  branch. Verifiers accept it under the same authority check as a write to
+  those nodes; the losing branch's delegated writes are surfaced, never
+  silently replayed.
+
 This keeps integrity authority-anchored without an online arbiter — and without an
 owner availability dependency (§00.5); a mirror that serializes writes is a
 convenience (§00), not a requirement.
