@@ -6,3 +6,6 @@ dist/
 # cargo build artifacts (any platform)
 rust/target*/
 rust/cargo-linux/
+
+# wasm-pack output (regenerated; the npm tarball is a local artifact)
+rust/crates/aithos-wasm/pkg/
