@@ -9,11 +9,11 @@ use clap::{Parser, Subcommand};
 
 use aithos_gateway::config::GatewayConfig;
 use aithos_gateway::core_bridge::{
-    Bridge, EntropySource, MandateWindow, OnboardOutcome, OsEntropy,
+    Bridge, EntropySource, MandateWindow, OnboardOutcome, OsEntropy, Runner,
 };
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
-use aithos_gateway::proxy_mcp::{router, HttpUpstream, McpProxy};
+use aithos_gateway::proxy_mcp::{router, router_multi, HttpUpstream, McpProxy, McpRouter};
 use aithos_gateway::store_adapter::GatewayStore;
 
 #[derive(Parser)]
@@ -260,24 +260,40 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::Run => {
             let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
-            let bridge = Bridge::open(
-                GatewayStore::from_config(cfg.mono_store()?)?,
-                Arc::new(keyholder),
-                Box::new(OsEntropy),
-            )?;
-            let proxy = Arc::new(McpProxy {
-                policy: Policy::new(cfg.tools.clone()),
-                bridge: tokio::sync::Mutex::new(bridge),
-                upstream: HttpUpstream::new(cfg.mono_upstream()?.to_owned()),
-                clock: Arc::new(|| ts(now_secs())),
-            });
+            // Multi-context config → the routed runtime (v2, lot 3):
+            // one bridge per context + the journal, one upstream per
+            // context, the same single agent-facing endpoint.
+            let app = if let Some(contexts) = &cfg.contexts {
+                let runner = Runner::open(&cfg, keyholder, || Box::new(OsEntropy))?;
+                let upstreams = contexts
+                    .iter()
+                    .map(|c| (c.name.clone(), HttpUpstream::new(c.upstream_mcp.clone())))
+                    .collect();
+                router_multi(Arc::new(McpRouter {
+                    runner: tokio::sync::Mutex::new(runner),
+                    upstreams,
+                    clock: Arc::new(|| ts(now_secs())),
+                }))
+            } else {
+                let bridge = Bridge::open(
+                    GatewayStore::from_config(cfg.mono_store()?)?,
+                    Arc::new(keyholder),
+                    Box::new(OsEntropy),
+                )?;
+                router(Arc::new(McpProxy {
+                    policy: Policy::new(cfg.tools.clone()),
+                    bridge: tokio::sync::Mutex::new(bridge),
+                    upstream: HttpUpstream::new(cfg.mono_upstream()?.to_owned()),
+                    clock: Arc::new(|| ts(now_secs())),
+                }))
+            };
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()?;
             rt.block_on(async {
                 let listener = tokio::net::TcpListener::bind(&cfg.listen).await?;
                 eprintln!("gateway listening on http://{}/mcp", cfg.listen);
-                axum::serve(listener, router(proxy)).await?;
+                axum::serve(listener, app).await?;
                 Ok(())
             })
         }
