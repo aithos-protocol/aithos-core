@@ -262,7 +262,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
             let bridge = Bridge::open(
                 GatewayStore::from_config(cfg.mono_store()?)?,
-                keyholder,
+                Arc::new(keyholder),
                 Box::new(OsEntropy),
             )?;
             let proxy = Arc::new(McpProxy {
@@ -288,7 +288,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
             let bridge = Bridge::open(
                 GatewayStore::from_config(cfg.mono_store()?)?,
-                keyholder,
+                Arc::new(keyholder),
                 Box::new(OsEntropy),
             )?;
             let seed: [u8; 32] = hex::decode(&auditor_seed_hex)

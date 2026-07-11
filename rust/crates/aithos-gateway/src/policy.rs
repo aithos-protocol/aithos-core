@@ -58,6 +58,19 @@ impl Policy {
             .filter(|(_, a)| **a == ToolAccess::Read)
             .map(|(t, _)| t.as_str())
     }
+
+    /// Is this tool named by the map at all (read OR write)? The
+    /// multi-context router resolves a call to a context with this —
+    /// naming is not authorising: writes still fail at the mandate.
+    pub fn is_mapped(&self, tool: &str) -> bool {
+        self.map.contains_key(tool)
+    }
+
+    /// Every mapped tool name (deterministic order) — the aggregated
+    /// `tools/list` surface.
+    pub fn tools(&self) -> impl Iterator<Item = &str> {
+        self.map.keys().map(String::as_str)
+    }
 }
 
 #[cfg(test)]

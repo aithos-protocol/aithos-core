@@ -21,6 +21,9 @@
 //! the full verification (chain, revocations, budgets) at append time —
 //! the bundle itself refuses to log an uncovered act.
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +36,7 @@ use aithos_core::mandate::{verify_chain, GammaQuery, Mandate, MandateSpec, Perim
 
 use crate::config::GatewayConfig;
 use crate::keyholder::Keyholder;
-use crate::policy::op_for_tool;
+use crate::policy::{op_for_tool, Policy};
 use crate::store_adapter::GatewayStore;
 use crate::{GatewayError, Result};
 
@@ -124,10 +127,13 @@ pub struct EntryView {
 }
 
 /// Live bridge: the ethos, the mandate chains and the keyholder,
-/// assembled and ready to authorise, log and export.
+/// assembled and ready to authorise, log and export. The keyholder is
+/// shared (`Arc`): one runner identity signs into N ethos at once
+/// (multi-context runtime) while custody semantics stay intact — the
+/// seeds zeroise when the last bridge drops and are never serialised.
 pub struct Bridge {
     bundle: Bundle<GatewayStore>,
-    keyholder: Keyholder,
+    keyholder: Arc<Keyholder>,
     agent_chain: Vec<Mandate>,
     gateway_chain: Vec<Mandate>,
     auditor_mandate: Option<Mandate>,
@@ -149,6 +155,7 @@ impl Bridge {
         window: &MandateWindow,
         now: &str,
     ) -> Result<(Self, OnboardOutcome)> {
+        let keyholder = Arc::new(keyholder);
         let ent = entropy.as_mut();
 
         // The enterprise identity. Seeds surface once in the outcome and
@@ -253,12 +260,14 @@ impl Bridge {
         Ok((bridge, outcome))
     }
 
-    /// Reload a bridge onboarded earlier (the `run` and `audit-export`
+    /// Reload a bridge equipped earlier (the `run` and `audit-export`
     /// paths): state and certs come from the store; the seeds come from
     /// the RUNNER's identity file (`Keyholder::load`), never the store.
+    /// Takes the keyholder shared so a multi-context runner opens N
+    /// bridges over its ONE identity.
     pub fn open(
         store: GatewayStore,
-        keyholder: Keyholder,
+        keyholder: Arc<Keyholder>,
         entropy: Box<dyn EntropySource + Send>,
     ) -> Result<Self> {
         let bundle = Bundle::open(store).map_err(bridge_err)?;
@@ -369,6 +378,45 @@ impl Bridge {
         Ok(entry.id)
     }
 
+    /// Append one cross-reference to THIS ethos (the agent's journal),
+    /// mirroring an act recorded in a context gamma (§3bis.5/.7): the
+    /// journal is the per-agent index, the context entry stays the only
+    /// proof. Signed by the agent key under the journal's agent chain
+    /// (the xref pen, `act.x.xref.*`); the join key `(ethos_did,
+    /// entry_id)` rides clear in the payload.
+    pub fn record_xref(
+        &mut self,
+        tool: &str,
+        ethos_did: &str,
+        entry_id: &str,
+        now: &str,
+    ) -> Result<String> {
+        let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+        let join = serde_json::json!({
+            "ethos_did": ethos_did,
+            "entry_id": entry_id,
+            "tool": tool,
+        });
+        let args_hash = hash_of(&join)?;
+        let entry = self
+            .bundle
+            .log_action(
+                &self.agent_chain,
+                &agent_sk,
+                &ActionSpec {
+                    connector: "xref",
+                    action: "ref",
+                    args_hash: &args_hash,
+                    now,
+                    budget: Some(join),
+                    sealed_args: None,
+                },
+                self.entropy.as_mut(),
+            )
+            .map_err(|e| GatewayError::LogAppendRefused(e.to_string()))?;
+        Ok(entry.id)
+    }
+
     // ------------------------------------------------------------- audit
 
     /// Run the auditor's scoped query with the auditor's own key and
@@ -427,6 +475,11 @@ impl Bridge {
         self.bundle.gamma_verify().map_err(bridge_err)
     }
 
+    /// The DID of the ethos this bridge serves (xref payloads, joins).
+    pub fn ethos_did(&self) -> &str {
+        &self.bundle.did
+    }
+
     /// The mandate id the agent acts under (test assertions).
     pub fn agent_mandate_id(&self) -> &str {
         &self.agent_chain[0].id
@@ -439,6 +492,137 @@ impl Bridge {
 
     fn did_doc(&self) -> Result<DidDocument> {
         read_json(&self.bundle, "did.json")
+    }
+}
+
+// ------------------------------------------------------ multi-Ethos runner
+
+/// One provisioned context at runtime: its routing tool map and its
+/// live bridge into the context ethos.
+pub struct ContextRuntime {
+    pub policy: Policy,
+    pub bridge: Bridge,
+}
+
+/// The multi-Ethos runtime (Phase B lot 3): N context bridges plus the
+/// agent's journal bridge, all signing with the runner's ONE identity.
+/// An act writes twice — the context gamma (the proof) and a journal
+/// xref (the per-agent index); a refusal writes to the journal always,
+/// and to the context too when the tool names one (§3bis.8).
+pub struct Runner {
+    contexts: BTreeMap<String, ContextRuntime>,
+    journal: Bridge,
+}
+
+impl Runner {
+    /// Assemble from pre-built parts (the acceptance tests' door).
+    pub fn from_parts(contexts: BTreeMap<String, ContextRuntime>, journal: Bridge) -> Self {
+        Self { contexts, journal }
+    }
+
+    /// Open every context and the journal declared by a multi-context
+    /// config (the binary's `run` path). The runner identity is shared:
+    /// one keyholder, N bridges. Entropy stays injected — the factory is
+    /// called once per bridge.
+    pub fn open(
+        cfg: &GatewayConfig,
+        keyholder: Keyholder,
+        mut entropy: impl FnMut() -> Box<dyn EntropySource + Send>,
+    ) -> Result<Self> {
+        let contexts_cfg = cfg.contexts.as_ref().ok_or_else(|| {
+            GatewayError::ConfigRejected("the multi-context runner needs `contexts`".into())
+        })?;
+        let journal_cfg = cfg.journal.as_ref().ok_or_else(|| {
+            GatewayError::ConfigRejected("the multi-context runner needs `journal`".into())
+        })?;
+        let keyholder = Arc::new(keyholder);
+        let mut contexts = BTreeMap::new();
+        for ctx in contexts_cfg {
+            let store = GatewayStore::from_config(&ctx.store)?;
+            let bridge = Bridge::open(store, Arc::clone(&keyholder), entropy())?;
+            contexts.insert(
+                ctx.name.clone(),
+                ContextRuntime {
+                    policy: Policy::new(ctx.tools.clone()),
+                    bridge,
+                },
+            );
+        }
+        let journal = Bridge::open(
+            GatewayStore::from_config(&journal_cfg.store)?,
+            keyholder,
+            entropy(),
+        )?;
+        Ok(Self { contexts, journal })
+    }
+
+    /// The context whose tool map names this tool (read or write).
+    /// Unambiguous by construction: config v2 rejects cross-context
+    /// collisions. Unknown everywhere → `None` (default-deny).
+    pub fn resolve(&self, tool: &str) -> Option<&str> {
+        self.contexts
+            .iter()
+            .find(|(_, c)| c.policy.is_mapped(tool))
+            .map(|(name, _)| name.as_str())
+    }
+
+    /// Every mapped tool name across all contexts (deterministic order) —
+    /// what the router's aggregated `tools/list` advertises.
+    pub fn mapped_tools(&self) -> Vec<String> {
+        self.contexts
+            .values()
+            .flat_map(|c| c.policy.tools().map(str::to_owned))
+            .collect()
+    }
+
+    /// Pre-check on the resolved context: does its mandate cover the
+    /// tool at `now`? (`record_act_with_xref` re-verifies at append.)
+    pub fn authorize(&self, ctx: &str, tool: &str, now: &str) -> Result<()> {
+        self.context(ctx)?.bridge.authorize(tool, now)
+    }
+
+    /// Log-before-relay, twice: the authoritative act in the context
+    /// gamma, then its xref mirror in the journal. Any failed append
+    /// refuses the call — an act that cannot be indexed does not happen
+    /// (the already-appended context entry stands, append-only; the
+    /// caller's refusal then closes the story). Returns the CONTEXT
+    /// entry id (the proof).
+    pub fn record_act_with_xref(
+        &mut self,
+        ctx: &str,
+        tool: &str,
+        args: &serde_json::Value,
+        now: &str,
+    ) -> Result<String> {
+        let context = self.context_mut(ctx)?;
+        let entry_id = context.bridge.record_act(tool, args, now)?;
+        let ethos_did = context.bridge.ethos_did().to_owned();
+        self.journal.record_xref(tool, &ethos_did, &entry_id, now)?;
+        Ok(entry_id)
+    }
+
+    /// Refusal routing, decided §3bis.8: the journal gets EVERY refusal
+    /// (it is the agent's story); the context gets it too when the tool
+    /// maps to one (its auditor must see attempts against its
+    /// perimeter). Best-effort appends: even a failed refusal log never
+    /// un-refuses the call — the caller returns the error regardless.
+    pub fn record_refusal(&mut self, ctx: Option<&str>, tool: &str, reason: &str, now: &str) {
+        let _ = self.journal.record_refusal(tool, reason, now);
+        if let Some(c) = ctx.and_then(|name| self.contexts.get_mut(name)) {
+            let _ = c.bridge.record_refusal(tool, reason, now);
+        }
+    }
+
+    fn context(&self, name: &str) -> Result<&ContextRuntime> {
+        self.contexts
+            .get(name)
+            .ok_or_else(|| GatewayError::RequestRejected(format!("unknown context `{name}`")))
+    }
+
+    fn context_mut(&mut self, name: &str) -> Result<&mut ContextRuntime> {
+        self.contexts
+            .get_mut(name)
+            .ok_or_else(|| GatewayError::RequestRejected(format!("unknown context `{name}`")))
     }
 }
 
