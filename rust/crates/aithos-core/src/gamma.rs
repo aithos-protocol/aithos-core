@@ -688,6 +688,394 @@ pub fn check_anchor(entries: &[Entry], anchor: &str, freshness: &str, at: &str) 
     Ok(())
 }
 
+// -------------------------------------------- committed roots (§07.10, H2)
+//
+// Per-segment roots in chain order plus the counts trie — the §02.10 wire
+// reused byte-for-byte. Pure: segments come in as their exact file lines,
+// entries as parsed slices; the manifest committing lives in aithos-bundle.
+
+/// Per-budget counters of one trie leaf (§07.10): `actions` = `action`
+/// entries citing the ref; `tokens` = the §04.11 tally, attested receipt
+/// tokens beating declarations. Zero counters are omitted from the JCS.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BudgetCounters {
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub actions: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub tokens: u64,
+}
+
+/// One counts-trie leaf (§07.10): the §07.4 meters of one mandate. Zero
+/// counters and empty maps are omitted; a mandate with nothing counted has
+/// no leaf at all.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GammaCounters {
+    /// ALL kinds whose `authorized_via` contains the id — the audit total.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub entries: u64,
+    /// `action` entries whose `authorized_via` contains the id (subtree rule).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub actions: u64,
+    /// `grant` entries whose `authorized_by` is the id.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub children: u64,
+    /// Per cited `budget_ref`, under the same subtree rule.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub budgets: std::collections::BTreeMap<String, BudgetCounters>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+/// A segment's root: `mroot` over `H_leaf(<exact line bytes>)` in chain
+/// order — the log's order is the truth, nothing is sorted (§07.10).
+#[must_use]
+pub fn segment_root(lines: &[&[u8]]) -> [u8; 32] {
+    let hashes: Vec<[u8; 32]> = lines.iter().map(|l| crate::merkle::h_leaf(l)).collect();
+    crate::merkle::mroot(&hashes)
+}
+
+/// The raw §07.4/§04.11 tallies of the reachable chain, shaped into trie
+/// leaves. Owner-signed entries carry no `authorized_via` and feed nothing.
+#[must_use]
+pub fn counts_tally(entries: &[Entry]) -> std::collections::BTreeMap<String, GammaCounters> {
+    use std::collections::{BTreeMap, BTreeSet};
+    let mut per: BTreeMap<String, GammaCounters> = BTreeMap::new();
+    for e in entries {
+        let via: BTreeSet<&String> = e.authorized_via.iter().flatten().collect();
+        let budget_ref = e
+            .payload
+            .as_ref()
+            .and_then(|p| p.get("budget_ref"))
+            .and_then(|b| b.as_str());
+        for mid in via {
+            let c = per.entry(mid.clone()).or_default();
+            c.entries += 1;
+            if e.kind.as_str() == "action" {
+                c.actions += 1;
+            }
+            if matches!(e.kind.as_str(), "action" | "inference") {
+                if let Some(r) = budget_ref {
+                    let slot = c.budgets.entry(r.to_owned()).or_default();
+                    if e.kind.as_str() == "action" {
+                        slot.actions += 1;
+                    }
+                    slot.tokens += crate::constraints::entry_tokens(e);
+                }
+            }
+        }
+        if e.kind.as_str() == "grant" {
+            if let Some(by) = &e.authorized_by {
+                per.entry(by.clone()).or_default().children += 1;
+            }
+        }
+    }
+    per.retain(|_, c| {
+        c.budgets.retain(|_, s| *s != BudgetCounters::default());
+        *c != GammaCounters::default()
+    });
+    per
+}
+
+/// A trie leaf's claimed payload: `mandate_id ‖ 0x00 ‖ JCS(counters)`.
+pub fn counts_leaf_payload(id: &str, c: &GammaCounters) -> Result<Vec<u8>> {
+    let mut p = id.as_bytes().to_vec();
+    p.push(0);
+    p.extend_from_slice(&jcs::canonical_bytes(c)?);
+    Ok(p)
+}
+
+fn counts_leaves(
+    tallies: &std::collections::BTreeMap<String, GammaCounters>,
+) -> Result<Vec<[u8; 32]>> {
+    tallies
+        .iter()
+        .map(|(id, c)| Ok(crate::merkle::h_leaf(&counts_leaf_payload(id, c)?)))
+        .collect()
+}
+
+/// `gamma_counts_root` (§07.10): `mroot` over the leaves sorted by mandate
+/// id — 32×0x00 when nothing was ever counted.
+pub fn counts_root(tallies: &std::collections::BTreeMap<String, GammaCounters>) -> Result<[u8; 32]> {
+    Ok(crate::merkle::mroot(&counts_leaves(tallies)?))
+}
+
+/// Inclusion proof of the entry at `idx` (chain order) against its segment
+/// root — the v1 wire, claimed payload = the exact line bytes.
+pub fn prove_entry(lines: &[&[u8]], idx: usize) -> Result<crate::merkle::Proof> {
+    if idx >= lines.len() {
+        return Err(Error::MerkleProofInvalid(format!(
+            "entry index {idx} beyond segment length {}",
+            lines.len()
+        )));
+    }
+    let hashes: Vec<[u8; 32]> = lines.iter().map(|l| crate::merkle::h_leaf(l)).collect();
+    Ok(crate::merkle::Proof {
+        payload: hex::encode(lines[idx]),
+        steps: crate::merkle::mroot_path(&hashes, idx),
+        root: hex::encode(crate::merkle::mroot(&hashes)),
+    })
+}
+
+/// Count proof of one mandate against `gamma_counts_root` — the v1 wire,
+/// claimed payload = `mandate_id ‖ 0x00 ‖ JCS(counters)`.
+pub fn prove_count(
+    tallies: &std::collections::BTreeMap<String, GammaCounters>,
+    mandate_id: &str,
+) -> Result<crate::merkle::Proof> {
+    let idx = tallies
+        .keys()
+        .position(|k| k == mandate_id)
+        .ok_or_else(|| Error::MerkleProofInvalid(format!("{mandate_id}: not in the trie")))?;
+    let leaves = counts_leaves(tallies)?;
+    Ok(crate::merkle::Proof {
+        payload: hex::encode(counts_leaf_payload(
+            mandate_id,
+            &tallies[mandate_id],
+        )?),
+        steps: crate::merkle::mroot_path(&leaves, idx),
+        root: hex::encode(crate::merkle::mroot(&leaves)),
+    })
+}
+
+/// Verify a count proof and hand back its parsed leaf: the mandate id and
+/// the proven counters (fail-closed on any malformation).
+pub fn verify_count_proof(
+    proof: &crate::merkle::Proof,
+    pinned_root: &[u8; 32],
+) -> Result<(String, GammaCounters)> {
+    crate::merkle::verify_proof(proof, pinned_root)?;
+    parse_count_payload(&proof.payload)
+}
+
+fn parse_count_payload(payload_hex: &str) -> Result<(String, GammaCounters)> {
+    let err = |m: &str| Error::MerkleProofInvalid(format!("count leaf: {m}"));
+    let bytes = hex::decode(payload_hex).map_err(|_| err("bad payload encoding"))?;
+    let nul = bytes
+        .iter()
+        .position(|b| *b == 0)
+        .ok_or_else(|| err("no id separator"))?;
+    let id = String::from_utf8(bytes[..nul].to_vec()).map_err(|_| err("id not utf-8"))?;
+    let counters: GammaCounters =
+        serde_json::from_slice(&bytes[nul + 1..]).map_err(|_| err("malformed counters"))?;
+    // The claimed bytes must BE the canonical bytes — a re-encoding that
+    // verifies but parses differently would be a second preimage.
+    if counts_leaf_payload(&id, &counters)? != bytes {
+        return Err(err("payload is not canonical JCS"));
+    }
+    Ok((id, counters))
+}
+
+/// An absence proof (§07.10): the leaves adjacent in the tree that bracket
+/// the absent id. `None` sides claim the id falls before the first or past
+/// the last leaf; both `None` claims the empty trie.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AbsenceProof {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub left: Option<crate::merkle::Proof>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub right: Option<crate::merkle::Proof>,
+}
+
+/// Build the absence proof for `absent_id` — fails if the id is counted.
+pub fn prove_absence(
+    tallies: &std::collections::BTreeMap<String, GammaCounters>,
+    absent_id: &str,
+) -> Result<AbsenceProof> {
+    if tallies.contains_key(absent_id) {
+        return Err(Error::GammaAbsenceInvalid(format!(
+            "{absent_id}: counted — nothing to prove absent"
+        )));
+    }
+    let before = tallies.keys().filter(|k| k.as_str() < absent_id).count();
+    let left = before
+        .checked_sub(1)
+        .map(|i| prove_count(tallies, tallies.keys().nth(i).expect("index in range")))
+        .transpose()?;
+    let right = (before < tallies.len())
+        .then(|| prove_count(tallies, tallies.keys().nth(before).expect("index in range")))
+        .transpose()?;
+    Ok(AbsenceProof { left, right })
+}
+
+/// All `node` steps of a v1 proof (an absence proof folds no parents).
+fn node_steps(p: &crate::merkle::Proof) -> Result<Vec<(crate::merkle::Side, [u8; 32])>> {
+    p.steps
+        .iter()
+        .map(|s| match s {
+            crate::merkle::ProofStep::Node { side, hash } => {
+                let h = hex::decode(hash)
+                    .ok()
+                    .and_then(|v| <[u8; 32]>::try_from(v).ok())
+                    .ok_or_else(|| Error::GammaAbsenceInvalid("bad sibling encoding".into()))?;
+                Ok((*side, h))
+            }
+            crate::merkle::ProofStep::Wrap { .. } => Err(Error::GammaAbsenceInvalid(
+                "wrap step in a flat-tree proof".into(),
+            )),
+        })
+        .collect()
+}
+
+fn replay_nodes(start: [u8; 32], steps: &[(crate::merkle::Side, [u8; 32])]) -> [u8; 32] {
+    steps.iter().fold(start, |cur, (side, sib)| match side {
+        crate::merkle::Side::Left => crate::merkle::h_node(sib, &cur),
+        crate::merkle::Side::Right => crate::merkle::h_node(&cur, sib),
+    })
+}
+
+/// Verify an absence proof against the pinned counts root (§07.10).
+///
+/// Interior case: both leaves verify, their ids bracket `absent_id`, and
+/// they are ADJACENT in the tree — above their divergence the step lists
+/// are identical; at it, each proof's sibling replays from the other's
+/// lower steps; below it, the left leaf is the rightmost of the left
+/// subtree (`side:"left"` only) and the right leaf the leftmost of the
+/// right (`side:"right"` only). Rim cases: a missing left demands the
+/// right leaf be the tree's first (all `side:"right"`), and symmetrically;
+/// both missing demands the empty root.
+pub fn verify_absence(
+    absent_id: &str,
+    proof: &AbsenceProof,
+    pinned_root: &[u8; 32],
+) -> Result<()> {
+    let err = |m: String| Error::GammaAbsenceInvalid(m);
+    let parse = |p: &crate::merkle::Proof| -> Result<(String, Vec<(crate::merkle::Side, [u8; 32])>, [u8; 32])> {
+        crate::merkle::verify_proof(p, pinned_root)?;
+        let (id, _) = parse_count_payload(&p.payload)?;
+        let leaf = crate::merkle::h_leaf(
+            &hex::decode(&p.payload).map_err(|_| err("bad payload".into()))?,
+        );
+        Ok((id, node_steps(p)?, leaf))
+    };
+    match (&proof.left, &proof.right) {
+        (None, None) => {
+            if pinned_root == &crate::merkle::EMPTY_ROOT {
+                Ok(())
+            } else {
+                Err(err("empty-trie claim over a non-empty root".into()))
+            }
+        }
+        (None, Some(r)) => {
+            let (rid, rsteps, _) = parse(r)?;
+            if absent_id >= rid.as_str() {
+                return Err(err(format!("{absent_id} is not before the first leaf")));
+            }
+            if rsteps.iter().any(|(s, _)| *s != crate::merkle::Side::Right) {
+                return Err(err("claimed first leaf is not the leftmost".into()));
+            }
+            Ok(())
+        }
+        (Some(l), None) => {
+            let (lid, lsteps, _) = parse(l)?;
+            if absent_id <= lid.as_str() {
+                return Err(err(format!("{absent_id} is not past the last leaf")));
+            }
+            if lsteps.iter().any(|(s, _)| *s != crate::merkle::Side::Left) {
+                return Err(err("claimed last leaf is not the rightmost".into()));
+            }
+            Ok(())
+        }
+        (Some(l), Some(r)) => {
+            let (lid, lsteps, lleaf) = parse(l)?;
+            let (rid, rsteps, rleaf) = parse(r)?;
+            if !(lid.as_str() < absent_id && absent_id < rid.as_str()) {
+                return Err(err(format!("{lid} .. {rid} do not bracket {absent_id}")));
+            }
+            // Longest common suffix = the shared path above the divergence.
+            let common = lsteps
+                .iter()
+                .rev()
+                .zip(rsteps.iter().rev())
+                .take_while(|(a, b)| a == b)
+                .count();
+            let (ld, rd) = (
+                lsteps.len().checked_sub(common + 1),
+                rsteps.len().checked_sub(common + 1),
+            );
+            let (Some(ld), Some(rd)) = (ld, rd) else {
+                return Err(err("no divergence — not two distinct leaves".into()));
+            };
+            let (lside, lsib) = &lsteps[ld];
+            let (rside, rsib) = &rsteps[rd];
+            if *lside != crate::merkle::Side::Right || *rside != crate::merkle::Side::Left {
+                return Err(err("divergence sides do not face each other".into()));
+            }
+            if *lsib != replay_nodes(rleaf, &rsteps[..rd]) {
+                return Err(err("left sibling is not the right leaf's subtree".into()));
+            }
+            if *rsib != replay_nodes(lleaf, &lsteps[..ld]) {
+                return Err(err("right sibling is not the left leaf's subtree".into()));
+            }
+            if lsteps[..ld].iter().any(|(s, _)| *s != crate::merkle::Side::Left) {
+                return Err(err("left leaf is not the rightmost of its subtree".into()));
+            }
+            if rsteps[..rd].iter().any(|(s, _)| *s != crate::merkle::Side::Right) {
+                return Err(err("right leaf is not the leftmost of its subtree".into()));
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Verify a mirror's "every action under this mandate" answer (§07.10):
+/// the count leaf fixes k, then k inclusion proofs of pairwise-distinct
+/// `action` entries, each carrying the mandate in its clear
+/// `authorized_via`, each against its segment's pinned root. Returns the
+/// parsed entries. Fail-closed: one withheld or forged line kills it.
+pub fn verify_complete_actions(
+    mandate_id: &str,
+    count_proof: &crate::merkle::Proof,
+    entry_proofs: &[(String, crate::merkle::Proof)],
+    segment_roots: &std::collections::BTreeMap<String, [u8; 32]>,
+    counts_root: &[u8; 32],
+) -> Result<Vec<Entry>> {
+    let werr = |m: String| Error::GammaWithholdDetected(m);
+    let (id, counters) = verify_count_proof(count_proof, counts_root)?;
+    if id != mandate_id {
+        return Err(werr(format!("count leaf is for {id}, not {mandate_id}")));
+    }
+    if entry_proofs.len() as u64 != counters.actions {
+        return Err(werr(format!(
+            "{} entries served against a proven count of {}",
+            entry_proofs.len(),
+            counters.actions
+        )));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    for (segment, proof) in entry_proofs {
+        let pinned = segment_roots
+            .get(segment)
+            .ok_or_else(|| werr(format!("{segment}: no committed root")))?;
+        crate::merkle::verify_proof(proof, pinned)?;
+        if !seen.insert((segment.clone(), proof.payload.clone())) {
+            return Err(werr("duplicate entry in the answer".into()));
+        }
+        let bytes = hex::decode(&proof.payload)
+            .map_err(|_| Error::MerkleProofInvalid("bad entry payload".into()))?;
+        let entry: Entry = serde_json::from_slice(&bytes)
+            .map_err(|e| Error::InvalidGammaEntry(format!("proven entry: {e}")))?;
+        if entry.kind.as_str() != "action" {
+            return Err(werr(format!("{}: not an action entry", entry.id)));
+        }
+        if !entry
+            .authorized_via
+            .as_ref()
+            .is_some_and(|v| v.iter().any(|m| m == mandate_id))
+        {
+            return Err(werr(format!(
+                "{}: does not run under {mandate_id}",
+                entry.id
+            )));
+        }
+        out.push(entry);
+    }
+    Ok(out)
+}
+
 // ------------------------------------------------------------------- time
 
 /// Parse `"<n>d" | "<n>h" | "<n>m" | "<n>s"` into seconds.

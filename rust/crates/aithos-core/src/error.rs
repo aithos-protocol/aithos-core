@@ -73,6 +73,15 @@ pub enum Error {
 
     #[error("revocation rejected — signer lacks authority: {0}")]
     GammaRevocationRejected(String),
+
+    #[error("gamma roots mismatch — recomputed from the files: {0}")]
+    GammaRootMismatch(String),
+
+    #[error("absence proof invalid: {0}")]
+    GammaAbsenceInvalid(String),
+
+    #[error("withhold detected — incomplete against the proven count: {0}")]
+    GammaWithholdDetected(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

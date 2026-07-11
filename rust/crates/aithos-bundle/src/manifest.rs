@@ -35,11 +35,27 @@ pub struct Manifest {
     /// signed bytes, so old chain hashes are untouched).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub roots: BTreeMap<String, String>,
+    /// Committed gamma segment roots (§07.10, pass H2): `YYYY-MM` →
+    /// root+count, one per non-empty segment. Additive like `roots`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub gamma_roots: BTreeMap<String, GammaSegmentRoot>,
+    /// The counts-trie root (§07.10), hex — 32×0x00 when nothing was ever
+    /// counted; absent only on pre-H2 editions.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub gamma_counts_root: String,
     /// `sha256:<hex>` of the last gamma entry's JCS (§02.7); empty when the
     /// log is empty.
     #[serde(default)]
     pub gamma_head: String,
     pub signature: SignatureBlock,
+}
+
+/// One committed segment (§07.10): the chain-order root over the exact
+/// line bytes, plus the entry count that leaves enumeration nowhere to hide.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GammaSegmentRoot {
+    pub root: String,
+    pub n: u64,
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -59,6 +75,7 @@ impl Manifest {
         Ok(sha256_hex(&self.unsigned_jcs()?))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         root_sign: &ed25519_dalek::SigningKey,
         height: u64,
@@ -66,6 +83,8 @@ impl Manifest {
         created_at: String,
         files: BTreeMap<String, String>,
         roots: BTreeMap<String, String>,
+        gamma_roots: BTreeMap<String, GammaSegmentRoot>,
+        gamma_counts_root: String,
         gamma_head: String,
     ) -> Result<Self> {
         let mut m = Manifest {
@@ -77,6 +96,8 @@ impl Manifest {
             },
             files,
             roots,
+            gamma_roots,
+            gamma_counts_root,
             gamma_head,
             signature: SignatureBlock {
                 alg: "ed25519".to_owned(),

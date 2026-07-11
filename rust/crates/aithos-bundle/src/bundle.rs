@@ -917,6 +917,8 @@ impl<S: Store> Bundle<S> {
         self.put_json(&format!("manifests/tree-{height}.json"), &tree)?;
         let files = self.all_pinned_files(height)?;
         let gamma_head = self.gamma_head()?;
+        // Committed gamma roots (§07.10): segments + counts trie, additive.
+        let (gamma_roots, gamma_counts_root) = self.gamma_state()?;
         let manifest = Manifest::build(
             &owner.root_sign,
             height,
@@ -924,6 +926,8 @@ impl<S: Store> Bundle<S> {
             now.to_owned(),
             files,
             tree.roots,
+            gamma_roots,
+            gamma_counts_root,
             gamma_head,
         )?;
         self.put_json(&format!("manifests/{height}.json"), &manifest)?;
@@ -996,6 +1000,21 @@ impl<S: Store> Bundle<S> {
             if tree.roots != latest.roots {
                 return Err(Error::MerkleRootMismatch(
                     "recomputed state roots do not match the manifest".into(),
+                ));
+            }
+        }
+        // Committed gamma roots (§07.10): same posture — recompute from the
+        // segment files alone and compare. Pre-H2 editions carry none.
+        if !latest.gamma_counts_root.is_empty() || !latest.gamma_roots.is_empty() {
+            let (gamma_roots, gamma_counts_root) = self.gamma_state()?;
+            if gamma_roots != latest.gamma_roots {
+                return Err(Error::GammaRootMismatch(
+                    "recomputed segment roots do not match the manifest".into(),
+                ));
+            }
+            if gamma_counts_root != latest.gamma_counts_root {
+                return Err(Error::GammaRootMismatch(
+                    "recomputed counts root does not match the manifest".into(),
                 ));
             }
         }

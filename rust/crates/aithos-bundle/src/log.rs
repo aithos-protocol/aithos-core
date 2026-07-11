@@ -110,6 +110,42 @@ impl<S: Store> Bundle<S> {
         gamma::head(&self.gamma_entries()?)
     }
 
+    /// Committed gamma roots (§07.10): one root+count per non-empty
+    /// segment, hashed over the EXACT file lines in chain order, plus the
+    /// counts-trie root over the parsed chain. Pure recompute — the same
+    /// call serves publish (commit) and verify (compare).
+    pub fn gamma_state(
+        &self,
+    ) -> Result<(BTreeMap<String, crate::manifest::GammaSegmentRoot>, String)> {
+        let mut roots = BTreeMap::new();
+        let mut entries = Vec::new();
+        for seg in self.gamma_segments()? {
+            let bytes = self.get(&seg)?;
+            let lines: Vec<&[u8]> = bytes
+                .split(|b| *b == b'\n')
+                .filter(|l| !l.is_empty())
+                .collect();
+            for line in &lines {
+                let e: Entry = serde_json::from_slice(line)
+                    .map_err(|e| Error::InvalidGammaChain(format!("{seg}: {e}")))?;
+                entries.push(e);
+            }
+            let month = seg
+                .strip_prefix("gamma/")
+                .and_then(|s| s.strip_suffix(".jsonl"))
+                .ok_or_else(|| Error::InvalidGammaChain(format!("odd segment name: {seg}")))?;
+            roots.insert(
+                month.to_owned(),
+                crate::manifest::GammaSegmentRoot {
+                    root: hex::encode(gamma::segment_root(&lines)),
+                    n: lines.len() as u64,
+                },
+            );
+        }
+        let counts = gamma::counts_root(&gamma::counts_tally(&entries))?;
+        Ok((roots, hex::encode(counts)))
+    }
+
     /// Raw append: the entry must chain on the current head and be
     /// well-formed. Authority checks happen in the callers below.
     pub fn gamma_append(&mut self, entry: &Entry) -> Result<()> {

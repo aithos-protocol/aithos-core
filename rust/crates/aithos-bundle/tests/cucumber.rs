@@ -887,6 +887,8 @@ fn wrong_predecessor(w: &mut ProtocolWorld) {
         NOW.to_owned(),
         latest.files.clone(),
         latest.roots.clone(),
+        latest.gamma_roots.clone(),
+        latest.gamma_counts_root.clone(),
         latest.gamma_head.clone(),
     )
     .unwrap();
