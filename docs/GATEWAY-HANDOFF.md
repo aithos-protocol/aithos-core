@@ -11,8 +11,10 @@ les leçons d'environnement. Session initiale : 2026-07-10.
 ## 1. État : MVP audit VERT (première brique vendable)
 
 `tests/features/gateway-audit.feature` — **5 scénarios / 29 steps verts**, plus
-8 tests unitaires (config, policy) et 3 tests de surface CLI (`cli_surface.rs`,
-binaire réel). Le parcours vendu fonctionne de bout en bout en lib :
+8 tests unitaires (config, policy), 3 tests de surface CLI (`cli_surface.rs`,
+binaire réel) et **1 e2e réseau** (`e2e_http.rs` : binaire `run` en process
+enfant, faux MCP amont sur vraie socket, JSON-RPC sur le fil, audit-export —
+le parcours client complet en local). Le parcours vendu fonctionne :
 
 on plugge un agent (config YAML + onboard), les lectures passent et sont
 tracées, les écritures et l'inconnu sont refusés fail-closed et les REFUS sont
@@ -181,8 +183,8 @@ Piste d'implémentation : le gateway expose des outils MCP aithos-natifs
 **Phase D — industrialisation.** Args scellés (quick win : `log_action` les
 accepte, manque `grant_audit_line` + flag), `tools/list` filtré, passthrough
 SSE/streaming complet, container/pod + egress lockdown (deployment doc),
-`RemoteStore` signé puis S3, ops (révocation, dashboard), test d'intégration
-HTTP bout en bout.
+`RemoteStore` signé puis S3, ops (révocation, dashboard). ~~Test d'intégration
+HTTP bout en bout~~ — FAIT (`e2e_http.rs`, 2026-07-10).
 
 **Opérationnel local « vision complète » = B + proxy_llm minimal de C.**
 Note : H (racines gamma, preuves de complétude — en cours côté core) upgrade
