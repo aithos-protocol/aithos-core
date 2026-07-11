@@ -224,6 +224,30 @@ a grant or rotation naturally bumps the node's path to the root. `self` and the
 vault are **flat** (§2.8): leaves `H_leaf(JCS(index_row) ‖ header_hash)` sorted by
 sid — proofs reveal sibling hashes only, never structure.
 
+Wire conventions (graved 2026-07-11, pass H1 — they condition the hashed bytes):
+
+- `mroot` recursion: `mroot([]) = 32×0x00`; `mroot([x]) = x`; else
+  `H_node(mroot(left), mroot(right))` with `left` = the first ⌈n/2⌉ items
+  (left-heavy split). No duplication, no promotion.
+- Children sort inside a folder: by `(kind, key)`, kind order `"d" < "s" < "t"`
+  (folder, section, tag view), key = sid for d/s, the tag string for t. Flat
+  zones sort by sid.
+- Tag-view wraps: `mroot` over `H_leaf(section_sid ‖ 0x00 ‖ BLAKE3(JCS(wrap)))`,
+  sorted by section sid.
+- Roots ride the manifest **beside** the flat file pins (additive, decided
+  2026-07-11): `roots: {public, circle, self, vault}` next to `gamma_head`;
+  the flat pins keep covering byte-rollback of sealed `self` blobs (§2.8 rows
+  carry no blob hash by design).
+- Proof wire (v1): the verifier starts from the CLAIMED bytes —
+  `cur = H_leaf(JCS(row) ‖ header_hash [‖ mroot…])` — then applies ordered
+  steps: `{"node":{"side":"left"|"right","hash":"<hex>"}}` →
+  `cur = H_node(sibling, cur)` / `H_node(cur, sibling)`; and
+  `{"wrap":{"pre":"<hex>","post":"<hex>"}}` → `cur = H_leaf(pre ‖ cur ‖ post)`
+  (the parent folder's own payload folding). The proof verifies iff the final
+  `cur` equals the pinned zone root. Domain separation does the splicing
+  defense: a node hash fed where a leaf is expected (or the reverse) changes
+  the domain string and the root dies.
+
 Proofs and costs. An inclusion proof interleaves sibling steps (inside a folder's
 balanced tree) with parent steps (the parent folder's own payload), ending at the
 zone root: size and verify time O(depth × log₂ fanout) — roughly 25 hashes, under a
