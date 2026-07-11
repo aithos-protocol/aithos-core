@@ -3,6 +3,15 @@
 **But.** Reprendre l'implémentation de référence d'aithos-core sans rien reperdre.
 Résume où on en est, comment on travaille, et la prochaine étape exacte.
 
+> **ÉTAT EXPRESS (2026-07-11, passe de vérification)** : **13 étapes closes
+> et committées — I (concurrence) incluse.** La passe du 11/07 a compilé,
+> corrigé (4 retouches, §6), validé (187 scénarios / 658 steps zéro skip,
+> vecteur i1 byte-exact, 17 tests CLI, clippy/fmt clean, checkpoint bloc
+> 15 ✔) et committé l'impl I en 5 tranches. Prochaine étape : **K —
+> Intégration**. ⚠️ L'ENVIRONNEMENT A CHANGÉ : VM sans egress réseau ni
+> unlink — builds désormais dans le conteneur CLOUD, commits git sur le
+> montage sous protocole janitor : tout est au §5, à lire AVANT d'agir.
+
 **Branche : `feat/obligations`** (créée depuis le HEAD complet `feat/gateway` ;
 F+, G **et G+** entièrement closes ici ; le crate `aithos-gateway` ride sur la
 branche mais n'est JAMAIS touché — sessions parallèles ; merge = décision
@@ -107,8 +116,33 @@ rejet) ; wire figé étape 0 (multibase base58btc, JCS RFC 8785, AAD §00.3).
   rims = all-right (première feuille) / all-left (dernière), trie vide =
   racine 32×0x00. Complétude : compte prouvé k + k inclusions distinctes.
   Sceller kind/via (bump `v`) : DIFFÉRÉ, conforme à la forward note.
+- **Concurrence §2.6/§7.6 — 4 décisions gravées (Mathieu, round I) +
+  décisions d'impl validées par la passe du 2026-07-11** : les 4 gravées =
+  (1) merge manifest : `prev_hash` pointe le parent au plus petit hash
+  d'édition + champ ADDITIF `merges: [a, b]` triés ; (2) index partagés =
+  3-way par sid (base = ancêtre commun, rows changées de leur branche,
+  ajouts unis, deletes tiennent, même sid changé des deux côtés = fork) ;
+  (3) entrée gamma merge = `prev` (tip du parent min) + ADDITIF `prevs:
+  [head_a, head_b]`, seule kind autorisée ; segment fusionné = préfixe
+  commun, sous-chaîne LOW, sous-chaîne HIGH, entrée merge — octets jamais
+  réécrits, monotonie `at` relâchée à la jointure, racines §7.10
+  recommittées ; (4) portée = I1 + I2 complets (refus verifier du fork non
+  résolu + résolution nearest common manager, autorité dir_covers, délégué
+  borné, owner dernier recours). Les décisions D'IMPL prises en session
+  (signalées, non re-validées une à une) : id d'entrée merge DÉTERMINISTE
+  blake3(`aithos-core/v1/merge-entry-id` ‖ hash_lo ‖ hash_hi)→ULID ;
+  snapshots d'index par édition `manifests/index-<zone>-<h>.json` (base du
+  3-way ; merge exige un ancêtre publié post-I, sinon refus « missing
+  snapshots ») ; slots `-alt` déterministes (HIGH/perdant) ; frontière =
+  labels sans descendant changé, racine de zone induite, tag-views = nœuds
+  propres (conservateur) ; fork genesis accepté par verify_links ;
+  résolution d'un couple mergeable autorisée (l'autorité gate) ; manifest
+  délégué accepté UNIQUEMENT porteur de `resolves_fork`. Convention pinnée
+  par le vecteur : payload de l'entrée merge = `{"merges": [a, b]}` miroir
+  du manifest ; prev = tip du parent au plus petit hash ; prevs =
+  [tip_lo, tip_hi].
 
-## 4. État du code (12 étapes closes sur 13 — H entièrement close, H1+H2)
+## 4. État du code (13 étapes closes et committées — A→I)
 
 Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 `aithos-cli`, `aithos-wasm`.
@@ -127,13 +161,14 @@ Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 | **G+ Obligations** | ✅ | **SOLDÉ (2026-07-10 soir)** : constraints.rs (Obligation/AppliesTo, parse_obligations + désugarage counter_sign/binding → instance `co_sign`, verify_obligation_receipt — payload RECONSTRUIT des coordonnées de l'entrée, le rejeu cross-mandat/action/args meurt dans la signature —, check_obligations, obligations_attenuate JCS-strict), branché check_action_append (gamma.rs, à côté de check_budgets, clé content injectée du DID doc) + verify_chain (mandate.rs, add-only par maillon), log_action_with_checks (log.rs, additif — ActionSpec intact, le gateway build inchangé), GammaObligationUnsatisfied fail-closed. CLI grant-act --obligations-json/--counter-sign, action --check-json, **approve** (--approver-seed-hex ou --owner-seed-hex co_sign, --presented WYSIWYS, --key-only). Vecteur G+ Python indépendant (gen-gplus.py auto-validé contre le reçu F+) : JCS byte-identique, 6 reçus valides, 8 négatifs, atténuation. 26 scénarios, 2 tests de surface |
 | **H1 Merkle contenu** | ✅ | **SOLDÉ (2026-07-11)** : merkle.rs pur (h_leaf/h_node BLAKE3 domain-separated, mroot left-heavy, mroot_path, proof wire v1 node/wrap, verify_proof depuis les octets DÉCLARÉS — le splice meurt sur le domaine, deux sens), state.rs bundle (arbre recalculable des fichiers seuls : zones hiérarchiques avec headers foldés + tag views ancrées + wraps mroot'és, self plat, vault par chemin de storage ; prove_section/prove_self ; tree_diff par descente), manifest.roots À CÔTÉ des pins plats (serde default : chain hashes pré-H intouchés), sidecar d'arbre pinné par édition, verify recompare les racines. Vecteur H1 Python (gen-h.py auto-validé contre B2). 14 scénarios (dont move-as-rotation traqué par l'arbre). CLI prove / edition-diff |
 | **H2 Racines gamma** | ✅ | **SOLDÉ (2026-07-11)** : spec §7.10 gravée (5d7ab89) ; gamma.rs section roots pure (segment_root en ordre de chaîne sur les octets EXACTS des lignes, counts_tally → GammaCounters {entries, actions, children, budgets} avec omission des zéros, counts_root, prove/verify count + entry + absence par adjacence triée + verify_complete_actions), manifest.gamma_roots {mois → {root, n}} + gamma_counts_root ADDITIFS (posture H1, serde default), log.rs gamma_state (publish committe, verify recompute et compare — GammaRootMismatch), 3 variants d'erreur fail-closed. Vecteur H2 Python (gen-h2.py, TRIPLE ancrage : B2 blake3, H1 conventions mroot byte-identiques, F2 = le segment 2026-07 EST les entrées committées de F2 et les tallies reproduisent ses expected). 12 scénarios. CLI log-prove (compte + absence) + test de surface |
-| I Concurrence | ⬜ | merge disjoint, fork, entrées merge |
+| **I Concurrence** | ✅ | **SOLDÉE (2026-07-11, passe de vérification)** : core Entry.prevs additif (wire pré-I intact), check_form fail-closed (prevs = merge only, exactement 2, distincts, prev == prevs[0], payload.merges [lo, hi] croissants, pas de target), verify_links en marche de graphe (fork par extension d'un hash consommé — genesis inclus —, merge consomme exactement les DEUX tips ouverts, monotonie `at` relâchée à la jointure seulement, fin = un seul tip, doublon refusé), EditionFork/MergeRejected/ForkResolutionRejected ; bundle merge.rs (3-way par sid contre les snapshots d'index par édition, merge_segment_lines préfixe+LOW+HIGH, frontier() sur tree_diff, edition_merge à entrée d'id déterministe signée #content — sautée si le log n'a pas forké —, fork_check, resolve_fork autorité dir_covers AVANT toute écriture, verify_merge_edition/verify_resolution_edition sur sidecars authentifiés par les pins signés) ; manifest merges/resolves_fork/authorized_via additifs + ManifestSigner délégué ; publish_artifacts factorisé + snapshots d'index ; slots -alt ; section_rewrite/section_delete (circle ; delete = row seule, blob = crypto-erasure) ; MemStore: Clone ; 12 scénarios dé-taggés, vecteur i1_concurrency.rs byte-exact, CLI edition-merge + surface, bloc 15 ✔ — commits e1c22ce / 50d863e / 9d4ac58 / 96fd28c |
 | K Intégration | ⬜ | scénario K, Docker, npm |
 
-**Tests : 175 scénarios / 610 steps cucumber (zéro skip) + vecteurs
-A→F+/G1/G2/G3/G+/H1/H2 + 16 tests de surface CLI, tous verts ; `clippy
+**Tests : 187 scénarios / 658 steps cucumber (zéro skip) + vecteurs
+A→F+/G1/G2/G3/G+/H1/H2/I1 + 17 tests de surface CLI, tous verts ; `clippy
 --workspace --all-targets -- -D warnings` clean ; `cargo fmt` passé ;
-gateway vérifié vert (5 scénarios / 29 steps, jamais touché).**
+gateway vérifié vert au même HEAD (8 scénarios / 41 steps — la session
+parallèle Phase B l'a étoffé, jamais touché ici).**
 
 Deux trous de discipline découverts et soldés (2026-07-10) : (1) le scénario
 « A revoked chain is refused at verification time » était silencieusement
@@ -167,6 +202,11 @@ Checkpoint H2 déroulé (bloc 14 du guide) : publish → gamma_roots {2026-07 :
 edition-verify refuse (pin plat en première ligne ; la racine recalculée
 diverge aussi — le scénario « caught by root recomputation alone » couvre le
 cas mirror sans pins). ✔
+Checkpoint I déroulé (bloc 15 du guide, 2026-07-11) : deux copies
+divergentes → edition-merge → « merge edition published (height 4,
+parents lo + hi) », prev_hash == merges[0], les DEUX écritures lisibles,
+edition-verify + log-verify OK ; grant du même dossier des deux côtés →
+« EditionFork: same-node conflict on circle:d/… », refus fail-closed. ✔
 
 ## 5. Comment builder / tester
 
@@ -176,102 +216,105 @@ cargo clippy --workspace --manifest-path rust/Cargo.toml --all-targets -- -D war
 python3 vectors/gen-f.py   # régénère F1-F3 (auto-check B2/E1 d'abord)
 ```
 
-**Env sandbox (2026-07-10 soir, session move — la VM se dégrade à chaque
-recyclage, lire AVANT de builder)** :
-- toolchain : `/tmp/rustup/toolchains/stable-aarch64-unknown-linux-gnu/bin` EN
-  DIRECT dans PATH (rustup shim cassé). `CARGO_INCREMENTAL=0`.
-- **Disque VM PLEIN** (100%, résidus `nobody` indélébiles, pas de sudo) →
-  `CARGO_HOME=<repo>/rust/cargo-linux` (sur le volume Mac, gitignoré) ET
-  `CARGO_TARGET_DIR=<repo>/rust/target-linux`. `rust/target/` = artefacts macOS
-  de Mathieu, NE PAS toucher.
-- **Piège mortel : les kills à ~40s laissent des artefacts DÉCHIRÉS sur le
-  montage** (fingerprint ok, .rmeta absent/corrompu → E0463/E0460, StableCrateId
-  collisions, ICE). Recette qui converge : builds `-j 1`, `sync` après chaque
-  tranche, capturer la dernière ligne `Compiling <crate>` et `cargo clean -p
-  <crate>` au début de la tranche suivante ; itérer cible par cible (d'abord
-  `-p aithos-bundle --test cucumber`, le workspace complet à la fin). Si le
-  registry part en vrille (collisions serde) : `rm -rf cargo-linux/registry/src`
-  (les tarballs re-extraient, réseau crates.io OK).
-- Suppressions bloquées sur le montage → outil allow_cowork_file_delete au
-  premier "Operation not permitted". `.git/*.lock` à rm avant commit.
-- `rust/target` a été PURGÉ du tracking git (7938 fichiers macOS committés par
-  erreur depuis B ; l'historique garde le poids — réécriture = décision à part).
-  `.gitignore` couvre `rust/target*/` et `rust/cargo-linux/`.
-- **Session H2 (2026-07-11)** : cargo a été bumpé à 1.96.1 dans la VM → cache
-  entièrement invalidé, tout recompile. Pièges neufs : (a) le couple
-  cucumber+aithos-gateway ne tient PAS dans une tranche -j1 de 43s (le
-  pipelining démarre gateway pendant le codegen de cucumber ; un kill déchire
-  le .rlib de cucumber → recompile éternelle). Recette qui a convergé :
-  `cargo clean -p cucumber -p aithos-gateway` puis tranches **-j 2** de
-  `cargo build -p aithos-gateway --tests` SANS clean entre les tranches —
-  cucumber survit à la 1ʳᵉ, gateway finit à la 2ᵉ ; (b) ne JAMAIS builder
-  `-p cucumber` standalone (ICE du résolveur de features cargo) ; (c) les
-  builds en arrière-plan (`nohup … &`) MEURENT à la fin de l'appel bash —
-  et `pgrep -f "cargo build"` matche ta propre commande (faux positif) ;
-  (d) /tmp est sur / (100 % plein) : un log nohup vers /tmp écrit zéro
-  octet, silencieusement.
+**⚠️ MÉTHODE COURANTE (2026-07-11, passe de vérif I — l'environnement a
+CHANGÉ, les recettes VM d'avant sont OBSOLÈTES)** :
+- **La VM locale ne peut plus builder** : recyclée saine (disque OK) MAIS
+  (a) egress réseau coupé — proxy deny-all, 403/timeout sur TOUT
+  (static.rust-lang.org, crates.io, pypi, github) → aucune toolchain
+  installable ; (b) **unlink/rmdir interdits sur le montage ET hors
+  montage impossible à contourner** — l'outil `allow_cowork_file_delete`
+  N'EXISTE PLUS. rename/mv (même par-dessus un fichier existant, même un
+  dossier), hardlink, écriture-truncate : tous OK. Suppression voulue =
+  `mv` vers `_to_delete/`.
+- **Builds + tests : dans le conteneur CLOUD de la session** (x86_64,
+  réseau crates.io/rustup OK, disque ~30G, pas de limite 45 s). Recette de
+  la passe I, reproductible : rustup pinné **1.96.1** (parité clippy avec
+  la suite — stable a pu bouger) minimal + clippy + rustfmt ;
+  `git archive HEAD` sur la VM → tar → device_stage_files → arbre
+  baseline ; tar des fichiers sales → arbre de travail ;
+  `CARGO_INCREMENTAL=0`, un CARGO_TARGET_DIR PAR arbre (le partage
+  provoque des collisions de cache inter-workspaces — vécu) ; suite
+  complète ~2 min à froid. Retour : tar des fichiers modifiés →
+  SendUserFile + device_commit_files → `cp` par-dessus (jamais tar -x
+  direct : GNU tar UNLINK par défaut ; extraire dans un dossier neuf puis
+  cp). **Croiser un sha256 global des fichiers des deux côtés avant de
+  committer.** Différence assumée : validation x86_64 (code pur
+  serde/blake3/dalek — sorties identiques par définition) ; les caches
+  aarch64 `rust/cargo-linux` + `rust/target-linux` restent sur le volume,
+  dormants, si l'egress VM revient un jour.
+- **Git : sur le montage (la VM), sous PROTOCOLE JANITOR** — git marche
+  SAUF ses unlinks de rollback : tout `git status` (et tout commit à vide)
+  laisse un `index.lock`/`HEAD.lock` orphelin qui bloque l'op suivante
+  (`File exists`). Protocole : `git config gc.auto 0` (une fois) ; avant
+  CHAQUE commande git qui écrit, `mv .git/index.lock .git/HEAD.lock →
+  _gitjunk/` s'ils existent ; JAMAIS de `git status` intercalé dans une
+  séquence add/commit ; jamais `commit -a` ; jamais `git stash` (mise à
+  l'écart par copie de fichiers à la place). add/commit qui RÉUSSISSENT ne
+  laissent rien (le lock est renommé, pas unlinkés). Vérifié sur les 5
+  commits de la passe I. Pour committer en tranches un fichier scindé :
+  cp la version intermédiaire → `git add` → cp la version finale (l'index
+  garde le snapshot) → `git commit` (sans -a).
+- `rust/target/` = artefacts macOS de Mathieu, NE PAS toucher.
+  `rust/target*` et `rust/cargo-linux/` gitignorés ; `rust/target` a été
+  PURGÉ du tracking (l'historique garde le poids — réécriture = décision à
+  part).
+- Python (générateurs de vecteurs) : dans le conteneur cloud aussi
+  (`pip install blake3 --break-system-packages` ; pynacl/base58 selon le
+  générateur). La VM n'a plus pypi.
+- Archéologie VM (si l'egress revient) : toolchain dans /tmp/rustup PATH
+  direct, tranches -j1 ≤ 40 s + sync + clean de la crate déchirée, couple
+  cucumber+gateway en -j2 sans clean, jamais `-p cucumber` standalone,
+  nohup meurt en fin d'appel — voir l'historique git de ce fichier
+  (commits ≤ 2460ee3) pour le détail.
 
-## 6. Prochaine étape : I — Concurrence
+## 6. Prochaine étape : K — Intégration finale & packaging
 
-**H2 est close (2026-07-11, cette session) — H est donc ENTIÈREMENT soldée.**
-Rituel intégral déroulé : 4 points de décision validés par Mathieu (voir §3)
-→ spec §7.10 gravée AVANT le code (5d7ab89 ; forward note §7.1 remplacée par
-un pointeur, §7.8 mis à jour — le withhold des mirrors est fermé) → feature
-committée avant le code, validée par Mathieu (3515564, 12 scénarios) →
-vecteur Python indépendant TRIPLE-ancré (562bab8 : blake3 vs B2, conventions
-mroot byte-identiques vs H1 committé, segment 2026-07 = les entrées
-committées de F2 dont les tallies reproduisent les expected de F2) → impl
-core+bundle (07a07de, 6 tests de vecteur verts du premier coup, y compris
-l'égalité JSON des preuves Rust == Python) → scénarios verts et dé-taggés
-(1563371) → CLI log-prove + surface (4a81a5c) → fmt/clippy + guide bloc 14
-(2460ee3) → checkpoint manuel ✔. `verify_op`/gateway jamais touchés ; le
-tally brut de l'appendeur est INCHANGÉ (mêmes octets, même résultat) — les
-racines servent les verifiers et les mirrors.
+**I est close (2026-07-11, cette session — la passe de vérification).**
+Rituel intégral soldé sur les deux sessions : 4 décisions validées par
+Mathieu → spec gravée AVANT le code (803e622 : §2.6 + §7.6) → feature
+committée et validée (d10b0ba, 12 scénarios @wip) → vecteur Python
+indépendant ancré B2+H2+F2 (c7ce0e5) → impl écrite en entier (session du
+11/07 soir, VM morte, zéro exécution) → **passe de vérification (cette
+session) : baseline pré-I revalidée à l'identique (175/610 zéro skip, 16
+CLI, clippy clean), première compilation, corrections, suite complète
+verte, commits en 5 tranches** (e1c22ce core → 50d863e bundle → 9d4ac58
+tests+vecteur → 96fd28c CLI → ce commit docs), checkpoint bloc 15 ✔.
+Chaque tranche compile et passe la suite complète indépendamment (états
+intermédiaires vérifiés un à un avant commit).
 
-**I — Concurrence : ENTAMÉE (2026-07-11, même session que H2). Les étapes 0-2
-du rituel sont FAITES, il reste l'impl (étape 3+).**
+**Ce que la passe de vérification a corrigé (l'impl aveugle était juste à
+~4 retouches près)** :
+- 2 erreurs de compil : move dans le tuple de retour de `competing_tips`
+  (hauteur capturée avant le move) ; `use aithos_bundle::Store` manquant
+  dans la CLI (méthode de trait hors scope).
+- 1 lint clippy : `sk: *sk` → `sk` (explicit_auto_deref, merge.rs).
+- `cargo fmt` : retouches cosmétiques (manifest.rs, merge.rs, cucumber.rs,
+  cli_surface.rs, i1_concurrency.rs).
+- **1 vraie divergence de wire, dans le VECTEUR (pas l'impl)** :
+  `gen-i.py` émettait `"roots": {}` dans ses manifests fixture — map vide
+  jamais émise par l'implémentation (champ additif skip-if-empty depuis
+  H1, c'est ce qui garde les hashes pré-H intacts). Le hash Rust recalculé
+  depuis les premiers principes et le hash Python ont convergé
+  byte-exactement dès le fixture canonisé (roots vide OMIS). Cascade
+  régénérée (hash_lo/hi → merges → payload/id de l'entrée merge → head →
+  racine de segment) ; au passage l'ordre LOW/HIGH des deux branches
+  fixture a BASCULÉ (B tire désormais le petit hash) → le test de vecteur
+  résout maintenant low/high depuis les hashes au lieu de supposer le
+  tirage (« A = low » codé en dur, fragile par construction).
+- Base de la passe : HEAD avait avancé de 6 commits gateway (Phase B,
+  session parallèle — 8 scénarios / 41 steps verts désormais) ; aucun
+  conflit, gateway jamais touché.
 
-Fait et committé :
-- **4 décisions validées par Mathieu (round I)** : (1) merge manifest =
-  `prev_hash` pointe le parent au plus petit hash d'édition + champ ADDITIF
-  `merges: [hash_a, hash_b]` triés (marche de chaîne existante intacte) ;
-  (2) index partagés = **3-way par sid** (base = ancêtre commun, rows
-  changées prises de leur branche, ajouts unis, deletes tiennent — pas de
-  résurrection —, MÊME sid changé des deux côtés = fork) ; (3) entrée gamma
-  merge = `prev` (tip du parent min) + champ ADDITIF `prevs: [head_a,
-  head_b]`, seule kind autorisée ; segment fusionné = préfixe commun,
-  sous-chaîne LOW, sous-chaîne HIGH, entrée merge — octets jamais réécrits,
-  monotonie de `at` relâchée à la jointure, racines §7.10 recommittées ;
-  (4) portée = **I1 + I2 complets** (refus verifier du fork non résolu +
-  résolution nearest common manager via `resolves_fork`, autorité =
-  dir_covers, délégué borné à son périmètre, owner dernier recours).
-- **Spec gravée** (803e622) : §2.6 bloc « Wire conventions pass I » +
-  §7.6 wire de l'entrée merge.
-- **Feature committée et validée** (d10b0ba) :
-  `features/i-concurrency.feature`, 12 scénarios @wip, 3 Rules (merge
-  disjoint / log rejoint / fork & résolution — dont budget épuisé À TRAVERS
-  les deux sous-chaînes, le contact H2).
-- **Vecteur Python indépendant** (c7ce0e5) : `vectors/gen-i.py` →
-  `i1-concurrency.json`, ancré B2 + H2 (le segment ancêtre EST les entrées
-  committées de F2 ; conventions de segment croisées contre H2 committé).
-  Convention pinnée par le vecteur, à suivre à l'impl : payload de l'entrée
-  merge = `{"merges": [hash_a, hash_b]}` (miroir du champ manifest).
-
-Reste à faire (étape 3+ du rituel) :
-- **Core** : `Entry.prevs` additif (check_form fail-closed : merge only),
-  `verify_links` qui suit `prevs` à la jointure (monotonie `at` relâchée là,
-  et LÀ seulement), vecteur test `i1_concurrency.rs`.
-- **Bundle** : ancêtre commun (marche des manifests), changesets par
-  tree_diff, disjonction (sets de labels), merge 3-way des index par sid
-  (règle du vecteur), écriture du segment fusionné (layout déterministe),
-  `Manifest.merges`/`resolves_fork` additifs + build/verify merge-aware
-  (deux parents même height même grand-parent, état reproduit byte à byte),
-  refus du fork non résolu, résolution avec check d'autorité dir_covers.
-- **Steps** : les 12 scénarios (« two copies of a published bundle » =
-  clone du MemStore), dé-tagger au fur et à mesure.
-- **CLI** : `edition-merge` (ou auto dans publish) + test de surface,
-  bloc 15 du CLI-GUIDE, checkpoint manuel.
-- Suite verte finale = 187 scénarios attendus (175 + 12), clippy, fmt.
+**K — Intégration finale & packaging (plan §K)** : scénario K de la spec
+complet dans la suite de features (il l'est presque déjà par
+accumulation), vecteurs de perf §09.3 en bench, image Docker
+(`FROM scratch`), paquet npm `@aithos/core` (wasm-pack), conformance
+levels §09.4 documentés. Manuel : dérouler le scénario K entier au CLI,
+chronométrer les cibles. Done : tout vert, bench dans les cibles, image
+< 15 Mo, npm importable. Rituel habituel : points de décision d'abord
+(périmètre exact du scénario K, cibles de bench, politique de versionnage
+npm/Docker), feature avant code. ⚠️ Les builds wasm-pack et Docker
+supposent le conteneur cloud (§5) — la VM n'a plus de réseau.
 
 ## 6bis. Étape précédente : G+ — Obligations
 
@@ -330,7 +373,7 @@ sans breaking wire — voir plan §H).
   signatures). Contrainte hors protocole (le core reste agnostique). Durcissement
   offline « no mislabeled effects » rangé en défense en profondeur pour H (additif,
   sans breaking wire) — voir plan.
-- Merge entries / éditions concurrentes : I. Manifest à pins plats jusqu'à H.
+- ~~Merge entries / éditions concurrentes : I~~ **SOLDÉ (2026-07-11)** — voir tableau §4.
 - Artefact de récupération combiné (S ‖ succession) : couche présentation, plus tard.
 - **G+ (dette assumée, non bloquante)** : (a) `log-show` (vue résumée) n'affiche
   pas `checks[]` — les reçus sont dans le payload, visibles au fichier brut et
@@ -362,6 +405,21 @@ sans breaking wire — voir plan §H).
   = compte + absence ; les preuves d'inclusion d'ENTRÉE et les réponses de
   complétude sont des APIs core (prove_entry, verify_complete_actions) sans
   surface CLI dédiée ; (d) sceller kind/via = bump `v`, différé (décision
-  du round) ; (e) les racines de segment hashent les lignes du FICHIER en
-  ordre de chaîne — la cohabitation avec les entrées `merge` à deux prevs
-  se règle en I (le reachable set §7.6 reste la vérité des comptes).
+  du round) ; (e) ~~cohabitation racines de segment / entrées merge~~
+  réglée en I : segment fusionné = préfixe + LOW + HIGH + entrée merge,
+  octets jamais réécrits, racines recommittées sur le layout fusionné.
+- **I (dette assumée, non bloquante)** : (a) `section_delete` ne supprime
+  pas le blob (Store sans delete ; effacement cryptographique §06) — la
+  row disparaît, le blob reste pinné orphelin ; (b) publication déléguée
+  GÉNÉRALE d'un manifest = passe future (un délégué n'est accepté que
+  porteur de `resolves_fork`) ; (c) l'id de l'entrée merge du VECTEUR est
+  un id fixture — l'id déterministe blake3→ULID est exercé par le
+  scénario « two mergers produce identical bytes », pas par le vecteur ;
+  (d) tag-views = nœuds propres dans la frontière (conservateur : deux
+  branches touchant la même vue forkent même si les sections diffèrent) ;
+  (e) merge/resolve = zones à index (public/circle/self) ; le vault
+  (chemins de storage, pins plats) suit l'union fail-closed des fichiers
+  non-index ; (f) les caches VM aarch64 (`rust/cargo-linux`,
+  `rust/target-linux*`) dorment sur le volume — inutilisés depuis le
+  passage aux builds cloud (§5), à purger via `_to_delete/` si la place
+  manque un jour.
