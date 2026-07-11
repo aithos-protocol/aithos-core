@@ -2,7 +2,7 @@
 //! root in `features/`; step definitions grow with each phase of
 //! docs/EXECUTION-PLAN.md and are never rewritten, only extended.
 
-use aithos_bundle::bundle::{Bundle, SectionSpec};
+use aithos_bundle::bundle::{Bundle, SectionSpec, ZoneIndex};
 use aithos_bundle::entropy::{EntropySource, SeqEntropy};
 use aithos_bundle::grants::GrantSpec;
 use aithos_bundle::log::{LogFilter, LogHit};
@@ -161,6 +161,11 @@ pub struct ProtocolWorld {
     h2_proof: Option<aithos_core::merkle::Proof>,
     h2_counters: Vec<(String, aithos_core::gamma::GammaCounters)>,
     h2_verdict: Option<Result<(), String>>,
+    // --- step I: concurrency ---
+    i_other: Option<Bundle<MemStore>>,
+    i_result: Option<Result<(), String>>,
+    i_hashes: Vec<String>,
+    i_surfaced: Option<Result<Vec<String>, String>>,
 }
 
 impl ProtocolWorld {
@@ -6055,6 +6060,598 @@ fn h2_withhold_segment(w: &mut ProtocolWorld) {
 #[then("the recomputed segment root dies against the committed root and count")]
 fn h2_segment_omission_dies(w: &mut ProtocolWorld) {
     assert!(w.h2_verdict.clone().unwrap().is_err());
+}
+
+// ------------------------------------------- step I: concurrency (02.6 + 07.6)
+// Disjoint merge, the two-predecessor merge entry, 3-way index merge by
+// sid, fork refusal and nearest-common-manager resolution
+// (i-concurrency.feature).
+
+use aithos_bundle::merge::ForkResolver;
+
+// The I timeline sits after the D/H fixture NOW (2026-07-09).
+const I_ANC: &str = "2026-07-10T00:00:00Z"; // the shared ancestor edition
+const I_W1: &str = "2026-07-10T01:00:00Z"; // this copy's write
+const I_W2: &str = "2026-07-10T02:00:00Z"; // the other copy's write
+const I_PUB: &str = "2026-07-10T03:00:00Z"; // both competing editions
+const I_MERGE: &str = "2026-07-10T04:00:00Z"; // the merge / resolution
+const I_AFTER: &str = "2026-07-10T05:00:00Z"; // life after the join
+
+impl ProtocolWorld {
+    /// The §02.6 fixture: publish the shared ancestor edition, then split
+    /// the world into two byte-identical copies of the whole store.
+    fn i_split(&mut self) {
+        let owner = self.owner(0);
+        self.gbundle().publish(&owner, I_ANC).unwrap();
+        let b = self.bundle.as_ref().unwrap();
+        self.i_other = Some(Bundle {
+            store: b.store.clone(),
+            did: b.did.clone(),
+        });
+    }
+
+    fn i_bundle(&mut self, other: bool) -> &mut Bundle<MemStore> {
+        if other {
+            self.i_other.as_mut().unwrap()
+        } else {
+            self.bundle.as_mut().unwrap()
+        }
+    }
+
+    fn i_add_on(&mut self, other: bool, folder: &str, name: &str, at: &str) {
+        let owner = self.owner(0);
+        let mut ent = std::mem::take(&mut self.ent);
+        let b = self.i_bundle(other);
+        b.ensure_folder(Zone::Circle, folder, &owner, &mut ent)
+            .unwrap();
+        b.section_add(
+            &SectionSpec {
+                zone: Zone::Circle,
+                folder_path: folder,
+                name,
+                title: "note",
+                tags: &[],
+                body: BODY,
+                now: at,
+            },
+            &owner,
+            &mut ent,
+        )
+        .unwrap();
+        self.ent = ent;
+    }
+
+    fn i_rewrite_on(&mut self, other: bool, path: &str, body: &str, at: &str) {
+        let owner = self.owner(0);
+        let mut ent = std::mem::take(&mut self.ent);
+        self.i_bundle(other)
+            .section_rewrite(Zone::Circle, path, body, &owner, at, &mut ent)
+            .unwrap();
+        self.ent = ent;
+    }
+
+    fn i_delete_on(&mut self, other: bool, path: &str, at: &str) {
+        let owner = self.owner(0);
+        let mut ent = std::mem::take(&mut self.ent);
+        self.i_bundle(other)
+            .section_delete(Zone::Circle, path, &owner, at, &mut ent)
+            .unwrap();
+        self.ent = ent;
+    }
+
+    fn i_publish_on(&mut self, other: bool, at: &str) {
+        let owner = self.owner(0);
+        self.i_bundle(other).publish(&owner, at).unwrap();
+    }
+
+    fn i_action_on(&mut self, other: bool, action: &str, at: &str) -> Result<String, String> {
+        let chain = self.chain.clone();
+        let mut ent = std::mem::take(&mut self.ent);
+        let r = self
+            .i_bundle(other)
+            .log_action(
+                &chain,
+                &agent_sk(AGENT),
+                &aithos_bundle::log::ActionSpec {
+                    connector: "gmail",
+                    action,
+                    args_hash: "sha256:00",
+                    now: at,
+                    budget: None,
+                    sealed_args: None,
+                },
+                &mut ent,
+            )
+            .map(|e| e.id)
+            .map_err(|e| e.to_string());
+        self.ent = ent;
+        r
+    }
+
+    /// Merge the other copy's competing edition into this one.
+    fn i_merge(&mut self) -> Result<(), String> {
+        let owner = self.owner(0);
+        let other = self.i_other.take().unwrap();
+        let r = self
+            .gbundle()
+            .edition_merge(&other, &owner, I_MERGE)
+            .map_err(|e| e.to_string());
+        self.i_other = Some(other);
+        r
+    }
+
+    /// Root WRITE mandate over one circle folder — the delegate a fork
+    /// resolution names as its nearest common manager.
+    fn i_grant_write_dir(&mut self, folder: &str) {
+        use aithos_core::mandate::{Mandate as M, MandateSpec, Verb};
+        let owner = self.owner(0);
+        let dir = self
+            .bundle
+            .as_ref()
+            .unwrap()
+            .resolve_folder(Zone::Circle, folder)
+            .unwrap();
+        let m = M::build_root(
+            &owner.root_sign,
+            &MandateSpec {
+                id: format!("mandate_{}", sid(u128::from(self.ent.e16()[15]) + 970)),
+                subject: self.bundle.as_ref().unwrap().did.clone(),
+                grantee_id: "urn:aithos:agent:agent".into(),
+                grantee_label: "agent".into(),
+                grantee_pub: &agent_sk(AGENT).verifying_key(),
+                perimeter: vec![aithos_core::mandate::PerimeterEntry::Ethos {
+                    verb: Verb::Write,
+                    zone: Zone::Circle,
+                    dir,
+                    tag: None,
+                }],
+                constraints: MandateSpec::no_constraints(),
+                not_before: NB.into(),
+                not_after: NA30.into(),
+                issued_at: NB.into(),
+                nonce: hex::encode(self.ent.e16()),
+            },
+        )
+        .unwrap();
+        self.store_cert(&m);
+        self.chain = vec![m];
+    }
+
+    fn i_resolve(&mut self, delegate: bool) -> Result<Vec<String>, String> {
+        let owner = self.owner(0);
+        let chain = self.chain.clone();
+        let sk = agent_sk(AGENT);
+        let resolver = if delegate {
+            ForkResolver::Delegate {
+                chain: &chain,
+                sk: &sk,
+            }
+        } else {
+            ForkResolver::Owner(&owner)
+        };
+        let other = self.i_other.take().unwrap();
+        let r = self
+            .bundle
+            .as_mut()
+            .unwrap()
+            .resolve_fork(&other, &resolver, I_MERGE)
+            .map_err(|e| e.to_string());
+        self.i_other = Some(other);
+        r
+    }
+
+    fn i_parent_manifests(&mut self) -> (Manifest, Manifest) {
+        let h = self.h_manifest().edition.height;
+        let low: Manifest = serde_json::from_slice(
+            &self
+                .gbundle()
+                .store
+                .get(&format!("manifests/{}.json", h - 1))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        let alt: Manifest = serde_json::from_slice(
+            &self
+                .gbundle()
+                .store
+                .get(&format!("manifests/{}-alt.json", h - 1))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        (low, alt)
+    }
+}
+
+// --- I givens ---
+
+#[given("two copies of a published bundle")]
+fn i_two_copies(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_named_section("projets", "seed", &[]);
+    w.i_split();
+}
+
+#[given("two copies of a published bundle holding a circle section")]
+fn i_two_copies_with_section(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_named_section("projets", "note1", &[]);
+    w.i_split();
+}
+
+#[given("two copies of a published bundle whose agents each logged an action")]
+fn i_two_copies_with_actions(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    // A logged mutation gives the shared log a real tip to fork from.
+    w.add_named_section("projets", "seed", &[]);
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    w.i_split();
+    w.i_action_on(false, "reply", I_W1).unwrap();
+    w.i_action_on(true, "label", I_W2).unwrap();
+    w.i_publish_on(false, I_PUB);
+    w.i_publish_on(true, I_PUB);
+}
+
+#[given("two copies of a published bundle whose agent may act three times in total")]
+fn i_two_copies_budget(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_named_section("projets", "seed", &[]);
+    w.grant_act(vec![], serde_json::json!({ "max_actions": 3 }), NA30);
+    w.i_split();
+}
+
+#[given("each copy adds a circle section under a different folder")]
+fn i_disjoint_adds(w: &mut ProtocolWorld) {
+    w.i_add_on(false, "alpha", "note-a", I_W1);
+    w.i_add_on(true, "beta", "note-b", I_W2);
+    w.i_publish_on(false, I_PUB);
+    w.i_publish_on(true, I_PUB);
+}
+
+#[given("each copy adds a differently-named section under the same folder")]
+fn i_same_folder_adds(w: &mut ProtocolWorld) {
+    w.i_add_on(false, "projets", "note-a", I_W1);
+    w.i_add_on(true, "projets", "note-b", I_W2);
+    w.i_publish_on(false, I_PUB);
+    w.i_publish_on(true, I_PUB);
+}
+
+#[given("one copy deletes that section while the other adds a sibling")]
+fn i_delete_vs_add(w: &mut ProtocolWorld) {
+    w.i_delete_on(true, "projets/note1", I_W2);
+    w.i_add_on(false, "projets", "note2", I_W1);
+    w.i_publish_on(false, I_PUB);
+    w.i_publish_on(true, I_PUB);
+}
+
+#[given("each copy modifies that same section differently")]
+fn i_same_node_writes(w: &mut ProtocolWorld) {
+    w.i_rewrite_on(false, "projets/note1", "the winning body", I_W1);
+    w.i_rewrite_on(true, "projets/note1", "the losing body", I_W2);
+    w.i_publish_on(false, I_PUB);
+    w.i_publish_on(true, I_PUB);
+}
+
+#[given("each copy logs two actions under that mandate")]
+fn i_two_actions_each(w: &mut ProtocolWorld) {
+    w.i_action_on(false, "reply", I_W1).unwrap();
+    w.i_action_on(false, "reply", "2026-07-10T01:30:00Z")
+        .unwrap();
+    w.i_action_on(true, "label", I_W2).unwrap();
+    w.i_action_on(true, "label", "2026-07-10T02:30:00Z")
+        .unwrap();
+    w.i_publish_on(false, I_PUB);
+    w.i_publish_on(true, I_PUB);
+}
+
+#[given("two competing editions modifying the same section")]
+fn i_fork_fixture(w: &mut ProtocolWorld) {
+    i_two_copies_with_section(w);
+    i_same_node_writes(w);
+}
+
+#[given("two competing editions modifying the same section under a delegate's folder")]
+fn i_fork_under_delegate(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_named_section("projets", "note1", &[]);
+    w.i_grant_write_dir("projets");
+    w.i_split();
+    i_same_node_writes(w);
+}
+
+#[given("two competing editions touching a folder outside the delegate's grant")]
+fn i_fork_outside_delegate(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_named_section("projets", "note1", &[]);
+    w.add_named_section("autre", "note2", &[]);
+    w.i_grant_write_dir("projets");
+    w.i_split();
+    w.i_rewrite_on(false, "autre/note2", "the winning body", I_W1);
+    w.i_rewrite_on(true, "autre/note2", "the losing body", I_W2);
+    w.i_publish_on(false, I_PUB);
+    w.i_publish_on(true, I_PUB);
+}
+
+// --- I whens ---
+
+#[when("either party publishes the merge edition")]
+fn i_when_merge(w: &mut ProtocolWorld) {
+    w.i_result = Some(w.i_merge());
+}
+
+#[when("a party attempts the merge edition")]
+fn i_when_merge_attempt(w: &mut ProtocolWorld) {
+    w.i_result = Some(w.i_merge());
+}
+
+#[when("each party computes the merge edition independently")]
+fn i_when_both_merge(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    // Pre-merge clones so each party merges from the same starting point.
+    let mine = Bundle {
+        store: w.bundle.as_ref().unwrap().store.clone(),
+        did: w.bundle.as_ref().unwrap().did.clone(),
+    };
+    let mut theirs = Bundle {
+        store: w.i_other.as_ref().unwrap().store.clone(),
+        did: w.i_other.as_ref().unwrap().did.clone(),
+    };
+    w.i_merge().unwrap();
+    theirs.edition_merge(&mine, &owner, I_MERGE).unwrap();
+    for b in [w.bundle.as_ref().unwrap(), &theirs] {
+        let bytes = b.store.get("manifest.json").unwrap().unwrap();
+        w.i_hashes.push(sha256_hex(&bytes));
+    }
+}
+
+#[when("a verifier is shown both branches")]
+fn i_when_fork_check(w: &mut ProtocolWorld) {
+    let other = w.i_other.take().unwrap();
+    w.i_result = Some(w.gbundle().fork_check(&other).map_err(|e| e.to_string()));
+    w.i_other = Some(other);
+}
+
+#[when("the covering delegate publishes the resolving edition naming the winner")]
+fn i_when_delegate_resolves(w: &mut ProtocolWorld) {
+    w.i_surfaced = Some(w.i_resolve(true));
+}
+
+#[when("the delegate attempts the resolving edition")]
+fn i_when_delegate_attempts(w: &mut ProtocolWorld) {
+    w.i_surfaced = Some(w.i_resolve(true));
+}
+
+#[when("the owner publishes the resolving edition naming the winner")]
+fn i_when_owner_resolves(w: &mut ProtocolWorld) {
+    w.i_surfaced = Some(w.i_resolve(false));
+}
+
+// --- I thens ---
+
+#[then("the merge manifest pins the lowest-hash parent and lists both parents ascending")]
+fn i_then_ordering(w: &mut ProtocolWorld) {
+    w.i_result.clone().unwrap().expect("the merge succeeds");
+    let m = w.h_manifest();
+    assert_eq!(m.merges.len(), 2, "two parents");
+    assert!(m.merges[0] < m.merges[1], "ascending edition hashes");
+    assert_eq!(m.edition.prev_hash, m.merges[0], "prev_hash = the lowest");
+    let (low, alt) = w.i_parent_manifests();
+    assert_eq!(low.chain_hash().unwrap(), m.merges[0], "low parent slot");
+    assert_eq!(alt.chain_hash().unwrap(), m.merges[1], "high parent slot");
+}
+
+#[then("both sections are present and the edition verifies")]
+fn i_then_both_present(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let b = w.gbundle();
+    assert_eq!(
+        b.read_section(Zone::Circle, "alpha/note-a", &owner)
+            .unwrap(),
+        BODY
+    );
+    assert_eq!(
+        b.read_section(Zone::Circle, "beta/note-b", &owner).unwrap(),
+        BODY
+    );
+    b.verify().expect("the merged edition verifies");
+}
+
+#[then("the two merged manifests hash identically")]
+fn i_then_identical(w: &mut ProtocolWorld) {
+    assert_eq!(w.i_hashes.len(), 2);
+    assert_eq!(
+        w.i_hashes[0], w.i_hashes[1],
+        "byte-identical merge manifests from either merger"
+    );
+}
+
+#[then("the folder's index carries both rows in sid order")]
+fn i_then_sid_order(w: &mut ProtocolWorld) {
+    w.i_result.clone().unwrap().expect("the merge succeeds");
+    let index: ZoneIndex = serde_json::from_slice(
+        &w.gbundle()
+            .store
+            .get("e/circle/index.json")
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    let names: Vec<&str> = index.sections.iter().map(|r| r.name.as_str()).collect();
+    assert!(names.contains(&"note-a") && names.contains(&"note-b"));
+    let sids: Vec<&String> = index.sections.iter().map(|r| &r.sid).collect();
+    let mut sorted = sids.clone();
+    sorted.sort();
+    assert_eq!(sids, sorted, "rows land in sid order");
+}
+
+#[then("the edition verifies")]
+fn i_then_verifies(w: &mut ProtocolWorld) {
+    w.gbundle().verify().expect("the merged edition verifies");
+}
+
+#[then("the deleted section stays absent from the merged index")]
+fn i_then_deletion_holds(w: &mut ProtocolWorld) {
+    w.i_result.clone().unwrap().expect("the merge succeeds");
+    let index: ZoneIndex = serde_json::from_slice(
+        &w.gbundle()
+            .store
+            .get("e/circle/index.json")
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        !index.sections.iter().any(|r| r.name == "note1"),
+        "no resurrection through the merge"
+    );
+}
+
+#[then("the sibling is present")]
+fn i_then_sibling(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let b = w.gbundle();
+    assert_eq!(
+        b.read_section(Zone::Circle, "projets/note2", &owner)
+            .unwrap(),
+        BODY
+    );
+    b.verify().expect("the merged edition verifies");
+}
+
+#[then("the merge is refused as a same-node conflict")]
+fn i_then_conflict(w: &mut ProtocolWorld) {
+    let err = w
+        .i_result
+        .clone()
+        .unwrap()
+        .expect_err("the merge is refused");
+    assert!(err.contains("same-node conflict"), "got: {err}");
+}
+
+#[then("the merge entry cites both sub-chain tips in prevs")]
+fn i_then_merge_entry(w: &mut ProtocolWorld) {
+    w.i_result.clone().unwrap().expect("the merge succeeds");
+    let m = w.h_manifest();
+    let (low, alt) = w.i_parent_manifests();
+    let entries = w.gbundle().gamma_entries().unwrap();
+    let join = entries.last().unwrap();
+    assert_eq!(join.kind, "merge");
+    assert_eq!(join.chain_hash().unwrap(), m.gamma_head);
+    assert_eq!(
+        join.prevs.clone().unwrap(),
+        vec![low.gamma_head, alt.gamma_head],
+        "both tips, ordered like merges"
+    );
+}
+
+#[then("the merged log verifies from genesis through the join")]
+fn i_then_log_verifies(w: &mut ProtocolWorld) {
+    let entries = w.gbundle().gamma_entries().unwrap();
+    aithos_core::gamma::verify_links(&entries).expect("links verify through the join");
+    w.gbundle().gamma_verify().expect("every entry verifies");
+    w.gbundle().verify().expect("the edition verifies");
+}
+
+#[then("the merged segment lays out the lowest-hash parent's entries first")]
+fn i_then_layout(w: &mut ProtocolWorld) {
+    w.i_result.clone().unwrap().expect("the merge succeeds");
+    let (low, alt) = w.i_parent_manifests();
+    let lines = w.segment_lines("gamma/2026-07.jsonl");
+    let pos = |head: &str| {
+        lines
+            .iter()
+            .position(|l| {
+                let e: aithos_core::gamma::Entry = serde_json::from_slice(l).unwrap();
+                e.chain_hash().unwrap() == head
+            })
+            .expect("tip entry in the merged segment")
+    };
+    assert!(
+        pos(&low.gamma_head) < pos(&alt.gamma_head),
+        "sub-chain LOW lays out before sub-chain HIGH"
+    );
+}
+
+#[then("the manifest's gamma segment root and count match an independent recomputation")]
+fn i_then_roots_recommitted(w: &mut ProtocolWorld) {
+    let m = w.h_manifest();
+    let lines = w.segment_lines("gamma/2026-07.jsonl");
+    let refs: Vec<&[u8]> = lines.iter().map(Vec::as_slice).collect();
+    let committed = &m.gamma_roots["2026-07"];
+    assert_eq!(
+        hex::encode(aithos_core::gamma::segment_root(&refs)),
+        committed.root,
+        "recomputed root"
+    );
+    assert_eq!(refs.len() as u64, committed.n, "recomputed count");
+}
+
+#[then("a fifth action after the merge is refused as budget spent")]
+fn i_then_budget_spent(w: &mut ProtocolWorld) {
+    w.i_result.clone().unwrap().expect("the merge succeeds");
+    let err = w
+        .i_action_on(false, "reply", I_AFTER)
+        .expect_err("the budget tallies across both sub-chains");
+    assert!(err.contains("max_actions"), "got: {err}");
+}
+
+#[then("neither branch is canonical and the conflict is surfaced")]
+fn i_then_fork_surfaced(w: &mut ProtocolWorld) {
+    let err = w
+        .i_result
+        .clone()
+        .unwrap()
+        .expect_err("the fork is refused");
+    assert!(err.contains("same-node conflict"), "got: {err}");
+}
+
+#[then("the resolving edition verifies and extends the winning branch")]
+fn i_then_resolution_verifies(w: &mut ProtocolWorld) {
+    w.i_surfaced
+        .clone()
+        .unwrap()
+        .expect("the resolution succeeds");
+    let owner = w.owner(0);
+    let m = w.h_manifest();
+    assert_eq!(
+        m.resolves_fork, m.edition.prev_hash,
+        "extends the named winner"
+    );
+    let b = w.gbundle();
+    b.verify().expect("the resolving edition verifies");
+    assert_eq!(
+        b.read_section(Zone::Circle, "projets/note1", &owner)
+            .or_else(|_| b.read_section(Zone::Circle, "autre/note2", &owner))
+            .unwrap(),
+        "the winning body",
+        "content is the winning branch's"
+    );
+}
+
+#[then("the losing branch's write is surfaced, not replayed")]
+fn i_then_loser_surfaced(w: &mut ProtocolWorld) {
+    let surfaced = w.i_surfaced.clone().unwrap().unwrap();
+    assert!(!surfaced.is_empty(), "the losing labels are reported");
+    let h = w.h_manifest().edition.height;
+    assert!(
+        w.gbundle()
+            .store
+            .get(&format!("manifests/{}-alt.json", h - 1))
+            .unwrap()
+            .is_some(),
+        "the losing manifest is kept, surfaced"
+    );
+}
+
+#[then("the resolution is refused for lack of authority")]
+fn i_then_resolution_refused(w: &mut ProtocolWorld) {
+    let err = w
+        .i_surfaced
+        .clone()
+        .unwrap()
+        .expect_err("the delegate is out of perimeter");
+    assert!(err.contains("resolution rejected"), "got: {err}");
 }
 
 // ------------------------------------------------------------------ main

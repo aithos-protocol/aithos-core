@@ -126,7 +126,8 @@ def build():
             "edition": {"height": 3, "prev_hash": "c0" * 32,
                         "created_at": "2026-07-04T02:00:00Z"},
             "files": {f"gamma/2026-07.jsonl": "sha256-fixture-" + tag},
-            "roots": {},
+            # roots omitted when empty — canonical wire since H1 (additive
+            # field, skip-if-empty keeps pre-H chain hashes intact)
             "gamma_roots": {"2026-07": {
                 "root": mroot([h_leaf(e.encode()) for e in seg_lines]).hex(),
                 "n": len(seg_lines)}},

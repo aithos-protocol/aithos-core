@@ -17,7 +17,6 @@ Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pas
 
   Rule: Disjoint editions merge deterministically, arbiter-free
 
-    @wip
     Scenario: Two disjoint writes merge into one edition that verifies
       Given two copies of a published bundle
       And each copy adds a circle section under a different folder
@@ -25,14 +24,12 @@ Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pas
       Then the merge manifest pins the lowest-hash parent and lists both parents ascending
       And both sections are present and the edition verifies
 
-    @wip
     Scenario: Two mergers produce byte-identical merge manifests
       Given two copies of a published bundle
       And each copy adds a circle section under a different folder
       When each party computes the merge edition independently
       Then the two merged manifests hash identically
 
-    @wip
     Scenario: Two adds in the same folder merge three-way by sid
       Given two copies of a published bundle
       And each copy adds a differently-named section under the same folder
@@ -40,7 +37,6 @@ Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pas
       Then the folder's index carries both rows in sid order
       And the edition verifies
 
-    @wip
     Scenario: A deletion does not resurrect through the merge
       Given two copies of a published bundle holding a circle section
       And one copy deletes that section while the other adds a sibling
@@ -48,7 +44,6 @@ Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pas
       Then the deleted section stays absent from the merged index
       And the sibling is present
 
-    @wip
     Scenario: The same section modified on both branches is a fork, not a merge
       Given two copies of a published bundle holding a circle section
       And each copy modifies that same section differently
@@ -57,21 +52,18 @@ Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pas
 
   Rule: The merged log re-joins at a signed merge entry
 
-    @wip
     Scenario: The merge entry carries both tips and the chain verifies through the join
       Given two copies of a published bundle whose agents each logged an action
       When either party publishes the merge edition
       Then the merge entry cites both sub-chain tips in prevs
       And the merged log verifies from genesis through the join
 
-    @wip
     Scenario: The merged segment recommits its root and count over the deterministic layout
       Given two copies of a published bundle whose agents each logged an action
       When either party publishes the merge edition
       Then the merged segment lays out the lowest-hash parent's entries first
       And the manifest's gamma segment root and count match an independent recomputation
 
-    @wip
     Scenario: Budgets tally across both sub-chains after the merge
       Given two copies of a published bundle whose agent may act three times in total
       And each copy logs two actions under that mandate
@@ -80,26 +72,22 @@ Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pas
 
   Rule: A fork is refused until the nearest common manager resolves it
 
-    @wip
     Scenario: An unresolved same-node fork is refused by the verifier
       Given two competing editions modifying the same section
       When a verifier is shown both branches
       Then neither branch is canonical and the conflict is surfaced
 
-    @wip
     Scenario: The nearest common manager resolves the fork
       Given two competing editions modifying the same section under a delegate's folder
       When the covering delegate publishes the resolving edition naming the winner
       Then the resolving edition verifies and extends the winning branch
       And the losing branch's write is surfaced, not replayed
 
-    @wip
     Scenario: A delegate cannot resolve a fork outside its perimeter
       Given two competing editions touching a folder outside the delegate's grant
       When the delegate attempts the resolving edition
       Then the resolution is refused for lack of authority
 
-    @wip
     Scenario: The owner resolves as last resort
       Given two competing editions modifying the same section
       When the owner publishes the resolving edition naming the winner
