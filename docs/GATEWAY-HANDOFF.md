@@ -168,11 +168,20 @@ prochaine itération du gateway (le MVP actuel reste la démo mono-Ethos).
 
 ## 4. Reste à faire — phasage v2 (mis à jour 2026-07-10, fin de session)
 
-**Phase B — cœur v2 (prochaine session, ~2-3 sessions).** Provisioning
-(keypair née au boot, mandats REÇUS — le minting owner-side existe déjà :
-`aithos-cli grant-act`), routage multi-Ethos (outil→contexte, N stores),
-journal d'agent (création au provisioning, miroirs xref, routage refus §3bis.8,
-événements « mandat reçu »).
+**Phase B — cœur v2 (EN COURS, lots 0-2 verts au 2026-07-10 soir).**
+Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 3 verts).
+- ✅ Lot 0 contrat ; Lot 1 naissance (`keygen`, identité fichier runner 0600,
+  hors store, seuls les pubkeys sortent ; `Bridge::open` prend le keyholder) ;
+  Lot 2 outillage owner (`owner-init-journal` — clés d'owner dérivées §9,
+  stylo xref à l'agent ; `owner-init-context` ; `owner-grant-context` vers
+  une PUBKEY : read tools + gouvernance + auditeur ; grants loggés ;
+  `GatewayStore` clonable, mem partagé pour les tests).
+- ⬜ Lot 3 (PROCHAIN) : config v2 `contexts:` (store+upstream+tools par
+  contexte, collisions inter-contextes rejetées), N bridges + routage
+  outil→contexte dans proxy_mcp, journal branché au runtime : xref après
+  chaque acte (`act.x.xref.*`, payload `{ethos_did, entry_id}`), refus
+  routés §3bis.8. Le `onboard` mono-Ethos reste tel quel (démo).
+- ⬜ Lot 4 : tests surface owner-side, e2e réseau 2 contextes, docs.
 
 **Phase C — la boucle « agent qui vit » (~1-2 sessions).** `proxy_llm`
 OpenAI-compat (kind `inference`, budgets tokens — F+ prêt côté core, creds
