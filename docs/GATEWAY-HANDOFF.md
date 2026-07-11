@@ -113,7 +113,22 @@ prochaine itération du gateway (le MVP actuel reste la démo mono-Ethos).
    gateway, ex. connecteur `xref` granté sur le journal (`act.x.xref.*`),
    payload libre `{ethos_did, entry_id}`. L'entrée du contexte reste la seule
    source de vérité ; le journal est un index, jamais une preuve autonome.
-6. **Point ouvert** : en multi-contexte, où logger les refus ? Proposition :
+6. **Gestion de flotte (décidé 2026-07-10).** Personne ne « gère » les clés
+   d'agents : 1 container = 1 clé née dedans (jetable — mort/compromission →
+   révocation + re-mint, jamais de récupération), 1 entreprise = 1 graine
+   maîtresse + succession froide. Inventaire du parc = le log des grants
+   (obligatoire) dans le gamma de l'entreprise. **REJETÉ : dériver les clés
+   d'agents de la maîtresse** — l'entreprise pourrait forger des signatures
+   d'agent → perte de la non-répudiation bidirectionnelle, cœur de l'audit
+   externe. La « clé de parc » se fait par mandat d'émission (`issue#depth`)
+   à un orchestrateur : mandats par agent atténués, émissions loggées et
+   comptées (`max_children`), révocable en bloc — natif étape E.
+7. **Trois index d'audit, une vérité.** Gamma du contexte (autoritaire),
+   journal de l'agent (vue par agent : miroirs xref + événements « mandat
+   reçu », utile quand les contextes appartiennent à des clients), gamma de
+   l'entreprise (vue de flotte : grants/révocations/délégations). Jointure
+   par `(ethos_did, entry_id)`. Seule l'entrée du contexte fait preuve.
+8. **Point ouvert** : en multi-contexte, où logger les refus ? Proposition :
    acte/refus rattachable à un contexte → gamma de ce contexte ; refus sans
    contexte (outil inconnu) → gamma de l'Ethos de travail de l'agent.
 
