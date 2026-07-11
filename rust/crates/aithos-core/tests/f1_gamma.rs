@@ -96,6 +96,7 @@ fn entries_rebuild_byte_for_byte() {
         EntrySpec {
             id: "gamma_00000000000000000000000001".into(),
             prev: String::new(),
+            prevs: None,
             at: "2026-07-01T00:00:00Z".into(),
             kind: Kind::SectionAdd,
             target: None,
@@ -112,6 +113,7 @@ fn entries_rebuild_byte_for_byte() {
         EntrySpec {
             id: "gamma_00000000000000000000000002".into(),
             prev: v.entry1_hash.clone(),
+            prevs: None,
             at: "2026-07-01T00:05:00Z".into(),
             kind: Kind::Heartbeat,
             target: None,
@@ -130,6 +132,7 @@ fn entries_rebuild_byte_for_byte() {
         EntrySpec {
             id: "gamma_00000000000000000000000003".into(),
             prev: v.entry2_hash.clone(),
+            prevs: None,
             at: "2026-07-02T00:00:00Z".into(),
             kind: Kind::Action,
             target: Some("x.gmail".into()),

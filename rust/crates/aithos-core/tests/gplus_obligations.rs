@@ -29,6 +29,7 @@ fn entry(v: &Value, checks: Option<Value>) -> Entry {
         v: 1,
         id: "gamma_00000000000000000000000GPP".into(),
         prev: String::new(),
+        prevs: None,
         at: e["at"].as_str().unwrap().into(),
         kind: "action".into(),
         target: Some("x.social".into()),

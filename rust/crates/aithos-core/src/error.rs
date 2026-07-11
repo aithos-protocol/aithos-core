@@ -82,6 +82,15 @@ pub enum Error {
 
     #[error("withhold detected — incomplete against the proven count: {0}")]
     GammaWithholdDetected(String),
+
+    #[error("edition fork — same-node conflict, nearest common manager required: {0}")]
+    EditionFork(String),
+
+    #[error("merge rejected — not a valid disjoint merge: {0}")]
+    MergeRejected(String),
+
+    #[error("fork resolution rejected — resolver lacks authority: {0}")]
+    ForkResolutionRejected(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

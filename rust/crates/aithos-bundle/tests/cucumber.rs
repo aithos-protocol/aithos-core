@@ -1968,6 +1968,7 @@ fn append_wrong_prev(w: &mut ProtocolWorld) {
         aithos_core::gamma::EntrySpec {
             id: "gamma_000000000000000000000ROGUE".into(),
             prev: entries[0].chain_hash().unwrap(), // not the head
+            prevs: None,
             at: day(8, "04:00:00"),
             kind: aithos_core::gamma::Kind::Heartbeat,
             target: None,
@@ -2046,6 +2047,7 @@ fn forge_beacon(w: &mut ProtocolWorld) {
         v: 1,
         id: "gamma_000000000000000000000FORGE".into(),
         prev: head,
+        prevs: None,
         at: day(2, "00:00:00"),
         kind: "heartbeat".into(),
         target: None,
@@ -3242,6 +3244,7 @@ fn swap_sealed_body(w: &mut ProtocolWorld) {
     let spec = aithos_core::gamma::EntrySpec {
         id: "gamma_00000000000000000000000LIE".into(),
         prev: aithos_core::gamma::head(&entries).unwrap(),
+        prevs: None,
         at: day(1, "02:00:00"),
         kind: aithos_core::gamma::Kind::Action,
         target: Some("x.gmail".into()),

@@ -70,6 +70,7 @@ fn candidate(at: &str, via: &[&Mandate], action: &str) -> Entry {
         v: 1,
         id: "gamma_000000000000000000000000ZZ".into(),
         prev: String::new(),
+        prevs: None,
         at: at.into(),
         kind: "action".into(),
         target: Some("x.gmail".into()),

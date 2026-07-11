@@ -117,6 +117,12 @@ pub struct Entry {
     pub id: String,
     /// `sha256:<hex>` of the previous entry's JCS; empty for the first entry.
     pub prev: String,
+    /// Two-predecessor join (§07.6, pass I): the sub-chain tips a `merge`
+    /// entry re-joins, ordered like the manifest's `merges`; `prev` repeats
+    /// the first. Additive — only `kind:"merge"` may carry it (check_form),
+    /// pre-I entries are untouched on the wire.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prevs: Option<Vec<String>>,
     pub at: String,
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -171,6 +177,40 @@ impl Entry {
         }
         ts_epoch(&self.at)?;
         let kind = self.kind()?;
+        // `prevs` discipline (§07.6, pass I): merge entries — and ONLY merge
+        // entries — carry the two sub-chain tips, `prev` repeating the first;
+        // their clear payload mirrors the manifest (`merges`, ascending).
+        match (kind == Kind::Merge, &self.prevs) {
+            (false, None) => {}
+            (false, Some(_)) => {
+                return Err(err("only merge entries may carry prevs".into()));
+            }
+            (true, Some(p)) if p.len() == 2 && p[0] != p[1] && self.prev == p[0] => {
+                if self.target.is_some() {
+                    return Err(err("merge entries carry no target".into()));
+                }
+                let merges_ok = self
+                    .payload
+                    .as_ref()
+                    .and_then(|pl| pl.get("merges"))
+                    .and_then(|m| m.as_array())
+                    .is_some_and(|m| {
+                        m.len() == 2
+                            && m.iter().all(serde_json::Value::is_string)
+                            && m[0].as_str() < m[1].as_str()
+                    });
+                if !merges_ok {
+                    return Err(err(
+                        "merge payload must carry merges = [low, high] ascending".into(),
+                    ));
+                }
+            }
+            (true, _) => {
+                return Err(err(
+                    "merge entries carry prevs = [low tip, high tip], prev = the low tip".into(),
+                ));
+            }
+        }
         let sealed_only = kind.is_mutation() || kind == Kind::EthosRead;
         match (sealed_only, &self.payload, &self.body_enc) {
             // Mutation (or logged read) on a keyed zone: sealed body only.
@@ -212,6 +252,8 @@ fn verify_entry_sig(entry: &Entry, key: &VerifyingKey) -> Result<()> {
 pub struct EntrySpec {
     pub id: String,
     pub prev: String,
+    /// Merge entries only (§07.6): the two sub-chain tips being re-joined.
+    pub prevs: Option<Vec<String>>,
     pub at: String,
     pub kind: Kind,
     pub target: Option<String>,
@@ -225,6 +267,7 @@ impl EntrySpec {
             v: GAMMA_ENTRY_VERSION,
             id: self.id,
             prev: self.prev,
+            prevs: self.prevs,
             at: self.at,
             kind: self.kind.as_str().to_owned(),
             target: self.target,
@@ -352,23 +395,77 @@ pub fn open_body(
 
 // ------------------------------------------------------------------ chain
 
-/// Link integrity + per-entry form over an ordered slice (§07.1): first
-/// `prev` empty, each `prev` pins its predecessor, `at` never decreases.
+/// Link integrity + per-entry form over an ordered slice (§07.1, §07.6).
+///
+/// A linear log walks exactly as before: first `prev` empty, each `prev`
+/// pins its predecessor, `at` never decreases ALONG THE CHAIN. Pass I adds
+/// the fork-and-rejoin shape of a merged segment: a non-merge entry may
+/// extend an already-extended entry (opening a sub-chain), and a `merge`
+/// entry consumes exactly the two open tips named in its `prevs`. `at`
+/// monotonicity is relaxed at the join — THERE and only there (§07.6): the
+/// signed merge entry documents it; every other link keeps child ≥ parent.
+/// The walk must end on a single tip — a fork never re-joined is refused.
 pub fn verify_links(entries: &[Entry]) -> Result<()> {
     let err = |m: String| Error::InvalidGammaChain(m);
-    let mut prev_hash = String::new();
-    let mut prev_at: Option<i64> = None;
+    // chain hash → its entry's `at` (epoch), for parent-relative time checks.
+    let mut seen: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+    // open sub-chain heads: hashes no later entry has extended or merged yet.
+    let mut tips: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut last_hash = String::new();
     for e in entries {
         e.check_form()?;
-        if e.prev != prev_hash {
-            return Err(err(format!("{}: prev does not pin its predecessor", e.id)));
-        }
         let t = ts_epoch(&e.at)?;
-        if prev_at.is_some_and(|p| t < p) {
-            return Err(err(format!("{}: at goes backward", e.id)));
+        let h = e.chain_hash()?;
+        if seen.contains_key(&h) {
+            return Err(err(format!("{}: duplicate entry", e.id)));
         }
-        prev_at = Some(t);
-        prev_hash = e.chain_hash()?;
+        match &e.prevs {
+            Some(p) => {
+                // Merge entry (form-checked above): both tips must be OPEN —
+                // a merge joins the current sub-chain heads, never history.
+                for tip in p {
+                    if !tips.remove(tip) {
+                        return Err(err(format!(
+                            "{}: merge prevs do not join the open tips",
+                            e.id
+                        )));
+                    }
+                }
+                // `at` deliberately unconstrained at the join (§07.6).
+            }
+            None => {
+                if e.prev.is_empty() {
+                    // The genesis point. A SECOND empty-prev entry opens a
+                    // fork at the very start of the log — legal only if a
+                    // merge re-joins it (the single-tip check below).
+                } else {
+                    let Some(parent_at) = seen.get(&e.prev) else {
+                        return Err(err(format!("{}: prev does not pin its predecessor", e.id)));
+                    };
+                    if t < *parent_at {
+                        return Err(err(format!("{}: at goes backward", e.id)));
+                    }
+                    // Extending an open tip is the linear walk; extending a
+                    // consumed hash OPENS a fork the walk must later re-join.
+                    tips.remove(&e.prev);
+                }
+            }
+        }
+        tips.insert(h.clone());
+        seen.insert(h.clone(), t);
+        last_hash = h;
+    }
+    if seen.is_empty() {
+        return Ok(());
+    }
+    if tips.len() != 1 {
+        return Err(err(format!(
+            "unresolved fork inside the log: {} open tips",
+            tips.len()
+        )));
+    }
+    if !tips.contains(&last_hash) {
+        return Err(err("the last entry is not the chain tip".into()));
     }
     Ok(())
 }

@@ -36,6 +36,7 @@ impl<S: Store> Bundle<S> {
             EntrySpec {
                 id: self.next_gamma_id(ent),
                 prev: self.gamma_head()?,
+                prevs: None,
                 at: now.to_owned(),
                 kind: Kind::Revoke,
                 target: Some(mandate_id.to_owned()),
@@ -67,6 +68,7 @@ impl<S: Store> Bundle<S> {
             EntrySpec {
                 id: self.next_gamma_id(ent),
                 prev: self.gamma_head()?,
+                prevs: None,
                 at: now.to_owned(),
                 kind: Kind::Revoke,
                 target: Some(target_mandate_id.to_owned()),

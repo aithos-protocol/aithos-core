@@ -199,6 +199,7 @@ impl<S: Store> Bundle<S> {
             Zone::Public => EntrySpec {
                 id: self.next_gamma_id(ent),
                 prev,
+                prevs: None,
                 at: now.to_owned(),
                 kind,
                 target: Some(node.to_string()),
@@ -211,6 +212,7 @@ impl<S: Store> Bundle<S> {
                 EntrySpec {
                     id: self.next_gamma_id(ent),
                     prev,
+                    prevs: None,
                     at: now.to_owned(),
                     kind,
                     target: None,
@@ -251,6 +253,7 @@ impl<S: Store> Bundle<S> {
             EntrySpec {
                 id: self.next_gamma_id(ent),
                 prev: self.gamma_head()?,
+                prevs: None,
                 at: now.to_owned(),
                 kind: Kind::Heartbeat,
                 target: None,
@@ -275,6 +278,7 @@ impl<S: Store> Bundle<S> {
             EntrySpec {
                 id: self.next_gamma_id(ent),
                 prev: self.gamma_head()?,
+                prevs: None,
                 at: now.to_owned(),
                 kind: Kind::Grant,
                 target: Some(child_mandate_id.to_owned()),
@@ -351,6 +355,7 @@ impl<S: Store> Bundle<S> {
             EntrySpec {
                 id: self.next_gamma_id(ent),
                 prev: gamma::head(&entries)?,
+                prevs: None,
                 at: spec.now.to_owned(),
                 kind: Kind::Action,
                 target: Some(format!("x.{}", spec.connector)),
@@ -450,6 +455,7 @@ impl<S: Store> Bundle<S> {
             EntrySpec {
                 id: self.next_gamma_id(ent),
                 prev: gamma::head(&entries)?,
+                prevs: None,
                 at: spec.now.to_owned(),
                 kind: Kind::Inference,
                 target: Some("x.llm".to_owned()),
@@ -498,6 +504,7 @@ impl<S: Store> Bundle<S> {
             EntrySpec {
                 id: self.next_gamma_id(ent),
                 prev: gamma::head(&entries)?,
+                prevs: None,
                 at: now.to_owned(),
                 kind: Kind::EthosRead,
                 target: None,
@@ -534,6 +541,7 @@ impl<S: Store> Bundle<S> {
             EntrySpec {
                 id: self.next_gamma_id(ent),
                 prev: gamma::head(&entries)?,
+                prevs: None,
                 at: now.to_owned(),
                 kind: Kind::Grant,
                 target: Some(child_mandate_id.to_owned()),

@@ -25,6 +25,7 @@ fn entry(kind: &str, at: &str, payload: Value) -> Entry {
         v: 1,
         id: "gamma_00000000000000000000000FPP".into(),
         prev: String::new(),
+        prevs: None,
         at: at.into(),
         kind: kind.into(),
         target: Some("x.llm".into()),
