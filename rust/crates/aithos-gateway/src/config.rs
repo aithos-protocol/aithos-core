@@ -2,7 +2,9 @@
 //! an agent in. Parsed fail-closed: unknown keys, unknown access levels or
 //! an unusable store are rejected outright, never guessed at.
 //!
-//! Decided 2026-07-10: YAML whitelist. Example:
+//! Two shapes, never mixed (v2, decisions of 2026-07-10):
+//!
+//! **Mono (legacy demo)** — one ethos, one upstream:
 //!
 //! ```yaml
 //! listen: 127.0.0.1:4870
@@ -15,9 +17,27 @@
 //!   user.update: write
 //! ```
 //!
-//! Semantics: `read` tools are covered by the generated read-only mandate;
+//! **Multi-context (v2)** — N provisioned contexts, each with its own
+//! ethos store, upstream and tool map, plus the agent's journal:
+//!
+//! ```yaml
+//! listen: 127.0.0.1:4870
+//! contexts:
+//!   - name: company-brand
+//!     upstream_mcp: http://127.0.0.1:5001/mcp
+//!     store: { kind: fs, root: /var/lib/aithos/brand }
+//!     tools:
+//!       brand.read: read
+//!       brand.update: write
+//! journal:
+//!   store: { kind: fs, root: /var/lib/aithos/journal }
+//! ```
+//!
+//! Semantics: `read` tools are covered by the granted read-only mandate;
 //! `write` tools are known but *not* granted (so refusals name the tool
-//! precisely); anything absent from `tools` is denied by default.
+//! precisely); anything absent from every tool map is denied by default.
+//! Routing is by tool name, so a tool name that flattens identically in
+//! two contexts would be ambiguous — rejected at parse time.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -56,19 +76,56 @@ pub enum StoreConfig {
     },
 }
 
+/// One provisioned context (v2): an ethos the agent was granted into,
+/// the upstream MCP server its tools live on, and the tool whitelist
+/// that routes calls to it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContextConfig {
+    /// Routing name — the provisioning label of the context ethos.
+    pub name: String,
+    /// Where this context's ethos lives.
+    pub store: StoreConfig,
+    /// The real MCP server this context's calls relay to.
+    pub upstream_mcp: String,
+    /// The tool whitelist that maps calls onto this context.
+    #[serde(default)]
+    pub tools: ToolMap,
+}
+
+/// The agent's journal (v2): the enterprise-owned ethos that keeps the
+/// agent's own story — xref mirrors of every act, and every refusal.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JournalConfig {
+    /// Where the journal ethos lives.
+    pub store: StoreConfig,
+}
+
 /// The whole gateway configuration file.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GatewayConfig {
     /// Agent-facing bind address (the pod-internal endpoint).
     pub listen: String,
-    /// The real MCP server the gateway relays to.
-    pub upstream_mcp: String,
-    /// Where the ethos lives.
-    pub store: StoreConfig,
-    /// The enterprise tool whitelist. Empty map = everything denied.
+    /// Mono shape: the real MCP server the gateway relays to.
+    #[serde(default)]
+    pub upstream_mcp: Option<String>,
+    /// Mono shape: where the ethos lives.
+    #[serde(default)]
+    pub store: Option<StoreConfig>,
+    /// Mono shape: the enterprise tool whitelist. Empty map = everything
+    /// denied.
     #[serde(default)]
     pub tools: ToolMap,
+    /// Multi-context shape (v2): the provisioned contexts. Mutually
+    /// exclusive with the mono fields above.
+    #[serde(default)]
+    pub contexts: Option<Vec<ContextConfig>>,
+    /// Multi-context shape (v2): the agent's journal. Required whenever
+    /// `contexts` is declared.
+    #[serde(default)]
+    pub journal: Option<JournalConfig>,
 }
 
 impl GatewayConfig {
@@ -80,39 +137,139 @@ impl GatewayConfig {
         Ok(cfg)
     }
 
+    /// The mono (legacy demo) upstream — a multi-context config has none.
+    pub fn mono_upstream(&self) -> Result<&str> {
+        self.upstream_mcp.as_deref().ok_or_else(mono_only)
+    }
+
+    /// The mono (legacy demo) store — a multi-context config has none.
+    pub fn mono_store(&self) -> Result<&StoreConfig> {
+        self.store.as_ref().ok_or_else(mono_only)
+    }
+
     fn validate(&self) -> Result<()> {
         if self.listen.trim().is_empty() {
             return Err(GatewayError::ConfigRejected("`listen` is empty".into()));
         }
-        if !(self.upstream_mcp.starts_with("http://") || self.upstream_mcp.starts_with("https://"))
-        {
+        match (&self.contexts, &self.journal) {
+            // -------------------------------------------- multi-context v2
+            (Some(contexts), Some(journal)) => {
+                if self.upstream_mcp.is_some() || self.store.is_some() || !self.tools.is_empty() {
+                    return Err(GatewayError::ConfigRejected(
+                        "mono fields (`upstream_mcp`/`store`/`tools`) cannot mix with \
+                         `contexts` — declare one shape or the other"
+                            .into(),
+                    ));
+                }
+                if contexts.is_empty() {
+                    return Err(GatewayError::ConfigRejected("`contexts` is empty".into()));
+                }
+                validate_store(&journal.store, "journal.store")?;
+                let mut names = std::collections::BTreeSet::new();
+                let mut seen = BTreeMap::new();
+                for ctx in contexts {
+                    if ctx.name.trim().is_empty() {
+                        return Err(GatewayError::ConfigRejected(
+                            "a context has an empty `name`".into(),
+                        ));
+                    }
+                    if !names.insert(ctx.name.as_str()) {
+                        return Err(GatewayError::ConfigRejected(format!(
+                            "duplicate context name `{}`",
+                            ctx.name
+                        )));
+                    }
+                    validate_upstream(
+                        &ctx.upstream_mcp,
+                        &format!("contexts[{}].upstream_mcp", ctx.name),
+                    )?;
+                    validate_store(&ctx.store, &format!("contexts[{}].store", ctx.name))?;
+                    // ONE flattened action namespace across ALL contexts:
+                    // routing is by tool name, so a cross-context collision
+                    // would make the route (and the grant) ambiguous.
+                    validate_tools(&ctx.tools, &ctx.name, &mut seen)?;
+                }
+                Ok(())
+            }
+            (Some(_), None) => Err(GatewayError::ConfigRejected(
+                "`contexts` requires a `journal` — the agent's own story must land somewhere"
+                    .into(),
+            )),
+            (None, Some(_)) => Err(GatewayError::ConfigRejected(
+                "`journal` without `contexts` — the mono shape has no journal".into(),
+            )),
+            // -------------------------------------------- mono (legacy demo)
+            (None, None) => {
+                let upstream = self.upstream_mcp.as_deref().ok_or_else(|| {
+                    GatewayError::ConfigRejected(
+                        "`upstream_mcp` is required (or declare `contexts`)".into(),
+                    )
+                })?;
+                let store = self.store.as_ref().ok_or_else(|| {
+                    GatewayError::ConfigRejected(
+                        "`store` is required (or declare `contexts`)".into(),
+                    )
+                })?;
+                validate_upstream(upstream, "upstream_mcp")?;
+                validate_store(store, "store.root")?;
+                let mut seen = BTreeMap::new();
+                validate_tools(&self.tools, "", &mut seen)
+            }
+        }
+    }
+}
+
+fn mono_only() -> GatewayError {
+    GatewayError::ConfigRejected(
+        "this path needs the mono config shape (`upstream_mcp`/`store`), not `contexts`".into(),
+    )
+}
+
+fn validate_upstream(url: &str, at: &str) -> Result<()> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}` must be an http(s) URL, got `{url}`"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_store(store: &StoreConfig, at: &str) -> Result<()> {
+    if let StoreConfig::Fs { root } = store {
+        if root.as_os_str().is_empty() {
+            return Err(GatewayError::ConfigRejected(format!("`{at}` is empty")));
+        }
+    }
+    Ok(())
+}
+
+/// Register a tool map into the shared flattened-action namespace.
+/// Mandate actions flatten dots to underscores; two tools that flatten
+/// identically would silently share one grant (and, across contexts, one
+/// route) — refuse. `prefix` is the context name, empty for mono.
+fn validate_tools(
+    tools: &ToolMap,
+    prefix: &str,
+    seen: &mut BTreeMap<String, String>,
+) -> Result<()> {
+    for tool in tools.keys() {
+        if tool.trim().is_empty() {
+            return Err(GatewayError::ConfigRejected(
+                "empty tool name in `tools`".into(),
+            ));
+        }
+        let shown = if prefix.is_empty() {
+            tool.clone()
+        } else {
+            format!("{prefix}:{tool}")
+        };
+        if let Some(other) = seen.insert(crate::policy::action_name(tool), shown.clone()) {
             return Err(GatewayError::ConfigRejected(format!(
-                "`upstream_mcp` must be an http(s) URL, got `{}`",
-                self.upstream_mcp
+                "tools `{other}` and `{shown}` collide once mapped to a mandate action"
             )));
         }
-        if let StoreConfig::Fs { root } = &self.store {
-            if root.as_os_str().is_empty() {
-                return Err(GatewayError::ConfigRejected("`store.root` is empty".into()));
-            }
-        }
-        let mut seen = std::collections::BTreeMap::new();
-        for tool in self.tools.keys() {
-            if tool.trim().is_empty() {
-                return Err(GatewayError::ConfigRejected(
-                    "empty tool name in `tools`".into(),
-                ));
-            }
-            // Mandate actions flatten dots to underscores; two tools that
-            // flatten identically would silently share one grant — refuse.
-            if let Some(other) = seen.insert(crate::policy::action_name(tool), tool.clone()) {
-                return Err(GatewayError::ConfigRejected(format!(
-                    "tools `{other}` and `{tool}` collide once mapped to a mandate action"
-                )));
-            }
-        }
-        Ok(())
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -130,11 +287,38 @@ tools:
   user.update: write
 ";
 
+    const MULTI: &str = "\
+listen: 127.0.0.1:4870
+contexts:
+  - name: company-brand
+    upstream_mcp: http://127.0.0.1:5001/mcp
+    store:
+      kind: fs
+      root: /var/lib/aithos/brand
+    tools:
+      brand.read: read
+      brand.update: write
+  - name: ui-designer
+    upstream_mcp: http://127.0.0.1:5002/mcp
+    store:
+      kind: fs
+      root: /var/lib/aithos/figma
+    tools:
+      figma.read: read
+      figma.update: write
+journal:
+  store:
+    kind: fs
+    root: /var/lib/aithos/journal
+";
+
     #[test]
     fn parses_a_valid_config() {
         let cfg = GatewayConfig::from_yaml(GOOD).unwrap();
         assert_eq!(cfg.tools.get("user.read"), Some(&ToolAccess::Read));
         assert_eq!(cfg.tools.get("user.update"), Some(&ToolAccess::Write));
+        assert!(cfg.contexts.is_none());
+        assert_eq!(cfg.mono_upstream().unwrap(), "http://127.0.0.1:4124/mcp");
     }
 
     #[test]
@@ -170,6 +354,100 @@ tools:
         let text = format!("{GOOD}  user_read: read\n");
         assert!(matches!(
             GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    // ------------------------------------------------- multi-context (v2)
+
+    #[test]
+    fn parses_a_valid_multi_config() {
+        let cfg = GatewayConfig::from_yaml(MULTI).unwrap();
+        let contexts = cfg.contexts.as_ref().unwrap();
+        assert_eq!(contexts.len(), 2);
+        assert_eq!(contexts[0].name, "company-brand");
+        assert_eq!(contexts[0].tools.get("brand.read"), Some(&ToolAccess::Read));
+        assert!(cfg.journal.is_some());
+        // The mono accessors refuse: this config has no mono half.
+        assert!(matches!(
+            cfg.mono_upstream(),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+        assert!(matches!(
+            cfg.mono_store(),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    #[test]
+    fn mono_fields_mixed_with_contexts_are_rejected() {
+        let text = format!("{MULTI}upstream_mcp: http://127.0.0.1:4124/mcp\n");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    #[test]
+    fn contexts_without_journal_are_rejected() {
+        let text = MULTI.replace(
+            "journal:\n  store:\n    kind: fs\n    root: /var/lib/aithos/journal\n",
+            "",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    #[test]
+    fn journal_without_contexts_is_rejected() {
+        let text = format!("{GOOD}journal:\n  store:\n    kind: fs\n    root: /tmp/j\n");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    #[test]
+    fn cross_context_tool_collision_is_rejected() {
+        // "brand_read" in ui-designer flattens like company-brand's
+        // "brand.read": the route would be ambiguous.
+        let text = MULTI.replace("figma.read: read", "brand_read: read");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    #[test]
+    fn duplicate_context_names_are_rejected() {
+        let text = MULTI.replace("name: ui-designer", "name: company-brand");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    #[test]
+    fn context_with_non_http_upstream_is_rejected() {
+        let text = MULTI.replace("http://127.0.0.1:5002/mcp", "ftp://x");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    #[test]
+    fn mono_without_store_or_upstream_is_rejected() {
+        assert!(matches!(
+            GatewayConfig::from_yaml("listen: 127.0.0.1:4870\n"),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+        assert!(matches!(
+            GatewayConfig::from_yaml(
+                "listen: 127.0.0.1:4870\nupstream_mcp: http://127.0.0.1:4124/mcp\n"
+            ),
             Err(GatewayError::ConfigRejected(_))
         ));
     }

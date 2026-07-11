@@ -249,7 +249,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             };
             let (_bridge, outcome) = Bridge::onboard(
                 &cfg,
-                GatewayStore::from_config(&cfg.store)?,
+                GatewayStore::from_config(cfg.mono_store()?)?,
                 keyholder,
                 Box::new(OsEntropy),
                 &window,
@@ -261,14 +261,14 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::Run => {
             let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
             let bridge = Bridge::open(
-                GatewayStore::from_config(&cfg.store)?,
+                GatewayStore::from_config(cfg.mono_store()?)?,
                 keyholder,
                 Box::new(OsEntropy),
             )?;
             let proxy = Arc::new(McpProxy {
                 policy: Policy::new(cfg.tools.clone()),
                 bridge: tokio::sync::Mutex::new(bridge),
-                upstream: HttpUpstream::new(cfg.upstream_mcp.clone()),
+                upstream: HttpUpstream::new(cfg.mono_upstream()?.to_owned()),
                 clock: Arc::new(|| ts(now_secs())),
             });
             let rt = tokio::runtime::Builder::new_multi_thread()
@@ -287,7 +287,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
             let bridge = Bridge::open(
-                GatewayStore::from_config(&cfg.store)?,
+                GatewayStore::from_config(cfg.mono_store()?)?,
                 keyholder,
                 Box::new(OsEntropy),
             )?;
