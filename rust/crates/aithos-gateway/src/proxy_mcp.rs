@@ -15,20 +15,41 @@
 //! identity (the agent did not act — that is the point), then surfaced
 //! as a JSON-RPC error. Everything else (`initialize`, `tools/list`,
 //! notifications) passes through untouched in the MVP.
+//!
+//! **Multi-context router (v2, lot 3).** [`McpRouter`] serves N
+//! provisioned contexts at once: each `tools/call` resolves to the ONE
+//! context whose tool map names it, is authorised against that context's
+//! mandate, logged there (plus the journal xref) and relayed to that
+//! context's own upstream. v1 simplification, documented on purpose:
+//! with N upstreams there is no single passthrough target, so the router
+//! answers `initialize` itself (static minimal result), aggregates
+//! `tools/list` from the declared maps (names only), and refuses every
+//! other method with JSON-RPC `-32601` — honest, and exactly what the
+//! routed scenarios need. Streaming/SSE and per-upstream capability
+//! merging land with Phase D.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axum::{extract::State, routing::post, Json, Router};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
-use crate::core_bridge::Bridge;
+use crate::core_bridge::{Bridge, Runner};
 use crate::policy::Policy;
 use crate::{GatewayError, Result};
 
 /// JSON-RPC error code for a gateway policy refusal (implementation-defined
 /// range). The call never reached the tool.
 pub const POLICY_DENIED_CODE: i64 = -32001;
+
+/// JSON-RPC "method not found" — what the multi-context router answers
+/// for methods it does not serve (v1: everything but `initialize`,
+/// `tools/list` and `tools/call`).
+pub const METHOD_NOT_FOUND_CODE: i64 = -32601;
+
+/// The MCP protocol revision the router's own `initialize` speaks.
+const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
 
 /// Injected clock, RFC 3339 `Z` instants (the wire's instant format —
 /// never epoch numbers). The binary passes system time; tests pass a
@@ -176,4 +197,150 @@ fn error_response(id: Value, err: &GatewayError) -> Value {
             "message": format!("aithos gateway: {err}"),
         }
     })
+}
+
+// ------------------------------------------------- multi-context router
+
+/// The multi-context router state: the runner (N context bridges + the
+/// journal) and one upstream per context, keyed by the same names.
+pub struct McpRouter<U> {
+    pub runner: Mutex<Runner>,
+    pub upstreams: BTreeMap<String, U>,
+    pub clock: Clock,
+}
+
+/// Agent-facing router for the multi-context runtime: same single
+/// Streamable HTTP endpoint as the mono proxy.
+pub fn router_multi<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
+    Router::new()
+        .route("/mcp", post(handle_multi::<U>))
+        .with_state(rt)
+}
+
+async fn handle_multi<U: Upstream>(
+    State(rt): State<Arc<McpRouter<U>>>,
+    Json(msg): Json<Value>,
+) -> Json<Value> {
+    Json(process_multi(&rt, msg).await)
+}
+
+/// Transport-free core of the multi-context router — acceptance tests
+/// drive this directly. Serves `tools/call` (routed), answers
+/// `initialize` and `tools/list` itself, refuses the rest (v1 — see the
+/// module doc).
+pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value {
+    let method = msg
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let id = msg.get("id").cloned().unwrap_or(Value::Null);
+
+    match method.as_str() {
+        "tools/call" => tool_call_multi(rt, msg).await,
+        "initialize" => json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "protocolVersion": MCP_PROTOCOL_VERSION,
+                "capabilities": { "tools": {} },
+                "serverInfo": {
+                    "name": "aithos-gateway",
+                    "version": env!("CARGO_PKG_VERSION"),
+                }
+            }
+        }),
+        "tools/list" => {
+            // Names only, aggregated from the declared maps (read AND
+            // write: refusals must name the tool precisely). Schemas are
+            // not proxied in v1 — the open object is the honest minimum.
+            let tools: Vec<Value> = rt
+                .runner
+                .lock()
+                .await
+                .mapped_tools()
+                .into_iter()
+                .map(|name| json!({ "name": name, "inputSchema": { "type": "object" } }))
+                .collect();
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "tools": tools }
+            })
+        }
+        other => json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": {
+                "code": METHOD_NOT_FOUND_CODE,
+                "message": format!(
+                    "aithos gateway: method `{other}` is not served by the multi-context router"
+                ),
+            }
+        }),
+    }
+}
+
+/// The routed `tools/call`: resolve → authorize on the context → log the
+/// act there + the xref in the journal (log-before-relay) → relay to the
+/// context's own upstream. Refusals follow §3bis.8: journal always, the
+/// context too when the tool names one.
+async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value {
+    let id = msg.get("id").cloned().unwrap_or(Value::Null);
+    let now = (rt.clock)();
+
+    // A call we cannot even name is refused — into the journal only
+    // (no context is identifiable).
+    let Some(tool) = msg
+        .pointer("/params/name")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    else {
+        let e = GatewayError::RequestRejected("tools/call without params.name".into());
+        let mut runner = rt.runner.lock().await;
+        runner.record_refusal(None, "<unnamed>", e.refusal_code(), &now);
+        return error_response(id, &e);
+    };
+
+    // The arguments only ever enter the log as a hash.
+    let args = msg
+        .pointer("/params/arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+
+    let mut runner = rt.runner.lock().await;
+
+    // Default-deny across every context: unknown → journal refusal only.
+    let Some(ctx) = runner.resolve(&tool).map(str::to_owned) else {
+        let e = GatewayError::ToolNotMapped(tool.clone());
+        runner.record_refusal(None, &tool, e.refusal_code(), &now);
+        return error_response(id, &e);
+    };
+
+    // The resolved context's mandate at T — a named tool is not yet an
+    // authorised tool (writes live here to be refused precisely).
+    if let Err(deny) = runner.authorize(&ctx, &tool, &now) {
+        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    }
+
+    // Log before relaying, twice (context act + journal xref): if either
+    // append fails, the call does not happen.
+    if let Err(e) = runner.record_act_with_xref(&ctx, &tool, &args, &now) {
+        let deny = GatewayError::LogAppendRefused(e.to_string());
+        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    }
+    drop(runner);
+
+    // Relay to THAT context's upstream. A missing upstream is a config
+    // mismatch, surfaced as an upstream failure (fail closed).
+    let Some(upstream) = rt.upstreams.get(&ctx) else {
+        let e = GatewayError::UpstreamFailed(format!("no upstream for context `{ctx}`"));
+        return error_response(id, &e);
+    };
+    match upstream.forward(msg).await {
+        Ok(resp) => resp,
+        Err(e) => error_response(id, &e),
+    }
 }
