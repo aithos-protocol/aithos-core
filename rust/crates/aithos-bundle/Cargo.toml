@@ -19,8 +19,14 @@ x25519-dalek.workspace = true
 [dev-dependencies]
 cucumber.workspace = true
 futures.workspace = true
+criterion.workspace = true
 
 # BDD acceptance harness — features live at the repo root in features/.
 [[test]]
 name = "cucumber"
+harness = false
+
+# Perf targets of spec §09.3 — `cargo bench -p aithos-bundle`.
+[[bench]]
+name = "perf"
 harness = false
