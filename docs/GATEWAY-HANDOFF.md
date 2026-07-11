@@ -94,7 +94,20 @@ prochaine itération du gateway (le MVP actuel reste la démo mono-Ethos).
    les credentials au LLM (même chiffrés) casserait enforcement, traçabilité
    et la brique audit — les API tierces ne vérifient pas les mandats Aithos,
    seul le détenteur du credential applique le périmètre.
-5. **Point ouvert** : en multi-contexte, où logger les refus ? Proposition :
+5. **Deux vues, deux index (précision 2026-07-10).** Attribution par agent :
+   déjà garantie par construction (mandat lié à `grantee_pub`, chaque entrée
+   signée par la clé de l'agent, `via` = chaîne de mandats) — un mandat n'est
+   PAS au porteur ; « donner le même mandat à N agents » exigerait de partager
+   la clé privée, que le provisioning rend anti-naturel (clé née dans le
+   container, ne sort jamais). Même périmètre pour N agents = N mandats (ou
+   délégation récursive, loggée). L'Ethos de travail de l'agent sert de
+   **vue par agent** (tout ce que CET agent a fait, tous contextes), duale de
+   la **vue par contexte** (gamma de chaque Ethos octroyant) ; l'entrée du
+   journal de travail cite l'id de l'entrée autoritaire du contexte + le DID
+   de l'Ethos, pour joindre dans les deux sens. Clé dupliquée entre deux
+   containers : indistinguable cryptographiquement, mais détectable au gamma
+   (budgets à double vitesse, heartbeats incohérents).
+6. **Point ouvert** : en multi-contexte, où logger les refus ? Proposition :
    acte/refus rattachable à un contexte → gamma de ce contexte ; refus sans
    contexte (outil inconnu) → gamma de l'Ethos de travail de l'agent.
 
