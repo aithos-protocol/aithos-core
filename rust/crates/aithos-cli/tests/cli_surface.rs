@@ -1109,13 +1109,12 @@ fn log_prove_counts_and_absence_offline() {
     .assert()
     .success();
     let cert = last_cert(&dir);
-    let mandate_id = serde_json::from_str::<serde_json::Value>(
-        &std::fs::read_to_string(&cert).unwrap(),
-    )
-    .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let mandate_id =
+        serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&cert).unwrap())
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
     for i in 1..=2 {
         ac().args([
             "action",

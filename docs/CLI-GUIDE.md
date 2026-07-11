@@ -274,6 +274,51 @@ Une preuve montre l'inclusion dans une édition signée, jamais la fraîcheur
 (limite honnête §02.10) : la staleness reste bornée par `freshness` et les
 chaînes édition + gamma.
 
+## 14. Racines gamma — comptes prouvés & absence (H2, spec 07.10)
+
+```bash
+ac grant-act --dir $D --seed-hex $S --agent-seed-hex $A gmail reply
+CERT=$(ls -t $D/certs/*.json | head -1)
+MID=$(python3 -c "import json; print(json.load(open('$CERT'))['id'])")
+ac action --dir $D --cert $CERT --agent-seed-hex $A gmail reply --args "mail 1"
+ac action --dir $D --cert $CERT --agent-seed-hex $A gmail reply --args "mail 2"
+ac edition-publish --dir $D --seed-hex $S
+python3 -c "import json; m=json.load(open('$D/manifest.json')); print(m['gamma_roots'], m['gamma_counts_root'])"
+# → une racine + n par segment non vide, À CÔTÉ de gamma_head (additif,
+#   posture H1) ; la racine du trie de comptes à côté
+
+ac log-prove --dir $D --mandate $MID
+# → le proof JSON (payload = mandate_id ‖ 0x00 ‖ JCS(compteurs)) ; la CLI
+#   le re-vérifie hors-ligne : {"entries":2,"actions":2} — tout cap TOTAL
+#   (max_actions, max_children, budgets) se vérifie sur CETTE preuve seule
+
+ac log-prove --dir $D --absent mandate_zzzzzzzzzzzzzzzzzzzzzzzzzz
+# → preuve d'absence par adjacence triée : « was never counted »
+ac log-prove --dir $D --absent $MID
+# → refus fail-closed : un mandat compté ne se prouve pas absent
+
+python3 - <<EOF   # le mirror trafique la DERNIÈRE entrée (que prev ne couvre pas)…
+import json, os
+p = "$D/gamma/" + sorted(os.listdir("$D/gamma"))[-1]
+lines = open(p).read().splitlines()
+e = json.loads(lines[-1]); e["payload"]["action"] = "send"
+lines[-1] = json.dumps(e, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+open(p, "w").write("\n".join(lines) + "\n")
+EOF
+ac edition-verify --dir $D
+# → refus : "pinned file altered" (les pins plats, première ligne) ; la
+#   racine de segment recalculée divergerait aussi (GammaRootMismatch) —
+#   ceinture et bretelles, comme au bloc 13. Un mirror qui ne sert QUE des
+#   preuves n'a pas cette première ligne : root + n committés font le
+#   travail seuls (scénario « caught by root recomputation alone »)
+```
+
+La complétude des mirrors est fermée (§07.8) : « toutes les actions de M »
+= le compte prouvé k du leaf + k preuves d'inclusion — en retenir une casse
+le compte, en forger une casse la racine. Les fenêtres ROULANTES restent
+des scans de segments (un compteur statique ne porte pas une fenêtre
+glissante), bornés par root+n.
+
 ## Récap des invariants que tu viens de toucher
 
 | Bloc | Invariant prouvé |
@@ -289,3 +334,4 @@ chaînes édition + gamma.
 | 11 | le périmètre suit le nœud, pas l'adresse ; la dérivation ne se désapprend pas |
 | 12 | un permis peut exiger sa décharge : reçu signé, lié, single-use, vérifié des fichiers seuls |
 | 13 | tout mirror peut prouver une row en O(log n) sans être cru ; un splice meurt sur le domaine |
+| 14 | les compteurs du log sont committés : un cap total se vérifie en une preuve, un withhold casse le compte, une absence se prouve |

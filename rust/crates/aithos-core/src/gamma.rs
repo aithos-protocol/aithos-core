@@ -798,7 +798,9 @@ fn counts_leaves(
 
 /// `gamma_counts_root` (§07.10): `mroot` over the leaves sorted by mandate
 /// id — 32×0x00 when nothing was ever counted.
-pub fn counts_root(tallies: &std::collections::BTreeMap<String, GammaCounters>) -> Result<[u8; 32]> {
+pub fn counts_root(
+    tallies: &std::collections::BTreeMap<String, GammaCounters>,
+) -> Result<[u8; 32]> {
     Ok(crate::merkle::mroot(&counts_leaves(tallies)?))
 }
 
@@ -831,10 +833,7 @@ pub fn prove_count(
         .ok_or_else(|| Error::MerkleProofInvalid(format!("{mandate_id}: not in the trie")))?;
     let leaves = counts_leaves(tallies)?;
     Ok(crate::merkle::Proof {
-        payload: hex::encode(counts_leaf_payload(
-            mandate_id,
-            &tallies[mandate_id],
-        )?),
+        payload: hex::encode(counts_leaf_payload(mandate_id, &tallies[mandate_id])?),
         steps: crate::merkle::mroot_path(&leaves, idx),
         root: hex::encode(crate::merkle::mroot(&leaves)),
     })
@@ -900,8 +899,13 @@ pub fn prove_absence(
     Ok(AbsenceProof { left, right })
 }
 
+/// A proof's node steps, decoded: `(side, sibling hash)`, innermost first.
+type NodeSteps = Vec<(crate::merkle::Side, [u8; 32])>;
+/// A verified, parsed count leaf: `(mandate id, node steps, leaf hash)`.
+type ParsedLeaf = (String, NodeSteps, [u8; 32]);
+
 /// All `node` steps of a v1 proof (an absence proof folds no parents).
-fn node_steps(p: &crate::merkle::Proof) -> Result<Vec<(crate::merkle::Side, [u8; 32])>> {
+fn node_steps(p: &crate::merkle::Proof) -> Result<NodeSteps> {
     p.steps
         .iter()
         .map(|s| match s {
@@ -936,18 +940,13 @@ fn replay_nodes(start: [u8; 32], steps: &[(crate::merkle::Side, [u8; 32])]) -> [
 /// right (`side:"right"` only). Rim cases: a missing left demands the
 /// right leaf be the tree's first (all `side:"right"`), and symmetrically;
 /// both missing demands the empty root.
-pub fn verify_absence(
-    absent_id: &str,
-    proof: &AbsenceProof,
-    pinned_root: &[u8; 32],
-) -> Result<()> {
+pub fn verify_absence(absent_id: &str, proof: &AbsenceProof, pinned_root: &[u8; 32]) -> Result<()> {
     let err = |m: String| Error::GammaAbsenceInvalid(m);
-    let parse = |p: &crate::merkle::Proof| -> Result<(String, Vec<(crate::merkle::Side, [u8; 32])>, [u8; 32])> {
+    let parse = |p: &crate::merkle::Proof| -> Result<ParsedLeaf> {
         crate::merkle::verify_proof(p, pinned_root)?;
         let (id, _) = parse_count_payload(&p.payload)?;
-        let leaf = crate::merkle::h_leaf(
-            &hex::decode(&p.payload).map_err(|_| err("bad payload".into()))?,
-        );
+        let leaf =
+            crate::merkle::h_leaf(&hex::decode(&p.payload).map_err(|_| err("bad payload".into()))?);
         Ok((id, node_steps(p)?, leaf))
     };
     match (&proof.left, &proof.right) {
@@ -1009,10 +1008,16 @@ pub fn verify_absence(
             if *rsib != replay_nodes(lleaf, &lsteps[..ld]) {
                 return Err(err("right sibling is not the left leaf's subtree".into()));
             }
-            if lsteps[..ld].iter().any(|(s, _)| *s != crate::merkle::Side::Left) {
+            if lsteps[..ld]
+                .iter()
+                .any(|(s, _)| *s != crate::merkle::Side::Left)
+            {
                 return Err(err("left leaf is not the rightmost of its subtree".into()));
             }
-            if rsteps[..rd].iter().any(|(s, _)| *s != crate::merkle::Side::Right) {
+            if rsteps[..rd]
+                .iter()
+                .any(|(s, _)| *s != crate::merkle::Side::Right)
+            {
                 return Err(err("right leaf is not the leftmost of its subtree".into()));
             }
             Ok(())

@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 use aithos_core::error::Error;
 use aithos_core::gamma::{
     counts_leaf_payload, counts_root, counts_tally, prove_absence, prove_count, prove_entry,
-    segment_root, verify_absence, verify_complete_actions, verify_count_proof, AbsenceProof,
-    Entry, GammaCounters,
+    segment_root, verify_absence, verify_complete_actions, verify_count_proof, AbsenceProof, Entry,
+    GammaCounters,
 };
 use aithos_core::merkle::{verify_proof, Proof};
 use serde_json::Value;
@@ -62,7 +62,11 @@ fn segment_roots_match_python() {
             expected["root"].as_str().unwrap(),
             "{seg} root"
         );
-        assert_eq!(refs.len() as u64, expected["n"].as_u64().unwrap(), "{seg} n");
+        assert_eq!(
+            refs.len() as u64,
+            expected["n"].as_u64().unwrap(),
+            "{seg} n"
+        );
     }
 }
 
@@ -110,7 +114,10 @@ fn proofs_replay_and_match() {
     let lines = segment_lines(&v, "2026-07");
     let refs: Vec<&[u8]> = lines.iter().map(|l| l.as_bytes()).collect();
     let ours = prove_entry(&refs, 2).unwrap();
-    assert_eq!(serde_json::to_value(&ours).unwrap(), v["tree"]["proof_entry_e3"]);
+    assert_eq!(
+        serde_json::to_value(&ours).unwrap(),
+        v["tree"]["proof_entry_e3"]
+    );
 
     // count proof: the leaf mandate
     let tallies = counts_tally(&parsed_entries(&v));
@@ -137,12 +144,18 @@ fn absence_of_the_ghost() {
         left: Some(Proof {
             payload: a["left"]["payload"].as_str().unwrap().to_owned(),
             steps: serde_json::from_value(a["left"]["steps"].clone()).unwrap(),
-            root: v["tree"]["gamma_counts_root_hex"].as_str().unwrap().to_owned(),
+            root: v["tree"]["gamma_counts_root_hex"]
+                .as_str()
+                .unwrap()
+                .to_owned(),
         }),
         right: Some(Proof {
             payload: a["right"]["payload"].as_str().unwrap().to_owned(),
             steps: serde_json::from_value(a["right"]["steps"].clone()).unwrap(),
-            root: v["tree"]["gamma_counts_root_hex"].as_str().unwrap().to_owned(),
+            root: v["tree"]["gamma_counts_root_hex"]
+                .as_str()
+                .unwrap()
+                .to_owned(),
         }),
     };
     verify_absence(ghost, &python_proof, &root).expect("python absence proof verifies");
@@ -170,10 +183,7 @@ fn completeness_closes_the_withhold() {
     let mut segment_roots = BTreeMap::new();
     let mut proofs = Vec::new();
     for seg in ["2026-07", "2026-08"] {
-        segment_roots.insert(
-            seg.to_owned(),
-            hx32(&v["tree"]["gamma_roots"][seg]["root"]),
-        );
+        segment_roots.insert(seg.to_owned(), hx32(&v["tree"]["gamma_roots"][seg]["root"]));
         let lines = segment_lines(&v, seg);
         let refs: Vec<&[u8]> = lines.iter().map(|l| l.as_bytes()).collect();
         for (i, line) in lines.iter().enumerate() {
@@ -181,18 +191,21 @@ fn completeness_closes_the_withhold() {
             let is_action_under = e.kind == "action"
                 && e.authorized_via
                     .as_ref()
-                    .is_some_and(|via| via.iter().any(|m| *m == leaf_id));
+                    .is_some_and(|via| via.contains(&leaf_id));
             if is_action_under {
                 proofs.push((seg.to_owned(), prove_entry(&refs, i).unwrap()));
             }
         }
     }
-    assert_eq!(proofs.len(), 3, "fixture holds three actions under the leaf");
+    assert_eq!(
+        proofs.len(),
+        3,
+        "fixture holds three actions under the leaf"
+    );
 
     let count_proof = prove_count(&tallies, &leaf_id).unwrap();
-    let entries =
-        verify_complete_actions(&leaf_id, &count_proof, &proofs, &segment_roots, &root)
-            .expect("the full answer verifies");
+    let entries = verify_complete_actions(&leaf_id, &count_proof, &proofs, &segment_roots, &root)
+        .expect("the full answer verifies");
     assert_eq!(entries.len(), 3);
 
     // the mirror withholds one — detected against the proven count
@@ -211,10 +224,12 @@ fn negatives_die() {
 
     // tampered entry bytes die on the proof
     let mut e3 = proof_from(&v["tree"]["proof_entry_e3"]);
-    let mut entry: Value =
-        serde_json::from_slice(&hex::decode(&e3.payload).unwrap()).unwrap();
+    let mut entry: Value = serde_json::from_slice(&hex::decode(&e3.payload).unwrap()).unwrap();
     entry["payload"]["action"] = Value::String(
-        v["tree"]["negatives"]["tampered_action_name"].as_str().unwrap().to_owned(),
+        v["tree"]["negatives"]["tampered_action_name"]
+            .as_str()
+            .unwrap()
+            .to_owned(),
     );
     e3.payload = hex::encode(aithos_core::jcs::canonical_bytes(&entry).unwrap());
     assert!(matches!(
@@ -239,5 +254,8 @@ fn negatives_die() {
     let lines = segment_lines(&v, "2026-07");
     let withheld: Vec<&[u8]> = lines.iter().take(3).map(|l| l.as_bytes()).collect();
     assert_ne!(segment_root(&withheld), jul_root);
-    assert_ne!(withheld.len() as u64, v["tree"]["gamma_roots"]["2026-07"]["n"].as_u64().unwrap());
+    assert_ne!(
+        withheld.len() as u64,
+        v["tree"]["gamma_roots"]["2026-07"]["n"].as_u64().unwrap()
+    );
 }

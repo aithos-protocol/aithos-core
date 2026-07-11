@@ -878,7 +878,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             Ok(())
         }
-        Command::LogProve { dir, mandate, absent } => {
+        Command::LogProve {
+            dir,
+            mandate,
+            absent,
+        } => {
             let bundle = bundle_at(&dir)?;
             let manifest: aithos_bundle::manifest::Manifest =
                 serde_json::from_slice(&std::fs::read(format!("{dir}/manifest.json"))?)?;
