@@ -128,9 +128,32 @@ prochaine itération du gateway (le MVP actuel reste la démo mono-Ethos).
    reçu », utile quand les contextes appartiennent à des clients), gamma de
    l'entreprise (vue de flotte : grants/révocations/délégations). Jointure
    par `(ethos_did, entry_id)`. Seule l'entrée du contexte fait preuve.
-8. **Point ouvert** : en multi-contexte, où logger les refus ? Proposition :
-   acte/refus rattachable à un contexte → gamma de ce contexte ; refus sans
-   contexte (outil inconnu) → gamma de l'Ethos de travail de l'agent.
+8. **Refus multi-contexte — TRANCHÉ (Mathieu, 2026-07-10).** Le journal de
+   l'agent reçoit TOUS les refus, toujours (c'est son histoire). En PLUS,
+   si la tentative visait un contexte identifiable ET que ce contexte a
+   granté la gouvernance au gateway (`act.x.gateway.*`, comme au MVP), le
+   refus s'écrit aussi dans le gamma du contexte (son auditeur doit voir
+   les tentatives contre son périmètre). Pas de gouvernance grantée → repli
+   journal seul (droit non donné, pas une panne). Rappel mécanique : un
+   refus ne peut JAMAIS s'écrire via le mandat de l'action — l'action
+   refusée n'est couverte par rien, et le gamma n'accepte que du couvert.
+9. **Clés d'owner des journaux d'agents : dérivées de la maîtresse.** Les
+   Ethos de travail appartiennent tous à l'entreprise → dériver leurs clés
+   d'owner de la graine maîtresse (label = sid d'agent) est sain (aucun
+   tiers imputé, pas d'enjeu de non-répudiation — contrairement aux clés
+   d'AGENTS, dont la dérivation reste rejetée). Une seule graine au coffre.
+10. **Vision gravée : l'agent n'est pas sa clé.** Âme = son Ethos de travail
+    (mémoire consolidée, expertise qui grandit — la valeur à terme) ; corps
+    = le container (remplaçable) ; clé = instrument de signature (persiste
+    avec lui tant qu'il vit, dans la garde du runner, jamais chez le LLM ;
+    remplaçable par re-grant sans perte d'identité — le nom URN et l'Ethos
+    portent la continuité). « Jetable » qualifie la clé, jamais l'agent.
+11. **Pas de triple écriture (précision).** Un acte = 2 écritures (gamma du
+    contexte : la preuve ; journal : le miroir xref) et 3 lectures (contexte,
+    journal, flotte). Copier chaque acte dans le gamma d'entreprise est
+    rejeté : une copie ne prouve rien, et une chaîne unique sérialiserait
+    toute la flotte sur une tête. Consolidation d'entreprise = agrégation
+    par lecture, asynchrone, hors chemin chaud.
 
 ## 4. Reste à faire (itérations suivantes, cf. GATEWAY-BOOTSTRAP §7)
 
