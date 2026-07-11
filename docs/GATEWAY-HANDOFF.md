@@ -107,6 +107,12 @@ prochaine itération du gateway (le MVP actuel reste la démo mono-Ethos).
    de l'Ethos, pour joindre dans les deux sens. Clé dupliquée entre deux
    containers : indistinguable cryptographiquement, mais détectable au gamma
    (budgets à double vitesse, heartbeats incohérents).
+   Implémentation du miroir SANS toucher au protocole : l'agent utilise SA
+   clé d'identité (pas de « clé de l'Ethos de travail » — cet Ethos est owné
+   par l'humain, l'agent y est mandataire) ; l'entrée miroir = convention
+   gateway, ex. connecteur `xref` granté sur le journal (`act.x.xref.*`),
+   payload libre `{ethos_did, entry_id}`. L'entrée du contexte reste la seule
+   source de vérité ; le journal est un index, jamais une preuve autonome.
 6. **Point ouvert** : en multi-contexte, où logger les refus ? Proposition :
    acte/refus rattachable à un contexte → gamma de ce contexte ; refus sans
    contexte (outil inconnu) → gamma de l'Ethos de travail de l'agent.
