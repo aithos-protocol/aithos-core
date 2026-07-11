@@ -1,0 +1,147 @@
+{
+  "vector": "H2",
+  "description": "Committed gamma roots (spec 07.10): per-segment roots in chain order (root+n), the counts trie (entries/actions/children/budgets, attested tokens beating declarations, leaves sorted by mandate id), a v1 entry inclusion proof, a count proof, a sorted-adjacency absence proof, and the withhold negatives. Segment 2026-07 is F2's committed entries hashed on their exact bytes; tallies reproduce F2's committed expected counts. Generated independently (Python blake3/hashlib); self-checked against B2, H1, F2.",
+  "tree": {
+    "segments": {
+      "2026-07": [
+        "{\"at\":\"2026-07-02T00:00:00Z\",\"authorized_by\":\"mandate_00000000000000000000000020\",\"authorized_via\":[\"mandate_00000000000000000000000020\"],\"id\":\"gamma_0000000000000000000000000A\",\"kind\":\"grant\",\"payload\":{},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\",\"value\":\"c99c918692e5c67dc39d84a2efa0149abc522fe61d268f42ca36c179bb73bedad0a19a3acf1afeef1b7e1d63df26e897615c87cf8a85346e88ec7d12b113dc09\"},\"target\":\"mandate_00000000000000000000000021\",\"v\":1}",
+        "{\"at\":\"2026-07-02T01:00:00Z\",\"authorized_by\":\"mandate_00000000000000000000000020\",\"authorized_via\":[\"mandate_00000000000000000000000020\"],\"id\":\"gamma_0000000000000000000000000B\",\"kind\":\"action\",\"payload\":{\"action\":\"reply\",\"args_hash\":\"sha256:4fc6086cdb8fb4c3eae55a73748b71043450fd2bdb797dc619014e7377e8021c\"},\"prev\":\"sha256:3182d5dc455e16389fafa6f27b9a4f231cc69394cc1a1eb79da3739d48fd56d1\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\",\"value\":\"3cdc6ee8bc71a0c36b5e00b60fcb43440e749937afc54f648e2ad4276162e71365a161f41c183a8692fc6c16849a13b4da2443edac0997a6b895f4122341c904\"},\"target\":\"x.gmail\",\"v\":1}",
+        "{\"at\":\"2026-07-02T02:00:00Z\",\"authorized_by\":\"mandate_00000000000000000000000021\",\"authorized_via\":[\"mandate_00000000000000000000000020\",\"mandate_00000000000000000000000021\"],\"id\":\"gamma_0000000000000000000000000C\",\"kind\":\"action\",\"payload\":{\"action\":\"reply\",\"args_hash\":\"sha256:3bde28dc85d743c2d3d33d7d569685604a488aad3fb65294f3fbe8f68c515c03\"},\"prev\":\"sha256:f63f0293231b06a2cc69c391eec47e2ce5a5d0dc0f16bbd7717905f56ba67ba1\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkkBPYdMyzcYZ82316KGBobVXJL619wybD692WpZaPQSBg\",\"value\":\"0bc2b6ba80b2a7eb62308e73e5cef316397ceceb54d4a68af20954be801f5b3a56d3cc525b860bd76f9cbc52183b3b49b400dc5690d253ce28a098b97f6b0905\"},\"target\":\"x.gmail\",\"v\":1}",
+        "{\"at\":\"2026-07-03T05:00:00Z\",\"authorized_by\":\"mandate_00000000000000000000000021\",\"authorized_via\":[\"mandate_00000000000000000000000020\",\"mandate_00000000000000000000000021\"],\"id\":\"gamma_0000000000000000000000000D\",\"kind\":\"action\",\"payload\":{\"action\":\"label\",\"args_hash\":\"sha256:9ec34681e18dfe49d7731103ebbb36b3d5e735efd62f0b6cbe06f9cd04fd9fe1\"},\"prev\":\"sha256:2cbbb0ffb7a3f5695c8bbf90852d3de8828865b248a1450cf99ae3dc5fba309e\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkkBPYdMyzcYZ82316KGBobVXJL619wybD692WpZaPQSBg\",\"value\":\"bcd2454dc348a77918070d924d72bba26b8e885c44317bd206bb79ec46c985f3651f5ba9ea39c45c84656ab7da1cd8f8d9c503da057bd25a01932cfa2566f308\"},\"target\":\"x.gmail\",\"v\":1}"
+      ],
+      "2026-08": [
+        "{\"at\":\"2026-08-01T00:00:00Z\",\"authorized_by\":\"mandate_00000000000000000000000021\",\"authorized_via\":[\"mandate_00000000000000000000000020\",\"mandate_00000000000000000000000021\"],\"id\":\"gamma_00000000000000000000000H25\",\"kind\":\"grant\",\"payload\":{\"mandate\":\"mandate_00000000000000000000000023\"},\"prev\":\"sha256:e4deb739dcbf4d132018d9cd40c4fa19a6bb55caf4fc8b7f50b64ba8896337b2\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"fixture\",\"value\":\"fixture-sig-e5\"},\"target\":\"mandate_00000000000000000000000023\",\"v\":1}",
+        "{\"at\":\"2026-08-01T01:00:00Z\",\"authorized_by\":\"mandate_00000000000000000000000021\",\"authorized_via\":[\"mandate_00000000000000000000000020\",\"mandate_00000000000000000000000021\"],\"id\":\"gamma_00000000000000000000000H26\",\"kind\":\"inference\",\"payload\":{\"budget_ref\":\"haiku\",\"model\":\"claude-haiku\",\"provider\":\"anthropic\",\"tokens_in\":1200,\"tokens_out\":300},\"prev\":\"sha256:d1f0e1aa70136470eda06ccd1e967f169510241cced06fbd80216beb87c450a4\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"fixture\",\"value\":\"fixture-sig-e6\"},\"target\":\"x.llm\",\"v\":1}",
+        "{\"at\":\"2026-08-01T02:00:00Z\",\"authorized_by\":\"mandate_00000000000000000000000023\",\"authorized_via\":[\"mandate_00000000000000000000000020\",\"mandate_00000000000000000000000021\",\"mandate_00000000000000000000000023\"],\"id\":\"gamma_00000000000000000000000H27\",\"kind\":\"action\",\"payload\":{\"action\":\"reply\",\"args_hash\":\"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"budget_ref\":\"haiku\",\"receipt\":{\"args_hash\":\"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"model\":\"claude-haiku\",\"sig\":\"fixture-receipt-sig\",\"tokens\":2700},\"tokens\":999},\"prev\":\"sha256:c38019d5c7a6e704bdc56d86aeada9db0477094f8ec023f7c0ccce42f8844034\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"fixture\",\"value\":\"fixture-sig-e7\"},\"target\":\"x.gmail\",\"v\":1}"
+      ]
+    },
+    "gamma_roots": {
+      "2026-07": {
+        "root": "127f9c0e559fa45ac32775e146b76d999ccdb47986a345cc116e66b01ac7fd70",
+        "n": 4
+      },
+      "2026-08": {
+        "root": "115e6c9242c58ed7c98ccd31d02725c732a6733917c6843a688d69628a95e13f",
+        "n": 3
+      }
+    },
+    "counts": {
+      "mandate_00000000000000000000000020": {
+        "entries": 7,
+        "actions": 4,
+        "children": 1,
+        "budgets": {
+          "haiku": {
+            "actions": 1,
+            "tokens": 4200
+          }
+        }
+      },
+      "mandate_00000000000000000000000021": {
+        "entries": 5,
+        "actions": 3,
+        "children": 1,
+        "budgets": {
+          "haiku": {
+            "actions": 1,
+            "tokens": 4200
+          }
+        }
+      },
+      "mandate_00000000000000000000000023": {
+        "entries": 1,
+        "actions": 1,
+        "budgets": {
+          "haiku": {
+            "actions": 1,
+            "tokens": 2700
+          }
+        }
+      }
+    },
+    "counts_leaves_hex": [
+      "eadb62ad539f92c59d7c7af750371484813ce5889484cbc1c584df3820e657f4",
+      "43df119405dc28e84baff849f85e162bc5871fbbaf08c2968bdc6e17ecd1a83e",
+      "774e68491117972eb78f9120df2ae041365f894cc7f697e5f763d04e36681216"
+    ],
+    "gamma_counts_root_hex": "2f233fb3bf9da2426b2ceee9a7f606d9ba235db5875575257a53ebf76b84c0a8",
+    "empty_counts_root_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+    "proof_entry_e3": {
+      "payload": "7b226174223a22323032362d30372d30325430323a30303a30305a222c22617574686f72697a65645f6279223a226d616e646174655f3030303030303030303030303030303030303030303030303231222c22617574686f72697a65645f766961223a5b226d616e646174655f3030303030303030303030303030303030303030303030303230222c226d616e646174655f3030303030303030303030303030303030303030303030303231225d2c226964223a2267616d6d615f3030303030303030303030303030303030303030303030303043222c226b696e64223a22616374696f6e222c227061796c6f6164223a7b22616374696f6e223a227265706c79222c22617267735f68617368223a227368613235363a33626465323864633835643734336332643364333364376435363936383536303461343838616164336662363532393466336662653866363863353135633033227d2c2270726576223a227368613235363a66363366303239333233316230366132636336396333393165656334376532636535613564306463306631366262643737313739303566353662613637626131222c227369676e6174757265223a7b22616c67223a2265643235353139222c226b6579223a227a364d6b6b425059644d797a63595a38323331364b47426f6256584a4c3631397779624436393257705a615051534267222c2276616c7565223a223062633262366261383062326137656236323330386537336535636566333136333937636563656235346434613638616632303935346265383031663562336135366433636335323562383630626437366639636263353231383362336234396234303064633536393064323533636532386130393862393766366230393035227d2c22746172676574223a22782e676d61696c222c2276223a317d",
+      "steps": [
+        {
+          "node": {
+            "side": "right",
+            "hash": "72b78147c4c375d22fde0fb174f938a2f5564a8a506a9022c43e8bea0f57e2fd"
+          }
+        },
+        {
+          "node": {
+            "side": "left",
+            "hash": "ff3dc24914b45ef8dae55239ea9a9fde9db4baa028d9dc7991f145b5b6f27d15"
+          }
+        }
+      ],
+      "root": "127f9c0e559fa45ac32775e146b76d999ccdb47986a345cc116e66b01ac7fd70"
+    },
+    "proof_count_leaf_mandate": {
+      "payload": "6d616e646174655f3030303030303030303030303030303030303030303030303231007b22616374696f6e73223a332c2262756467657473223a7b226861696b75223a7b22616374696f6e73223a312c22746f6b656e73223a343230307d7d2c226368696c6472656e223a312c22656e7472696573223a357d",
+      "steps": [
+        {
+          "node": {
+            "side": "left",
+            "hash": "eadb62ad539f92c59d7c7af750371484813ce5889484cbc1c584df3820e657f4"
+          }
+        },
+        {
+          "node": {
+            "side": "right",
+            "hash": "774e68491117972eb78f9120df2ae041365f894cc7f697e5f763d04e36681216"
+          }
+        }
+      ],
+      "root": "2f233fb3bf9da2426b2ceee9a7f606d9ba235db5875575257a53ebf76b84c0a8"
+    },
+    "proof_absence_ghost": {
+      "absent_id": "mandate_00000000000000000000000022",
+      "left": {
+        "payload": "6d616e646174655f3030303030303030303030303030303030303030303030303231007b22616374696f6e73223a332c2262756467657473223a7b226861696b75223a7b22616374696f6e73223a312c22746f6b656e73223a343230307d7d2c226368696c6472656e223a312c22656e7472696573223a357d",
+        "steps": [
+          {
+            "node": {
+              "side": "left",
+              "hash": "eadb62ad539f92c59d7c7af750371484813ce5889484cbc1c584df3820e657f4"
+            }
+          },
+          {
+            "node": {
+              "side": "right",
+              "hash": "774e68491117972eb78f9120df2ae041365f894cc7f697e5f763d04e36681216"
+            }
+          }
+        ]
+      },
+      "right": {
+        "payload": "6d616e646174655f3030303030303030303030303030303030303030303030303233007b22616374696f6e73223a312c2262756467657473223a7b226861696b75223a7b22616374696f6e73223a312c22746f6b656e73223a323730307d7d2c22656e7472696573223a317d",
+        "steps": [
+          {
+            "node": {
+              "side": "left",
+              "hash": "70d29f20a0372e74bf27138dd7d400df5097498eaa8672ac9cd70a94e0fabd33"
+            }
+          }
+        ]
+      },
+      "root": "2f233fb3bf9da2426b2ceee9a7f606d9ba235db5875575257a53ebf76b84c0a8"
+    },
+    "negatives": {
+      "tampered_action_name": "send",
+      "expected": "root mismatch (fail-closed)",
+      "forged_absence_pair": [
+        0,
+        2
+      ],
+      "withheld_segment_prefix_differs": true
+    }
+  }
+}
