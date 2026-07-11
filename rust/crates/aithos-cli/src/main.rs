@@ -291,6 +291,26 @@ enum Command {
         #[arg(long)]
         budget_ref: Option<String>,
     },
+    /// Build the O(log n) inclusion proof of a section against the signed
+    /// Merkle root (spec 02.10) and verify it offline before printing.
+    Prove {
+        #[arg(long)]
+        dir: String,
+        /// public | circle | self
+        zone: String,
+        /// Display path (public/circle) or the blob sid (self).
+        path: String,
+    },
+    /// Root-descent diff between two editions (spec 02.10): the node
+    /// labels added, removed or changed. Defaults to previous → latest.
+    EditionDiff {
+        #[arg(long)]
+        dir: String,
+        #[arg(long)]
+        from: Option<u64>,
+        #[arg(long)]
+        to: Option<u64>,
+    },
     /// Publish an owner liveness beacon (spec 07.5).
     Heartbeat {
         #[arg(long)]
@@ -816,6 +836,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &mut OsEntropy,
             )?;
             println!("inference logged: {}", entry.id);
+            Ok(())
+        }
+        Command::Prove { dir, zone, path } => {
+            let bundle = bundle_at(&dir)?;
+            let manifest: aithos_bundle::manifest::Manifest =
+                serde_json::from_slice(&std::fs::read(format!("{dir}/manifest.json"))?)?;
+            let proof = match zone.as_str() {
+                "self" => bundle.prove_self(&path)?,
+                z => bundle.prove_section(aithos_core::path::Zone::parse(z)?, &path)?,
+            };
+            let pinned = manifest
+                .roots
+                .get(if zone == "self" {
+                    "self"
+                } else {
+                    zone.as_str()
+                })
+                .ok_or("no root pinned — publish an edition first")?;
+            let root: [u8; 32] = hex::decode(pinned)?
+                .try_into()
+                .map_err(|_| "malformed pinned root")?;
+            aithos_core::merkle::verify_proof(&proof, &root)?;
+            println!("{}", serde_json::to_string_pretty(&proof)?);
+            eprintln!(
+                "proof verifies against the signed {zone} root ({} steps)",
+                proof.steps.len()
+            );
+            Ok(())
+        }
+        Command::EditionDiff { dir, from, to } => {
+            let manifest: aithos_bundle::manifest::Manifest =
+                serde_json::from_slice(&std::fs::read(format!("{dir}/manifest.json"))?)?;
+            let to = to.unwrap_or(manifest.edition.height);
+            let from = from.unwrap_or_else(|| to.saturating_sub(1));
+            let tree =
+                |h: u64| -> Result<aithos_bundle::state::StateTree, Box<dyn std::error::Error>> {
+                    Ok(serde_json::from_slice(&std::fs::read(format!(
+                        "{dir}/manifests/tree-{h}.json"
+                    ))?)?)
+                };
+            let diff = aithos_bundle::state::tree_diff(&tree(from)?, &tree(to)?);
+            if diff.is_empty() {
+                println!("editions {from} → {to}: identical");
+            } else {
+                for (label, what) in diff {
+                    println!("{what:>7}  {label}");
+                }
+            }
             Ok(())
         }
         Command::Heartbeat { dir, seed_hex, seq } => {
