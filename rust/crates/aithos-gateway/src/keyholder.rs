@@ -13,6 +13,8 @@
 
 use zeroize::Zeroize;
 
+use crate::{GatewayError, Result};
+
 /// Holds the gateway-side seeds; zeroised on drop.
 pub struct Keyholder {
     agent_seed: [u8; 32],
@@ -37,6 +39,56 @@ impl Keyholder {
     pub(crate) fn gateway_seed(&self) -> &[u8; 32] {
         &self.gateway_seed
     }
+}
+
+/// On-disk identity file — RUNNER custody only, never inside an ethos
+/// store (a store may one day be cloud-replicated; this file must not).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct IdentityFile {
+    agent_seed_hex: String,
+    gateway_seed_hex: String,
+}
+
+impl Keyholder {
+    /// Persist to the runner's identity file (0600 on unix).
+    pub fn save(&self, path: &std::path::Path) -> Result<()> {
+        let body = serde_json::to_vec_pretty(&IdentityFile {
+            agent_seed_hex: hex::encode(self.agent_seed),
+            gateway_seed_hex: hex::encode(self.gateway_seed),
+        })
+        .map_err(|e| GatewayError::IdentityUnavailable(e.to_string()))?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| GatewayError::IdentityUnavailable(e.to_string()))?;
+        }
+        std::fs::write(path, body).map_err(|e| GatewayError::IdentityUnavailable(e.to_string()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| GatewayError::IdentityUnavailable(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// Load the runner's identity file. Absent or malformed = fail closed.
+    pub fn load(path: &std::path::Path) -> Result<Self> {
+        let bytes = std::fs::read(path)
+            .map_err(|e| GatewayError::IdentityUnavailable(format!("{}: {e}", path.display())))?;
+        let f: IdentityFile = serde_json::from_slice(&bytes)
+            .map_err(|e| GatewayError::IdentityUnavailable(e.to_string()))?;
+        Ok(Self {
+            agent_seed: decode_seed(&f.agent_seed_hex)?,
+            gateway_seed: decode_seed(&f.gateway_seed_hex)?,
+        })
+    }
+}
+
+fn decode_seed(hex_str: &str) -> Result<[u8; 32]> {
+    hex::decode(hex_str)
+        .ok()
+        .and_then(|v| <[u8; 32]>::try_from(v).ok())
+        .ok_or_else(|| GatewayError::IdentityUnavailable("seed is not 32 hex bytes".into()))
 }
 
 impl Drop for Keyholder {

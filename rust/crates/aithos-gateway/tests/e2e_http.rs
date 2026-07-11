@@ -99,10 +99,12 @@ async fn full_journey_over_real_sockets() {
     )
     .unwrap();
     let cfg = cfg_path.to_str().unwrap();
+    let id_path = tmp.path().join("agent.id");
+    let id = id_path.to_str().unwrap();
 
     // 1. Onboard with the real binary; capture the auditor seed.
     let out = gateway_bin()
-        .args(["--config", cfg, "onboard"])
+        .args(["--config", cfg, "--identity", id, "onboard"])
         .output()
         .expect("onboard runs");
     assert!(
@@ -119,7 +121,7 @@ async fn full_journey_over_real_sockets() {
 
     // 2. Run the real gateway as a child process.
     let child = gateway_bin()
-        .args(["--config", cfg, "run"])
+        .args(["--config", cfg, "--identity", id, "run"])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
@@ -200,6 +202,8 @@ async fn full_journey_over_real_sockets() {
         .args([
             "--config",
             cfg,
+            "--identity",
+            id,
             "audit-export",
             "--auditor-seed-hex",
             &auditor_seed,

@@ -20,7 +20,8 @@ use tokio::sync::Mutex;
 
 use aithos_gateway::config::GatewayConfig;
 use aithos_gateway::core_bridge::{
-    Bridge, EntropySource, EntryView, MandateWindow, OnboardOutcome, SeqEntropy,
+    agent_pub_multibase, gateway_pub_multibase, Bridge, EntropySource, EntryView, MandateWindow,
+    OnboardOutcome, SeqEntropy,
 };
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
@@ -68,6 +69,11 @@ struct GatewayWorld {
     last_response: Option<Value>,
     audit_export: Option<String>,
     auditor_seed: Option<[u8; 32]>,
+    /// Birth scenario (Phase B): what the runner published, and where
+    /// its identity file lives (the tempdir keeps it alive).
+    published: Option<String>,
+    identity_file: Option<std::path::PathBuf>,
+    scratch: Option<tempfile::TempDir>,
 }
 
 impl GatewayWorld {
@@ -82,6 +88,9 @@ impl GatewayWorld {
             last_response: None,
             audit_export: None,
             auditor_seed: None,
+            published: None,
+            identity_file: None,
+            scratch: None,
         }
     }
 
@@ -421,13 +430,46 @@ async fn export_scoped(w: &mut GatewayWorld) {
 // Stubs for gateway-provisioning.feature — implemented lot by lot.
 
 #[when("a runner generates its agent identity")]
-async fn runner_keygen(_w: &mut GatewayWorld) {}
+async fn runner_keygen(w: &mut GatewayWorld) {
+    let dir = tempfile::tempdir().unwrap();
+    let mut ent = SeqEntropy::default();
+    let kh = Keyholder::from_entropy(ent.e32(), ent.e32());
+    let path = dir.path().join("agent.id");
+    kh.save(&path).expect("identity saved");
+    // What the runner hands out at birth — public material only.
+    w.published = Some(format!(
+        "agent_pub: {}\ngateway_pub: {}",
+        agent_pub_multibase(&kh),
+        gateway_pub_multibase(&kh)
+    ));
+    w.identity_file = Some(path);
+    w.scratch = Some(dir);
+}
 
 #[then("it publishes the agent public key")]
-async fn pubkey_published(_w: &mut GatewayWorld) {}
+async fn pubkey_published(w: &mut GatewayWorld) {
+    let published = w.published.as_ref().expect("something published");
+    assert!(
+        published.contains("agent_pub: z"),
+        "multibase public key published (z…): {published}"
+    );
+}
 
 #[then("the provision artifacts contain no seed material")]
-async fn provision_has_no_seed(_w: &mut GatewayWorld) {}
+async fn provision_has_no_seed(w: &mut GatewayWorld) {
+    let published = w.published.as_ref().expect("something published");
+    let identity: Value = serde_json::from_slice(
+        &std::fs::read(w.identity_file.as_ref().expect("identity file")).unwrap(),
+    )
+    .unwrap();
+    for k in ["agent_seed_hex", "gateway_seed_hex"] {
+        let seed = identity[k].as_str().expect("seed stored for the runner");
+        assert!(
+            !published.contains(seed),
+            "{k} must never appear in provision artifacts"
+        );
+    }
+}
 
 #[given("an enterprise master seed")]
 async fn enterprise_master(_w: &mut GatewayWorld) {}

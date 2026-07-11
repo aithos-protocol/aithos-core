@@ -33,6 +33,10 @@ pub enum GatewayError {
     #[error("audit read denied: {0}")]
     AuditDenied(String),
 
+    /// The runner identity file is absent, unreadable or malformed.
+    #[error("runner identity unavailable: {0}")]
+    IdentityUnavailable(String),
+
     /// Core bridge failure that is not a policy denial (store I/O, state).
     #[error("core bridge failed: {0}")]
     BridgeFailed(String),
@@ -49,6 +53,7 @@ impl GatewayError {
             GatewayError::UpstreamFailed(_) => "upstream_failed",
             GatewayError::RequestRejected(_) => "request_rejected",
             GatewayError::AuditDenied(_) => "audit_denied",
+            GatewayError::IdentityUnavailable(_) => "identity_unavailable",
             GatewayError::BridgeFailed(_) => "bridge_failed",
         }
     }

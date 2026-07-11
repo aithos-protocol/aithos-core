@@ -8,7 +8,6 @@ Feature: Provisioned runner — an agent is born, equipped and routed
 
   Rule: The agent's key is born in the runner and only the pubkey travels
 
-    @wip
     Scenario: Birth produces a public identity and no exportable secret
       When a runner generates its agent identity
       Then it publishes the agent public key

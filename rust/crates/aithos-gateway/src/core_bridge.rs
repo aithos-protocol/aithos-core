@@ -43,20 +43,22 @@ pub use aithos_bundle::entropy::{EntropySource, OsEntropy, SeqEntropy};
 
 /// Where the bridge keeps its non-secret runtime state in the store.
 const STATE_PATH: &str = "gateway/state.json";
-/// Where the gateway-held seeds persist between `onboard` and `run`.
-/// v1 is local-disk only (the store adapter refuses cloud); move this
-/// behind a KMS/sealed keystore before any cloud store lands.
-const KEYS_PATH: &str = "gateway/keys.json";
 /// Where mandate certificates live in the store.
 fn cert_path(id: &str) -> String {
     format!("certs/{id}.json")
 }
 
-/// Persisted key material (see `KEYS_PATH` caveat).
-#[derive(Serialize, Deserialize)]
-struct StoredKeys {
-    agent_seed_hex: String,
-    gateway_seed_hex: String,
+/// Wire encoding of the agent public key (`z…`, base58btc multicodec) —
+/// the ONLY thing that leaves the runner at birth.
+pub fn agent_pub_multibase(kh: &Keyholder) -> String {
+    let vk = SigningKey::from_bytes(kh.agent_seed()).verifying_key();
+    aithos_core::wire::ed25519_pub_to_multibase(&vk.to_bytes())
+}
+
+/// Wire encoding of the gateway's own public key.
+pub fn gateway_pub_multibase(kh: &Keyholder) -> String {
+    let vk = SigningKey::from_bytes(kh.gateway_seed()).verifying_key();
+    aithos_core::wire::ed25519_pub_to_multibase(&vk.to_bytes())
 }
 
 /// Non-secret state persisted at onboarding, reloaded by `open`.
@@ -228,15 +230,6 @@ impl Bridge {
                 &serde_json::to_vec_pretty(&state).map_err(bridge_err)?,
             )
             .map_err(bridge_err)?;
-        let keys = StoredKeys {
-            agent_seed_hex: hex::encode(keyholder.agent_seed()),
-            gateway_seed_hex: hex::encode(keyholder.gateway_seed()),
-        };
-        bundle
-            .store
-            .put(KEYS_PATH, &serde_json::to_vec(&keys).map_err(bridge_err)?)
-            .map_err(bridge_err)?;
-
         let outcome = OnboardOutcome {
             owner_did: bundle.did.clone(),
             owner_seed_hex: hex::encode(owner_seed),
@@ -259,15 +252,14 @@ impl Bridge {
     }
 
     /// Reload a bridge onboarded earlier (the `run` and `audit-export`
-    /// paths): state, certs and the gateway-held seeds come from the
-    /// store (see `KEYS_PATH` caveat — v1, local disk only).
-    pub fn open(store: GatewayStore, entropy: Box<dyn EntropySource + Send>) -> Result<Self> {
+    /// paths): state and certs come from the store; the seeds come from
+    /// the RUNNER's identity file (`Keyholder::load`), never the store.
+    pub fn open(
+        store: GatewayStore,
+        keyholder: Keyholder,
+        entropy: Box<dyn EntropySource + Send>,
+    ) -> Result<Self> {
         let bundle = Bundle::open(store).map_err(bridge_err)?;
-        let keys: StoredKeys = read_json(&bundle, KEYS_PATH)?;
-        let keyholder = Keyholder::from_entropy(
-            decode_seed(&keys.agent_seed_hex)?,
-            decode_seed(&keys.gateway_seed_hex)?,
-        );
         let state: BridgeState = read_json(&bundle, STATE_PATH)?;
         let agent = read_json(&bundle, &cert_path(&state.agent_mandate))?;
         let gateway = read_json(&bundle, &cert_path(&state.gateway_mandate))?;
@@ -512,11 +504,4 @@ fn read_json<T: serde::de::DeserializeOwned>(
 
 fn bridge_err(e: impl std::fmt::Display) -> GatewayError {
     GatewayError::BridgeFailed(e.to_string())
-}
-
-fn decode_seed(hex_str: &str) -> Result<[u8; 32]> {
-    hex::decode(hex_str)
-        .ok()
-        .and_then(|v| <[u8; 32]>::try_from(v).ok())
-        .ok_or_else(|| GatewayError::BridgeFailed("stored seed is not 32 hex bytes".into()))
 }

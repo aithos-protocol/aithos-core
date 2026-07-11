@@ -33,8 +33,15 @@ fn onboard_prints_endpoint_and_cold_seeds_but_never_gateway_keys() {
     let tmp = tempfile::tempdir().unwrap();
     let cfg = write_config(tmp.path());
 
+    let id_path = tmp.path().join("agent.id");
     let out = gateway()
-        .args(["--config", cfg.to_str().unwrap(), "onboard"])
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "--identity",
+            id_path.to_str().unwrap(),
+            "onboard",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -45,10 +52,14 @@ fn onboard_prints_endpoint_and_cold_seeds_but_never_gateway_keys() {
         .get_output()
         .clone();
 
-    // The gateway-held seeds persist for `run` but must never surface.
+    // The runner-held seeds persist in the identity file (runner custody,
+    // never the ethos store) and must never surface on the console.
+    assert!(
+        !tmp.path().join("ethos/gateway/keys.json").exists(),
+        "seeds must not live in the ethos store"
+    );
     let keys: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(tmp.path().join("ethos/gateway/keys.json")).unwrap())
-            .unwrap();
+        serde_json::from_slice(&std::fs::read(&id_path).unwrap()).unwrap();
     let printed = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),
@@ -76,12 +87,55 @@ fn unknown_config_keys_fail_closed() {
 }
 
 #[test]
+fn keygen_prints_only_public_keys() {
+    let tmp = tempfile::tempdir().unwrap();
+    let id_path = tmp.path().join("agent.id");
+
+    let out = gateway()
+        .args(["--identity", id_path.to_str().unwrap(), "keygen"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("agent_pub: z"))
+        .stdout(predicate::str::contains("gateway_pub: z"))
+        .get_output()
+        .clone();
+
+    let keys: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&id_path).unwrap()).unwrap();
+    let printed = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    for k in ["agent_seed_hex", "gateway_seed_hex"] {
+        assert!(
+            !printed.contains(keys[k].as_str().unwrap()),
+            "{k} leaked at birth"
+        );
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&id_path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "identity file must be 0600");
+    }
+}
+
+#[test]
 fn audit_export_honours_the_auditor_scope() {
     let tmp = tempfile::tempdir().unwrap();
     let cfg = write_config(tmp.path());
+    let id = tmp.path().join("agent.id");
+    let id = id.to_str().unwrap();
 
     let out = gateway()
-        .args(["--config", cfg.to_str().unwrap(), "onboard"])
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "--identity",
+            id,
+            "onboard",
+        ])
         .assert()
         .success()
         .get_output()
@@ -98,6 +152,8 @@ fn audit_export_honours_the_auditor_scope() {
         .args([
             "--config",
             cfg.to_str().unwrap(),
+            "--identity",
+            id,
             "audit-export",
             "--auditor-seed-hex",
             &seed,
@@ -115,6 +171,8 @@ fn audit_export_honours_the_auditor_scope() {
         .args([
             "--config",
             cfg.to_str().unwrap(),
+            "--identity",
+            id,
             "audit-export",
             "--auditor-seed-hex",
             &seed,

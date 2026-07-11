@@ -23,12 +23,19 @@ struct Cli {
     #[arg(long, global = true, default_value = "gateway.yaml")]
     config: String,
 
+    /// Path to the runner identity file (seeds; runner custody only).
+    #[arg(long, global = true, default_value = "agent.id")]
+    identity: String,
+
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
+    /// Birth of the runner: generate the agent identity in place. Only
+    /// the PUBLIC keys are printed — the seeds never leave the file.
+    Keygen,
     /// Initialise the ethos, mint identities, grant the read-only agent
     /// mandate, the gateway governance mandate and the scoped auditor
     /// mandate; print the endpoint to plug into the agent runtime.
@@ -61,14 +68,36 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    // Birth needs no config: the runner exists before it is equipped.
+    if matches!(cli.command, Command::Keygen) {
+        let mut ent = OsEntropy;
+        let keyholder = Keyholder::from_entropy(ent.e32(), ent.e32());
+        keyholder.save(std::path::Path::new(&cli.identity))?;
+        println!(
+            "agent_pub: {}",
+            aithos_gateway::core_bridge::agent_pub_multibase(&keyholder)
+        );
+        println!(
+            "gateway_pub: {}",
+            aithos_gateway::core_bridge::gateway_pub_multibase(&keyholder)
+        );
+        eprintln!(
+            "identity written to {} — runner custody, hand out only the public keys above.",
+            cli.identity
+        );
+        return Ok(());
+    }
+
     let cfg_text = std::fs::read_to_string(&cli.config)
         .map_err(|e| format!("cannot read config `{}`: {e}", cli.config))?;
     let cfg = GatewayConfig::from_yaml(&cfg_text)?;
 
     match cli.command {
+        Command::Keygen => unreachable!("handled above"),
         Command::Onboard { ttl_days } => {
             let mut ent = OsEntropy;
             let keyholder = Keyholder::from_entropy(ent.e32(), ent.e32());
+            keyholder.save(std::path::Path::new(&cli.identity))?;
             let start = now_secs();
             let window = MandateWindow {
                 not_before: ts(start),
@@ -86,7 +115,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Command::Run => {
-            let bridge = Bridge::open(GatewayStore::from_config(&cfg.store)?, Box::new(OsEntropy))?;
+            let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
+            let bridge = Bridge::open(
+                GatewayStore::from_config(&cfg.store)?,
+                keyholder,
+                Box::new(OsEntropy),
+            )?;
             let proxy = Arc::new(McpProxy {
                 policy: Policy::new(cfg.tools.clone()),
                 bridge: tokio::sync::Mutex::new(bridge),
@@ -107,7 +141,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             auditor_seed_hex,
             kind,
         } => {
-            let bridge = Bridge::open(GatewayStore::from_config(&cfg.store)?, Box::new(OsEntropy))?;
+            let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
+            let bridge = Bridge::open(
+                GatewayStore::from_config(&cfg.store)?,
+                keyholder,
+                Box::new(OsEntropy),
+            )?;
             let seed: [u8; 32] = hex::decode(&auditor_seed_hex)
                 .ok()
                 .and_then(|v| v.try_into().ok())
