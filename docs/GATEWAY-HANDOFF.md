@@ -164,16 +164,29 @@ prochaine itération du gateway (le MVP actuel reste la démo mono-Ethos).
     toute la flotte sur une tête. Consolidation d'entreprise = agrégation
     par lecture, asynchrone, hors chemin chaud.
 
-## 4. Reste à faire (itérations suivantes, cf. GATEWAY-BOOTSTRAP §7)
+## 4. Reste à faire — phasage v2 (mis à jour 2026-07-10, fin de session)
 
-- Sceller les args des actes (`sealed_args` §07.9.3 — l'API `log_action` les
-  accepte déjà, il manque `grant_audit_line` à l'onboard + le flag).
-- `tools/list` filtré par le mandat (démo plus propre ; enforcement au call
-  déjà là). Passthrough SSE/streaming du Streamable HTTP complet.
-- `proxy_llm` OpenAI-compat (kind `inference`, budgets tokens, creds vault),
-  `proxy_web` (fenêtres + domains), ethos S3, container/pod (deployment doc),
-  test d'intégration HTTP réel (axum+reqwest bout en bout ; la lib est
-  couverte, la surface run l'est par démarrage manuel).
+**Phase B — cœur v2 (prochaine session, ~2-3 sessions).** Provisioning
+(keypair née au boot, mandats REÇUS — le minting owner-side existe déjà :
+`aithos-cli grant-act`), routage multi-Ethos (outil→contexte, N stores),
+journal d'agent (création au provisioning, miroirs xref, routage refus §3bis.8,
+événements « mandat reçu »).
+
+**Phase C — la boucle « agent qui vit » (~1-2 sessions).** `proxy_llm`
+OpenAI-compat (kind `inference`, budgets tokens — F+ prêt côté core, creds
+vault `/x/`), consolidation : l'agent écrit sa mémoire dans son journal.
+Piste d'implémentation : le gateway expose des outils MCP aithos-natifs
+(`journal.write`, `journal.search`) mappés sur des `ethos.write` mandatés.
+
+**Phase D — industrialisation.** Args scellés (quick win : `log_action` les
+accepte, manque `grant_audit_line` + flag), `tools/list` filtré, passthrough
+SSE/streaming complet, container/pod + egress lockdown (deployment doc),
+`RemoteStore` signé puis S3, ops (révocation, dashboard), test d'intégration
+HTTP bout en bout.
+
+**Opérationnel local « vision complète » = B + proxy_llm minimal de C.**
+Note : H (racines gamma, preuves de complétude — en cours côté core) upgrade
+l'export d'audit dès son merge, sans travail gateway.
 
 ## 5. Env sandbox — leçons du 2026-07-10 (s'ajoutent au HANDOFF §5 du core)
 
