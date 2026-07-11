@@ -202,9 +202,11 @@ fn error_response(id: Value, err: &GatewayError) -> Value {
 // ------------------------------------------------- multi-context router
 
 /// The multi-context router state: the runner (N context bridges + the
-/// journal) and one upstream per context, keyed by the same names.
+/// journal) and one upstream per context, keyed by the same names. The
+/// runner is shared (`Arc`) so the LLM front (Phase C) meters into the
+/// SAME journal — one story, never a second bridge over one store.
 pub struct McpRouter<U> {
-    pub runner: Mutex<Runner>,
+    pub runner: Arc<Mutex<Runner>>,
     pub upstreams: BTreeMap<String, U>,
     pub clock: Clock,
 }

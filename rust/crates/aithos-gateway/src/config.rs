@@ -102,6 +102,31 @@ pub struct JournalConfig {
     pub store: StoreConfig,
 }
 
+/// The LLM front (Phase C): the gateway holds the provider credential,
+/// imposes the model, meters real usage into the journal. Requires the
+/// multi-context shape — the inference log IS a journal story.
+///
+/// v1 keeps the credential in the config file the enterprise already
+/// guards; the decided end state (§3bis.4) moves it into the sealed
+/// vault of an Ethos — same seam, the agent never sees it either way.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LlmConfig {
+    /// The OpenAI-compatible chat-completions endpoint.
+    pub upstream: String,
+    /// Provider credential — gateway custody, never agent-visible.
+    pub api_key: String,
+    /// The imposed model: whatever the agent asks for is overwritten.
+    pub model: String,
+    /// Provider tag recorded in inference entries.
+    #[serde(default = "default_provider")]
+    pub provider: String,
+}
+
+fn default_provider() -> String {
+    "openai-compat".to_owned()
+}
+
 /// The whole gateway configuration file.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -126,6 +151,9 @@ pub struct GatewayConfig {
     /// `contexts` is declared.
     #[serde(default)]
     pub journal: Option<JournalConfig>,
+    /// The LLM front (Phase C) — only valid with the multi shape.
+    #[serde(default)]
+    pub llm: Option<LlmConfig>,
 }
 
 impl GatewayConfig {
@@ -189,6 +217,9 @@ impl GatewayConfig {
                     // would make the route (and the grant) ambiguous.
                     validate_tools(&ctx.tools, &ctx.name, &mut seen)?;
                 }
+                if let Some(llm) = &self.llm {
+                    validate_llm(llm)?;
+                }
                 Ok(())
             }
             (Some(_), None) => Err(GatewayError::ConfigRejected(
@@ -200,6 +231,13 @@ impl GatewayConfig {
             )),
             // -------------------------------------------- mono (legacy demo)
             (None, None) => {
+                if self.llm.is_some() {
+                    return Err(GatewayError::ConfigRejected(
+                        "`llm` needs the multi-context shape (v1): the inference log \
+                         lives in the agent's journal"
+                            .into(),
+                    ));
+                }
                 let upstream = self.upstream_mcp.as_deref().ok_or_else(|| {
                     GatewayError::ConfigRejected(
                         "`upstream_mcp` is required (or declare `contexts`)".into(),
@@ -223,6 +261,19 @@ fn mono_only() -> GatewayError {
     GatewayError::ConfigRejected(
         "this path needs the mono config shape (`upstream_mcp`/`store`), not `contexts`".into(),
     )
+}
+
+fn validate_llm(llm: &LlmConfig) -> Result<()> {
+    validate_upstream(&llm.upstream, "llm.upstream")?;
+    if llm.api_key.trim().is_empty() {
+        return Err(GatewayError::ConfigRejected(
+            "`llm.api_key` is empty".into(),
+        ));
+    }
+    if llm.model.trim().is_empty() {
+        return Err(GatewayError::ConfigRejected("`llm.model` is empty".into()));
+    }
+    Ok(())
 }
 
 fn validate_upstream(url: &str, at: &str) -> Result<()> {
@@ -436,6 +487,48 @@ journal:
             GatewayConfig::from_yaml(&text),
             Err(GatewayError::ConfigRejected(_))
         ));
+    }
+
+    // -------------------------------------------------------- llm (Phase C)
+
+    #[test]
+    fn llm_parses_with_the_multi_shape() {
+        let text = format!(
+            "{MULTI}llm:\n  upstream: https://api.example.com/v1/chat/completions\n  api_key: sk-test\n  model: gpt-4o-mini\n"
+        );
+        let cfg = GatewayConfig::from_yaml(&text).unwrap();
+        let llm = cfg.llm.as_ref().unwrap();
+        assert_eq!(llm.model, "gpt-4o-mini");
+        assert_eq!(llm.provider, "openai-compat", "default provider tag");
+    }
+
+    #[test]
+    fn llm_with_the_mono_shape_is_rejected() {
+        let text = format!(
+            "{GOOD}llm:\n  upstream: https://api.example.com/v1/chat/completions\n  api_key: sk-test\n  model: gpt-4o-mini\n"
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    #[test]
+    fn llm_with_an_empty_credential_or_model_is_rejected() {
+        for broken in [
+            "llm:\n  upstream: https://api.example.com/v1\n  api_key: \"\"\n  model: gpt-4o-mini\n",
+            "llm:\n  upstream: https://api.example.com/v1\n  api_key: sk-test\n  model: \"\"\n",
+            "llm:\n  upstream: ftp://x\n  api_key: sk-test\n  model: gpt-4o-mini\n",
+        ] {
+            let text = format!("{MULTI}{broken}");
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&text),
+                    Err(GatewayError::ConfigRejected(_))
+                ),
+                "must reject: {broken}"
+            );
+        }
     }
 
     #[test]

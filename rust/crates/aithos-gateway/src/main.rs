@@ -13,6 +13,7 @@ use aithos_gateway::core_bridge::{
 };
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
+use aithos_gateway::proxy_llm::{router_llm, HttpLlmUpstream, LlmProxy};
 use aithos_gateway::proxy_mcp::{router, router_multi, HttpUpstream, McpProxy, McpRouter};
 use aithos_gateway::store_adapter::GatewayStore;
 
@@ -56,6 +57,10 @@ enum Command {
         store_root: String,
         #[arg(long, default_value_t = 30)]
         ttl_days: u32,
+        /// Also grant the budgeted inference pen (Phase C): the total
+        /// token budget of the agent's LLM tap. No budget, no LLM.
+        #[arg(long)]
+        token_budget: Option<u64>,
     },
     /// OWNER SIDE: create a context Ethos (demo/dev — real contexts
     /// usually pre-exist).
@@ -153,6 +158,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             gateway_pub,
             store_root,
             ttl_days,
+            token_budget,
         } => {
             let master = decode_master(master_seed_hex)?;
             let start = now_secs();
@@ -161,6 +167,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 agent_label,
                 agent_pub,
                 gateway_pub,
+                *token_budget,
                 GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
                     root: store_root.into(),
                 })?,
@@ -174,6 +181,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("journal_did: {}", outcome.ethos_did);
             println!("agent_mandate: {}", outcome.agent_mandate);
             println!("gateway_mandate: {}", outcome.gateway_mandate);
+            if let Some(m) = &outcome.inference_mandate {
+                println!("inference_mandate: {m}");
+            }
             return Ok(());
         }
         Command::OwnerInitContext {
@@ -269,16 +279,32 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             // one bridge per context + the journal, one upstream per
             // context, the same single agent-facing endpoint.
             let app = if let Some(contexts) = &cfg.contexts {
-                let runner = Runner::open(&cfg, keyholder, || Box::new(OsEntropy))?;
+                let runner = Arc::new(tokio::sync::Mutex::new(Runner::open(
+                    &cfg,
+                    keyholder,
+                    || Box::new(OsEntropy),
+                )?));
                 let upstreams = contexts
                     .iter()
                     .map(|c| (c.name.clone(), HttpUpstream::new(c.upstream_mcp.clone())))
                     .collect();
-                router_multi(Arc::new(McpRouter {
-                    runner: tokio::sync::Mutex::new(runner),
+                let mut app = router_multi(Arc::new(McpRouter {
+                    runner: Arc::clone(&runner),
                     upstreams,
                     clock: Arc::new(|| ts(now_secs())),
-                }))
+                }));
+                // The LLM front (Phase C): same runner, same journal —
+                // the completions endpoint rides the same listener.
+                if let Some(llm) = &cfg.llm {
+                    app = app.merge(router_llm(Arc::new(LlmProxy {
+                        runner,
+                        upstream: HttpLlmUpstream::new(llm.upstream.clone(), llm.api_key.clone()),
+                        model: llm.model.clone(),
+                        provider: llm.provider.clone(),
+                        clock: Arc::new(|| ts(now_secs())),
+                    })));
+                }
+                app
             } else {
                 let bridge = Bridge::open(
                     GatewayStore::from_config(cfg.mono_store()?)?,

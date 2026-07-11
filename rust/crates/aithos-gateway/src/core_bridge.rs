@@ -28,7 +28,7 @@ use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 
 use aithos_bundle::bundle::Bundle;
-use aithos_bundle::log::{ActionSpec, LogFilter};
+use aithos_bundle::log::{ActionSpec, InferenceSpec, LogFilter};
 use aithos_bundle::Store;
 use aithos_core::did::DidDocument;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
@@ -46,6 +46,10 @@ pub use aithos_bundle::entropy::{EntropySource, OsEntropy, SeqEntropy};
 
 /// Where the bridge keeps its non-secret runtime state in the store.
 const STATE_PATH: &str = "gateway/state.json";
+/// The one budget profile id the gateway cites on inference entries —
+/// the same id `owner-init-journal --token-budget` writes into the
+/// inference mandate (v1: one profile, one tap).
+pub const LLM_BUDGET_REF: &str = "llm";
 /// Where mandate certificates live in the store.
 fn cert_path(id: &str) -> String {
     format!("certs/{id}.json")
@@ -72,6 +76,10 @@ struct BridgeState {
     /// Absent on ethos where no audit grant was made (e.g. journals).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     auditor_mandate: Option<String>,
+    /// The budgeted inference pen (journals only, Phase C) — absent on
+    /// contexts and on journals provisioned without a token budget.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    inference_mandate: Option<String>,
 }
 
 /// What onboarding hands back to the operator. Secrets appear ONCE here
@@ -137,6 +145,7 @@ pub struct Bridge {
     agent_chain: Vec<Mandate>,
     gateway_chain: Vec<Mandate>,
     auditor_mandate: Option<Mandate>,
+    inference_chain: Option<Vec<Mandate>>,
     entropy: Box<dyn EntropySource + Send>,
 }
 
@@ -183,6 +192,7 @@ impl Bridge {
             "agent",
             &agent_sk.verifying_key(),
             &read_ops,
+            no_constraints(),
             window,
             now,
         )?;
@@ -196,6 +206,7 @@ impl Bridge {
             "gateway",
             &gateway_sk.verifying_key(),
             &["act.x.gateway.*".to_owned()],
+            no_constraints(),
             window,
             now,
         )?;
@@ -210,6 +221,7 @@ impl Bridge {
             "auditor",
             &auditor_sk.verifying_key(),
             &["read.gamma#kind=action".to_owned()],
+            no_constraints(),
             window,
             now,
         )?;
@@ -231,6 +243,7 @@ impl Bridge {
             agent_mandate: agent_mandate.id.clone(),
             gateway_mandate: gateway_mandate.id.clone(),
             auditor_mandate: Some(auditor_mandate.id.clone()),
+            inference_mandate: None,
         };
         bundle
             .store
@@ -255,6 +268,7 @@ impl Bridge {
             agent_chain: vec![agent_mandate],
             gateway_chain: vec![gateway_mandate],
             auditor_mandate: Some(auditor_mandate),
+            inference_chain: None,
             entropy,
         };
         Ok((bridge, outcome))
@@ -278,12 +292,17 @@ impl Bridge {
             Some(id) => Some(read_json(&bundle, &cert_path(id))?),
             None => None,
         };
+        let inference_chain = match &state.inference_mandate {
+            Some(id) => Some(vec![read_json(&bundle, &cert_path(id))?]),
+            None => None,
+        };
         Ok(Self {
             bundle,
             keyholder,
             agent_chain: vec![agent],
             gateway_chain: vec![gateway],
             auditor_mandate,
+            inference_chain,
             entropy,
         })
     }
@@ -410,6 +429,82 @@ impl Bridge {
                     now,
                     budget: Some(join),
                     sealed_args: None,
+                },
+                self.entropy.as_mut(),
+            )
+            .map_err(|e| GatewayError::LogAppendRefused(e.to_string()))?;
+        Ok(entry.id)
+    }
+
+    // --------------------------------------------------------- inference
+
+    /// Is there tap left before touching the provider? Fail-closed: no
+    /// inference pen → no LLM at all; a valid pen with its token budget
+    /// spent refuses BEFORE any provider round-trip. The real gate stays
+    /// at append time (`record_inference` re-runs the full budget check
+    /// with the actual usage) — this is the polite pre-check.
+    pub fn inference_headroom(&self, now: &str) -> Result<()> {
+        let denied = |reason: String| GatewayError::MandateDenied {
+            op: "inference".to_owned(),
+            reason,
+        };
+        let chain = self
+            .inference_chain
+            .as_ref()
+            .ok_or_else(|| denied("no inference pen granted on this journal".into()))?;
+        let doc = self.did_doc()?;
+        verify_chain(chain, &doc, now).map_err(|e| denied(e.to_string()))?;
+        let leaf = chain.last().expect("non-empty chain");
+        if let Some(profiles) =
+            aithos_core::constraints::parse_budgets(&leaf.constraints).map_err(bridge_err)?
+        {
+            if let Some(profile) = profiles.iter().find(|p| p.id == LLM_BUDGET_REF) {
+                if let Some(budget) = profile.token_budget {
+                    let entries = self.bundle.gamma_entries().map_err(bridge_err)?;
+                    let spent =
+                        aithos_core::constraints::tally_tokens(&entries, &leaf.id, LLM_BUDGET_REF);
+                    if spent >= budget {
+                        return Err(denied(format!("token budget exhausted ({spent}/{budget})")));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Append one `inference` entry under the budgeted pen: metadata
+    /// only (provider, model, the REAL token usage), never the prompt.
+    /// The bundle re-checks the token budget at append — an inference
+    /// that cannot be metered is refused, and the caller must withhold
+    /// the completion.
+    pub fn record_inference(
+        &mut self,
+        provider: &str,
+        model: &str,
+        tokens_in: u64,
+        tokens_out: u64,
+        now: &str,
+    ) -> Result<String> {
+        let chain = self
+            .inference_chain
+            .as_ref()
+            .ok_or_else(|| GatewayError::MandateDenied {
+                op: "inference".to_owned(),
+                reason: "no inference pen granted on this journal".into(),
+            })?;
+        let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+        let entry = self
+            .bundle
+            .log_inference(
+                chain,
+                &agent_sk,
+                &InferenceSpec {
+                    provider,
+                    model,
+                    tokens_in,
+                    tokens_out,
+                    budget_ref: Some(LLM_BUDGET_REF),
+                    now,
                 },
                 self.entropy.as_mut(),
             )
@@ -601,6 +696,27 @@ impl Runner {
         Ok(entry_id)
     }
 
+    /// Pre-check of the journal's inference tap (`proxy_llm`, before the
+    /// provider is touched). See [`Bridge::inference_headroom`].
+    pub fn inference_headroom(&self, now: &str) -> Result<()> {
+        self.journal.inference_headroom(now)
+    }
+
+    /// One metered `inference` entry in the agent's journal — the
+    /// per-call record of the agent's own life with the LLM. See
+    /// [`Bridge::record_inference`].
+    pub fn record_inference(
+        &mut self,
+        provider: &str,
+        model: &str,
+        tokens_in: u64,
+        tokens_out: u64,
+        now: &str,
+    ) -> Result<String> {
+        self.journal
+            .record_inference(provider, model, tokens_in, tokens_out, now)
+    }
+
     /// Refusal routing, decided §3bis.8: the journal gets EVERY refusal
     /// (it is the agent's story); the context gets it too when the tool
     /// maps to one (its auditor must see attempts against its
@@ -655,18 +771,25 @@ pub struct EquipOutcome {
     pub gateway_mandate: String,
     pub auditor_mandate: Option<String>,
     pub auditor_seed_hex: Option<String>,
+    /// The budgeted inference pen (journals provisioned with a token
+    /// budget only, Phase C).
+    pub inference_mandate: Option<String>,
 }
 
 /// Create the agent's journal: an isolated Ethos owned by the enterprise.
 /// The agent's key gets the xref pen (`act.x.xref.*`), the gateway its
 /// governance pen (`act.x.gateway.*`); both grants are logged — that IS
-/// the journal's « mandate received » record.
+/// the journal's « mandate received » record. With `token_budget`, the
+/// agent's key ALSO gets the budgeted inference pen (Phase C): a
+/// separate mandate carrying `budgets: [{id: "llm", token_budget}]` —
+/// separate on purpose, so the xref pen never has to cite a budget.
 #[allow(clippy::too_many_arguments)]
 pub fn owner_init_journal(
     master: &[u8; 32],
     agent_label: &str,
     agent_pub_mb: &str,
     gateway_pub_mb: &str,
+    token_budget: Option<u64>,
     store: GatewayStore,
     window: &MandateWindow,
     now: &str,
@@ -683,6 +806,7 @@ pub fn owner_init_journal(
         gateway_pub_mb,
         &["act.x.xref.*".to_owned()],
         false,
+        token_budget,
         window,
         now,
         ent,
@@ -729,6 +853,7 @@ pub fn owner_grant_context(
         gateway_pub_mb,
         &read_ops,
         true,
+        None,
         window,
         now,
         ent,
@@ -745,6 +870,7 @@ fn equip(
     gateway_pub_mb: &str,
     agent_ops: &[String],
     with_auditor: bool,
+    token_budget: Option<u64>,
     window: &MandateWindow,
     now: &str,
     ent: &mut dyn EntropySource,
@@ -753,7 +879,15 @@ fn equip(
     let gateway_pub = decode_pub(gateway_pub_mb)?;
 
     let agent_mandate = mint(
-        owner, &bundle, ent, "agent", &agent_pub, agent_ops, window, now,
+        owner,
+        &bundle,
+        ent,
+        "agent",
+        &agent_pub,
+        agent_ops,
+        no_constraints(),
+        window,
+        now,
     )?;
     let gateway_mandate = mint(
         owner,
@@ -762,6 +896,7 @@ fn equip(
         "gateway",
         &gateway_pub,
         &["act.x.gateway.*".to_owned()],
+        no_constraints(),
         window,
         now,
     )?;
@@ -775,6 +910,7 @@ fn equip(
             "auditor",
             &sk.verifying_key(),
             &["read.gamma#kind=action".to_owned()],
+            no_constraints(),
             window,
             now,
         )?;
@@ -782,9 +918,31 @@ fn equip(
     } else {
         (None, None)
     };
+    // The inference pen: SAME grantee key, its OWN mandate — budgets are
+    // profile constraints checked on every entry citing them, so parking
+    // the token budget here keeps the xref pen budget-free.
+    let inference_mandate = match token_budget {
+        Some(budget) => Some(mint(
+            owner,
+            &bundle,
+            ent,
+            "inference",
+            &agent_pub,
+            &["act.x.llm.*".to_owned()],
+            serde_json::json!({
+                "budgets": [{ "id": LLM_BUDGET_REF, "token_budget": budget }]
+            }),
+            window,
+            now,
+        )?),
+        None => None,
+    };
 
     let mut all = vec![&agent_mandate, &gateway_mandate];
     if let Some(m) = &auditor_mandate {
+        all.push(m);
+    }
+    if let Some(m) = &inference_mandate {
         all.push(m);
     }
     for m in all {
@@ -803,6 +961,7 @@ fn equip(
         agent_mandate: agent_mandate.id.clone(),
         gateway_mandate: gateway_mandate.id.clone(),
         auditor_mandate: auditor_mandate.as_ref().map(|m| m.id.clone()),
+        inference_mandate: inference_mandate.as_ref().map(|m| m.id.clone()),
     };
     bundle
         .store
@@ -818,6 +977,7 @@ fn equip(
         gateway_mandate: gateway_mandate.id,
         auditor_mandate: auditor_mandate.map(|m| m.id),
         auditor_seed_hex,
+        inference_mandate: inference_mandate.map(|m| m.id),
     })
 }
 
@@ -845,9 +1005,18 @@ pub fn cert_grantee_pub(store: GatewayStore, mandate_id: &str) -> Result<String>
     Ok(m.grantee.pubkey)
 }
 
+/// The constraints block carried by a stored certificate (owner/test-side
+/// assertions — e.g. the token budget on the inference pen).
+pub fn cert_constraints(store: GatewayStore, mandate_id: &str) -> Result<serde_json::Value> {
+    let bundle = Bundle::open(store).map_err(bridge_err)?;
+    let m: Mandate = read_json(&bundle, &cert_path(mandate_id))?;
+    Ok(m.constraints)
+}
+
 // ---------------------------------------------------------------- helpers
 
-/// Mint one root mandate: `ops` are perimeter entry strings.
+/// Mint one root mandate: `ops` are perimeter entry strings. Every
+/// caller passes its constraints explicitly (empty object = none).
 #[allow(clippy::too_many_arguments)]
 fn mint(
     owner: &OwnerKeys,
@@ -856,6 +1025,7 @@ fn mint(
     label: &str,
     grantee_pub: &ed25519_dalek::VerifyingKey,
     ops: &[String],
+    constraints: serde_json::Value,
     window: &MandateWindow,
     now: &str,
 ) -> Result<Mandate> {
@@ -876,7 +1046,7 @@ fn mint(
             grantee_label: label.to_owned(),
             grantee_pub,
             perimeter,
-            constraints: serde_json::Value::Object(serde_json::Map::new()),
+            constraints,
             not_before: window.not_before.clone(),
             not_after: window.not_after.clone(),
             issued_at: now.to_owned(),
@@ -884,6 +1054,11 @@ fn mint(
         },
     )
     .map_err(bridge_err)
+}
+
+/// No constraints — the shape most mints use.
+fn no_constraints() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
 }
 
 fn view(e: &aithos_core::gamma::Entry) -> EntryView {

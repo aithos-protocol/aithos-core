@@ -21,12 +21,13 @@ use tokio::sync::Mutex;
 
 use aithos_gateway::config::{GatewayConfig, ToolAccess, ToolMap};
 use aithos_gateway::core_bridge::{
-    agent_pub_multibase, cert_grantee_pub, gamma_view, gateway_pub_multibase, owner_grant_context,
-    owner_init_context, owner_init_journal, Bridge, ContextRuntime, EntropySource, EntryView,
-    EquipOutcome, MandateWindow, OnboardOutcome, Runner, SeqEntropy,
+    agent_pub_multibase, cert_constraints, cert_grantee_pub, gamma_view, gateway_pub_multibase,
+    owner_grant_context, owner_init_context, owner_init_journal, Bridge, ContextRuntime,
+    EntropySource, EntryView, EquipOutcome, MandateWindow, OnboardOutcome, Runner, SeqEntropy,
 };
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
+use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
 use aithos_gateway::proxy_mcp::{
     process, process_multi, McpProxy, McpRouter, Upstream, POLICY_DENIED_CODE,
 };
@@ -76,6 +77,55 @@ impl Upstream for FakeMcp {
     }
 }
 
+/// Fake OpenAI-compatible provider: records every body that reaches it,
+/// answers a canned completion, and — like the real HTTP upstream — is
+/// the one place holding the credential (which must never surface).
+#[derive(Clone)]
+struct FakeLlm {
+    seen: Arc<StdMutex<Vec<Value>>>,
+    /// The usage the provider reports; `None` = an answer without usage.
+    usage: Arc<StdMutex<Option<(u64, u64)>>>,
+    api_key: String,
+    answer: String,
+}
+
+impl FakeLlm {
+    fn new() -> Self {
+        Self {
+            seen: Arc::default(),
+            usage: Arc::new(StdMutex::new(Some((12, 30)))),
+            api_key: "sk-live-secret-credential".to_owned(),
+            answer: "the capital of Prussia was Königsberg".to_owned(),
+        }
+    }
+}
+
+impl LlmUpstream for FakeLlm {
+    async fn complete(&self, body: Value) -> Result<Value> {
+        // The credential is applied here, wire-side, as HttpLlmUpstream
+        // would — asserting it never leaks agent-side stays meaningful.
+        let _bearer = format!("Bearer {}", self.api_key);
+        self.seen.lock().unwrap().push(body);
+        let mut resp = json!({
+            "id": "chatcmpl-1",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": { "role": "assistant", "content": self.answer },
+                "finish_reason": "stop"
+            }],
+        });
+        if let Some((t_in, t_out)) = *self.usage.lock().unwrap() {
+            resp["usage"] = json!({
+                "prompt_tokens": t_in,
+                "completion_tokens": t_out,
+                "total_tokens": t_in + t_out,
+            });
+        }
+        Ok(resp)
+    }
+}
+
 /// The harness tool map of one named context (feature contract: labels
 /// carry their own tool families).
 fn context_tools(label: &str) -> (String, String) {
@@ -119,6 +169,11 @@ struct GatewayWorld {
     multi_upstreams: BTreeMap<String, FakeMcp>,
     ctx_stores: BTreeMap<String, GatewayStore>,
     ctx_dids: BTreeMap<String, String>,
+    /// LLM front (Phase C): the proxy under test, its fake provider and
+    /// the transport status of the last completion call.
+    llm: Option<Arc<LlmProxy<FakeLlm>>>,
+    llm_provider: Option<FakeLlm>,
+    llm_status: Option<axum::http::StatusCode>,
 }
 
 impl GatewayWorld {
@@ -146,6 +201,9 @@ impl GatewayWorld {
             multi_upstreams: BTreeMap::new(),
             ctx_stores: BTreeMap::new(),
             ctx_dids: BTreeMap::new(),
+            llm: None,
+            llm_provider: None,
+            llm_status: None,
         }
     }
 
@@ -582,6 +640,7 @@ async fn owner_creates_journal(w: &mut GatewayWorld) {
         "leo",
         &agent_pub,
         &gateway_pub,
+        None,
         store.clone(),
         &GatewayWorld::window(),
         T0,
@@ -758,6 +817,7 @@ async fn runner_provisioned(w: &mut GatewayWorld, a: String, b: String) {
         "leo",
         &agent_pub,
         &gateway_pub,
+        None,
         journal_store.clone(),
         &window,
         T0,
@@ -774,7 +834,7 @@ async fn runner_provisioned(w: &mut GatewayWorld, a: String, b: String) {
     w.journal_outcome = Some(journal_outcome);
 
     w.router = Some(Arc::new(McpRouter {
-        runner: Mutex::new(Runner::from_parts(contexts, journal)),
+        runner: Arc::new(Mutex::new(Runner::from_parts(contexts, journal))),
         upstreams: w.multi_upstreams.clone(),
         clock: Arc::new(|| T0.to_owned()),
     }));
@@ -912,6 +972,273 @@ async fn no_context_entry(w: &mut GatewayWorld) {
             "the `{name}` gamma must hold nothing beyond its provisioning record"
         );
     }
+}
+
+// --------------------------------------------- inference (Phase C, @wip)
+// Steps for gateway-inference.feature — the LLM front of the gateway.
+
+#[when(expr = "the owner creates a journal with a token budget of {int}")]
+async fn owner_creates_budgeted_journal(w: &mut GatewayWorld, budget: u64) {
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let store = GatewayStore::in_memory();
+    let mut ent = SeqEntropy::default();
+    let outcome = owner_init_journal(
+        &master,
+        "leo",
+        &agent_pub,
+        &gateway_pub,
+        Some(budget),
+        store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut ent,
+    )
+    .expect("budgeted journal created");
+    w.journal_store = Some(store);
+    w.journal_outcome = Some(outcome);
+}
+
+#[then(expr = "the agent holds an inference mandate carrying that token budget")]
+async fn agent_holds_inference_mandate(w: &mut GatewayWorld) {
+    let outcome = w.journal_outcome.as_ref().expect("journal outcome");
+    let pen = outcome
+        .inference_mandate
+        .as_ref()
+        .expect("an inference mandate was minted");
+    let store = w.journal_store.clone().expect("journal store");
+    let grantee = cert_grantee_pub(store.clone(), pen).expect("cert readable");
+    assert_eq!(Some(grantee), w.agent_pub, "the pen names the agent key");
+    let constraints = cert_constraints(store, pen).expect("cert readable");
+    assert_eq!(
+        constraints.pointer("/budgets/0/id").and_then(Value::as_str),
+        Some("llm"),
+        "the budget profile the gateway cites"
+    );
+    assert_eq!(
+        constraints
+            .pointer("/budgets/0/token_budget")
+            .and_then(Value::as_u64),
+        Some(1000),
+        "the granted token budget rides the certificate"
+    );
+}
+
+#[then("the journal gamma records that the inference mandate was received")]
+async fn journal_records_inference_mandate(w: &mut GatewayWorld) {
+    let outcome = w.journal_outcome.as_ref().expect("journal outcome");
+    let pen = outcome
+        .inference_mandate
+        .as_ref()
+        .expect("an inference mandate was minted");
+    let entries = gamma_view(w.journal_store.clone().expect("store")).expect("gamma readable");
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.kind == "grant" && e.target.as_deref() == Some(pen)),
+        "the inference grant is on the journal record"
+    );
+}
+
+#[given(expr = "a runner with an inference pen budgeted at {int} tokens")]
+async fn runner_with_inference_pen(w: &mut GatewayWorld, budget: u64) {
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let mut owner_ent = SeqEntropy::default();
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Arc::new(Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32()));
+
+    let journal_store = GatewayStore::in_memory();
+    let journal_outcome = owner_init_journal(
+        &master,
+        "leo",
+        &agent_pub,
+        &gateway_pub,
+        Some(budget),
+        journal_store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("budgeted journal created");
+    let journal = Bridge::open(
+        journal_store.clone(),
+        keyholder,
+        Box::new(SeqEntropy::default()),
+    )
+    .expect("journal bridge opens");
+    w.journal_store = Some(journal_store);
+    w.journal_outcome = Some(journal_outcome);
+
+    // The LLM front rides the SAME runner shape as the MCP router — no
+    // contexts are needed to talk to the provider.
+    let provider = FakeLlm::new();
+    w.llm_provider = Some(provider.clone());
+    w.llm = Some(Arc::new(LlmProxy {
+        runner: Arc::new(Mutex::new(Runner::from_parts(BTreeMap::new(), journal))),
+        upstream: provider,
+        model: "gpt-4o-imposed".to_owned(),
+        provider: "openai-compat".to_owned(),
+        clock: Arc::new(|| T0.to_owned()),
+    }));
+}
+
+#[given("the provider omits usage from its answers")]
+async fn provider_omits_usage(w: &mut GatewayWorld) {
+    let provider = w.llm_provider.as_ref().expect("an LLM front");
+    *provider.usage.lock().unwrap() = None;
+}
+
+#[given("the budget is already spent")]
+async fn budget_already_spent(w: &mut GatewayWorld) {
+    // The whole tap was legitimately consumed earlier (one metered call
+    // that spent exactly the budget); this call finds nothing left.
+    let llm = w.llm.clone().expect("an LLM front");
+    let mut runner = llm.runner.lock().await;
+    runner
+        .record_inference("openai-compat", "gpt-4o-imposed", 400, 600, T0)
+        .expect("the spending inference itself fits the budget");
+}
+
+#[given("the provider reports a usage larger than the remaining budget")]
+async fn provider_reports_overrun(w: &mut GatewayWorld) {
+    let provider = w.llm_provider.as_ref().expect("an LLM front");
+    *provider.usage.lock().unwrap() = Some((800, 300));
+}
+
+#[when(expr = "the agent asks for a chat completion with model {string}")]
+async fn agent_asks_completion(w: &mut GatewayWorld, model: String) {
+    let llm = w.llm.clone().expect("an LLM front");
+    let body = json!({
+        "model": model,
+        "messages": [
+            { "role": "user", "content": "the secret prompt words" }
+        ]
+    });
+    w.last_tool = LLM_TOOL.to_owned();
+    let (status, resp) = process_llm(&llm, body).await;
+    w.llm_status = Some(status);
+    w.last_response = Some(resp);
+}
+
+#[then("the provider is called with the configured model only")]
+async fn provider_sees_imposed_model(w: &mut GatewayWorld) {
+    let provider = w.llm_provider.as_ref().expect("an LLM front");
+    let seen = provider.seen.lock().unwrap();
+    assert_eq!(seen.len(), 1, "exactly one provider call");
+    assert_eq!(
+        seen[0].get("model").and_then(Value::as_str),
+        Some("gpt-4o-imposed"),
+        "the agent's model choice is overwritten"
+    );
+}
+
+#[then("the provider's answer comes back to the agent")]
+async fn provider_answer_returns(w: &mut GatewayWorld) {
+    assert_eq!(w.llm_status, Some(axum::http::StatusCode::OK));
+    let resp = w.last_response.as_ref().expect("a response");
+    let provider = w.llm_provider.as_ref().expect("an LLM front");
+    assert_eq!(
+        resp.pointer("/choices/0/message/content")
+            .and_then(Value::as_str),
+        Some(provider.answer.as_str())
+    );
+}
+
+#[then("no agent-visible surface contains the provider credentials")]
+async fn no_credential_agent_side(w: &mut GatewayWorld) {
+    let key = &w.llm_provider.as_ref().expect("an LLM front").api_key;
+    let surface = serde_json::to_string(w.last_response.as_ref().expect("a response")).unwrap();
+    assert!(
+        !surface.contains(key),
+        "the provider credential leaked into the agent-facing response"
+    );
+}
+
+#[then("no journal entry contains the provider credentials")]
+async fn no_credential_in_journal(w: &mut GatewayWorld) {
+    let key = &w.llm_provider.as_ref().expect("an LLM front").api_key;
+    let journal = serde_json::to_string(&w.journal_gamma()).unwrap();
+    assert!(
+        !journal.contains(key),
+        "the provider credential leaked into the journal"
+    );
+}
+
+#[then("the journal gains one inference entry with the provider's reported usage")]
+async fn journal_gains_inference(w: &mut GatewayWorld) {
+    let inferences: Vec<EntryView> = w
+        .journal_gamma()
+        .into_iter()
+        .filter(|e| e.kind == "inference")
+        .collect();
+    assert_eq!(inferences.len(), 1, "exactly one inference entry");
+    let e = &inferences[0];
+    assert_eq!(e.target.as_deref(), Some("x.llm"));
+    let (t_in, t_out) = w
+        .llm_provider
+        .as_ref()
+        .expect("an LLM front")
+        .usage
+        .lock()
+        .unwrap()
+        .expect("the provider reported usage");
+    let payload = e.payload.as_ref().expect("clear payload");
+    assert_eq!(payload["provider"], json!("openai-compat"));
+    assert_eq!(payload["model"], json!("gpt-4o-imposed"));
+    assert_eq!(payload["tokens_in"], json!(t_in), "the REAL usage, in");
+    assert_eq!(payload["tokens_out"], json!(t_out), "the REAL usage, out");
+    assert_eq!(payload["budget_ref"], json!("llm"), "the cited tap");
+}
+
+#[then("no journal entry contains the prompt or the completion text")]
+async fn no_prompt_in_journal(w: &mut GatewayWorld) {
+    let provider = w.llm_provider.as_ref().expect("an LLM front");
+    let journal = serde_json::to_string(&w.journal_gamma()).unwrap();
+    assert!(
+        !journal.contains("the secret prompt words"),
+        "the prompt leaked into the journal"
+    );
+    assert!(
+        !journal.contains(&provider.answer),
+        "the completion text leaked into the journal"
+    );
+}
+
+#[then("the completion is withheld from the agent")]
+async fn completion_withheld(w: &mut GatewayWorld) {
+    let resp = w.last_response.as_ref().expect("a response");
+    assert!(
+        resp.get("error").is_some(),
+        "the agent gets a refusal, not a completion: {resp}"
+    );
+    assert!(
+        resp.get("choices").is_none(),
+        "no completion content may leak through a refusal"
+    );
+}
+
+#[then("the provider is never called")]
+async fn provider_never_called(w: &mut GatewayWorld) {
+    let provider = w.llm_provider.as_ref().expect("an LLM front");
+    assert!(
+        provider.seen.lock().unwrap().is_empty(),
+        "nothing may reach the provider"
+    );
+}
+
+#[then("the journal gains no inference entry")]
+async fn journal_gains_no_inference(w: &mut GatewayWorld) {
+    // The pre-spent inference of the exhausted-budget setup is not part
+    // of the call under test; scenarios using this step spend nothing.
+    assert!(
+        w.journal_gamma()
+            .iter()
+            .filter(|e| e.kind == "inference")
+            .count()
+            == 0,
+        "no inference may be metered for a withheld completion"
+    );
 }
 
 // ------------------------------------------------------------------ main
