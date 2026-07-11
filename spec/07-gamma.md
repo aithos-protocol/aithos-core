@@ -39,12 +39,12 @@ is pinned by the same signature that pins the header. Any past-entry alteration
 breaks `prev` and every downstream signature — a write-once log. Redaction is the
 public, logged `section.redact` (never silent deletion).
 
-**Forward note (step H).** Once gamma state roots are committed in the manifest
-(§2.10 extension: per-segment roots and a `mandate_id → count` trie), budget checks
-become O(log n) Merkle proofs instead of raw tallies; a future profile may then
-seal today's clear counting fields (`kind`, `authorized_via`, action names) and
-verify counts against the committed roots alone. The `v` field exists so that
-transition is a version bump, not a fork.
+**Committed roots (graved as §7.10, pass H2).** Gamma state roots ride the
+manifest — per-segment roots and a counts trie — turning budget checks into
+O(log n) Merkle proofs and mirror answers into provably complete ones. A future
+profile may still seal today's clear counting fields (`kind`, `authorized_via`,
+action names) and verify counts against the committed roots alone; the `v` field
+exists so that transition is a version bump, not a fork (deferred, 2026-07-11).
 
 ## 7.2 Who may sign an entry
 
@@ -196,8 +196,9 @@ hit the chain. A wrong index can waste time, never forge history.
 - The **owner** (all keys from S) materialises full local views; a grantee's view
   is exactly its perimeter; a stranger's view is the counting skeleton.
 - **Third-party query service** — a mirror answering filtered queries with
-  inclusion *and completeness* proofs — needs the committed gamma roots of step H
-  (§7.1 forward note); until then a mirror can withhold, not forge (§2.10 limit).
+  inclusion *and completeness* proofs — rides the committed gamma roots (§7.10):
+  the proven per-mandate counts say how many entries exist, the segment roots
+  pin which. Withholding now breaks the counts, forging still breaks the roots.
 
 The certificate half of log access is the `read.gamma` perimeter entry (§04.2);
 its physics half is the node-key material the grantee already holds (§7.3).
@@ -255,3 +256,95 @@ payload: <args>}` under the **connector's audit key** (the vault node
 audit mandate holding the key — reopens the args, recomputes `args_hash`, and
 re-evaluates the predicates against the mandate. A stranger sees the hash and
 nothing else. Mismatched hash = tampered audit trail = rejection.
+
+## 7.10 Committed gamma roots (proofs over the log)
+
+> Decided 2026-07-11 (H2) — the §7.1 forward note, graved. Hashing and proof
+> conventions are §2.10's, reused byte-for-byte: same `H_leaf`/`H_node`
+> domains, same left-heavy `mroot`, same v1 proof wire (`node` steps only —
+> the log folds no headers). Sealing the clear counting fields stays a future
+> profile behind the `v` bump.
+
+Each edition's manifest commits, beside `gamma_head` (§2.7) — additive like
+§2.10's roots, absent from pre-H2 editions whose chain hashes are untouched:
+
+```jsonc
+"gamma_roots":       { "2026-07": { "root": "<hex>", "n": 42 }, … },  // one per non-empty segment
+"gamma_counts_root": "<hex>"                                          // the counts trie
+```
+
+**Segment roots.** Per segment (§7.1), in **chain order** — the log's order is
+the truth, nothing is sorted:
+
+```
+root = mroot([ H_leaf(JCS(entry)) for every entry in the segment ])
+n    = the segment's entry count
+```
+
+An entry's inclusion proof is the v1 wire against its segment root: claimed
+payload = the entry's JCS bytes, `node` steps up. Committing `n` gives
+enumeration nowhere to hide: a mirror serving a whole segment must produce
+exactly `n` entries whose recomputed `mroot` is the pinned root — one omission
+and the root dies. Single entries keep O(log n) random access; across
+segments, `prev` stays the binding truth.
+
+**The counts trie.** One leaf per mandate the reachable chain (§7.6) has ever
+counted — the §7.4 meters, post-override semantics (attested tokens beat
+declarations):
+
+```jsonc
+{ "entries": 5,                    // ALL kinds whose authorized_via contains the id — the audit total
+  "actions": 3,                    // `action` entries whose authorized_via contains the id (§7.4 subtree rule)
+  "children": 1,                   // `grant` entries whose authorized_by is the id
+  "budgets": { "haiku": { "actions": 2, "tokens": 4200 } } }
+                                   // per cited budget_ref, same subtree rule: actions = `action`
+                                   // entries citing it; tokens = the §04.11 tally over
+                                   // `action` + `inference` entries citing it
+```
+
+Zero counters and empty maps are omitted; a mandate with nothing counted has
+no leaf (owner-signed entries carry no `authorized_via` and feed no leaf).
+Leaves sort by mandate id, byte order:
+
+```
+leaf              = H_leaf( mandate_id ‖ 0x00 ‖ JCS(counters) )
+gamma_counts_root = mroot(leaves)     // 32×0x00 when nothing was ever counted
+```
+
+A **count proof** is the v1 wire against `gamma_counts_root`, claimed payload
+= `mandate_id ‖ 0x00 ‖ JCS(counters)`. Every *total* cap of §7.4/§04.11 —
+`max_actions`, `max_children`, budget action caps, token budgets — becomes one
+O(log n) proof instead of a raw tally. Rolling windows (`max_actions_per`,
+`rate_limit`) are not trie-able — no static counter carries a sliding window;
+a verifier scans just the touched segments, enumeration-complete under their
+committed `root`+`n`.
+
+**Absence.** Sorted leaves make "never counted" provable: show two leaves
+**adjacent in the tree** whose ids bracket the queried id. Adjacency is
+checkable from the two proofs alone — above their divergence level the step
+lists are identical; at it, each proof's sibling hash equals the replay of the
+other proof's lower steps; below it, the left proof carries only
+`side:"left"` steps (rightmost leaf of the left subtree) and the right proof
+only `side:"right"` (leftmost of the right). At the rims: a proof of all
+`side:"right"` steps is the first leaf, all `side:"left"` the last — brackets
+for ids before or past the range. The empty trie is absence of everything.
+
+**Completeness for mirrors (§7.8, closed).** "Every action under mandate M"
+is now provable: the count leaf fixes k (`actions` — or `entries` for the
+full audit trail), then k inclusion proofs of pairwise-distinct entries, each
+visibly carrying M in its clear `authorized_via`. Distinctness is byte-level:
+one tree position cannot verify two different payloads, so k distinct entries
+at k verifying proofs are k real log lines. Withholding breaks the count,
+forging breaks the root — before H2 only the second was true. Date-ranged
+queries compose by segment (§7.8), each enumeration-complete.
+
+Appending is untouched — an author still needs only `gamma_head`. The
+appender-side checks (§7.4) keep their raw tallies: they hold the log, same
+bytes, same result. Publish recomputes the roots; verification recomputes
+them from the files and compares, like every §2.10 root — a trie that
+disagrees with the raw tallies of the reachable chain is an invalid edition.
+
+Honest limits: a proof shows inclusion in a signed edition, never freshness
+(§7.7 bounds staleness, double counting inside the window included).
+Committed roots shrink what a verifier must fetch — they do not change the
+serverless trust model.
