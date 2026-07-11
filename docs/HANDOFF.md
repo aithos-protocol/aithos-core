@@ -3,14 +3,17 @@
 **But.** Reprendre l'implémentation de référence d'aithos-core sans rien reperdre.
 Résume où on en est, comment on travaille, et la prochaine étape exacte.
 
-> **ÉTAT EXPRESS (2026-07-11, passe de vérification)** : **13 étapes closes
-> et committées — I (concurrence) incluse.** La passe du 11/07 a compilé,
-> corrigé (4 retouches, §6), validé (187 scénarios / 658 steps zéro skip,
-> vecteur i1 byte-exact, 17 tests CLI, clippy/fmt clean, checkpoint bloc
-> 15 ✔) et committé l'impl I en 5 tranches. Prochaine étape : **K —
-> Intégration**. ⚠️ L'ENVIRONNEMENT A CHANGÉ : VM sans egress réseau ni
-> unlink — builds désormais dans le conteneur CLOUD, commits git sur le
-> montage sous protocole janitor : tout est au §5, à lire AVANT d'agir.
+> **ÉTAT EXPRESS (2026-07-11 soir, session K)** : **LE PLAN EST COMPLET —
+> 14 étapes closes et committées, 0→K.** La session K a déroulé le rituel
+> intégral (baseline verte, 4 décisions validées, bornage aithos-core-only,
+> feature avant code) et livré : k-integration.feature (fil-rouge + bundle
+> vécu, 191 scénarios / 766 steps zéro skip), **un trou réel soldé**
+> (rotate_folder post-move — §6), bench §09.3 (9/10 cibles, l'écart
+> documenté), image Docker FROM scratch **4,11 Mo** buildée+smokée, npm
+> pack LOCAL @aithos/core@0.1.0 importé byte-exact, CONFORMANCE.md,
+> checkpoint bloc 16 ✔. Prochaine étape : **décisions post-plan de
+> Mathieu** (§6). ⚠️ Environnement inchangé : builds dans le conteneur
+> CLOUD, git janitor sur le montage — tout est au §5, à lire AVANT d'agir.
 
 **Branche : `feat/obligations`** (créée depuis le HEAD complet `feat/gateway` ;
 F+, G **et G+** entièrement closes ici ; le crate `aithos-gateway` ride sur la
@@ -142,7 +145,7 @@ rejet) ; wire figé étape 0 (multibase base58btc, JCS RFC 8785, AAD §00.3).
   du manifest ; prev = tip du parent au plus petit hash ; prevs =
   [tip_lo, tip_hi].
 
-## 4. État du code (13 étapes closes et committées — A→I)
+## 4. État du code (14 étapes closes et committées — 0→K : PLAN COMPLET)
 
 Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 `aithos-cli`, `aithos-wasm`.
@@ -162,13 +165,15 @@ Workspace cargo 4 crates : `aithos-core` (pur), `aithos-bundle` (I/O, Store),
 | **H1 Merkle contenu** | ✅ | **SOLDÉ (2026-07-11)** : merkle.rs pur (h_leaf/h_node BLAKE3 domain-separated, mroot left-heavy, mroot_path, proof wire v1 node/wrap, verify_proof depuis les octets DÉCLARÉS — le splice meurt sur le domaine, deux sens), state.rs bundle (arbre recalculable des fichiers seuls : zones hiérarchiques avec headers foldés + tag views ancrées + wraps mroot'és, self plat, vault par chemin de storage ; prove_section/prove_self ; tree_diff par descente), manifest.roots À CÔTÉ des pins plats (serde default : chain hashes pré-H intouchés), sidecar d'arbre pinné par édition, verify recompare les racines. Vecteur H1 Python (gen-h.py auto-validé contre B2). 14 scénarios (dont move-as-rotation traqué par l'arbre). CLI prove / edition-diff |
 | **H2 Racines gamma** | ✅ | **SOLDÉ (2026-07-11)** : spec §7.10 gravée (5d7ab89) ; gamma.rs section roots pure (segment_root en ordre de chaîne sur les octets EXACTS des lignes, counts_tally → GammaCounters {entries, actions, children, budgets} avec omission des zéros, counts_root, prove/verify count + entry + absence par adjacence triée + verify_complete_actions), manifest.gamma_roots {mois → {root, n}} + gamma_counts_root ADDITIFS (posture H1, serde default), log.rs gamma_state (publish committe, verify recompute et compare — GammaRootMismatch), 3 variants d'erreur fail-closed. Vecteur H2 Python (gen-h2.py, TRIPLE ancrage : B2 blake3, H1 conventions mroot byte-identiques, F2 = le segment 2026-07 EST les entrées committées de F2 et les tallies reproduisent ses expected). 12 scénarios. CLI log-prove (compte + absence) + test de surface |
 | **I Concurrence** | ✅ | **SOLDÉE (2026-07-11, passe de vérification)** : core Entry.prevs additif (wire pré-I intact), check_form fail-closed (prevs = merge only, exactement 2, distincts, prev == prevs[0], payload.merges [lo, hi] croissants, pas de target), verify_links en marche de graphe (fork par extension d'un hash consommé — genesis inclus —, merge consomme exactement les DEUX tips ouverts, monotonie `at` relâchée à la jointure seulement, fin = un seul tip, doublon refusé), EditionFork/MergeRejected/ForkResolutionRejected ; bundle merge.rs (3-way par sid contre les snapshots d'index par édition, merge_segment_lines préfixe+LOW+HIGH, frontier() sur tree_diff, edition_merge à entrée d'id déterministe signée #content — sautée si le log n'a pas forké —, fork_check, resolve_fork autorité dir_covers AVANT toute écriture, verify_merge_edition/verify_resolution_edition sur sidecars authentifiés par les pins signés) ; manifest merges/resolves_fork/authorized_via additifs + ManifestSigner délégué ; publish_artifacts factorisé + snapshots d'index ; slots -alt ; section_rewrite/section_delete (circle ; delete = row seule, blob = crypto-erasure) ; MemStore: Clone ; 12 scénarios dé-taggés, vecteur i1_concurrency.rs byte-exact, CLI edition-merge + surface, bloc 15 ✔ — commits e1c22ce / 50d863e / 9d4ac58 / 96fd28c |
-| K Intégration | ⬜ | scénario K, Docker, npm |
+| **K Intégration** | ✅ | **SOLDÉE (2026-07-11, session K)** : k-integration.feature — fil-rouge absentee-owner (genèse → 4 zones → reader/gmail/social contraints → co-sign, args scellés+audit, budget épuisé, approbation → stale/beacon → délégation reader→helper + cut → move → revoke gmail+rotation (reader survit) → racines + preuve d'inclusion + count proof → fork 2 copies → merge → replay froid) + 3 scénarios bundle vécu (9 classes de tamper refusées, vue sans-clé/périmètres/un-taught, watchdog tue-sans-lire) ; glue ~45 defs + builder k_build_lived + copies fraîches ; fix revoke.rs (clé courante via ligne owner) ; bench criterion §09.3 ; Dockerfile pinné 1.96-alpine ; wasm RNG-free (chacha alloc-only, ulid no_std), wasm-opt off ; docker/npm-smoke.mjs ; docs/CONFORMANCE.md |
 
-**Tests : 187 scénarios / 658 steps cucumber (zéro skip) + vecteurs
-A→F+/G1/G2/G3/G+/H1/H2/I1 + 17 tests de surface CLI, tous verts ; `clippy
---workspace --all-targets -- -D warnings` clean ; `cargo fmt` passé ;
-gateway vérifié vert au même HEAD (8 scénarios / 41 steps — la session
-parallèle Phase B l'a étoffé, jamais touché ici).**
+**Tests : 191 scénarios / 766 steps cucumber (zéro skip) + vecteurs
+A→I1 + 17 tests de surface CLI, tous verts ; `clippy --workspace
+--all-targets -- -D warnings` clean ; `cargo fmt` passé ; le check
+`wasm32-unknown-unknown` re-passe (il était cassé au HEAD — voir §6) ;
+gateway vérifié vert au même arbre (11 scénarios / 57 steps + e2e réseau —
+la session parallèle a CLOS sa Phase B pendant la session K, interleaving
+git propre, jamais touché ici).**
 
 Deux trous de discipline découverts et soldés (2026-07-10) : (1) le scénario
 « A revoked chain is refused at verification time » était silencieusement
@@ -267,54 +272,74 @@ CHANGÉ, les recettes VM d'avant sont OBSOLÈTES)** :
   nohup meurt en fin d'appel — voir l'historique git de ce fichier
   (commits ≤ 2460ee3) pour le détail.
 
-## 6. Prochaine étape : K — Intégration finale & packaging
+## 6. Étape K close — le plan est complet ; prochaine étape : décisions post-plan
 
-**I est close (2026-07-11, cette session — la passe de vérification).**
-Rituel intégral soldé sur les deux sessions : 4 décisions validées par
-Mathieu → spec gravée AVANT le code (803e622 : §2.6 + §7.6) → feature
-committée et validée (d10b0ba, 12 scénarios @wip) → vecteur Python
-indépendant ancré B2+H2+F2 (c7ce0e5) → impl écrite en entier (session du
-11/07 soir, VM morte, zéro exécution) → **passe de vérification (cette
-session) : baseline pré-I revalidée à l'identique (175/610 zéro skip, 16
-CLI, clippy clean), première compilation, corrections, suite complète
-verte, commits en 5 tranches** (e1c22ce core → 50d863e bundle → 9d4ac58
-tests+vecteur → 96fd28c CLI → ce commit docs), checkpoint bloc 15 ✔.
-Chaque tranche compile et passe la suite complète indépendamment (états
-intermédiaires vérifiés un à un avant commit).
+**K est close (2026-07-11, session K).** Rituel intégral : baseline verte au
+HEAD 26b68fb (187/658, 17 CLI, A→I1, clippy/fmt — sha256 croisés) → lecture
+spec/09 + plan §K → **4 décisions validées par Mathieu** : (1) scénario K =
+UN fil-rouge unique ; (2) table §09.3 adoptée telle quelle (criterion, 1M en
+synthétique in-memory, résultats consignés, pas de gate CI) ; (3) npm =
+packaging SEUL à 0.1.0, pack local, AUCUNE publication, nom @aithos/core du
+plan ; (4) image = build+smoke dans le cloud, rien livré. + **bornage
+gravé** (à la demande de Mathieu, commit 634f74b) : tout reste dans
+aithos-core, aucun élément d'un projet Aithos antérieur, README/plan/wasm
+metadata amendés. Feature v2 (4 scénarios : fil-rouge + tampers + sans-clé +
+watchdog) validée et committée @wip AVANT le code (be6326e).
 
-**Ce que la passe de vérification a corrigé (l'impl aveugle était juste à
-~4 retouches près)** :
-- 2 erreurs de compil : move dans le tuple de retour de `competing_tips`
-  (hauteur capturée avant le move) ; `use aithos_bundle::Store` manquant
-  dans la CLI (méthode de trait hors scope).
-- 1 lint clippy : `sk: *sk` → `sk` (explicit_auto_deref, merge.rs).
-- `cargo fmt` : retouches cosmétiques (manifest.rs, merge.rs, cucumber.rs,
-  cli_surface.rs, i1_concurrency.rs).
-- **1 vraie divergence de wire, dans le VECTEUR (pas l'impl)** :
-  `gen-i.py` émettait `"roots": {}` dans ses manifests fixture — map vide
-  jamais émise par l'implémentation (champ additif skip-if-empty depuis
-  H1, c'est ce qui garde les hashes pré-H intacts). Le hash Rust recalculé
-  depuis les premiers principes et le hash Python ont convergé
-  byte-exactement dès le fixture canonisé (roots vide OMIS). Cascade
-  régénérée (hash_lo/hi → merges → payload/id de l'entrée merge → head →
-  racine de segment) ; au passage l'ordre LOW/HIGH des deux branches
-  fixture a BASCULÉ (B tire désormais le petit hash) → le test de vecteur
-  résout maintenant low/high depuis les hashes au lieu de supposer le
-  tirage (« A = low » codé en dur, fragile par construction).
-- Base de la passe : HEAD avait avancé de 6 commits gateway (Phase B,
-  session parallèle — 8 scénarios / 41 steps verts désormais) ; aucun
-  conflit, gateway jamais touché.
+**Ce que l'impl a trouvé (et la valeur du scénario K)** :
+- **Un trou réel, soldé** : `rotate_folder` calculait la « vieille » clé du
+  dossier par DÉRIVATION pure depuis la racine de zone — faux pour un
+  dossier DÉPLACÉ (sa clé v2 est fraîche, scellée au header, plus
+  dérivable) → `SealRejected` à toute rotation post-move. Même classe que
+  le trou `section_add` soldé en G. Fix minimal dans revoke.rs : la clé
+  courante s'ouvre par la LIGNE OWNER du header (open_latest), capturée
+  avant la rotation. G2 intact (ligne owner d'un dossier jamais déplacé =
+  la même clé que la dérivation). Exercé par K1 ET par le checkpoint CLI.
+- **Le check wasm32 était cassé au HEAD** (personne ne le lançait : la CI
+  n'a jamais tourné — pas de remote). Cause : getrandom entraîné dans le
+  graphe wasm par les default-features de chacha20poly1305 (getrandom 0.2)
+  et ulid (std→rand→getrandom 0.3). Fix fidèle au « core pur, zéro RNG » :
+  `chacha20poly1305 default-features=false features=["alloc"]`, `ulid
+  default-features=false` (no_std ; nos usages = from(u128)/Display/
+  FromStr). Personne (gateway inclus) ne tirait ces RNG. Le check re-passe.
+- **Retouches de phrasé de la feature pendant l'impl** (~10 lignes,
+  mécaniques) : les steps réutilisés de G+/I portent des TEMPS FIGÉS
+  (GP_AT=07-04, I_*=07-10) antérieurs au tip du bundle vécu (monotonie
+  `at`), des chemins pré-move (« projets/note1 »), ou des assertions
+  incompatibles (beacon_rejected exige zéro beacon valide ; le no-leak
+  exigeait tout scellé alors que PUBLIC est clair par design → variante
+  keyed-zone). Timeline K : kd(n)=jour 9+n, tout en juillet (un segment,
+  pas de fork trans-mois), sondes post-vécu ≤ 30/07 (NA30).
+- Le vault d'audit (§7.9.3) se pose au GRANT (grant_audit_line) — la glue
+  gmail le fait, comme le Given F+.
 
-**K — Intégration finale & packaging (plan §K)** : scénario K de la spec
-complet dans la suite de features (il l'est presque déjà par
-accumulation), vecteurs de perf §09.3 en bench, image Docker
-(`FROM scratch`), paquet npm `@aithos/core` (wasm-pack), conformance
-levels §09.4 documentés. Manuel : dérouler le scénario K entier au CLI,
-chronométrer les cibles. Done : tout vert, bench dans les cibles, image
-< 15 Mo, npm importable. Rituel habituel : points de décision d'abord
-(périmètre exact du scénario K, cibles de bench, politique de versionnage
-npm/Docker), feature avant code. ⚠️ Les builds wasm-pack et Docker
-supposent le conteneur cloud (§5) — la VM n'a plus de réseau.
+**Livrables K** : bench criterion (`benches/perf.rs`, dev-dep workspace) —
+9/10 cibles avec 6×–230× de marge, **l'écart : gamma_full_verify 10k =
+538 ms vs < 200 ms** sur le conteneur 2 vCPU (≈ 50 µs/verify Ed25519 ; un
+laptop M-series est au voisinage de la cible) — options documentées dans
+CONFORMANCE (batch-verify dalek ~2-3× additif, ou scan parallèle), décision
+Mathieu ; image **4,11 Mo** (< 15 Mo) buildée ET smokée dans le cloud
+(dockerd FONCTIONNE dans le conteneur de session ; pour builder DANS docker
+il faut injecter le CA du proxy egress — Dockerfile.cloud temporaire, non
+committé ; le Dockerfile canonique pinné rust:1.96-alpine reste
+auto-suffisant sur toute machine normale) ; npm : wasm-pack --target nodejs
+(wasm-opt OFF par metadata — le binaryen des distros est trop vieux pour le
+wasm de rustc 1.96), nom patché @aithos/core au pack (wasm-pack ne scope
+pas librement), tarball local installé dans un projet neuf, import node 22,
+genesis_pubkeys **byte-exact vs A1** (docker/npm-smoke.mjs) ;
+docs/CONFORMANCE.md (niveaux §09.4 revendiqués, table §09.2 avec 4 dettes
+de promotion explicites, table §09.3 mesurée, packaging) ; CLI-GUIDE bloc
+16 ✔ (~0,37 s de travail effectif).
+
+**Prochaine étape — décisions post-plan (Mathieu)** :
+1. gamma-verify 10k : batch-verify / parallèle / caveat machine ?
+2. merge `feat/obligations` ↔ `feat/gateway` (les deux chantiers sont
+   verts sur la même branche physique — le merge de BRANCHES est sa
+   décision historique) ;
+3. passes différées : wasm « Core reader » (§09.4), vecteurs de promotion
+   (4 lignes §09.2), re-seal descendant post-move, tag-views sur dossier
+   déplacé, publication npm/registry le jour venu ;
+4. promotion de la spec (les DRAFT → normatif) quand il en décidera.
 
 ## 6bis. Étape précédente : G+ — Obligations
 
@@ -408,6 +433,21 @@ sans breaking wire — voir plan §H).
   du round) ; (e) ~~cohabitation racines de segment / entrées merge~~
   réglée en I : segment fusionné = préfixe + LOW + HIGH + entrée merge,
   octets jamais réécrits, racines recommittées sur le layout fusionné.
+- **K (dette assumée, non bloquante)** : (a) 4 lignes de §09.2 couvertes
+  par scénarios mais sans vecteurs JSON gelés (signature policy §02.11,
+  tag re-label, kex-mismatch, révocation non autorisée / sous-mandat trop
+  large) — listées dans CONFORMANCE, dues « at promotion » ; (b)
+  gamma_full_verify 10k au-dessus de la cible sur 2 vCPU (décision batch /
+  parallèle / caveat en attente) ; (c) npm = stub de surface (genesis
+  seule) — l'extension « Core reader » wasm est une passe dédiée ; (d)
+  wasm-opt désactivé par metadata (réactivable avec un binaryen récent) ;
+  (e) rotation post-move : l'up-link wrap est re-posté via la RACINE de
+  zone (comportement historique) — pour un dossier déplacé, le wrap via le
+  NOUVEAU parent posté par le move devient stale à la rotation suivante :
+  fail-closed (jamais d'over-grant), passe dédiée si des holders de
+  sous-arbre parent apparaissent ; (f) le checkpoint CLI ne couvre pas la
+  délégation agent→helper (pas de commande `delegate` — la feature K1 la
+  couvre côté bibliothèque).
 - **I (dette assumée, non bloquante)** : (a) `section_delete` ne supprime
   pas le blob (Store sans delete ; effacement cryptographique §06) — la
   row disparaît, le blob reste pinné orphelin ; (b) publication déléguée

@@ -360,6 +360,79 @@ ac edition-merge --dir $D --other $D3 --seed-hex $S
 #   resolve_fork, délégué borné à son périmètre, owner en dernier recours)
 ```
 
+## 16. Intégration — le scénario K entier, chronométré (K, plan §K)
+
+Le fil-rouge absentee-owner de bout en bout, sur UN bundle : quatre zones,
+trois mandats contraints, co-sign, args scellés, budget épuisé, silence →
+stale → reprise, move-as-rotation, revoke --rotate (le lecteur survit),
+preuves offline, fork de deux copies, merge, replay froid. Déroulé complet
+2026-07-11 : **~0,37 s de travail effectif** (le mur = 9,4 s dont 9 s de
+sleep pour démontrer le heartbeat 5s/3s).
+
+```bash
+# 1. genèse + arbre (les 4 zones portent du contenu réel)
+ac init --dir $D --seed-hex $S
+ac section-add --dir $D --seed-hex $S circle projets/perso/note1 --title note --body "corps" --tags toto
+ac section-add --dir $D --seed-hex $S circle projets/archive/old2024 --title note --body "vieux" --tags done
+ac section-add --dir $D --seed-hex $S public docs/readme --title bio --body "public"
+ac section-add --dir $D --seed-hex $S self sante/journal --title j --body "intime"
+ac edition-publish --dir $D --seed-hex $S && ac edition-verify --dir $D
+
+# 2. l'owner équipe ses agents, beacon, puis s'absente
+ac grant --dir $D --seed-hex $S --agent-seed-hex $R --label reader projets/perso --ttl-days 30 --issue-depth 1
+ac grant-act --dir $D --seed-hex $S --agent-seed-hex $G --label gmail gmail '*' \
+   --ttl-days 30 --max-actions 3 --counter-sign send --audit          # → $CG
+APUB=$(ac approve --approver-seed-hex $AP --key-only --mandate x x)
+ac grant-act --dir $D --seed-hex $S --agent-seed-hex $A --label social social publish \
+   --ttl-days 30 --heartbeat-every 5s --heartbeat-grace 3s \
+   --obligations-json '[{"id":"publish-approval","check":"human.approve",
+     "attestor":["'$APUB'"],"applies_to":"act.x.social.publish",
+     "verdict":"approve","max_age":"5m"}]'                            # → $CS
+ac heartbeat --dir $D --seed-hex $S --seq 1
+
+# 3. actions : co-sign owner, args scellés, budget, approbation humaine
+RC=$(ac approve --owner-seed-hex $S --mandate $MGID --obligation co_sign \
+     --args "mail:alice" --presented "SEND: mail:alice" send)
+ac action --dir $D --cert $D/$CG --agent-seed-hex $G gmail send --args "mail:alice" --check-json "$RC"
+ac action --dir $D --cert $D/$CG --agent-seed-hex $G gmail reply \
+   --args-json '{"recipient":"alice@example.com","body":"hello"}'     # args scellés
+ac action --dir $D --cert $D/$CG --agent-seed-hex $G gmail reply --args "r2"
+ac action --dir $D --cert $D/$CG --agent-seed-hex $G gmail reply --args "r3"
+# → GammaBudgetExhausted: max_actions 3 spent
+ac action --dir $D --cert $D/$CS --agent-seed-hex $A social publish --args "post"
+# → GammaObligationUnsatisfied: publish-approval — no receipt
+RA=$(ac approve --approver-seed-hex $AP --mandate $MSID --obligation publish-approval \
+     --args "post" --presented "PUBLISH: post" publish)
+ac action --dir $D --cert $D/$CS --agent-seed-hex $A social publish --args "post" --check-json "$RA"
+
+# 4. liveness : 9 s de silence (> 5s+3s) → stale ; beacon → reprise
+sleep 9
+ac action … social publish --check-json "$RB"     # → GammaHeartbeatStale
+ac heartbeat --dir $D --seed-hex $S --seq 2
+ac action … social publish --check-json "$RB2"    # → logged
+
+# 5. move = rotation, puis revoke --rotate ; le reader survit
+ac move --dir $D --seed-hex $S projets/perso --under projets/archive
+ac section-add --dir $D --seed-hex $S circle projets/archive/perso/note2 --title note --body "après move"
+ac revoke --dir $D --seed-hex $S $MGID --rotate projets/archive/perso --revoked-seed-hex $G
+# (la rotation POST-move ouvre la clé courante par la ligne owner — le trou
+#  de dérivation attrapé par le scénario K, soldé dans revoke.rs)
+
+# 6. engagements : racines et preuves, tout offline
+ac edition-publish --dir $D --seed-hex $S
+ac prove --dir $D circle projets/archive/perso/note1   # → verifies (6 steps)
+ac log-prove --dir $D --mandate $MSID                  # → {"entries":2,"actions":2}
+ac edition-verify --dir $D
+
+# 7. deux copies divergent pendant l'absence ; l'une merge ; replay froid
+cp -R $D/. $D2
+ac section-add --dir $D  … circle alpha/note-a … && ac edition-publish --dir $D  …
+ac section-add --dir $D2 … circle beta/note-b  … && ac edition-publish --dir $D2 …
+ac edition-merge --dir $D --other $D2 --seed-hex $S
+# → merge edition published (height 7, parents lo + hi)
+ac edition-verify --dir $D && ac log-verify --dir $D   # → OK, OK — replay froid
+```
+
 ## Récap des invariants que tu viens de toucher
 
 | Bloc | Invariant prouvé |
@@ -377,3 +450,4 @@ ac edition-merge --dir $D --other $D3 --seed-hex $S
 | 13 | tout mirror peut prouver une row en O(log n) sans être cru ; un splice meurt sur le domaine |
 | 14 | les compteurs du log sont committés : un cap total se vérifie en une preuve, un withhold casse le compte, une absence se prouve |
 | 15 | deux écritures disjointes ne s'attendent jamais : merge déterministe sans arbitre, octets jamais réécrits ; le même nœud des deux côtés = fork, réservé au nearest common manager |
+| 16 | tout ce qui précède tient ENSEMBLE sur un seul artefact, et un vérificateur à froid le rejoue des fichiers seuls — le serveur n'a jamais été une partie de confiance |

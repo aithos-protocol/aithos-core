@@ -39,7 +39,9 @@ repository, and nothing outside it.
 ```
 cargo test  --workspace --manifest-path rust/Cargo.toml   # incl. conformance vectors
 cargo check -p aithos-wasm --target wasm32-unknown-unknown --manifest-path rust/Cargo.toml
-docker build -f docker/Dockerfile -t aithos-core .
+cargo bench --manifest-path rust/Cargo.toml -p aithos-bundle   # perf targets §09.3
+docker build -f docker/Dockerfile -t aithos-core:0.1.0 .       # FROM scratch, ~4 MB
+wasm-pack build rust/crates/aithos-wasm --target nodejs --release  # then npm pack (local only)
 ```
 
 CI runs fmt, clippy (`-D warnings`), the native test suite, and the wasm32
