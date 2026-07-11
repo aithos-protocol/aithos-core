@@ -142,12 +142,21 @@ prochaine itération du gateway (le MVP actuel reste la démo mono-Ethos).
    d'owner de la graine maîtresse (label = sid d'agent) est sain (aucun
    tiers imputé, pas d'enjeu de non-répudiation — contrairement aux clés
    d'AGENTS, dont la dérivation reste rejetée). Une seule graine au coffre.
+   **Dérivation ≠ fusion** : chaque journal reste un Ethos séparé et complet
+   (DID, zones, gamma propres) — auditer un agent n'expose RIEN des autres ;
+   l'isolation est au niveau du bundle, pas de la clé.
 10. **Vision gravée : l'agent n'est pas sa clé.** Âme = son Ethos de travail
     (mémoire consolidée, expertise qui grandit — la valeur à terme) ; corps
     = le container (remplaçable) ; clé = instrument de signature (persiste
     avec lui tant qu'il vit, dans la garde du runner, jamais chez le LLM ;
     remplaçable par re-grant sans perte d'identité — le nom URN et l'Ethos
     portent la continuité). « Jetable » qualifie la clé, jamais l'agent.
+    Autonomie déjà native : mandat full = l'agent retravaille son Ethos sans
+    permission (profil absentee owner). Changement/départ de maître =
+    **succession** (transfert de propriété de l'Ethos, historique intact,
+    ancienne époque morte) ; l'« affranchissement » — transférer à l'agent
+    la propriété de sa propre mémoire (modèle B2C/marketplace) — est donc
+    une opération native du protocole. B2B v1 : entreprise owner.
 11. **Pas de triple écriture (précision).** Un acte = 2 écritures (gamma du
     contexte : la preuve ; journal : le miroir xref) et 3 lectures (contexte,
     journal, flotte). Copier chaque acte dans le gamma d'entreprise est
