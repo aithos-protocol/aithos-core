@@ -12,21 +12,24 @@
 //! Layering holds even here: everything core-shaped arrives through the
 //! bridge's re-exports, never from aithos-core/bundle directly.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex as StdMutex};
 
 use cucumber::{given, then, when, World};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
-use aithos_gateway::config::GatewayConfig;
+use aithos_gateway::config::{GatewayConfig, ToolAccess, ToolMap};
 use aithos_gateway::core_bridge::{
     agent_pub_multibase, cert_grantee_pub, gamma_view, gateway_pub_multibase, owner_grant_context,
-    owner_init_context, owner_init_journal, Bridge, EntropySource, EntryView, EquipOutcome,
-    MandateWindow, OnboardOutcome, SeqEntropy,
+    owner_init_context, owner_init_journal, Bridge, ContextRuntime, EntropySource, EntryView,
+    EquipOutcome, MandateWindow, OnboardOutcome, Runner, SeqEntropy,
 };
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
-use aithos_gateway::proxy_mcp::{process, McpProxy, Upstream, POLICY_DENIED_CODE};
+use aithos_gateway::proxy_mcp::{
+    process, process_multi, McpProxy, McpRouter, Upstream, POLICY_DENIED_CODE,
+};
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::{GatewayError, Result};
 
@@ -36,10 +39,26 @@ const NOT_BEFORE: &str = "2026-07-10T00:00:00Z";
 const NOT_AFTER: &str = "2026-08-09T00:00:00Z";
 
 /// Fake company MCP server: records every body that reaches it and
-/// answers a canned tool result.
-#[derive(Clone, Default)]
+/// answers a canned tool result (distinct texts tell N upstreams apart).
+#[derive(Clone)]
 struct FakeMcp {
     seen: Arc<StdMutex<Vec<Value>>>,
+    text: String,
+}
+
+impl Default for FakeMcp {
+    fn default() -> Self {
+        Self::with_text("alice@example.com")
+    }
+}
+
+impl FakeMcp {
+    fn with_text(text: &str) -> Self {
+        Self {
+            seen: Arc::default(),
+            text: text.to_owned(),
+        }
+    }
 }
 
 impl Upstream for FakeMcp {
@@ -50,10 +69,20 @@ impl Upstream for FakeMcp {
             "jsonrpc": "2.0",
             "id": id,
             "result": {
-                "content": [{ "type": "text", "text": "alice@example.com" }],
+                "content": [{ "type": "text", "text": self.text }],
                 "isError": false
             }
         }))
+    }
+}
+
+/// The harness tool map of one named context (feature contract: labels
+/// carry their own tool families).
+fn context_tools(label: &str) -> (String, String) {
+    match label {
+        "company-brand" => ("brand.read".into(), "brand.update".into()),
+        "ui-designer" => ("figma.read".into(), "figma.update".into()),
+        other => panic!("unknown context label in the harness: {other}"),
     }
 }
 
@@ -84,6 +113,12 @@ struct GatewayWorld {
     /// Single equipped context for the grant scenario: (label, store,
     /// read tool, write tool, outcome).
     ctx: Option<(String, GatewayStore, String, String, Option<EquipOutcome>)>,
+    /// Multi-context runtime (lot 3): the router, one fake upstream per
+    /// context, and the owner-side view of every context store.
+    router: Option<Arc<McpRouter<FakeMcp>>>,
+    multi_upstreams: BTreeMap<String, FakeMcp>,
+    ctx_stores: BTreeMap<String, GatewayStore>,
+    ctx_dids: BTreeMap<String, String>,
 }
 
 impl GatewayWorld {
@@ -107,6 +142,10 @@ impl GatewayWorld {
             journal_store: None,
             journal_outcome: None,
             ctx: None,
+            router: None,
+            multi_upstreams: BTreeMap::new(),
+            ctx_stores: BTreeMap::new(),
+            ctx_dids: BTreeMap::new(),
         }
     }
 
@@ -165,7 +204,22 @@ impl GatewayWorld {
             "params": params
         });
         self.last_tool = tool.to_owned();
-        self.last_response = Some(process(self.proxy(), body).await);
+        self.last_response = Some(if let Some(router) = &self.router {
+            process_multi(router, body).await
+        } else {
+            process(self.proxy(), body).await
+        });
+    }
+
+    /// Owner-side gamma view of a named context store.
+    fn ctx_gamma(&self, ctx: &str) -> Vec<EntryView> {
+        let store = self.ctx_stores.get(ctx).expect("a provisioned context");
+        gamma_view(store.clone()).expect("context gamma readable")
+    }
+
+    /// Owner-side gamma view of the journal store.
+    fn journal_gamma(&self) -> Vec<EntryView> {
+        gamma_view(self.journal_store.clone().expect("a journal")).expect("journal gamma readable")
     }
 
     /// Acts of the agent that reached the log (`x.mcp`).
@@ -625,26 +679,240 @@ async fn cert_names_agent_pub(w: &mut GatewayWorld) {
     assert_eq!(Some(grantee), w.agent_pub);
 }
 
+/// Acts of one connector (`x.mcp` acts, `x.gateway` refusals, `x.xref`
+/// mirrors) in an owner-side gamma view.
+fn acts_on(entries: &[EntryView], target: &str) -> Vec<EntryView> {
+    entries
+        .iter()
+        .filter(|e| e.kind == "action" && e.target.as_deref() == Some(target))
+        .cloned()
+        .collect()
+}
+
+/// A string field of an entry's clear payload.
+fn payload_str<'a>(e: &'a EntryView, key: &str) -> Option<&'a str> {
+    e.payload
+        .as_ref()
+        .and_then(|p| p.get(key))
+        .and_then(Value::as_str)
+}
+
 #[given(expr = "a runner provisioned with contexts {string} and {string}")]
-async fn runner_provisioned(_w: &mut GatewayWorld, _a: String, _b: String) {}
+async fn runner_provisioned(w: &mut GatewayWorld, a: String, b: String) {
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let window = GatewayWorld::window();
+    let mut owner_ent = SeqEntropy::default();
+
+    // The runner's ONE identity — the same seeds behind the published
+    // pubkeys (SeqEntropy is deterministic: a fresh sequence replays
+    // them), shared by every bridge.
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Arc::new(Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32()));
+
+    let mut contexts = BTreeMap::new();
+    for label in [a, b] {
+        let (read, write) = context_tools(&label);
+        let store = GatewayStore::in_memory();
+        owner_init_context(&master, &label, store.clone(), T0, &mut owner_ent)
+            .expect("context created");
+        let outcome = owner_grant_context(
+            &master,
+            &label,
+            &agent_pub,
+            &gateway_pub,
+            std::slice::from_ref(&read),
+            store.clone(),
+            &window,
+            T0,
+            &mut owner_ent,
+        )
+        .expect("context granted");
+        let bridge = Bridge::open(
+            store.clone(),
+            Arc::clone(&keyholder),
+            Box::new(SeqEntropy::default()),
+        )
+        .expect("context bridge opens");
+        let mut tools = ToolMap::new();
+        tools.insert(read, ToolAccess::Read);
+        tools.insert(write, ToolAccess::Write);
+        w.ctx_stores.insert(label.clone(), store);
+        w.ctx_dids.insert(label.clone(), outcome.ethos_did.clone());
+        w.multi_upstreams.insert(
+            label.clone(),
+            FakeMcp::with_text(&format!("{label}-answer")),
+        );
+        contexts.insert(
+            label,
+            ContextRuntime {
+                policy: Policy::new(tools),
+                bridge,
+            },
+        );
+    }
+
+    let journal_store = GatewayStore::in_memory();
+    let journal_outcome = owner_init_journal(
+        &master,
+        "leo",
+        &agent_pub,
+        &gateway_pub,
+        journal_store.clone(),
+        &window,
+        T0,
+        &mut owner_ent,
+    )
+    .expect("journal created");
+    let journal = Bridge::open(
+        journal_store.clone(),
+        keyholder,
+        Box::new(SeqEntropy::default()),
+    )
+    .expect("journal bridge opens");
+    w.journal_store = Some(journal_store);
+    w.journal_outcome = Some(journal_outcome);
+
+    w.router = Some(Arc::new(McpRouter {
+        runner: Mutex::new(Runner::from_parts(contexts, journal)),
+        upstreams: w.multi_upstreams.clone(),
+        clock: Arc::new(|| T0.to_owned()),
+    }));
+}
 
 #[then(expr = "the act on {string} is logged in the {string} gamma only")]
-async fn act_logged_in_context_only(_w: &mut GatewayWorld, _tool: String, _ctx: String) {}
+async fn act_logged_in_context_only(w: &mut GatewayWorld, tool: String, ctx: String) {
+    let own = acts_on(&w.ctx_gamma(&ctx), "x.mcp");
+    let hits: Vec<&EntryView> = own
+        .iter()
+        .filter(|e| payload_str(e, "tool") == Some(tool.as_str()))
+        .collect();
+    assert_eq!(hits.len(), 1, "exactly one act for `{tool}` in `{ctx}`");
+
+    for other in w.ctx_stores.keys().filter(|n| n.as_str() != ctx.as_str()) {
+        assert!(
+            acts_on(&w.ctx_gamma(other), "x.mcp")
+                .iter()
+                .all(|e| payload_str(e, "tool") != Some(tool.as_str())),
+            "`{tool}` must not leak into the `{other}` gamma"
+        );
+    }
+    // The journal never copies acts — its mirror is the xref index.
+    assert!(
+        acts_on(&w.journal_gamma(), "x.mcp").is_empty(),
+        "the journal holds xrefs, not act copies"
+    );
+    // And the call crossed to THAT context's upstream, no other.
+    let named = |body: &Value| {
+        body.pointer("/params/name")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    };
+    assert!(
+        w.multi_upstreams[&ctx]
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|b| named(b).as_deref() == Some(tool.as_str())),
+        "the call must reach the `{ctx}` upstream"
+    );
+    for (name, fake) in &w.multi_upstreams {
+        if name.as_str() == ctx.as_str() {
+            continue;
+        }
+        assert!(
+            fake.seen
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|b| named(b).as_deref() != Some(tool.as_str())),
+            "`{tool}` must not reach the `{name}` upstream"
+        );
+    }
+}
 
 #[then("the journal holds one cross-reference per act, joinable both ways")]
-async fn journal_xrefs_join(_w: &mut GatewayWorld) {}
+async fn journal_xrefs_join(w: &mut GatewayWorld) {
+    let xrefs = acts_on(&w.journal_gamma(), "x.xref");
+    let mut total_acts = 0;
+    for name in w.ctx_stores.keys() {
+        let did = w.ctx_dids.get(name).expect("context did").as_str();
+        for act in acts_on(&w.ctx_gamma(name), "x.mcp") {
+            total_acts += 1;
+            // Journal → context: the xref names the authoritative entry…
+            let joined: Vec<&EntryView> = xrefs
+                .iter()
+                .filter(|x| {
+                    payload_str(x, "ethos_did") == Some(did)
+                        && payload_str(x, "entry_id") == Some(act.id.as_str())
+                })
+                .collect();
+            // …context → journal: that act has exactly one mirror.
+            assert_eq!(
+                joined.len(),
+                1,
+                "exactly one xref joins act `{}` of `{name}`",
+                act.id
+            );
+            assert_eq!(
+                payload_str(joined[0], "tool"),
+                payload_str(&act, "tool"),
+                "the xref names the same tool as the act"
+            );
+        }
+    }
+    assert_eq!(xrefs.len(), total_acts, "one cross-reference per act");
+}
 
 #[then("the call never reaches any upstream")]
-async fn no_upstream_reached(_w: &mut GatewayWorld) {}
+async fn no_upstream_reached(w: &mut GatewayWorld) {
+    for (name, fake) in &w.multi_upstreams {
+        assert!(
+            fake.seen.lock().unwrap().is_empty(),
+            "nothing may reach the `{name}` upstream"
+        );
+    }
+}
 
 #[then(expr = "the {string} gamma gains one refusal entry")]
-async fn context_gains_refusal(_w: &mut GatewayWorld, _ctx: String) {}
+async fn context_gains_refusal(w: &mut GatewayWorld, ctx: String) {
+    let refusals = acts_on(&w.ctx_gamma(&ctx), "x.gateway");
+    assert_eq!(refusals.len(), 1, "exactly one refusal in `{ctx}`");
+    assert_eq!(
+        payload_str(&refusals[0], "tool"),
+        Some(w.last_tool.as_str()),
+        "the refusal names the refused tool"
+    );
+    // The routing is surgical: the other contexts saw nothing.
+    for other in w.ctx_stores.keys().filter(|n| n.as_str() != ctx.as_str()) {
+        assert!(
+            acts_on(&w.ctx_gamma(other), "x.gateway").is_empty(),
+            "no refusal may leak into the `{other}` gamma"
+        );
+    }
+}
 
 #[then("the journal gains one refusal entry")]
-async fn journal_gains_refusal(_w: &mut GatewayWorld) {}
+async fn journal_gains_refusal(w: &mut GatewayWorld) {
+    let refusals = acts_on(&w.journal_gamma(), "x.gateway");
+    assert_eq!(refusals.len(), 1, "exactly one journal refusal");
+    assert_eq!(
+        payload_str(&refusals[0], "tool"),
+        Some(w.last_tool.as_str()),
+        "the journal refusal names the refused tool"
+    );
+}
 
 #[then("no context gamma gains any entry")]
-async fn no_context_entry(_w: &mut GatewayWorld) {}
+async fn no_context_entry(w: &mut GatewayWorld) {
+    for name in w.ctx_stores.keys() {
+        assert!(
+            w.ctx_gamma(name).iter().all(|e| e.kind != "action"),
+            "the `{name}` gamma must hold nothing beyond its provisioning record"
+        );
+    }
+}
 
 // ------------------------------------------------------------------ main
 

@@ -30,7 +30,6 @@ Feature: Provisioned runner — an agent is born, equipped and routed
 
   Rule: Acts land in the gamma of the context that covers them
 
-    @wip
     Scenario: Two contexts, each call routed to its own Ethos
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       When the agent calls tool "brand.read" through the gateway
@@ -41,7 +40,6 @@ Feature: Provisioned runner — an agent is born, equipped and routed
 
   Rule: Refusals follow the decided routing — journal always
 
-    @wip
     Scenario: A refused context tool is logged at the context and in the journal
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       When the agent calls tool "brand.update" through the gateway
@@ -49,7 +47,6 @@ Feature: Provisioned runner — an agent is born, equipped and routed
       And the "company-brand" gamma gains one refusal entry
       And the journal gains one refusal entry
 
-    @wip
     Scenario: A tool unknown to every context is refused into the journal only
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       When the agent calls tool "admin.export" through the gateway
