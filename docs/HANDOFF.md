@@ -228,16 +228,50 @@ l'égalité JSON des preuves Rust == Python) → scénarios verts et dé-taggés
 tally brut de l'appendeur est INCHANGÉ (mêmes octets, même résultat) — les
 racines servent les verifiers et les mirrors.
 
-**I — Concurrence (spec 02.6, 07.6)** : merge déterministe d'éditions
-disjointes, fork same-node + résolution par plus proche gestionnaire commun,
-entrées gamma `merge` (`prevs: [head_a, head_b]` — la seule entrée à deux
-prédécesseurs), reconstruction identique des racines Merkle (contenu §2.10
-ET gamma §7.10 — le mergeur recompte, les verifiers reproduisent) par le
-mergeur et les vérificateurs. Attention au point de contact H2 : les racines
-de segment hashent les LIGNES du fichier en ordre de chaîne — un merge qui
-réordonne physiquement un segment est un changement de racine assumé (le
-manifest de l'édition de merge recommitte) ; le set reachable (§7.6) reste
-la vérité des comptes. CLI : `edition merge` (ou auto dans publish).
+**I — Concurrence : ENTAMÉE (2026-07-11, même session que H2). Les étapes 0-2
+du rituel sont FAITES, il reste l'impl (étape 3+).**
+
+Fait et committé :
+- **4 décisions validées par Mathieu (round I)** : (1) merge manifest =
+  `prev_hash` pointe le parent au plus petit hash d'édition + champ ADDITIF
+  `merges: [hash_a, hash_b]` triés (marche de chaîne existante intacte) ;
+  (2) index partagés = **3-way par sid** (base = ancêtre commun, rows
+  changées prises de leur branche, ajouts unis, deletes tiennent — pas de
+  résurrection —, MÊME sid changé des deux côtés = fork) ; (3) entrée gamma
+  merge = `prev` (tip du parent min) + champ ADDITIF `prevs: [head_a,
+  head_b]`, seule kind autorisée ; segment fusionné = préfixe commun,
+  sous-chaîne LOW, sous-chaîne HIGH, entrée merge — octets jamais réécrits,
+  monotonie de `at` relâchée à la jointure, racines §7.10 recommittées ;
+  (4) portée = **I1 + I2 complets** (refus verifier du fork non résolu +
+  résolution nearest common manager via `resolves_fork`, autorité =
+  dir_covers, délégué borné à son périmètre, owner dernier recours).
+- **Spec gravée** (803e622) : §2.6 bloc « Wire conventions pass I » +
+  §7.6 wire de l'entrée merge.
+- **Feature committée et validée** (d10b0ba) :
+  `features/i-concurrency.feature`, 12 scénarios @wip, 3 Rules (merge
+  disjoint / log rejoint / fork & résolution — dont budget épuisé À TRAVERS
+  les deux sous-chaînes, le contact H2).
+- **Vecteur Python indépendant** (c7ce0e5) : `vectors/gen-i.py` →
+  `i1-concurrency.json`, ancré B2 + H2 (le segment ancêtre EST les entrées
+  committées de F2 ; conventions de segment croisées contre H2 committé).
+  Convention pinnée par le vecteur, à suivre à l'impl : payload de l'entrée
+  merge = `{"merges": [hash_a, hash_b]}` (miroir du champ manifest).
+
+Reste à faire (étape 3+ du rituel) :
+- **Core** : `Entry.prevs` additif (check_form fail-closed : merge only),
+  `verify_links` qui suit `prevs` à la jointure (monotonie `at` relâchée là,
+  et LÀ seulement), vecteur test `i1_concurrency.rs`.
+- **Bundle** : ancêtre commun (marche des manifests), changesets par
+  tree_diff, disjonction (sets de labels), merge 3-way des index par sid
+  (règle du vecteur), écriture du segment fusionné (layout déterministe),
+  `Manifest.merges`/`resolves_fork` additifs + build/verify merge-aware
+  (deux parents même height même grand-parent, état reproduit byte à byte),
+  refus du fork non résolu, résolution avec check d'autorité dir_covers.
+- **Steps** : les 12 scénarios (« two copies of a published bundle » =
+  clone du MemStore), dé-tagger au fur et à mesure.
+- **CLI** : `edition-merge` (ou auto dans publish) + test de surface,
+  bloc 15 du CLI-GUIDE, checkpoint manuel.
+- Suite verte finale = 187 scénarios attendus (175 + 12), clippy, fmt.
 
 ## 6bis. Étape précédente : G+ — Obligations
 
