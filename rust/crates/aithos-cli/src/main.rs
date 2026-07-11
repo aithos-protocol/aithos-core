@@ -82,6 +82,17 @@ enum Command {
         #[arg(long)]
         dir: String,
     },
+    /// Merge another copy's competing edition into this bundle (spec 02.6):
+    /// disjoint changesets only, deterministic result, signed by root.
+    EditionMerge {
+        #[arg(long)]
+        dir: String,
+        /// The other copy's bundle directory.
+        #[arg(long)]
+        other: String,
+        #[arg(long)]
+        seed_hex: String,
+    },
     /// Grant an agent a circle perimeter: mints the cert AND delivers keys.
     Grant {
         #[arg(long)]
@@ -415,7 +426,7 @@ enum Command {
 
 use aithos_bundle::bundle::{Bundle, SectionSpec};
 use aithos_bundle::entropy::OsEntropy;
-use aithos_bundle::FsStore;
+use aithos_bundle::{FsStore, Store};
 use aithos_core::path::Zone;
 
 fn now_secs() -> u64 {
@@ -559,6 +570,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::EditionVerify { dir } => {
             bundle_at(&dir)?.verify()?;
             println!("edition chain: OK");
+            Ok(())
+        }
+        Command::EditionMerge {
+            dir,
+            other,
+            seed_hex,
+        } => {
+            let owner = owner_from(&seed_hex)?;
+            let mut mine = bundle_at(&dir)?;
+            let theirs = bundle_at(&other)?;
+            mine.edition_merge(&theirs, &owner, &now_string())?;
+            let manifest: aithos_bundle::manifest::Manifest = serde_json::from_slice(
+                &mine
+                    .store
+                    .get("manifest.json")?
+                    .ok_or("missing manifest after merge")?,
+            )?;
+            println!(
+                "merge edition published (height {}, parents {} + {})",
+                manifest.edition.height, manifest.merges[0], manifest.merges[1]
+            );
             Ok(())
         }
         Command::Grant {

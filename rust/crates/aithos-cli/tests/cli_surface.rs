@@ -1162,3 +1162,129 @@ fn log_prove_counts_and_absence_offline() {
         .failure()
         .stderr(predicate::str::contains("counted"));
 }
+
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+fn add_named(dir: &TempDir, path: &str) {
+    ac().args([
+        "section-add",
+        "--dir",
+        &d(dir),
+        "--seed-hex",
+        OWNER,
+        "circle",
+        path,
+        "--title",
+        "note",
+        "--body",
+        BODY,
+    ])
+    .assert()
+    .success();
+}
+
+#[test]
+fn edition_merge_joins_two_disjoint_copies() {
+    // The shared ancestor: one section, one published edition.
+    let dir = init_bundle();
+    add_circle_section(&dir);
+    ac().args(["edition-publish", "--dir", &d(&dir), "--seed-hex", OWNER])
+        .assert()
+        .success();
+    let other = TempDir::new().unwrap();
+    copy_tree(dir.path(), other.path());
+
+    // Two disjoint writes, two competing editions at the same height.
+    add_named(&dir, "alpha/note-a");
+    add_named(&other, "beta/note-b");
+    for b in [&dir, &other] {
+        ac().args(["edition-publish", "--dir", &d(b), "--seed-hex", OWNER])
+            .assert()
+            .success();
+    }
+
+    // Either party merges; the result verifies and holds both writes.
+    ac().args([
+        "edition-merge",
+        "--dir",
+        &d(&dir),
+        "--other",
+        &d(&other),
+        "--seed-hex",
+        OWNER,
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("merge edition published"));
+    ac().args(["edition-verify", "--dir", &d(&dir)])
+        .assert()
+        .success();
+    ac().args(["log-verify", "--dir", &d(&dir)])
+        .assert()
+        .success();
+    for path in ["alpha/note-a", "beta/note-b"] {
+        ac().args([
+            "section-read",
+            "--dir",
+            &d(&dir),
+            "circle",
+            path,
+            "--seed-hex",
+            OWNER,
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(BODY));
+    }
+    let manifest = std::fs::read_to_string(dir.path().join("manifest.json")).unwrap();
+    assert!(
+        manifest.contains("\"merges\""),
+        "the merge wire is committed"
+    );
+
+    // The same node touched on both sides is a fork — refused. Both copies
+    // grant the SAME folder: its header (folded into the node hash) changes
+    // on both branches.
+    let third = TempDir::new().unwrap();
+    copy_tree(dir.path(), third.path());
+    for b in [&dir, &third] {
+        ac().args([
+            "grant",
+            "--dir",
+            &d(b),
+            "--seed-hex",
+            OWNER,
+            "--agent-seed-hex",
+            AGENT,
+            "projets",
+        ])
+        .assert()
+        .success();
+        ac().args(["edition-publish", "--dir", &d(b), "--seed-hex", OWNER])
+            .assert()
+            .success();
+    }
+    ac().args([
+        "edition-merge",
+        "--dir",
+        &d(&dir),
+        "--other",
+        &d(&third),
+        "--seed-hex",
+        OWNER,
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("conflict"));
+}

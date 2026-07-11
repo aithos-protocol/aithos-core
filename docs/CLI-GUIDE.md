@@ -319,6 +319,47 @@ le compte, en forger une casse la racine. Les fenêtres ROULANTES restent
 des scans de segments (un compteur statique ne porte pas une fenêtre
 glissante), bornés par root+n.
 
+## 15. Concurrence — merge disjoint, deux copies, un résultat (I, spec 02.6 + 07.6)
+
+```bash
+# Un bundle publié, puis DEUX copies indépendantes (deux machines).
+ac section-add --dir $D --seed-hex $S circle projets/note1 --title n --body "ancetre"
+ac edition-publish --dir $D --seed-hex $S
+D2=$(mktemp -d); cp -R $D/. $D2
+
+# Chaque copie écrit dans un dossier différent et publie SA hauteur N+1.
+ac section-add --dir $D  --seed-hex $S circle alpha/note-a --title a --body "ecrit ici"
+ac section-add --dir $D2 --seed-hex $S circle beta/note-b  --title b --body "ecrit la-bas"
+ac edition-publish --dir $D  --seed-hex $S
+ac edition-publish --dir $D2 --seed-hex $S
+
+# N'importe laquelle des deux parties publie LE merge — même résultat.
+ac edition-merge --dir $D --other $D2 --seed-hex $S
+# → "merge edition published (height N+2, parents <lo> + <hi>)" :
+#   prev_hash épingle le parent au PLUS PETIT hash d'édition, `merges`
+#   liste les deux en croissant (additif — les éditions pré-I sont intactes)
+
+ac edition-verify --dir $D && ac log-verify --dir $D
+ac section-read --dir $D circle alpha/note-a --seed-hex $S
+ac section-read --dir $D circle beta/note-b  --seed-hex $S
+# → les DEUX écritures sont là ; le log a re-joint : une entrée `merge`
+#   (la seule kind à deux prédécesseurs, prevs = les deux tips) et les
+#   racines gamma §07.10 recommittées sur le layout fusionné
+
+python3 -c "import json; m=json.load(open('$D/manifest.json')); print(m['edition']['prev_hash'] == m['merges'][0], m['merges'])"
+
+# Fork : le MÊME nœud touché des deux côtés ne se merge JAMAIS.
+D3=$(mktemp -d); cp -R $D/. $D3
+ac grant --dir $D  --seed-hex $S --agent-seed-hex $A projets
+ac grant --dir $D3 --seed-hex $S --agent-seed-hex $A projets
+ac edition-publish --dir $D  --seed-hex $S
+ac edition-publish --dir $D3 --seed-hex $S
+ac edition-merge --dir $D --other $D3 --seed-hex $S
+# → refus fail-closed : « same-node conflict on circle:d/… » — c'est un
+#   fork, il attend son nearest common manager (résolution : API
+#   resolve_fork, délégué borné à son périmètre, owner en dernier recours)
+```
+
 ## Récap des invariants que tu viens de toucher
 
 | Bloc | Invariant prouvé |
@@ -335,3 +376,4 @@ glissante), bornés par root+n.
 | 12 | un permis peut exiger sa décharge : reçu signé, lié, single-use, vérifié des fichiers seuls |
 | 13 | tout mirror peut prouver une row en O(log n) sans être cru ; un splice meurt sur le domaine |
 | 14 | les compteurs du log sont committés : un cap total se vérifie en une preuve, un withhold casse le compte, une absence se prouve |
+| 15 | deux écritures disjointes ne s'attendent jamais : merge déterministe sans arbitre, octets jamais réécrits ; le même nœud des deux côtés = fork, réservé au nearest common manager |
