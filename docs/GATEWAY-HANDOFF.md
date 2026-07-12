@@ -4,7 +4,7 @@
 Complète `GATEWAY-BOOTSTRAP.md` (le pourquoi/quoi) avec l'état exact du code et
 les leçons d'environnement. Session initiale : 2026-07-10.
 
-> **ÉTAT EXPRESS (2026-07-12, reprise H0)** : **LOT C2 CLOS —
+> **ÉTAT EXPRESS (2026-07-12, 5ᵉ session gw — review + merge H0)** : **LOT C2 CLOS —
 > les outils journal vivent sur pass L.** Les 5 décisions C2 validées
 > par Mathieu (AskUserQuestion, cette session) ; la **pass L** (écritures
 > déléguées circle, développée en sandbox parallèle) a été revalidée
@@ -21,10 +21,15 @@ les leçons d'environnement. Session initiale : 2026-07-10.
 > multi) ; tools/list sert les natifs avec leurs VRAIS schémas. Suite
 > gateway : **29 scénarios / 145 steps (zéro @wip), 22 unit, 4 CLI +
 > 4 owner surface, 3 e2e réseau** ; workspace : bundle 203/826, clippy
-> -D warnings clean partout. **Hub H0 figé sur la branche dédiée
-> `codex/gateway-hub-h0`** : `gateway-hub.feature`, 10 scénarios H0
-> `@wip` (le Scenario Outline réserve `journal`), commit contractuel
-> `dd680ae`; la suite historique reste 29/145 verte. Prochaine tranche :
+> -D warnings clean partout. **Hub H0 MERGÉ sur `feat/obligations`**
+> (5ᵉ session gw : review conforme HUB-MCP §3/§5/§9, ff manuel →
+> `082f5a2`, aucune question §10 tranchée en douce) **et amendé**
+> (`42e378e`) : `gateway-hub.feature`, 11 blocs `@wip` (12 scénarios à
+> l'expansion — l'Outline réserve `journal` ET `gateway`), collision
+> inter-serveurs épinglée (`a`+`b__c` vs `a__b`+`c`), le refus du
+> write connu nomme « the context that knows the tool ». Suite
+> historique 29/145 verte, H0 parsé puis filtré (revérifié conteneur
+> 1.96.1 : crate vert, clippy -D warnings, fmt). Prochaine tranche :
 > H1, config v3 `servers:`. Reste Phase C : creds provider → vault
 > `/x/` (§3bis.4). Design du hub : `docs/HUB-MCP.md` (tranché 12/07).
 > Untracked à trancher par
@@ -347,9 +352,11 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
 
 **Phase H — hub MCP gouverné (OUVERTE 2026-07-12, H0 ✅).**
 
-- ✅ **H0 — contrat** (`dd680ae`, branche dédiée
-  `codex/gateway-hub-h0`) : `tests/features/gateway-hub.feature`, 10
-  scénarios `@wip` écrits avant le code. Le contrat couvre enrollment +
+- ✅ **H0 — contrat** (`dd680ae`, écrit sur la branche dédiée
+  `codex/gateway-hub-h0`, **mergé ff sur `feat/obligations`** puis
+  amendé `42e378e` — 5ᵉ session gw) :
+  `tests/features/gateway-hub.feature`, 11 blocs `@wip` écrits avant le
+  code. Le contrat couvre enrollment +
   pin intégral owner-approved, `tools/list` limité aux outils couverts et
   reconstruit sans l'amont, surface v1 `tools/*` seulement, un serveur
   partagé entre deux Ethos sans ambiguïté de preuve, write connu caché
@@ -357,8 +364,17 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
   avec nouveau mandat et révocation politique de l'ancien, réservation de
   `journal`, collision d'un outil entre contextes et collision après
   aplatissement. Il ne tranche ni le stockage du manifeste ni la cadence
-  du contrôle de drift. Validation : gateway Cucumber historique
-  **29 scénarios / 145 steps verts** ; H0 parsé puis ignoré par `@wip`.
+  du contrôle de drift. Retouches de review (`42e378e`) : `gateway`
+  réservé à côté de `journal` dans l'Outline ; l'ambiguïté
+  d'aplatissement INTER-serveurs épinglée (`a`+`b__c` et `a__b`+`c`
+  exposent tous deux `a__b__c` → rejet nommé ; si H1 préfère interdire
+  `__` dans les ids de serveurs, ce scénario se réécrit en rejet de
+  charset — à trancher là) ; le refus du write connu route vers « the
+  context that knows the tool » (l'outil n'est justement pas granté —
+  nuance map interne de la décision 3.2). Validation : gateway Cucumber
+  historique **29 scénarios / 145 steps verts** ; H0 parsé puis ignoré
+  par `@wip` (sonde : dé-tagger UN scénario fait apparaître 5 features /
+  30 scénarios, 1 skipped — le fichier est bien parsé, pas contourné).
 - ⬜ **H1 — config v3 `servers:`** : ressources serveur de première classe,
   outils de contexte référencés par `(server, tool)`, validations H0 ;
   dé-tagger seulement les scénarios de config devenus verts.
@@ -462,3 +478,17 @@ les fichiers du disque avant de committer, jamais sur la foi du sandbox
 d'origine. `docs/HUB-MCP.md`, `docs/EXPLORATION-DESKTOP-GATEWAY.md` et
 `docs/STANDARDS-COMPAT.md` (apparu en cours de session) restent
 UNTRACKED — à Mathieu de décider s'ils se committent.
+
+Session du 2026-07-12 midi (5ᵉ gw) : mission review de la branche
+`codex/gateway-hub-h0` (H0 écrit hors session Cowork, 2 commits posés
+sur `ae0fb3a`). Review livrée au chat, puis sur demande de Mathieu :
+**merge = ff MANUEL sans worktree git** (`git merge --ff-only` aurait
+fait des unlink() de worktree, interdits sur le montage) — écriture des
+2 fichiers depuis le ref (`git show` → tmp `_transfer/` → mv
+par-dessus), `git add` sélectif, `git update-ref -m` → HEAD `082f5a2`,
+arbre/index/HEAD vérifiés alignés. Puis retouches contrat `42e378e` et
+ce handoff, transferts sha256-croisés dans les deux sens, janitor avant
+chaque commande git écrivante, warnings tmp_obj/HEAD.lock cosmétiques
+confirmés. La branche `codex/gateway-hub-h0` reste posée sur `082f5a2`
+(la supprimer = décision Mathieu). Scorie ajoutée : `_transfer/
+hub-082f5a2.tar` (tar de review).
