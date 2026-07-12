@@ -4,7 +4,7 @@
 Complète `GATEWAY-BOOTSTRAP.md` (le pourquoi/quoi) avec l'état exact du code et
 les leçons d'environnement. Session initiale : 2026-07-10.
 
-> **ÉTAT EXPRESS (2026-07-12 soir, 4ᵉ session gw)** : **LOT C2 CLOS —
+> **ÉTAT EXPRESS (2026-07-12, reprise H0)** : **LOT C2 CLOS —
 > les outils journal vivent sur pass L.** Les 5 décisions C2 validées
 > par Mathieu (AskUserQuestion, cette session) ; la **pass L** (écritures
 > déléguées circle, développée en sandbox parallèle) a été revalidée
@@ -21,9 +21,13 @@ les leçons d'environnement. Session initiale : 2026-07-10.
 > multi) ; tools/list sert les natifs avec leurs VRAIS schémas. Suite
 > gateway : **29 scénarios / 145 steps (zéro @wip), 22 unit, 4 CLI +
 > 4 owner surface, 3 e2e réseau** ; workspace : bundle 203/826, clippy
-> -D warnings clean partout. Restes Phase C : creds provider → vault
-> `/x/` (§3bis.4). Piste suivante naturelle : **hub H0**
-> (`docs/HUB-MCP.md`, design tranché 12/07). Untracked à trancher par
+> -D warnings clean partout. **Hub H0 figé sur la branche dédiée
+> `codex/gateway-hub-h0`** : `gateway-hub.feature`, 10 scénarios H0
+> `@wip` (le Scenario Outline réserve `journal`), commit contractuel
+> `dd680ae`; la suite historique reste 29/145 verte. Prochaine tranche :
+> H1, config v3 `servers:`. Reste Phase C : creds provider → vault
+> `/x/` (§3bis.4). Design du hub : `docs/HUB-MCP.md` (tranché 12/07).
+> Untracked à trancher par
 > Mathieu : HUB-MCP.md, EXPLORATION-DESKTOP-GATEWAY.md,
 > STANDARDS-COMPAT.md (apparu en cours de session). ⚠ Env : sondes des
 > DEUX profils avant d'agir (§5 — tester l'unlink SUR LE MONTAGE, pas
@@ -340,6 +344,26 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
   ses chantiers neufs (`proxy_web`, `RemoteVault`, packaging desktop, UX)
   rejoignent la Phase D si Mathieu tranche. Ses 4 questions ouvertes (§9)
   sont à lui.
+
+**Phase H — hub MCP gouverné (OUVERTE 2026-07-12, H0 ✅).**
+
+- ✅ **H0 — contrat** (`dd680ae`, branche dédiée
+  `codex/gateway-hub-h0`) : `tests/features/gateway-hub.feature`, 10
+  scénarios `@wip` écrits avant le code. Le contrat couvre enrollment +
+  pin intégral owner-approved, `tools/list` limité aux outils couverts et
+  reconstruit sans l'amont, surface v1 `tools/*` seulement, un serveur
+  partagé entre deux Ethos sans ambiguïté de preuve, write connu caché
+  mais refusé précisément, drift fail-closed + gouvernance, re-enrollment
+  avec nouveau mandat et révocation politique de l'ancien, réservation de
+  `journal`, collision d'un outil entre contextes et collision après
+  aplatissement. Il ne tranche ni le stockage du manifeste ni la cadence
+  du contrôle de drift. Validation : gateway Cucumber historique
+  **29 scénarios / 145 steps verts** ; H0 parsé puis ignoré par `@wip`.
+- ⬜ **H1 — config v3 `servers:`** : ressources serveur de première classe,
+  outils de contexte référencés par `(server, tool)`, validations H0 ;
+  dé-tagger seulement les scénarios de config devenus verts.
+- ⬜ H2 enroll owner-side ; H3 runtime pin/list/names ; H4 e2e réseau (voir
+  `docs/HUB-MCP.md` §9 dans le worktree source, encore non suivi).
 
 **Phase D — industrialisation.** Args scellés (quick win : `log_action` les
 accepte, manque `grant_audit_line` + flag), `tools/list` filtré, passthrough
