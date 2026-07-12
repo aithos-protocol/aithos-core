@@ -4,20 +4,27 @@
 Complète `GATEWAY-BOOTSTRAP.md` (le pourquoi/quoi) avec l'état exact du code et
 les leçons d'environnement. Session initiale : 2026-07-10.
 
-> **ÉTAT EXPRESS (2026-07-11 soir, 2ᵉ session gw)** : **Phase B CLOSE**
-> (lots 0-4) et **Phase C OUVERTE — proxy_llm ✅** (contrat
-> `gateway-inference.feature`, 7 scénarios verts). Suite gateway : 18
-> scénarios / 91 steps cucumber (zéro @wip), 19 unit, 4 CLI + 3 owner
-> surface, 2 e2e réseau (mono + 2 contextes), clippy -D warnings clean.
-> Dernier commit gateway : `9625f57`. Côté core : **LE PLAN 0→K EST
-> COMPLET** (`a58ab4d`) — plus de session core active ; décisions
-> post-plan chez Mathieu (HANDOFF §6), dont le merge des branches.
-> Nouvelle piste produit : `docs/EXPLORATION-DESKTOP-GATEWAY.md`
-> (hôte desktop, NON tranchée — 4 questions ouvertes §9). Prochaine
-> étape gateway : **lot C2, outils journal MCP** — points de décision
-> §4 à trancher avec Mathieu AVANT tout code. ⚠ Env : sondes des DEUX
-> profils avant d'agir (§5, dernière puce — tester l'unlink SUR LE
-> MONTAGE, pas /tmp).
+> **ÉTAT EXPRESS (2026-07-12, 3ᵉ session gw)** : **Phase C — surfaces
+> réseau/owner SOLDÉES ; lot C2 : CONTRAT COMMITTÉ @wip, impl EN
+> ATTENTE.** Mathieu absent (canal de question desktop coupé ×3) →
+> protocole du brief appliqué : les 5 décisions C2 (§4) NE SONT PAS
+> tranchées ; `gateway-journal.feature` (10 scénarios @wip, defaults
+> argumentés, `5b9ff86`) committée SEULE, zéro impl. **Découverte
+> structurante** : le core n'a AUCUNE écriture de section côté agent
+> (`section_add` = owner-only) → default D2 = « notes gamma » (le geste
+> xref §3bis.5), les sections `circle:memory/` = migration v2 (passe
+> core future). Surfaces C soldées : e2e réseau llm (`e2e_llm.rs`,
+> `3460168` — bearer VU SUR LE FIL, modèle imposé, usage réel métré,
+> refus budget AVANT le provider, zéro fuite prompt/credential) + owner
+> surface `--token-budget` (`e78f318`). Suite : 18 scénarios / 91 steps
+> verts (+10 @wip C2), 19 unit, 4 CLI + 4 owner surface, 3 e2e réseau,
+> clippy -D warnings clean. Nouveau doc : `docs/HUB-MCP.md` (design hub
+> TRANCHÉ par Mathieu le 12/07 ; son §5 réserve déjà le préfixe
+> `journal` — cohérent avec D4). Côté core : plan 0→K complet
+> (`a58ab4d`), décisions post-plan chez Mathieu (HANDOFF §6). Prochaine
+> étape : **verdicts Mathieu sur les 5 points §4 → impl C2 (dé-tag au
+> fil)**. ⚠ Env : sondes des DEUX profils avant d'agir (§5 — tester
+> l'unlink SUR LE MONTAGE, pas /tmp).
 
 **Branche : `feat/gateway`** (depuis feat/f-plus). Crate : `rust/crates/aithos-gateway/`.
 
@@ -251,33 +258,72 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
     endpoint `/v1/chat/completions` sur le même listener que `/mcp`.
   Suite : 18 scénarios / 91 steps, 19 unit, 4 CLI, 3 owner surface,
   2 e2e réseau, clippy clean.
-- ⬜ **Lot C2 — outils journal MCP (la consolidation mémoire).** Le
-  gateway expose des outils aithos-natifs (`journal.write`,
-  `journal.search`) sur son endpoint `/mcp` : l'agent écrit sa mémoire
-  dans SON journal, sous mandat, tracé — servis par le gateway lui-même,
-  jamais relayés à un upstream. **Points de décision à trancher avec
-  Mathieu AVANT le code (rituel : décisions → feature Gherkin → impl)** :
-  1. Périmètre v1 : `journal.write` seul, ou write + search ? Schéma des
-     arguments (texte libre ? title+body ? tags ?).
-  2. Cible des écritures : quelle zone/dossier du journal (ex.
-     `circle:memory/`), une section par écriture (sid frais) ou append à
-     une section du jour ?
-  3. Le mandat qui porte l'écriture : le stylo xref (`act.x.xref.*`) ne
-     couvre PAS `ethos.write` — nouveau pen `ethos.write` scopé minté à
-     `owner-init-journal` (cohérent avec le pen d'inférence : un pen par
-     usage), ou élargir un mandat existant ? (grammaire/périmètre =
-     décision Mathieu).
-  4. Exposition : les noms natifs entrent dans l'agrégation `tools/list`
-     du McpRouter → réserver le préfixe `journal.` contre les tool maps
-     des contextes (collision = config rejetée, comme les collisions
-     inter-contextes).
-  5. `journal.search` v1 : lecture de sections par la marche agent
-     (`log_read_as_agent`, kind `ethos.read` journalisé — F+ prêt côté
-     core) ou scan gamma ? Que renvoie-t-on, et que logge-t-on de la
-     lecture ?
-- ⬜ Surfaces restantes : e2e réseau llm (faux provider sur vraie socket :
-  bearer vu sur le fil, modèle imposé, entrée inference, refus budget) ;
-  owner surface `--token-budget` ; e2e multi étendu au `llm:`.
+- ◐ **Lot C2 — outils journal MCP : CONTRAT COMMITTÉ @wip (`5b9ff86`,
+  2026-07-12), impl EN ATTENTE des verdicts Mathieu.**
+  `tests/features/gateway-journal.feature` (10 scénarios @wip, suite
+  inchangée) grave les defaults ci-dessous ; RIEN d'implémenté (Mathieu
+  absent — 3 échecs du canal de question desktop — le brief impose :
+  contrat seul, pas d'impl des points non tranchés). Le gateway servira
+  `journal.write`/`journal.search` sur `/mcp`, jamais relayés.
+  **Contrainte découverte (pèse sur D2/D3/D5)** : le core n'a PAS
+  d'écriture de section côté agent — `section_add`/`rewrite`/`delete`
+  exigent les OwnerKeys (jamais dans le runner, §3bis.2) ; les lectures
+  agent existent (`read_section_as_agent`, `log_read_as_agent`). Les 5
+  points, default committé → alternative :
+  1. **Périmètre** — default : write + search (la consolidation sans
+     rappel ne vaut rien) ; alt : write seul. Schémas fail-closed :
+     write `{text requis non-vide, title?, tags?[]}`, search `{query?,
+     tag?, limit? (défaut 20)}`, champs inconnus rejetés des deux côtés.
+  2. **Cible** — default : NOTES GAMMA — 1 entrée act par écriture
+     (connector `journal`, payload clair, id frais ; « section du jour
+     vs sid frais » se dissout, le gamma EST append-only) — le geste
+     xref §3bis.5 généralisé, zéro changement protocole. Caveat assumé :
+     payload clair au repos, même custody que le store gateway (comme
+     les payloads xref). Alt : sections `circle:memory/` → IMPOSSIBLE
+     sans passe core (`section_add_as_agent`, marche de clé agent en
+     écriture) ; consignée comme MIGRATION v2 — l'entrée gamma deviendra
+     alors la trace `ethos.write`, les notes v1 restent la mémoire des
+     débuts.
+  3. **Pen** — default : mandat SÉPARÉ `act.x.journal.*` vers la pubkey
+     agent, minté à `owner-init-journal` (toujours), budget-free —
+     révocable indépendamment (couper la mémoire sans couper l'index
+     xref), doctrine « un pen par usage » ; journaux antérieurs sans pen
+     → refus fail-closed (précédent « pas de pen → pas de LLM »). Alt :
+     élargir le mandat xref (révocation couplée, mélange
+     plomberie/contenu — déconseillé). Le pen `ethos.write` dir-scopé
+     viendra avec la v2 sections.
+  4. **Exposition** — default : noms pointés `journal.write`/`.search`
+     + préfixe `journal` RÉSERVÉ à la config (rejet si un outil de
+     contexte s'appelle `journal` ou commence par `journal.`/
+     `journal__`, mono ET multi) — miroir de HUB-MCP §5 (tranché
+     12/07) ; `tools/list` sert les natifs avec leur VRAI inputSchema
+     (cohérent décision hub n°2 : schémas pinnés pour ce qu'on
+     gouverne). Alt : noms hub `journal__write`/`__search` (les points
+     sont fragiles chez certains clients MCP).
+  5. **Search** — default : scan par le gateway de son propre store
+     (frontière de lisibilité : il tient les fichiers), filtré aux notes
+     seules (jamais xref/inference/refus), retour antéchronologique
+     `{id, at, title, tags, text}` ; la recherche est ELLE-MÊME
+     journalisée AVANT de rendre les résultats (entrée act
+     `journal`/`search`, méta claire `{query, tag, limit, hits}`) —
+     log-before-effect. Alt sur la trace : hash-only du query.
+     `log_read_as_agent` (kind ethos.read) exige une section-cible →
+     réservé à la v2 sections.
+- ✅ **Surfaces C soldées (2026-07-12, 3ᵉ session gw).** e2e réseau llm :
+  `tests/e2e_llm.rs` (`3460168`) — parcours binaire réel (keygen →
+  provisioning `--token-budget 700` → `run` multi+`llm:`), faux provider
+  OpenAI-compat sur vraie socket : bearer VU SUR LE FIL (et seulement
+  là), le modèle imposé écrase le choix de l'agent, 1 entrée `inference`
+  à l'usage RÉEL du provider (400/300, budget_ref `llm`), 2ᵉ appel
+  refusé AVANT le provider (700/700, hit count 1, refus
+  `llm.chat`/`mandate_denied` au journal), ni prompt ni credential dans
+  AUCUN fichier de store (journal ET contexte). Owner surface
+  `--token-budget` : 4ᵉ test d'`owner_surface.rs` (`e78f318`) —
+  `inference_mandate` imprimé, cert vers LA MÊME pubkey agent portant
+  `budgets [{id: llm, token_budget}]`, stylo xref budget-free vérifié,
+  3ᵉ grant loggé ; sans flag : ni pen ni 4ᵉ ligne. « e2e multi étendu au
+  `llm:` » : absorbé — e2e_llm porte déjà la forme multi
+  (contexte+journal+llm).
 - ⬜ Creds provider vers le vault `/x/` (cible §3bis.4 ; la config v1 est
   la couture temporaire assumée).
 - **Contexte produit** : `docs/EXPLORATION-DESKTOP-GATEWAY.md`
@@ -326,6 +372,18 @@ l'export d'audit dès son merge, sans travail gateway.
   locks (`mv .git/*.lock` avant chaque commande qui écrit, jamais de
   `git status` intercalé). Tester les DEUX sondes (egress + unlink sur le
   MONTAGE, pas /tmp) avant de choisir le profil.
+- **2026-07-12 (3ᵉ session gw) : profil hybride CONFIRMÉ** (egress 000,
+  unlink interdit sur le montage — sondes refaites), protocole
+  cloud+janitor déroulé sans accroc (rustup 1.96.1 pinné, suite gateway
+  ~2,5 min à froid, sha256 croisés à chaque transfert, dans les deux
+  sens). Deux leçons neuves : (a) le PONT DESKTOP peut flapper
+  (déconnexions/reconnexions en boucle) — 3 AskUserQuestion coupés en
+  plein vol → appliquer le mode absent du brief (defaults @wip
+  committés, zéro impl des points non tranchés) au lieu de re-tenter en
+  boucle ; les transferts de fichiers, eux, passent entre deux flaps.
+  (b) au commit, les warnings `unable to unlink .git/objects/*/tmp_obj_*`
+  et `HEAD.lock` sont COSMÉTIQUES (le commit aboutit) ; janitoriser
+  `HEAD.lock` avant la commande git suivante, comme d'habitude.
 
 ## 6. ⚠ Git : sessions parallèles, un seul working tree
 
@@ -349,5 +407,12 @@ complet, `a58ab4d`) — plus de cargo concurrent ni de commits intercalés à
 craindre, mais la consigne reste : `feat/obligations`, jamais de switch,
 staging sélectif (le merge des branches est la décision post-plan n°2 de
 Mathieu). Scories untracked assumées sur le volume : `_transfer/` (tar de
-transfert cloud), `_gitjunk/` (locks janitorisés) — suppression impossible
-depuis la VM, ignorer.
+transfert cloud), `_gitjunk/` (locks janitorisés), `_to_delete/` (débris de
+sondes) — suppression impossible depuis la VM, ignorer.
+
+Session du 2026-07-12 (3ᵉ gw) : mêmes consignes appliquées — commits
+`5b9ff86` (contrat C2 @wip), `e78f318` (owner surface `--token-budget`),
+`3460168` (e2e réseau llm), plus le commit de ce handoff, tous sur
+`feat/obligations`, staging sélectif, fichiers 100 % gateway/docs.
+`docs/HUB-MCP.md` et `docs/EXPLORATION-DESKTOP-GATEWAY.md` restent
+UNTRACKED (à Mathieu de décider s'ils se committent).
