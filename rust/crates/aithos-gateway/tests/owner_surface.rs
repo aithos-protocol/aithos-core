@@ -69,14 +69,18 @@ fn runner_seeds(id_path: &std::path::Path) -> Vec<String> {
         .collect()
 }
 
-/// The grantee pubkey (multibase) named by a stored certificate.
-fn cert_grantee(store_root: &std::path::Path, mandate_id: &str) -> String {
+/// The full JSON of a stored mandate certificate.
+fn cert_json(store_root: &std::path::Path, mandate_id: &str) -> serde_json::Value {
     let path = store_root.join("certs").join(format!("{mandate_id}.json"));
-    let cert: serde_json::Value = serde_json::from_slice(
+    serde_json::from_slice(
         &std::fs::read(&path).unwrap_or_else(|e| panic!("cert {} unreadable: {e}", path.display())),
     )
-    .unwrap();
-    cert["grantee"]["pubkey"]
+    .unwrap()
+}
+
+/// The grantee pubkey (multibase) named by a stored certificate.
+fn cert_grantee(store_root: &std::path::Path, mandate_id: &str) -> String {
+    cert_json(store_root, mandate_id)["grantee"]["pubkey"]
         .as_str()
         .expect("grantee pubkey")
         .to_owned()
@@ -260,6 +264,94 @@ fn owner_grant_context_prints_the_auditor_seed_once_and_no_other_secret() {
     assert!(
         !store.join("gateway/keys.json").exists(),
         "owner-side stores must never hold runner keys"
+    );
+}
+
+#[test]
+fn owner_init_journal_with_token_budget_mints_the_inference_pen() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (agent_pub, gateway_pub, id_path) = keygen(tmp.path());
+    let store = tmp.path().join("journal");
+
+    let out = gateway()
+        .args([
+            "owner-init-journal",
+            "--master-seed-hex",
+            MASTER,
+            "--agent-label",
+            "agent-7",
+            "--agent-pub",
+            &agent_pub,
+            "--gateway-pub",
+            &gateway_pub,
+            "--store-root",
+            store.to_str().unwrap(),
+            "--token-budget",
+            "750",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("inference_mandate: "))
+        .get_output()
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let agent_mandate = line_value(&stdout, "agent_mandate: ");
+    let inference_mandate = line_value(&stdout, "inference_mandate: ");
+
+    // The pen is a THIRD mandate towards the SAME agent key, carrying the
+    // token budget as a profile constraint — separate on purpose, so the
+    // xref pen never has to cite a budget.
+    assert_ne!(inference_mandate, agent_mandate);
+    assert_eq!(cert_grantee(&store, &inference_mandate), agent_pub);
+    let pen = cert_json(&store, &inference_mandate);
+    assert_eq!(
+        pen["constraints"]["budgets"],
+        serde_json::json!([{ "id": "llm", "token_budget": 750 }]),
+        "the certificate carries the budget the owner set"
+    );
+    assert!(
+        cert_json(&store, &agent_mandate)["constraints"]["budgets"].is_null(),
+        "the xref pen stays budget-free"
+    );
+
+    // Three logged grants: xref pen + gateway pen + inference pen — the
+    // pen's issuance is never silent.
+    let grants: Vec<_> = gamma_kinds(&store)
+        .into_iter()
+        .filter(|(k, _)| k == "grant")
+        .collect();
+    assert_eq!(grants.len(), 3, "agent + gateway + inference grants logged");
+    let targets: Vec<_> = grants.iter().filter_map(|(_, t)| t.as_deref()).collect();
+    assert!(targets.contains(&inference_mandate.as_str()));
+
+    // The budget number may echo; seed material still never does.
+    assert_no_seed_leak(&console(&out), &id_path);
+
+    // Without the flag: no pen, no `inference_mandate` line — the
+    // no-pen-no-LLM refusal is contracted at library level.
+    let bare = tmp.path().join("journal-bare");
+    let out2 = gateway()
+        .args([
+            "owner-init-journal",
+            "--master-seed-hex",
+            MASTER,
+            "--agent-label",
+            "agent-8",
+            "--agent-pub",
+            &agent_pub,
+            "--gateway-pub",
+            &gateway_pub,
+            "--store-root",
+            bare.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    assert!(
+        !String::from_utf8_lossy(&out2.stdout).contains("inference_mandate"),
+        "no budget, no pen, no fourth line"
     );
 }
 
