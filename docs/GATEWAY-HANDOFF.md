@@ -4,6 +4,21 @@
 Complète `GATEWAY-BOOTSTRAP.md` (le pourquoi/quoi) avec l'état exact du code et
 les leçons d'environnement. Session initiale : 2026-07-10.
 
+> **ÉTAT EXPRESS (2026-07-11 soir, 2ᵉ session gw)** : **Phase B CLOSE**
+> (lots 0-4) et **Phase C OUVERTE — proxy_llm ✅** (contrat
+> `gateway-inference.feature`, 7 scénarios verts). Suite gateway : 18
+> scénarios / 91 steps cucumber (zéro @wip), 19 unit, 4 CLI + 3 owner
+> surface, 2 e2e réseau (mono + 2 contextes), clippy -D warnings clean.
+> Dernier commit gateway : `9625f57`. Côté core : **LE PLAN 0→K EST
+> COMPLET** (`a58ab4d`) — plus de session core active ; décisions
+> post-plan chez Mathieu (HANDOFF §6), dont le merge des branches.
+> Nouvelle piste produit : `docs/EXPLORATION-DESKTOP-GATEWAY.md`
+> (hôte desktop, NON tranchée — 4 questions ouvertes §9). Prochaine
+> étape gateway : **lot C2, outils journal MCP** — points de décision
+> §4 à trancher avec Mathieu AVANT tout code. ⚠ Env : sondes des DEUX
+> profils avant d'agir (§5, dernière puce — tester l'unlink SUR LE
+> MONTAGE, pas /tmp).
+
 **Branche : `feat/gateway`** (depuis feat/f-plus). Crate : `rust/crates/aithos-gateway/`.
 
 ---
@@ -236,10 +251,41 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
     endpoint `/v1/chat/completions` sur le même listener que `/mcp`.
   Suite : 18 scénarios / 91 steps, 19 unit, 4 CLI, 3 owner surface,
   2 e2e réseau, clippy clean.
-- ⬜ Reste Phase C : outils MCP aithos-natifs (`journal.write`,
-  `journal.search` → `ethos.write` mandatés) pour la consolidation
-  mémoire ; surfaces (e2e réseau llm avec faux provider + owner surface
-  `--token-budget`) ; creds vers le vault `/x/`.
+- ⬜ **Lot C2 — outils journal MCP (la consolidation mémoire).** Le
+  gateway expose des outils aithos-natifs (`journal.write`,
+  `journal.search`) sur son endpoint `/mcp` : l'agent écrit sa mémoire
+  dans SON journal, sous mandat, tracé — servis par le gateway lui-même,
+  jamais relayés à un upstream. **Points de décision à trancher avec
+  Mathieu AVANT le code (rituel : décisions → feature Gherkin → impl)** :
+  1. Périmètre v1 : `journal.write` seul, ou write + search ? Schéma des
+     arguments (texte libre ? title+body ? tags ?).
+  2. Cible des écritures : quelle zone/dossier du journal (ex.
+     `circle:memory/`), une section par écriture (sid frais) ou append à
+     une section du jour ?
+  3. Le mandat qui porte l'écriture : le stylo xref (`act.x.xref.*`) ne
+     couvre PAS `ethos.write` — nouveau pen `ethos.write` scopé minté à
+     `owner-init-journal` (cohérent avec le pen d'inférence : un pen par
+     usage), ou élargir un mandat existant ? (grammaire/périmètre =
+     décision Mathieu).
+  4. Exposition : les noms natifs entrent dans l'agrégation `tools/list`
+     du McpRouter → réserver le préfixe `journal.` contre les tool maps
+     des contextes (collision = config rejetée, comme les collisions
+     inter-contextes).
+  5. `journal.search` v1 : lecture de sections par la marche agent
+     (`log_read_as_agent`, kind `ethos.read` journalisé — F+ prêt côté
+     core) ou scan gamma ? Que renvoie-t-on, et que logge-t-on de la
+     lecture ?
+- ⬜ Surfaces restantes : e2e réseau llm (faux provider sur vraie socket :
+  bearer vu sur le fil, modèle imposé, entrée inference, refus budget) ;
+  owner surface `--token-budget` ; e2e multi étendu au `llm:`.
+- ⬜ Creds provider vers le vault `/x/` (cible §3bis.4 ; la config v1 est
+  la couture temporaire assumée).
+- **Contexte produit** : `docs/EXPLORATION-DESKTOP-GATEWAY.md`
+  (2026-07-11, piste NON tranchée) projette le gateway en hôte desktop —
+  proxy_mcp/McpRouter/proxy_llm déjà verts y sont les briques du MVP ;
+  ses chantiers neufs (`proxy_web`, `RemoteVault`, packaging desktop, UX)
+  rejoignent la Phase D si Mathieu tranche. Ses 4 questions ouvertes (§9)
+  sont à lui.
 
 **Phase D — industrialisation.** Args scellés (quick win : `log_action` les
 accepte, manque `grant_audit_line` + flag), `tools/list` filtré, passthrough
@@ -297,3 +343,11 @@ consigne : ne jamais switcher). Fichiers disjoints (crate gateway + ce doc) ;
 à réordonner avec le reste au moment du merge global. Les commits du lot 4
 (clôture Phase B, 2ᵉ session gw du 2026-07-11) suivent la même consigne :
 posés sur `feat/obligations`, staging sélectif, fichiers disjoints du core.
+
+Depuis le soir du 2026-07-11 : **la session core est terminée** (plan 0→K
+complet, `a58ab4d`) — plus de cargo concurrent ni de commits intercalés à
+craindre, mais la consigne reste : `feat/obligations`, jamais de switch,
+staging sélectif (le merge des branches est la décision post-plan n°2 de
+Mathieu). Scories untracked assumées sur le volume : `_transfer/` (tar de
+transfert cloud), `_gitjunk/` (locks janitorisés) — suppression impossible
+depuis la VM, ignorer.
