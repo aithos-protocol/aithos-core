@@ -4,27 +4,30 @@
 Complète `GATEWAY-BOOTSTRAP.md` (le pourquoi/quoi) avec l'état exact du code et
 les leçons d'environnement. Session initiale : 2026-07-10.
 
-> **ÉTAT EXPRESS (2026-07-12, 3ᵉ session gw)** : **Phase C — surfaces
-> réseau/owner SOLDÉES ; lot C2 : CONTRAT COMMITTÉ @wip, impl EN
-> ATTENTE.** Mathieu absent (canal de question desktop coupé ×3) →
-> protocole du brief appliqué : les 5 décisions C2 (§4) NE SONT PAS
-> tranchées ; `gateway-journal.feature` (10 scénarios @wip, defaults
-> argumentés, `5b9ff86`) committée SEULE, zéro impl. **Découverte
-> structurante** : le core n'a AUCUNE écriture de section côté agent
-> (`section_add` = owner-only) → default D2 = « notes gamma » (le geste
-> xref §3bis.5), les sections `circle:memory/` = migration v2 (passe
-> core future). Surfaces C soldées : e2e réseau llm (`e2e_llm.rs`,
-> `3460168` — bearer VU SUR LE FIL, modèle imposé, usage réel métré,
-> refus budget AVANT le provider, zéro fuite prompt/credential) + owner
-> surface `--token-budget` (`e78f318`). Suite : 18 scénarios / 91 steps
-> verts (+10 @wip C2), 19 unit, 4 CLI + 4 owner surface, 3 e2e réseau,
-> clippy -D warnings clean. Nouveau doc : `docs/HUB-MCP.md` (design hub
-> TRANCHÉ par Mathieu le 12/07 ; son §5 réserve déjà le préfixe
-> `journal` — cohérent avec D4). Côté core : plan 0→K complet
-> (`a58ab4d`), décisions post-plan chez Mathieu (HANDOFF §6). Prochaine
-> étape : **verdicts Mathieu sur les 5 points §4 → impl C2 (dé-tag au
-> fil)**. ⚠ Env : sondes des DEUX profils avant d'agir (§5 — tester
-> l'unlink SUR LE MONTAGE, pas /tmp).
+> **ÉTAT EXPRESS (2026-07-12 soir, 4ᵉ session gw)** : **LOT C2 CLOS —
+> les outils journal vivent sur pass L.** Les 5 décisions C2 validées
+> par Mathieu (AskUserQuestion, cette session) ; la **pass L** (écritures
+> déléguées circle, développée en sandbox parallèle) a été revalidée
+> depuis les fichiers du disque puis committée (`939accb`) ; le contrat
+> v2 réécrit sections (`a39eb91`) puis l'impl verte (`5c77753`) :
+> `journal.write` = UNE section scellée dans `circle:memory/` (nom
+> technique frais, title/tags clairs à l'index, `section.add` délégué à
+> corps scellé sous le pen mémoire) ; `journal.search` = match sur
+> l'index CLAIR seulement, antéchrono, ouvre les SEULS hits rendus — un
+> `ethos.read` journalisé par corps ouvert, zéro match = zéro entrée ;
+> pen mémoire DÉDIÉ (`append.circle#dir=memory`, minté à
+> `owner-init-journal` + `deliver_zone_line`, révocable indépendamment,
+> pas de pen → refus fail-closed) ; préfixe `journal` réservé (mono ET
+> multi) ; tools/list sert les natifs avec leurs VRAIS schémas. Suite
+> gateway : **29 scénarios / 145 steps (zéro @wip), 22 unit, 4 CLI +
+> 4 owner surface, 3 e2e réseau** ; workspace : bundle 203/826, clippy
+> -D warnings clean partout. Restes Phase C : creds provider → vault
+> `/x/` (§3bis.4). Piste suivante naturelle : **hub H0**
+> (`docs/HUB-MCP.md`, design tranché 12/07). Untracked à trancher par
+> Mathieu : HUB-MCP.md, EXPLORATION-DESKTOP-GATEWAY.md,
+> STANDARDS-COMPAT.md (apparu en cours de session). ⚠ Env : sondes des
+> DEUX profils avant d'agir (§5 — tester l'unlink SUR LE MONTAGE, pas
+> /tmp).
 
 **Branche : `feat/gateway`** (depuis feat/f-plus). Crate : `rust/crates/aithos-gateway/`.
 
@@ -258,57 +261,62 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
     endpoint `/v1/chat/completions` sur le même listener que `/mcp`.
   Suite : 18 scénarios / 91 steps, 19 unit, 4 CLI, 3 owner surface,
   2 e2e réseau, clippy clean.
-- ◐ **Lot C2 — outils journal MCP : CONTRAT COMMITTÉ @wip (`5b9ff86`,
-  2026-07-12), impl EN ATTENTE des verdicts Mathieu.**
-  `tests/features/gateway-journal.feature` (10 scénarios @wip, suite
-  inchangée) grave les defaults ci-dessous ; RIEN d'implémenté (Mathieu
-  absent — 3 échecs du canal de question desktop — le brief impose :
-  contrat seul, pas d'impl des points non tranchés). Le gateway servira
-  `journal.write`/`journal.search` sur `/mcp`, jamais relayés.
-  **Contrainte découverte (pèse sur D2/D3/D5)** : le core n'a PAS
-  d'écriture de section côté agent — `section_add`/`rewrite`/`delete`
-  exigent les OwnerKeys (jamais dans le runner, §3bis.2) ; les lectures
-  agent existent (`read_section_as_agent`, `log_read_as_agent`). Les 5
-  points, default committé → alternative :
-  1. **Périmètre** — default : write + search (la consolidation sans
-     rappel ne vaut rien) ; alt : write seul. Schémas fail-closed :
-     write `{text requis non-vide, title?, tags?[]}`, search `{query?,
-     tag?, limit? (défaut 20)}`, champs inconnus rejetés des deux côtés.
-  2. **Cible** — default : NOTES GAMMA — 1 entrée act par écriture
-     (connector `journal`, payload clair, id frais ; « section du jour
-     vs sid frais » se dissout, le gamma EST append-only) — le geste
-     xref §3bis.5 généralisé, zéro changement protocole. Caveat assumé :
-     payload clair au repos, même custody que le store gateway (comme
-     les payloads xref). Alt : sections `circle:memory/` → IMPOSSIBLE
-     sans passe core (`section_add_as_agent`, marche de clé agent en
-     écriture) ; consignée comme MIGRATION v2 — l'entrée gamma deviendra
-     alors la trace `ethos.write`, les notes v1 restent la mémoire des
-     débuts.
-  3. **Pen** — default : mandat SÉPARÉ `act.x.journal.*` vers la pubkey
-     agent, minté à `owner-init-journal` (toujours), budget-free —
-     révocable indépendamment (couper la mémoire sans couper l'index
-     xref), doctrine « un pen par usage » ; journaux antérieurs sans pen
-     → refus fail-closed (précédent « pas de pen → pas de LLM »). Alt :
-     élargir le mandat xref (révocation couplée, mélange
-     plomberie/contenu — déconseillé). Le pen `ethos.write` dir-scopé
-     viendra avec la v2 sections.
-  4. **Exposition** — default : noms pointés `journal.write`/`.search`
-     + préfixe `journal` RÉSERVÉ à la config (rejet si un outil de
-     contexte s'appelle `journal` ou commence par `journal.`/
-     `journal__`, mono ET multi) — miroir de HUB-MCP §5 (tranché
-     12/07) ; `tools/list` sert les natifs avec leur VRAI inputSchema
-     (cohérent décision hub n°2 : schémas pinnés pour ce qu'on
-     gouverne). Alt : noms hub `journal__write`/`__search` (les points
-     sont fragiles chez certains clients MCP).
-  5. **Search** — default : scan par le gateway de son propre store
-     (frontière de lisibilité : il tient les fichiers), filtré aux notes
-     seules (jamais xref/inference/refus), retour antéchronologique
-     `{id, at, title, tags, text}` ; la recherche est ELLE-MÊME
-     journalisée AVANT de rendre les résultats (entrée act
-     `journal`/`search`, méta claire `{query, tag, limit, hits}`) —
-     log-before-effect. Alt sur la trace : hash-only du query.
-     `log_read_as_agent` (kind ethos.read) exige une section-cible →
-     réservé à la v2 sections.
+- ✅ **Lot C2 — outils journal MCP : CLOS (2026-07-12 soir, 4ᵉ session
+  gw), les 5 décisions VALIDÉES par Mathieu, l'impl vit sur pass L.**
+  Chronologie : contrat v1 @wip (`5b9ff86`, hypothèse notes-gamma, core
+  sans écriture de section côté agent) → **pass L** (écritures déléguées
+  circle, session parallèle : `section_add/rewrite/delete_as_agent`,
+  `GrantSpec.verb`, `deliver_zone_line`, `log_delegated_mutation` —
+  revalidée depuis le disque et committée `939accb`, voir
+  `docs/2026-07-12-delegated-writes.md`) → contrat v2 sections
+  (`a39eb91`) → impl verte + dé-tag (`5c77753`, 11 scénarios). Les
+  décisions gravées :
+  1. **Périmètre** : write + search. Schémas fail-closed — write
+     `{text requis non-vide, title?, tags?[]}`, search `{query?, tag?,
+     limit? (défaut 20, max 100)}`, champs inconnus rejetés (parser ET
+     inputSchema `additionalProperties: false`).
+  2. **Cible** : UNE section scellée par écriture dans `circle:memory/`
+     (nom technique frais `n-<hex>`, title/tags humains CLAIRS à
+     l'index, corps scellé au repos) ; la trace = `section.add` délégué
+     à corps scellé. Le dossier `memory` est préparé par
+     `owner-init-journal` (`ensure_folder` + `publish`, le Given
+     pass-L) — un périmètre append fait pousser du contenu, jamais
+     l'arbre.
+  3. **Pen** : mandat mémoire DÉDIÉ (`append.circle#dir=<sid memory>`)
+     vers la pubkey agent, minté à `owner-init-journal` (toujours,
+     imprimé `memory_mandate`) + `deliver_zone_line` (moitié physique
+     §04.3) — un pen par usage, révocable indépendamment du stylo xref ;
+     `append` crée ET lit (lattice §04.2), jamais rewrite/delete (la
+     mémoire v1 est append-only). Journaux antérieurs sans pen → refus
+     fail-closed (précédent LLM) ; exercé par scénarios « legacy »
+     (state.json délesté du pen avant l'ouverture du bridge).
+  4. **Exposition** : noms pointés `journal.write`/`journal.search` ;
+     préfixe `journal` RÉSERVÉ dans TOUTE tool map (mono et multi :
+     `journal`, `journal.*`, `journal__*` → config rejetée), miroir de
+     HUB-MCP §5 ; `tools/list` sert les natifs avec leurs VRAIS schémas
+     (les outils de contexte gardent l'objet ouvert honnête jusqu'au
+     hub). Interception AVANT `resolve` dans `process_multi` — jamais
+     relayés ; refus §3bis.8 journal seul (aucun contexte identifiable).
+  5. **Search** : match sur l'index CLAIR seulement (name/title/tags,
+     sous-chaîne case-insensitive pour `query`, égalité exacte pour
+     `tag` ; la frontière de lisibilité — le gateway tient les
+     fichiers), antéchrono (ordre d'insertion de l'index inversé — les
+     sids ne sont PAS time-ordered, entropie pure) ; les corps sont
+     ouverts pour les SEULS hits rendus (≤ limit), chaque ouverture =
+     `read_section_as_agent` + UNE entrée `ethos.read`
+     (`log_read_as_agent`) ; une ouverture non journalisable fait
+     échouer TOUT le recall ; zéro match = zéro ouverture = zéro
+     entrée. Le full-text corps (ouvrir N notes = N lectures loggées)
+     reste un choix futur explicite.
+  Outillage owner ajouté : `journal_notes_view` (squelette clair) et
+  `owner_read_journal_note` (souveraineté §3bis.3 : l'owner relit la
+  mémoire de son agent avec ses clés dérivées — le step « the owner
+  reads back » du contrat). Bridge : `memory_chain` chargé de
+  `state.json` (champ additif `memory_mandate`, absent = refus).
+  NOTE pass-L à suivre côté gateway : `record_section_add/rewrite/
+  delete` (chaîne AGENT générique) restent la couture des écritures de
+  CONTEXTE futures — non utilisés par C2 (qui passe par le pen mémoire
+  dédié), non exercés par un scénario gateway encore.
 - ✅ **Surfaces C soldées (2026-07-12, 3ᵉ session gw).** e2e réseau llm :
   `tests/e2e_llm.rs` (`3460168`) — parcours binaire réel (keygen →
   provisioning `--token-budget 700` → `run` multi+`llm:`), faux provider
@@ -412,7 +420,21 @@ sondes) — suppression impossible depuis la VM, ignorer.
 
 Session du 2026-07-12 (3ᵉ gw) : mêmes consignes appliquées — commits
 `5b9ff86` (contrat C2 @wip), `e78f318` (owner surface `--token-budget`),
-`3460168` (e2e réseau llm), plus le commit de ce handoff, tous sur
+`3460168` (e2e réseau llm), `f87f072` (handoff), tous sur
 `feat/obligations`, staging sélectif, fichiers 100 % gateway/docs.
-`docs/HUB-MCP.md` et `docs/EXPLORATION-DESKTOP-GATEWAY.md` restent
-UNTRACKED (à Mathieu de décider s'ils se committent).
+
+Session du 2026-07-12 soir (4ᵉ gw) : l'arbre est arrivé SALE — la pass L
+(session sandbox parallèle) avait déposé ses 10 fichiers sur le disque
+sans commit (bridge coupé chez elle, voir
+`docs/HANDOFF-2026-07-12-pass-L.md`). Protocole appliqué : overlay
+HEAD+sale rapatrié dans le cloud, workspace revalidé (203/826 bundle,
+tout vert), 2 hunks fmt manquants appliqués, puis **commit dédié pass L
+`939accb`** (11 fichiers, décision Mathieu Q1) AVANT tout travail
+gateway. Ensuite : `a39eb91` (contrat C2 v2 sections), `5c77753` (impl
+C2 verte, 8 fichiers gateway), plus le commit de ce handoff. Leçon : une
+session qui livre du code par le chat sans bridge doit le signaler en
+tête de SON handoff (fait ici) — et la session suivante REVALIDE depuis
+les fichiers du disque avant de committer, jamais sur la foi du sandbox
+d'origine. `docs/HUB-MCP.md`, `docs/EXPLORATION-DESKTOP-GATEWAY.md` et
+`docs/STANDARDS-COMPAT.md` (apparu en cours de session) restent
+UNTRACKED — à Mathieu de décider s'ils se committent.
