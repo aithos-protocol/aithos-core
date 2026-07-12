@@ -282,7 +282,17 @@ async fn provisioned_two_context_journey_over_real_sockets() {
         .iter()
         .filter_map(|t| t["name"].as_str())
         .collect();
-    assert_eq!(names, vec!["brand.read", "brand.update", "figma.read"]);
+    assert_eq!(
+        names,
+        vec![
+            "brand.read",
+            "brand.update",
+            "figma.read",
+            "journal.write",
+            "journal.search"
+        ],
+        "context tools first, then the native journal tools (lot C2)"
+    );
 
     // 7. Each read is routed to ITS context's upstream — observable on
     //    the wire by each upstream's unique answer.

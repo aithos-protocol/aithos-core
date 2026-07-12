@@ -294,6 +294,12 @@ fn validate_store(store: &StoreConfig, at: &str) -> Result<()> {
     Ok(())
 }
 
+/// The tool-name prefix reserved for the gateway's own journal tools
+/// (lot C2, mirrors HUB-MCP §5): no tool map may name a tool `journal`,
+/// `journal.*` or `journal__*` — the name belongs to the platform, in
+/// the mono shape too.
+const RESERVED_PREFIX: &str = "journal";
+
 /// Register a tool map into the shared flattened-action namespace.
 /// Mandate actions flatten dots to underscores; two tools that flatten
 /// identically would silently share one grant (and, across contexts, one
@@ -308,6 +314,15 @@ fn validate_tools(
             return Err(GatewayError::ConfigRejected(
                 "empty tool name in `tools`".into(),
             ));
+        }
+        if tool == RESERVED_PREFIX
+            || tool.starts_with(&format!("{RESERVED_PREFIX}."))
+            || tool.starts_with(&format!("{RESERVED_PREFIX}__"))
+        {
+            return Err(GatewayError::ConfigRejected(format!(
+                "tool `{tool}`: the `{RESERVED_PREFIX}` prefix is reserved for the \
+                 gateway's native journal tools"
+            )));
         }
         let shown = if prefix.is_empty() {
             tool.clone()
@@ -469,6 +484,36 @@ journal:
             GatewayConfig::from_yaml(&text),
             Err(GatewayError::ConfigRejected(_))
         ));
+    }
+
+    #[test]
+    fn reserved_journal_prefix_is_rejected_in_context_maps() {
+        for reserved in ["journal.export: read", "journal: read", "journal__x: read"] {
+            let text = MULTI.replace("figma.read: read", reserved);
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&text),
+                    Err(GatewayError::ConfigRejected(m)) if m.contains("reserved")
+                ),
+                "must reserve: {reserved}"
+            );
+        }
+    }
+
+    #[test]
+    fn reserved_journal_prefix_is_rejected_in_the_mono_map_too() {
+        let text = format!("{GOOD}  journal.read: read\n");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("reserved")
+        ));
+    }
+
+    #[test]
+    fn a_journal_like_name_outside_the_prefix_family_is_fine() {
+        // `journaling.read` shares letters, not the reserved namespace.
+        let text = MULTI.replace("figma.read: read", "journaling.read: read");
+        assert!(GatewayConfig::from_yaml(&text).is_ok());
     }
 
     #[test]

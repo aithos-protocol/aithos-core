@@ -150,13 +150,23 @@ fn owner_init_journal_writes_certs_to_the_granted_pubkeys_and_logs_the_grants() 
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     let agent_mandate = line_value(&stdout, "agent_mandate: ");
     let gateway_mandate = line_value(&stdout, "gateway_mandate: ");
+    let memory_mandate = line_value(&stdout, "memory_mandate: ");
 
     // The certs are on disk and name EXACTLY the keys the owner granted
     // to — the runner's seeds never travelled, only these pubkeys did.
+    // The memory pen (lot C2) targets the SAME agent key with its own
+    // certificate: append on the circle shelf, nothing wider.
     assert_eq!(cert_grantee(&store, &agent_mandate), agent_pub);
     assert_eq!(cert_grantee(&store, &gateway_mandate), gateway_pub);
+    assert_eq!(cert_grantee(&store, &memory_mandate), agent_pub);
+    let pen = cert_json(&store, &memory_mandate);
+    let perimeter = pen["perimeter"][0].as_str().expect("a perimeter entry");
+    assert!(
+        perimeter.starts_with("append.circle#dir="),
+        "the memory pen is append on the circle shelf, got `{perimeter}`"
+    );
 
-    // Both grants are logged (issuance is never silent) and name their
+    // Every grant is logged (issuance is never silent) and names its
     // mandate; the journal grants no auditor (no audit grant to log).
     let grants: Vec<_> = gamma_kinds(&store)
         .into_iter()
@@ -164,12 +174,13 @@ fn owner_init_journal_writes_certs_to_the_granted_pubkeys_and_logs_the_grants() 
         .collect();
     assert_eq!(
         grants.len(),
-        2,
-        "two logged grants: agent pen + gateway pen"
+        3,
+        "three logged grants: xref pen + gateway pen + memory pen"
     );
     let targets: Vec<_> = grants.iter().filter_map(|(_, t)| t.as_deref()).collect();
     assert!(targets.contains(&agent_mandate.as_str()));
     assert!(targets.contains(&gateway_mandate.as_str()));
+    assert!(targets.contains(&memory_mandate.as_str()));
 
     // No auditor on a journal, and no seed anywhere on this console.
     assert!(!stdout.contains("auditor_seed_hex"));
@@ -315,13 +326,17 @@ fn owner_init_journal_with_token_budget_mints_the_inference_pen() {
         "the xref pen stays budget-free"
     );
 
-    // Three logged grants: xref pen + gateway pen + inference pen — the
-    // pen's issuance is never silent.
+    // Four logged grants: xref pen + gateway pen + memory pen (lot C2)
+    // + inference pen — no issuance is ever silent.
     let grants: Vec<_> = gamma_kinds(&store)
         .into_iter()
         .filter(|(k, _)| k == "grant")
         .collect();
-    assert_eq!(grants.len(), 3, "agent + gateway + inference grants logged");
+    assert_eq!(
+        grants.len(),
+        4,
+        "agent + gateway + memory + inference grants logged"
+    );
     let targets: Vec<_> = grants.iter().filter_map(|(_, t)| t.as_deref()).collect();
     assert!(targets.contains(&inference_mandate.as_str()));
 

@@ -32,7 +32,8 @@ use aithos_bundle::log::{ActionSpec, InferenceSpec, LogFilter};
 use aithos_bundle::Store;
 use aithos_core::did::DidDocument;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
-use aithos_core::mandate::{verify_chain, GammaQuery, Mandate, MandateSpec, PerimeterEntry};
+use aithos_core::mandate::{verify_chain, GammaQuery, Mandate, MandateSpec, PerimeterEntry, Verb};
+use aithos_core::path::Zone;
 
 use crate::config::GatewayConfig;
 use crate::keyholder::Keyholder;
@@ -43,9 +44,15 @@ use crate::{GatewayError, Result};
 /// Entropy seam, re-exported so surfaces (binary, tests) never import
 /// the bundle directly: the bridge is the only door to the core.
 pub use aithos_bundle::entropy::{EntropySource, OsEntropy, SeqEntropy};
+/// Raw store trait, re-exported through the same single door — what
+/// owner/test-side surgery uses to read or doctor a store it holds.
+pub use aithos_bundle::Store as RawStore;
 
 /// Where the bridge keeps its non-secret runtime state in the store.
-const STATE_PATH: &str = "gateway/state.json";
+pub const STATE_PATH: &str = "gateway/state.json";
+/// The journal's memory shelf: the circle folder `owner-init-journal`
+/// prepares and the memory pen writes into (lot C2).
+pub const MEMORY_FOLDER: &str = "memory";
 /// The one budget profile id the gateway cites on inference entries —
 /// the same id `owner-init-journal --token-budget` writes into the
 /// inference mandate (v1: one profile, one tap).
@@ -80,6 +87,11 @@ struct BridgeState {
     /// contexts and on journals provisioned without a token budget.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     inference_mandate: Option<String>,
+    /// The memory pen (journals only, lot C2): the append mandate on
+    /// `circle:memory/` — absent on contexts and on journals provisioned
+    /// before this lot (their journal tools refuse fail-closed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    memory_mandate: Option<String>,
 }
 
 /// What onboarding hands back to the operator. Secrets appear ONCE here
@@ -134,6 +146,19 @@ pub struct EntryView {
     pub payload: Option<serde_json::Value>,
 }
 
+/// A clear, serialisable view of one memory note — what the journal
+/// tools hand back. `text` rides on opened hits only: the index
+/// skeleton (name, title, tags) is clear, the body stays sealed until
+/// a covered read opens it.
+#[derive(Debug, Clone, Serialize)]
+pub struct NoteView {
+    pub name: String,
+    pub title: String,
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
 /// Live bridge: the ethos, the mandate chains and the keyholder,
 /// assembled and ready to authorise, log and export. The keyholder is
 /// shared (`Arc`): one runner identity signs into N ethos at once
@@ -146,6 +171,7 @@ pub struct Bridge {
     gateway_chain: Vec<Mandate>,
     auditor_mandate: Option<Mandate>,
     inference_chain: Option<Vec<Mandate>>,
+    memory_chain: Option<Vec<Mandate>>,
     entropy: Box<dyn EntropySource + Send>,
 }
 
@@ -244,6 +270,7 @@ impl Bridge {
             gateway_mandate: gateway_mandate.id.clone(),
             auditor_mandate: Some(auditor_mandate.id.clone()),
             inference_mandate: None,
+            memory_mandate: None,
         };
         bundle
             .store
@@ -269,6 +296,7 @@ impl Bridge {
             gateway_chain: vec![gateway_mandate],
             auditor_mandate: Some(auditor_mandate),
             inference_chain: None,
+            memory_chain: None,
             entropy,
         };
         Ok((bridge, outcome))
@@ -296,6 +324,10 @@ impl Bridge {
             Some(id) => Some(vec![read_json(&bundle, &cert_path(id))?]),
             None => None,
         };
+        let memory_chain = match &state.memory_mandate {
+            Some(id) => Some(vec![read_json(&bundle, &cert_path(id))?]),
+            None => None,
+        };
         Ok(Self {
             bundle,
             keyholder,
@@ -303,6 +335,7 @@ impl Bridge {
             gateway_chain: vec![gateway],
             auditor_mandate,
             inference_chain,
+            memory_chain,
             entropy,
         })
     }
@@ -588,6 +621,106 @@ impl Bridge {
             .map_err(write_denied)
     }
 
+    // ------------------------------------------------ journal memory (C2)
+
+    /// The memory pen, fail-closed: journals provisioned before lot C2
+    /// carry no pen, and every journal tool refuses — the LLM-tap
+    /// precedent (no pen, no tool).
+    fn memory_pen(&self, op: &str) -> Result<Vec<Mandate>> {
+        self.memory_chain
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| GatewayError::MandateDenied {
+                op: op.to_owned(),
+                reason: "no memory pen granted on this journal".into(),
+            })
+    }
+
+    /// Consolidate one memory note: ONE fresh sealed section in
+    /// `circle:memory/` under the memory pen (decided 2026-07-12 — a
+    /// note is a section, never a gamma payload). The bundle verifies
+    /// chain, window, revocations and the append verb at write time and
+    /// logs the delegated `section.add` (sealed body, §07.2); the
+    /// technical name is unique, the human label rides in title and
+    /// tags, clear in the zone index.
+    pub fn journal_write(
+        &mut self,
+        title: &str,
+        tags: &[String],
+        text: &str,
+        now: &str,
+    ) -> Result<NoteView> {
+        let chain = self.memory_pen("journal.write")?;
+        let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+        let name = format!("n-{}", hex::encode(self.entropy.as_mut().e16()));
+        self.bundle
+            .section_add_as_agent(
+                &chain,
+                &agent_sk,
+                &aithos_bundle::bundle::SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: MEMORY_FOLDER,
+                    name: &name,
+                    title,
+                    tags,
+                    body: text,
+                    now,
+                },
+                self.entropy.as_mut(),
+            )
+            .map_err(write_denied)?;
+        Ok(NoteView {
+            name,
+            title: title.to_owned(),
+            tags: tags.to_vec(),
+            text: None,
+        })
+    }
+
+    /// Recall memory notes. The match runs on the CLEAR zone index only
+    /// (name, title, tags — the readability frontier: the gateway holds
+    /// the files), newest first; the sealed bodies are opened for the
+    /// returned hits ONLY, under the same pen (append implies read,
+    /// §04.2), and EVERY opened body is one journalized `ethos.read`
+    /// (§07.9.2). An open that cannot be journalized fails the whole
+    /// recall — no unlogged read ever leaves the gateway.
+    pub fn journal_search(
+        &mut self,
+        query: Option<&str>,
+        tag: Option<&str>,
+        limit: usize,
+        now: &str,
+    ) -> Result<Vec<NoteView>> {
+        let chain = self.memory_pen("journal.search")?;
+        let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+        let matches = memory_rows(&self.bundle, query, tag)?;
+        let mut hits = Vec::new();
+        for row in matches.into_iter().rev().take(limit) {
+            let path = format!("{MEMORY_FOLDER}/{}", row.name);
+            let text = self
+                .bundle
+                .read_section_as_agent(&chain, &agent_sk, Zone::Circle, &path, now)
+                .map_err(read_denied)?;
+            self.bundle
+                .log_read_as_agent(
+                    &chain,
+                    &agent_sk,
+                    Zone::Circle,
+                    &path,
+                    now,
+                    self.entropy.as_mut(),
+                )
+                .map_err(|e| GatewayError::LogAppendRefused(e.to_string()))?;
+            hits.push(NoteView {
+                name: row.name,
+                title: row.title,
+                tags: row.tags,
+                text: Some(text),
+            });
+        }
+        Ok(hits)
+    }
+
     // ------------------------------------------------------------- audit
 
     /// Run the auditor's scoped query with the auditor's own key and
@@ -793,6 +926,30 @@ impl Runner {
             .record_inference(provider, model, tokens_in, tokens_out, now)
     }
 
+    /// Consolidate one memory note into the agent's journal (lot C2).
+    /// See [`Bridge::journal_write`].
+    pub fn journal_write(
+        &mut self,
+        title: &str,
+        tags: &[String],
+        text: &str,
+        now: &str,
+    ) -> Result<NoteView> {
+        self.journal.journal_write(title, tags, text, now)
+    }
+
+    /// Recall memory notes from the agent's journal (lot C2). See
+    /// [`Bridge::journal_search`].
+    pub fn journal_search(
+        &mut self,
+        query: Option<&str>,
+        tag: Option<&str>,
+        limit: usize,
+        now: &str,
+    ) -> Result<Vec<NoteView>> {
+        self.journal.journal_search(query, tag, limit, now)
+    }
+
     /// Refusal routing, decided §3bis.8: the journal gets EVERY refusal
     /// (it is the agent's story); the context gets it too when the tool
     /// maps to one (its auditor must see attempts against its
@@ -850,15 +1007,22 @@ pub struct EquipOutcome {
     /// The budgeted inference pen (journals provisioned with a token
     /// budget only, Phase C).
     pub inference_mandate: Option<String>,
+    /// The memory pen (journals only, lot C2): append on the journal's
+    /// `circle:memory/` shelf.
+    pub memory_mandate: Option<String>,
 }
 
 /// Create the agent's journal: an isolated Ethos owned by the enterprise.
 /// The agent's key gets the xref pen (`act.x.xref.*`), the gateway its
 /// governance pen (`act.x.gateway.*`); both grants are logged — that IS
-/// the journal's « mandate received » record. With `token_budget`, the
-/// agent's key ALSO gets the budgeted inference pen (Phase C): a
-/// separate mandate carrying `budgets: [{id: "llm", token_budget}]` —
-/// separate on purpose, so the xref pen never has to cite a budget.
+/// the journal's « mandate received » record. The agent's key ALSO gets
+/// the MEMORY pen (lot C2): a separate `append` mandate on the
+/// `circle:memory/` shelf this function prepares (folder + publish,
+/// mirroring the pass-L given) — one pen per usage, independently
+/// revocable. With `token_budget`, a budgeted inference pen joins them
+/// (Phase C): a separate mandate carrying `budgets: [{id: "llm",
+/// token_budget}]` — separate on purpose, so the xref pen never has to
+/// cite a budget.
 #[allow(clippy::too_many_arguments)]
 pub fn owner_init_journal(
     master: &[u8; 32],
@@ -873,8 +1037,15 @@ pub fn owner_init_journal(
 ) -> Result<EquipOutcome> {
     let owner = derived_owner(master, "journal", agent_label);
     let succession = derived_succession(master, "journal", agent_label);
-    let bundle =
+    let mut bundle =
         Bundle::init(store, &owner, &succession.verifying_key(), ent, now).map_err(bridge_err)?;
+    // The memory shelf: an owner-prepared circle folder the memory pen
+    // will write into. An append perimeter grows content, never the
+    // tree shape — the folder must pre-exist.
+    bundle
+        .ensure_folder(Zone::Circle, MEMORY_FOLDER, &owner, ent)
+        .map_err(bridge_err)?;
+    bundle.publish(&owner, now).map_err(bridge_err)?;
     equip(
         bundle,
         &owner,
@@ -883,6 +1054,7 @@ pub fn owner_init_journal(
         &["act.x.xref.*".to_owned()],
         false,
         token_budget,
+        Some(MEMORY_FOLDER),
         window,
         now,
         ent,
@@ -930,6 +1102,7 @@ pub fn owner_grant_context(
         &read_ops,
         true,
         None,
+        None,
         window,
         now,
         ent,
@@ -947,6 +1120,7 @@ fn equip(
     agent_ops: &[String],
     with_auditor: bool,
     token_budget: Option<u64>,
+    memory_folder: Option<&str>,
     window: &MandateWindow,
     now: &str,
     ent: &mut dyn EntropySource,
@@ -1014,11 +1188,48 @@ fn equip(
         None => None,
     };
 
+    // The memory pen (lot C2): the append mandate on the journal's
+    // memory shelf, next to — never inside — the xref pen. The
+    // certificate half is the Ethos perimeter entry (§04.2 lattice:
+    // append creates and reads, never rewrites nor deletes); the
+    // physical half is the shelf's header line, delivered to the SAME
+    // agent key (§04.3 — the line is the pen).
+    let memory_mandate = match memory_folder {
+        Some(folder) => {
+            bundle
+                .deliver_zone_line(owner, &agent_pub, Zone::Circle, folder, None, ent)
+                .map_err(bridge_err)?;
+            let dir = bundle
+                .resolve_folder(Zone::Circle, folder)
+                .map_err(bridge_err)?;
+            Some(mint_entries(
+                owner,
+                &bundle,
+                ent,
+                "memory",
+                &agent_pub,
+                vec![PerimeterEntry::Ethos {
+                    verb: Verb::Append,
+                    zone: Zone::Circle,
+                    dir,
+                    tag: None,
+                }],
+                no_constraints(),
+                window,
+                now,
+            )?)
+        }
+        None => None,
+    };
+
     let mut all = vec![&agent_mandate, &gateway_mandate];
     if let Some(m) = &auditor_mandate {
         all.push(m);
     }
     if let Some(m) = &inference_mandate {
+        all.push(m);
+    }
+    if let Some(m) = &memory_mandate {
         all.push(m);
     }
     for m in all {
@@ -1038,6 +1249,7 @@ fn equip(
         gateway_mandate: gateway_mandate.id.clone(),
         auditor_mandate: auditor_mandate.as_ref().map(|m| m.id.clone()),
         inference_mandate: inference_mandate.as_ref().map(|m| m.id.clone()),
+        memory_mandate: memory_mandate.as_ref().map(|m| m.id.clone()),
     };
     bundle
         .store
@@ -1054,6 +1266,7 @@ fn equip(
         auditor_mandate: auditor_mandate.map(|m| m.id),
         auditor_seed_hex,
         inference_mandate: inference_mandate.map(|m| m.id),
+        memory_mandate: memory_mandate.map(|m| m.id),
     })
 }
 
@@ -1072,6 +1285,38 @@ pub fn gamma_view(store: GatewayStore) -> Result<Vec<EntryView>> {
         .iter()
         .map(view)
         .collect())
+}
+
+/// Owner/ops-side view of a journal's memory shelf: the CLEAR index
+/// skeleton (names, titles, tags — never a body), oldest first. What an
+/// operator or test lists before opening a note with the owner keys.
+pub fn journal_notes_view(store: GatewayStore) -> Result<Vec<NoteView>> {
+    let bundle = Bundle::open(store).map_err(bridge_err)?;
+    Ok(memory_rows(&bundle, None, None)?
+        .into_iter()
+        .map(|r| NoteView {
+            name: r.name,
+            title: r.title,
+            tags: r.tags,
+            text: None,
+        })
+        .collect())
+}
+
+/// Owner-side read of one memory note body (sovereignty §3bis.3: the
+/// journal is enterprise-owned — the owner audits its agent's memory
+/// with its own derived keys, no pen involved).
+pub fn owner_read_journal_note(
+    master: &[u8; 32],
+    agent_label: &str,
+    store: GatewayStore,
+    name: &str,
+) -> Result<String> {
+    let owner = derived_owner(master, "journal", agent_label);
+    let bundle = Bundle::open(store).map_err(bridge_err)?;
+    bundle
+        .read_section(Zone::Circle, &format!("{MEMORY_FOLDER}/{name}"), &owner)
+        .map_err(bridge_err)
 }
 
 /// The grantee public key (multibase) named by a stored certificate.
@@ -1109,6 +1354,34 @@ fn mint(
         .iter()
         .map(|op| PerimeterEntry::parse(op).map_err(bridge_err))
         .collect::<Result<Vec<_>>>()?;
+    mint_entries(
+        owner,
+        bundle,
+        ent,
+        label,
+        grantee_pub,
+        perimeter,
+        constraints,
+        window,
+        now,
+    )
+}
+
+/// Mint one root mandate from pre-built perimeter entries — what the
+/// memory pen uses (its Ethos entry carries resolved folder sids, not a
+/// parseable string).
+#[allow(clippy::too_many_arguments)]
+fn mint_entries(
+    owner: &OwnerKeys,
+    bundle: &Bundle<GatewayStore>,
+    ent: &mut dyn EntropySource,
+    label: &str,
+    grantee_pub: &ed25519_dalek::VerifyingKey,
+    perimeter: Vec<PerimeterEntry>,
+    constraints: serde_json::Value,
+    window: &MandateWindow,
+    now: &str,
+) -> Result<Mandate> {
     let id = format!(
         "mandate_{}",
         aithos_core::ids::Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
@@ -1167,6 +1440,77 @@ fn read_json<T: serde::de::DeserializeOwned>(
 
 fn bridge_err(e: impl std::fmt::Display) -> GatewayError {
     GatewayError::BridgeFailed(e.to_string())
+}
+
+/// One clear index row of the memory shelf (skeleton data — no body).
+struct MemoryRow {
+    name: String,
+    title: String,
+    tags: Vec<String>,
+}
+
+/// The memory shelf's clear index rows, oldest first, optionally
+/// filtered by a case-insensitive `query` over name/title/tags and an
+/// exact `tag`. This reads the SKELETON the readability frontier
+/// already grants whoever holds the files — no body is touched here.
+fn memory_rows(
+    bundle: &Bundle<GatewayStore>,
+    query: Option<&str>,
+    tag: Option<&str>,
+) -> Result<Vec<MemoryRow>> {
+    let folders = bundle
+        .resolve_folder(Zone::Circle, MEMORY_FOLDER)
+        .map_err(bridge_err)?;
+    let memory_sid = folders.last().map(ToString::to_string);
+    let index: serde_json::Value = read_json(bundle, "e/circle/index.json")?;
+    let needle = query.map(str::to_lowercase);
+    let mut rows = Vec::new();
+    for row in index["sections"].as_array().into_iter().flatten() {
+        if row["folder_sid"].as_str().map(str::to_owned) != memory_sid {
+            continue;
+        }
+        let name = row["name"].as_str().unwrap_or_default().to_owned();
+        let title = row["title"].as_str().unwrap_or_default().to_owned();
+        let tags: Vec<String> = row["tags"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|t| t.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(q) = &needle {
+            let hay = format!(
+                "{}\u{0}{}\u{0}{}",
+                name.to_lowercase(),
+                title.to_lowercase(),
+                tags.join("\u{0}").to_lowercase()
+            );
+            if !hay.contains(q.as_str()) {
+                continue;
+            }
+        }
+        if let Some(t) = tag {
+            if !tags.iter().any(|x| x == t) {
+                continue;
+            }
+        }
+        rows.push(MemoryRow { name, title, tags });
+    }
+    Ok(rows)
+}
+
+/// Map a refused delegated read to the caller-facing verdict: a mandate
+/// verdict (perimeter, window, revocation) is a denial; anything else
+/// is a bridge failure (never silently empty).
+fn read_denied(e: aithos_core::error::Error) -> GatewayError {
+    match e {
+        aithos_core::error::Error::InvalidMandate(reason) => GatewayError::MandateDenied {
+            op: "journal.search".to_owned(),
+            reason,
+        },
+        other => GatewayError::BridgeFailed(other.to_string()),
+    }
 }
 
 /// Map a refused delegated write to the caller-facing verdict: a mandate

@@ -31,7 +31,6 @@ Feature: Journal tools — the agent consolidates its own memory
 
   Rule: The owner grants the memory pen at provisioning
 
-    @wip
     Scenario: Provisioning mints a dedicated memory pen towards the agent key
       Given an enterprise master seed
       When the owner creates a journal for the agent's public key
@@ -40,7 +39,6 @@ Feature: Journal tools — the agent consolidates its own memory
 
   Rule: journal.write consolidates memory as sealed sections, never relayed
 
-    @wip
     Scenario: A note lands as one sealed section and reaches no upstream
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       When the agent writes a note titled "standup" with text "shipped the brand fetch" and tag "daily"
@@ -50,7 +48,6 @@ Feature: Journal tools — the agent consolidates its own memory
       And the answer names the recorded note
       And no context gamma gains any entry
 
-    @wip
     Scenario: A note with an unknown argument field is refused fail-closed
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       When the agent writes a note carrying an unknown argument field
@@ -58,7 +55,6 @@ Feature: Journal tools — the agent consolidates its own memory
       And the journal gains one refusal entry
       And the journal gamma logs no "section.add"
 
-    @wip
     Scenario: A note without text is refused fail-closed
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       When the agent writes a note with an empty text
@@ -66,7 +62,6 @@ Feature: Journal tools — the agent consolidates its own memory
       And the journal gains one refusal entry
       And the journal gamma logs no "section.add"
 
-    @wip
     Scenario: A journal provisioned without the pen refuses writes
       Given a runner whose journal predates the memory pen
       When the agent writes a note titled "standup" with text "shipped the brand fetch" and tag "daily"
@@ -76,7 +71,6 @@ Feature: Journal tools — the agent consolidates its own memory
 
   Rule: journal.search recalls from the clear index; every opened body is a logged read
 
-    @wip
     Scenario: A title match returns the note, and only that body is opened
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       And the journal holds a note titled "brand palette approved" with text "use the ochre set"
@@ -86,7 +80,6 @@ Feature: Journal tools — the agent consolidates its own memory
       And its text "use the ochre set" comes back with it
       And the journal gamma logs exactly one "ethos.read"
 
-    @wip
     Scenario: A tag filter narrows the recall
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       And the journal holds a note titled "alpha" tagged "brand"
@@ -95,7 +88,6 @@ Feature: Journal tools — the agent consolidates its own memory
       Then the answer carries the note titled "beta" only
       And the journal gamma logs exactly one "ethos.read"
 
-    @wip
     Scenario: A search that matches nothing opens nothing and logs nothing
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       And the journal holds a note titled "alpha" tagged "brand"
@@ -103,7 +95,6 @@ Feature: Journal tools — the agent consolidates its own memory
       Then the answer carries no note
       And the journal gamma logs no "ethos.read"
 
-    @wip
     Scenario: A journal provisioned without the pen refuses searches too
       Given a runner whose journal predates the memory pen
       When the agent searches the journal for "anything"
@@ -112,14 +103,12 @@ Feature: Journal tools — the agent consolidates its own memory
 
   Rule: The native names are reserved and listed with their real schemas
 
-    @wip
     Scenario: tools/list serves the native journal tools with their schemas
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       When the agent lists the tools
       Then the list includes "journal.write" and "journal.search" with their argument schemas
       And the context tools keep their open schemas
 
-    @wip
     Scenario: A context tool under the reserved prefix is rejected at config time
       When a config maps the context tool "journal.export"
       Then the config is rejected naming the reserved prefix

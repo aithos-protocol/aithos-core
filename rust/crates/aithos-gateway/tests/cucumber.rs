@@ -22,14 +22,16 @@ use tokio::sync::Mutex;
 use aithos_gateway::config::{GatewayConfig, ToolAccess, ToolMap};
 use aithos_gateway::core_bridge::{
     agent_pub_multibase, cert_constraints, cert_grantee_pub, gamma_view, gateway_pub_multibase,
-    owner_grant_context, owner_init_context, owner_init_journal, Bridge, ContextRuntime,
-    EntropySource, EntryView, EquipOutcome, MandateWindow, OnboardOutcome, Runner, SeqEntropy,
+    journal_notes_view, owner_grant_context, owner_init_context, owner_init_journal,
+    owner_read_journal_note, Bridge, ContextRuntime, EntropySource, EntryView, EquipOutcome,
+    MandateWindow, OnboardOutcome, RawStore, Runner, SeqEntropy, STATE_PATH,
 };
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
 use aithos_gateway::proxy_mcp::{
-    process, process_multi, McpProxy, McpRouter, Upstream, POLICY_DENIED_CODE,
+    process, process_multi, McpProxy, McpRouter, Upstream, JOURNAL_SEARCH, JOURNAL_WRITE,
+    POLICY_DENIED_CODE,
 };
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::{GatewayError, Result};
@@ -174,6 +176,8 @@ struct GatewayWorld {
     llm: Option<Arc<LlmProxy<FakeLlm>>>,
     llm_provider: Option<FakeLlm>,
     llm_status: Option<axum::http::StatusCode>,
+    /// Journal tools (lot C2): the parse verdict of a config under test.
+    config_error: Option<String>,
 }
 
 impl GatewayWorld {
@@ -204,6 +208,7 @@ impl GatewayWorld {
             llm: None,
             llm_provider: None,
             llm_status: None,
+            config_error: None,
         }
     }
 
@@ -758,6 +763,19 @@ fn payload_str<'a>(e: &'a EntryView, key: &str) -> Option<&'a str> {
 
 #[given(expr = "a runner provisioned with contexts {string} and {string}")]
 async fn runner_provisioned(w: &mut GatewayWorld, a: String, b: String) {
+    provision_runner(w, a, b, false).await;
+}
+
+#[given("a runner whose journal predates the memory pen")]
+async fn legacy_journal_runner(w: &mut GatewayWorld) {
+    // Provision the modern way, then strip the memory pen from the
+    // persisted runtime state BEFORE the journal bridge opens —
+    // byte-for-byte what a pre-C2 journal hands a fresh runner.
+    provision_runner(w, "company-brand".into(), "ui-designer".into(), true).await;
+}
+
+/// The provisioning walk shared by the modern and the legacy runners.
+async fn provision_runner(w: &mut GatewayWorld, a: String, b: String, strip_memory_pen: bool) {
     let master = w.master();
     let (agent_pub, gateway_pub) = w.pubs();
     let window = GatewayWorld::window();
@@ -824,6 +842,21 @@ async fn runner_provisioned(w: &mut GatewayWorld, a: String, b: String) {
         &mut owner_ent,
     )
     .expect("journal created");
+    if strip_memory_pen {
+        let mut store = journal_store.clone();
+        let bytes = store
+            .get(STATE_PATH)
+            .expect("state readable")
+            .expect("state present");
+        let mut state: Value = serde_json::from_slice(&bytes).expect("state parses");
+        state
+            .as_object_mut()
+            .expect("state object")
+            .remove("memory_mandate");
+        store
+            .put(STATE_PATH, &serde_json::to_vec_pretty(&state).unwrap())
+            .expect("state written");
+    }
     let journal = Bridge::open(
         journal_store.clone(),
         keyholder,
@@ -1238,6 +1271,317 @@ async fn journal_gains_no_inference(w: &mut GatewayWorld) {
             .count()
             == 0,
         "no inference may be metered for a withheld completion"
+    );
+}
+
+// ------------------------------------------------ journal tools (lot C2)
+// Steps for gateway-journal.feature — the agent's memory consolidation:
+// sealed sections under the memory pen, recalls journalized read by read.
+
+impl GatewayWorld {
+    /// Drive one native journal tool through the multi-context router —
+    /// the same black-box door every agent call takes.
+    async fn journal_call(&mut self, tool: &str, args: Value) {
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": { "name": tool, "arguments": args }
+        });
+        self.last_tool = tool.to_owned();
+        let router = self.router.as_ref().expect("a provisioned router");
+        self.last_response = Some(process_multi(router, body).await);
+    }
+
+    /// How many journal gamma entries carry this kind.
+    fn journal_kind_count(&self, kind: &str) -> usize {
+        self.journal_gamma()
+            .iter()
+            .filter(|e| e.kind == kind)
+            .count()
+    }
+
+    /// The JSON text content of the last tools/call answer.
+    fn last_result_text(&self) -> String {
+        self.last_response
+            .as_ref()
+            .and_then(|r| r.pointer("/result/content/0/text"))
+            .and_then(Value::as_str)
+            .expect("a result with text content")
+            .to_owned()
+    }
+
+    /// The tool entries of the last tools/list answer.
+    fn listed_tools(&self) -> Vec<Value> {
+        self.last_response
+            .as_ref()
+            .and_then(|r| r.pointer("/result/tools"))
+            .and_then(Value::as_array)
+            .expect("tools listed")
+            .clone()
+    }
+}
+
+#[then("the agent holds a memory pen separate from the xref pen")]
+async fn agent_holds_memory_pen(w: &mut GatewayWorld) {
+    let outcome = w.journal_outcome.as_ref().expect("journal outcome");
+    let memory = outcome.memory_mandate.as_ref().expect("a memory pen");
+    assert_ne!(
+        memory, &outcome.agent_mandate,
+        "one pen per usage — never the xref mandate widened"
+    );
+    let store = w.journal_store.clone().expect("journal store");
+    let grantee = cert_grantee_pub(store, memory).expect("cert readable");
+    assert_eq!(Some(grantee), w.agent_pub, "the pen names the agent key");
+}
+
+#[then("the journal gamma records that the memory pen was received")]
+async fn journal_records_memory_pen(w: &mut GatewayWorld) {
+    let outcome = w.journal_outcome.as_ref().expect("journal outcome");
+    let memory = outcome.memory_mandate.as_ref().expect("a memory pen");
+    let entries = gamma_view(w.journal_store.clone().expect("store")).expect("gamma readable");
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.kind == "grant" && e.target.as_deref() == Some(memory.as_str())),
+        "the memory grant is on the journal record"
+    );
+}
+
+#[when(expr = "the agent writes a note titled {string} with text {string} and tag {string}")]
+async fn agent_writes_note(w: &mut GatewayWorld, title: String, text: String, tag: String) {
+    w.journal_call(
+        JOURNAL_WRITE,
+        json!({ "title": title, "text": text, "tags": [tag] }),
+    )
+    .await;
+}
+
+#[when("the agent writes a note carrying an unknown argument field")]
+async fn agent_writes_unknown_field(w: &mut GatewayWorld) {
+    w.journal_call(JOURNAL_WRITE, json!({ "text": "x", "surprise": true }))
+        .await;
+}
+
+#[when("the agent writes a note with an empty text")]
+async fn agent_writes_empty_text(w: &mut GatewayWorld) {
+    w.journal_call(JOURNAL_WRITE, json!({ "title": "t", "text": "  " }))
+        .await;
+}
+
+#[then(expr = "the owner reads back one memory note titled {string} with text {string}")]
+async fn owner_reads_back_note(w: &mut GatewayWorld, title: String, text: String) {
+    let master = w.master();
+    let store = w.journal_store.clone().expect("journal store");
+    let notes = journal_notes_view(store.clone()).expect("clear index readable");
+    let hits: Vec<_> = notes.iter().filter(|n| n.title == title).collect();
+    assert_eq!(hits.len(), 1, "one note titled `{title}` on the shelf");
+    let body = owner_read_journal_note(&master, "leo", store, &hits[0].name)
+        .expect("the owner opens its agent's memory");
+    assert_eq!(body, text, "the sealed body reads back owner-side");
+}
+
+#[then(expr = "the journal gamma logs one delegated {string} with a sealed body")]
+async fn journal_logs_one_sealed_mutation(w: &mut GatewayWorld, kind: String) {
+    let entries: Vec<EntryView> = w
+        .journal_gamma()
+        .into_iter()
+        .filter(|e| e.kind == kind)
+        .collect();
+    assert_eq!(entries.len(), 1, "exactly one `{kind}`");
+    let e = &entries[0];
+    assert!(
+        e.target.is_none() && e.payload.is_none(),
+        "target and payload sealed — the keyless learn nothing"
+    );
+    let memory = w
+        .journal_outcome
+        .as_ref()
+        .expect("outcome")
+        .memory_mandate
+        .clone()
+        .expect("a memory pen");
+    assert_eq!(
+        e.authorized_via,
+        Some(vec![memory]),
+        "the mutation cites the memory pen"
+    );
+}
+
+#[then("the answer names the recorded note")]
+async fn answer_names_note(w: &mut GatewayWorld) {
+    let v: Value = serde_json::from_str(&w.last_result_text()).expect("JSON answer");
+    let name = v
+        .pointer("/recorded/name")
+        .and_then(Value::as_str)
+        .expect("a note name in the answer");
+    assert!(name.starts_with("n-"), "a fresh technical name: {name}");
+    assert!(
+        v.pointer("/recorded/path")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .starts_with("memory/"),
+        "the answer names the shelf path"
+    );
+}
+
+#[then(expr = "the journal gamma logs no {string}")]
+async fn journal_logs_no_kind(w: &mut GatewayWorld, kind: String) {
+    assert_eq!(w.journal_kind_count(&kind), 0, "no `{kind}` entry");
+}
+
+#[given(expr = "the journal holds a note titled {string} with text {string}")]
+async fn journal_holds_note_text(w: &mut GatewayWorld, title: String, text: String) {
+    w.journal_call(JOURNAL_WRITE, json!({ "title": title, "text": text }))
+        .await;
+    let resp = w.last_response.as_ref().unwrap();
+    assert!(resp.get("error").is_none(), "setup write must pass: {resp}");
+}
+
+#[given(expr = "the journal holds a note titled {string} tagged {string}")]
+async fn journal_holds_note_tag(w: &mut GatewayWorld, title: String, tag: String) {
+    w.journal_call(
+        JOURNAL_WRITE,
+        json!({ "title": title, "text": format!("body of {title}"), "tags": [tag] }),
+    )
+    .await;
+    let resp = w.last_response.as_ref().unwrap();
+    assert!(resp.get("error").is_none(), "setup write must pass: {resp}");
+}
+
+#[when(expr = "the agent searches the journal for {string}")]
+async fn agent_searches(w: &mut GatewayWorld, query: String) {
+    w.journal_call(JOURNAL_SEARCH, json!({ "query": query }))
+        .await;
+}
+
+#[when(expr = "the agent searches the journal for tag {string}")]
+async fn agent_searches_tag(w: &mut GatewayWorld, tag: String) {
+    w.journal_call(JOURNAL_SEARCH, json!({ "tag": tag })).await;
+}
+
+#[then(expr = "the answer carries the note titled {string} only")]
+async fn answer_carries_only(w: &mut GatewayWorld, title: String) {
+    let v: Value = serde_json::from_str(&w.last_result_text()).expect("JSON answer");
+    let hits = v["hits"].as_array().expect("hits");
+    assert_eq!(hits.len(), 1, "exactly one hit: {v}");
+    assert_eq!(hits[0]["title"].as_str(), Some(title.as_str()));
+    assert_eq!(v["total"].as_u64(), Some(1));
+}
+
+#[then(expr = "its text {string} comes back with it")]
+async fn answer_hit_has_text(w: &mut GatewayWorld, text: String) {
+    let v: Value = serde_json::from_str(&w.last_result_text()).expect("JSON answer");
+    assert_eq!(
+        v["hits"][0]["text"].as_str(),
+        Some(text.as_str()),
+        "the opened body rides with the hit"
+    );
+}
+
+#[then("the answer carries no note")]
+async fn answer_carries_none(w: &mut GatewayWorld) {
+    let v: Value = serde_json::from_str(&w.last_result_text()).expect("JSON answer");
+    assert_eq!(v["total"].as_u64(), Some(0));
+    assert!(v["hits"].as_array().expect("hits").is_empty());
+}
+
+#[then(expr = "the journal gamma logs exactly one {string}")]
+async fn journal_logs_exactly_one(w: &mut GatewayWorld, kind: String) {
+    assert_eq!(w.journal_kind_count(&kind), 1, "exactly one `{kind}`");
+}
+
+#[when("the agent lists the tools")]
+async fn agent_lists_tools(w: &mut GatewayWorld) {
+    let router = w.router.as_ref().expect("a provisioned router");
+    w.last_response = Some(
+        process_multi(
+            router,
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }),
+        )
+        .await,
+    );
+}
+
+#[then(expr = "the list includes {string} and {string} with their argument schemas")]
+async fn list_includes_native(w: &mut GatewayWorld, write_name: String, search_name: String) {
+    let tools = w.listed_tools();
+    let find = |name: &str| {
+        tools
+            .iter()
+            .find(|t| t["name"].as_str() == Some(name))
+            .unwrap_or_else(|| panic!("`{name}` must be listed"))
+            .clone()
+    };
+    let write = find(&write_name);
+    assert_eq!(
+        write
+            .pointer("/inputSchema/required/0")
+            .and_then(Value::as_str),
+        Some("text"),
+        "journal.write pins its required field"
+    );
+    assert_eq!(
+        write.pointer("/inputSchema/additionalProperties"),
+        Some(&json!(false)),
+        "unknown fields are pinned closed at the surface too"
+    );
+    let search = find(&search_name);
+    assert!(
+        search.pointer("/inputSchema/properties/query").is_some()
+            && search.pointer("/inputSchema/properties/tag").is_some(),
+        "journal.search names its arguments"
+    );
+    assert_eq!(
+        search.pointer("/inputSchema/additionalProperties"),
+        Some(&json!(false))
+    );
+}
+
+#[then("the context tools keep their open schemas")]
+async fn context_tools_open_schema(w: &mut GatewayWorld) {
+    let tools = w.listed_tools();
+    let brand = tools
+        .iter()
+        .find(|t| t["name"].as_str() == Some("brand.read"))
+        .expect("brand.read listed");
+    assert_eq!(
+        brand["inputSchema"],
+        json!({ "type": "object" }),
+        "relayed tools keep the honest open object (schemas pinned per-tool land with the hub)"
+    );
+}
+
+#[when(expr = "a config maps the context tool {string}")]
+async fn config_maps_reserved(w: &mut GatewayWorld, tool: String) {
+    let yaml = format!(
+        "\
+listen: 127.0.0.1:4870
+contexts:
+  - name: company-brand
+    upstream_mcp: http://127.0.0.1:5001/mcp
+    store: {{ kind: fs, root: /var/lib/aithos/brand }}
+    tools:
+      {tool}: read
+journal:
+  store: {{ kind: fs, root: /var/lib/aithos/journal }}
+"
+    );
+    w.config_error = Some(
+        GatewayConfig::from_yaml(&yaml)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default(),
+    );
+}
+
+#[then("the config is rejected naming the reserved prefix")]
+async fn config_rejected_reserved(w: &mut GatewayWorld) {
+    let err = w.config_error.as_deref().expect("a parse verdict");
+    assert!(!err.is_empty(), "the config must be rejected, not accepted");
+    assert!(
+        err.contains("reserved"),
+        "the rejection names the reservation: {err}"
     );
 }
 

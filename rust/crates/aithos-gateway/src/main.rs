@@ -181,6 +181,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("journal_did: {}", outcome.ethos_did);
             println!("agent_mandate: {}", outcome.agent_mandate);
             println!("gateway_mandate: {}", outcome.gateway_mandate);
+            if let Some(m) = &outcome.memory_mandate {
+                println!("memory_mandate: {m}");
+            }
             if let Some(m) = &outcome.inference_mandate {
                 println!("inference_mandate: {m}");
             }

@@ -48,6 +48,17 @@ pub const POLICY_DENIED_CODE: i64 = -32001;
 /// `tools/list` and `tools/call`).
 pub const METHOD_NOT_FOUND_CODE: i64 = -32601;
 
+/// The native journal tools (lot C2): served by the gateway itself on
+/// `/mcp`, never relayed to any upstream. The `journal` prefix is
+/// reserved at config time so no context tool can ever shadow them.
+pub const JOURNAL_WRITE: &str = "journal.write";
+pub const JOURNAL_SEARCH: &str = "journal.search";
+/// `journal.search` result cap: the default page, and the hard ceiling
+/// a caller-supplied `limit` may not exceed (each opened hit is one
+/// journalized read — the cap bounds the gamma cost of one recall).
+const SEARCH_LIMIT_DEFAULT: u64 = 20;
+const SEARCH_LIMIT_MAX: u64 = 100;
+
 /// The MCP protocol revision the router's own `initialize` speaks.
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
 
@@ -256,7 +267,10 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
             // Names only, aggregated from the declared maps (read AND
             // write: refusals must name the tool precisely). Schemas are
             // not proxied in v1 — the open object is the honest minimum.
-            let tools: Vec<Value> = rt
+            // The NATIVE journal tools close the list with their REAL
+            // schemas: the gateway serves them itself, so it pins what
+            // it governs (the hub decision, applied at home first).
+            let mut tools: Vec<Value> = rt
                 .runner
                 .lock()
                 .await
@@ -264,6 +278,7 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
                 .into_iter()
                 .map(|name| json!({ "name": name, "inputSchema": { "type": "object" } }))
                 .collect();
+            tools.extend(native_journal_tools());
             json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -312,6 +327,28 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value {
 
     let mut runner = rt.runner.lock().await;
 
+    // The native journal tools are served HERE, never relayed (lot C2):
+    // the journal bridge writes/reads the agent's own memory under its
+    // pen, and the delegated trace (section.add / ethos.read) IS the
+    // log-before-effect. Refusals follow §3bis.8 — no context is ever
+    // identifiable for a native tool, so the journal alone records them.
+    if tool == JOURNAL_WRITE || tool == JOURNAL_SEARCH {
+        return match journal_dispatch(&mut runner, &tool, &args, &now) {
+            Ok(text) => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "content": [{ "type": "text", "text": text }],
+                    "isError": false
+                }
+            }),
+            Err(deny) => {
+                runner.record_refusal(None, &tool, deny.refusal_code(), &now);
+                error_response(id, &deny)
+            }
+        };
+    }
+
     // Default-deny across every context: unknown → journal refusal only.
     let Some(ctx) = runner.resolve(&tool).map(str::to_owned) else {
         let e = GatewayError::ToolNotMapped(tool.clone());
@@ -344,5 +381,132 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value {
     match upstream.forward(msg).await {
         Ok(resp) => resp,
         Err(e) => error_response(id, &e),
+    }
+}
+
+// -------------------------------------------------- native journal tools
+
+/// The native tools' MCP descriptors: REAL argument schemas, unknown
+/// fields pinned closed — the surface mirrors the fail-closed parser.
+fn native_journal_tools() -> Vec<Value> {
+    vec![
+        json!({
+            "name": JOURNAL_WRITE,
+            "description": "Consolidate one memory note into the agent's own journal: \
+                            a sealed section under the memory pen, mandate-traced.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string" },
+                    "text": { "type": "string" },
+                    "tags": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["text"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": JOURNAL_SEARCH,
+            "description": "Recall memory notes from the journal's clear index \
+                            (name/title/tags, newest first); every opened body is a \
+                            journalized read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string" },
+                    "tag": { "type": "string" },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": SEARCH_LIMIT_MAX }
+                },
+                "additionalProperties": false
+            }
+        }),
+    ]
+}
+
+/// One rejected argument shape — the reason names the field precisely.
+fn bad_args(tool: &str, reason: &str) -> GatewayError {
+    GatewayError::RequestRejected(format!("{tool}: {reason}"))
+}
+
+/// Validate and run one native journal call against the runner's
+/// journal bridge. Argument parsing is fail-closed (unknown fields,
+/// wrong types, empty text all refuse); the bridge then enforces the
+/// pen (chain, window, revocations, verb) and journalizes the effect.
+fn journal_dispatch(runner: &mut Runner, tool: &str, args: &Value, now: &str) -> Result<String> {
+    let obj = args
+        .as_object()
+        .ok_or_else(|| bad_args(tool, "arguments must be an object"))?;
+    match tool {
+        JOURNAL_WRITE => {
+            for key in obj.keys() {
+                if !["title", "text", "tags"].contains(&key.as_str()) {
+                    return Err(bad_args(tool, &format!("unknown field `{key}`")));
+                }
+            }
+            let text = match obj.get("text") {
+                Some(Value::String(s)) if !s.trim().is_empty() => s.as_str(),
+                Some(Value::String(_)) | None => {
+                    return Err(bad_args(tool, "`text` is required and must not be empty"))
+                }
+                Some(_) => return Err(bad_args(tool, "`text` must be a string")),
+            };
+            let title = match obj.get("title") {
+                None => "",
+                Some(Value::String(s)) => s.as_str(),
+                Some(_) => return Err(bad_args(tool, "`title` must be a string")),
+            };
+            let tags: Vec<String> = match obj.get("tags") {
+                None => Vec::new(),
+                Some(Value::Array(items)) => items
+                    .iter()
+                    .map(|t| {
+                        t.as_str()
+                            .map(str::to_owned)
+                            .ok_or_else(|| bad_args(tool, "`tags` must be an array of strings"))
+                    })
+                    .collect::<Result<_>>()?,
+                Some(_) => return Err(bad_args(tool, "`tags` must be an array of strings")),
+            };
+            let note = runner.journal_write(title, &tags, text, now)?;
+            serde_json::to_string(&json!({
+                "recorded": {
+                    "name": note.name,
+                    "title": note.title,
+                    "path": format!("memory/{}", note.name),
+                }
+            }))
+            .map_err(|e| GatewayError::BridgeFailed(e.to_string()))
+        }
+        JOURNAL_SEARCH => {
+            for key in obj.keys() {
+                if !["query", "tag", "limit"].contains(&key.as_str()) {
+                    return Err(bad_args(tool, &format!("unknown field `{key}`")));
+                }
+            }
+            let text_field = |name: &str| match obj.get(name) {
+                None => Ok(None),
+                Some(Value::String(s)) => Ok(Some(s.clone())),
+                Some(_) => Err(bad_args(tool, &format!("`{name}` must be a string"))),
+            };
+            let query = text_field("query")?;
+            let tag = text_field("tag")?;
+            let limit = match obj.get("limit") {
+                None => SEARCH_LIMIT_DEFAULT,
+                Some(v) => match v.as_u64() {
+                    Some(n) if (1..=SEARCH_LIMIT_MAX).contains(&n) => n,
+                    _ => {
+                        return Err(bad_args(
+                            tool,
+                            &format!("`limit` must be an integer in 1..={SEARCH_LIMIT_MAX}"),
+                        ))
+                    }
+                },
+            };
+            let hits =
+                runner.journal_search(query.as_deref(), tag.as_deref(), limit as usize, now)?;
+            serde_json::to_string(&json!({ "total": hits.len(), "hits": hits }))
+                .map_err(|e| GatewayError::BridgeFailed(e.to_string()))
+        }
+        other => Err(bad_args(other, "not a native journal tool")),
     }
 }
