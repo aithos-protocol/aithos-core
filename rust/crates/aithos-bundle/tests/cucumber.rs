@@ -14,7 +14,7 @@ use aithos_core::header::{Header, Line, Recipient, Wrap};
 use aithos_core::ids::Sid;
 use aithos_core::keys::ed2x;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
-use aithos_core::mandate::{verify_chain, Mandate, PerimeterEntry};
+use aithos_core::mandate::{verify_chain, Mandate, PerimeterEntry, Verb};
 use aithos_core::path::{NodePath, Zone};
 use aithos_core::wire;
 use cucumber::{given, then, when, World};
@@ -44,6 +44,16 @@ const FOURTH: u8 = 0xA3;
 fn dir_spec(dir: &str) -> GrantSpec {
     GrantSpec {
         zone: Zone::Circle,
+        verb: Verb::Read,
+        dir: dir.to_owned(),
+        tag: None,
+    }
+}
+
+fn verb_spec(verb: Verb, dir: &str) -> GrantSpec {
+    GrantSpec {
+        zone: Zone::Circle,
+        verb,
         dir: dir.to_owned(),
         tag: None,
     }
@@ -52,6 +62,7 @@ fn dir_spec(dir: &str) -> GrantSpec {
 fn tag_spec(dir: &str, tag: &str) -> GrantSpec {
     GrantSpec {
         zone: Zone::Circle,
+        verb: Verb::Read,
         dir: dir.to_owned(),
         tag: Some(tag.to_owned()),
     }
@@ -5376,6 +5387,7 @@ fn h_grant_republish(w: &mut ProtocolWorld) {
     w.grant_to_agent(
         &[GrantSpec {
             zone: Zone::Circle,
+            verb: Verb::Read,
             dir: "projets".into(),
             tag: None,
         }],
@@ -7733,6 +7745,470 @@ fn k_watchdog_dark(w: &mut ProtocolWorld) {
         let r = w.read_at(&w.k_wd.clone(), WDOG, path, &kd(20, "23:30:00"));
         assert!(r.is_err(), "the watchdog holds no content key: {path}");
     }
+}
+
+// --------------------------------------------------- step L: delegated writes
+//
+// features/l-delegated-writes.feature — the mandate as a pen (spec 02.11,
+// 04.2, 04.3, 05.3, 07.2) and the one-mandate surface. Successful writes
+// timestamp at kd(*) (after the givens' NOW entries); refused attempts
+// timestamp inside their window — rejection happens before any append,
+// so the chain never moves.
+
+impl ProtocolWorld {
+    fn try_agent_add(
+        &mut self,
+        name: &str,
+        body: &str,
+        folder: &str,
+        at: &str,
+    ) -> Result<String, String> {
+        self.gamma_baseline = self.gbundle().gamma_entries().unwrap().len();
+        let chain = self.chain.clone();
+        let mut ent = std::mem::take(&mut self.ent);
+        let r = self
+            .gbundle()
+            .section_add_as_agent(
+                &chain,
+                &agent_sk(AGENT),
+                &SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: folder,
+                    name,
+                    title: "note",
+                    tags: &[],
+                    body,
+                    now: at,
+                },
+                &mut ent,
+            )
+            .map(|()| "written".to_owned())
+            .map_err(|e| e.to_string());
+        self.ent = ent;
+        r
+    }
+
+    fn try_agent_rewrite(&mut self, path: &str, body: &str, at: &str) -> Result<String, String> {
+        self.gamma_baseline = self.gbundle().gamma_entries().unwrap().len();
+        let chain = self.chain.clone();
+        let mut ent = std::mem::take(&mut self.ent);
+        let r = self
+            .gbundle()
+            .section_rewrite_as_agent(
+                &chain,
+                &agent_sk(AGENT),
+                Zone::Circle,
+                path,
+                body,
+                at,
+                &mut ent,
+            )
+            .map(|()| "rewritten".to_owned())
+            .map_err(|e| e.to_string());
+        self.ent = ent;
+        r
+    }
+
+    fn try_agent_delete(&mut self, path: &str, at: &str) -> Result<String, String> {
+        self.gamma_baseline = self.gbundle().gamma_entries().unwrap().len();
+        let chain = self.chain.clone();
+        let mut ent = std::mem::take(&mut self.ent);
+        let r = self
+            .gbundle()
+            .section_delete_as_agent(&chain, &agent_sk(AGENT), Zone::Circle, path, at, &mut ent)
+            .map(|()| "deleted".to_owned())
+            .map_err(|e| e.to_string());
+        self.ent = ent;
+        r
+    }
+}
+
+#[given(expr = "a published bundle with a circle folder {string}")]
+fn l_published_with_folder(w: &mut ProtocolWorld, folder: String) {
+    w.init_bundle();
+    let owner = w.owner(0);
+    w.bundle
+        .as_mut()
+        .unwrap()
+        .ensure_folder(Zone::Circle, &folder, &owner, &mut w.ent)
+        .unwrap();
+    w.publish_bundle();
+}
+
+#[given(expr = "a published bundle with section {string} tagged {string} in circle {string}")]
+fn l_published_with_tagged(w: &mut ProtocolWorld, name: String, tag: String, folder: String) {
+    w.init_bundle();
+    w.add_circle_section(&folder, &name, &tag);
+    w.publish_bundle();
+}
+
+#[when(expr = "the owner grants the agent append on circle folder {string}")]
+fn l_grant_append(w: &mut ProtocolWorld, folder: String) {
+    w.grant_to_agent(&[verb_spec(Verb::Append, &folder)], NA30, 0);
+    w.granted_folder = folder;
+}
+
+#[when(expr = "the owner grants the agent edit on circle folder {string}")]
+fn l_grant_edit(w: &mut ProtocolWorld, folder: String) {
+    w.grant_to_agent(&[verb_spec(Verb::Edit, &folder)], NA30, 0);
+    w.granted_folder = folder;
+}
+
+#[when(expr = "the owner grants the agent write on circle folder {string}")]
+fn l_grant_write(w: &mut ProtocolWorld, folder: String) {
+    w.grant_to_agent(&[verb_spec(Verb::Write, &folder)], NA30, 0);
+    w.granted_folder = folder;
+}
+
+#[when(expr = "the owner grants the agent append on circle folder {string} for 7 days")]
+fn l_grant_append_7d(w: &mut ProtocolWorld, folder: String) {
+    w.grant_to_agent(&[verb_spec(Verb::Append, &folder)], NA7, 0);
+    w.granted_folder = folder;
+}
+
+#[when(expr = "the agent adds section {string} with body {string} under {string}")]
+#[then(expr = "the agent adds section {string} with body {string} under {string} and it verifies")]
+fn l_agent_adds(w: &mut ProtocolWorld, name: String, body: String, folder: String) {
+    let r = w.try_agent_add(&name, &body, &folder, &kd(0, "02:00:00"));
+    assert!(r.is_ok(), "delegated add fails: {r:?}");
+    w.gamma_result = Some(r);
+}
+
+#[when(expr = "the agent tries to add section {string} with body {string} under {string}")]
+fn l_agent_tries_add(w: &mut ProtocolWorld, name: String, body: String, folder: String) {
+    w.gamma_result = Some(w.try_agent_add(&name, &body, &folder, DAY1));
+}
+
+#[when(expr = "the agent tries to add section {string} with body {string} under {string} at day 8")]
+fn l_agent_tries_add_day8(w: &mut ProtocolWorld, name: String, body: String, folder: String) {
+    w.gamma_result = Some(w.try_agent_add(&name, &body, &folder, DAY8));
+}
+
+#[when(expr = "the agent rewrites {string} to {string}")]
+fn l_agent_rewrites(w: &mut ProtocolWorld, path: String, body: String) {
+    let r = w.try_agent_rewrite(&path, &body, &kd(0, "02:00:00"));
+    assert!(r.is_ok(), "delegated rewrite fails: {r:?}");
+    w.gamma_result = Some(r);
+}
+
+#[when(expr = "the agent tries to rewrite {string} to {string}")]
+fn l_agent_tries_rewrite(w: &mut ProtocolWorld, path: String, body: String) {
+    w.gamma_result = Some(w.try_agent_rewrite(&path, &body, DAY1));
+}
+
+#[when(expr = "the agent tries to rewrite the section under {string} to {string}")]
+fn l_agent_tries_rewrite_under(w: &mut ProtocolWorld, folder: String, body: String) {
+    let path = format!("{folder}/note");
+    w.gamma_result = Some(w.try_agent_rewrite(&path, &body, DAY1));
+}
+
+#[when(expr = "the agent deletes {string}")]
+fn l_agent_deletes(w: &mut ProtocolWorld, path: String) {
+    let r = w.try_agent_delete(&path, &kd(0, "02:00:00"));
+    assert!(r.is_ok(), "delegated delete fails: {r:?}");
+    w.gamma_result = Some(r);
+}
+
+#[when(expr = "the agent tries to delete {string}")]
+fn l_agent_tries_delete(w: &mut ProtocolWorld, path: String) {
+    w.gamma_result = Some(w.try_agent_delete(&path, DAY1));
+}
+
+#[then(expr = "the owner reads {string} as {string}")]
+fn l_owner_reads_as(w: &mut ProtocolWorld, path: String, body: String) {
+    let owner = w.owner(0);
+    let got = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .read_section(Zone::Circle, &path, &owner)
+        .unwrap();
+    assert_eq!(got, body, "owner reads back the delegated write");
+}
+
+#[then(expr = "the agent reads {string} as {string}")]
+fn l_agent_reads_as(w: &mut ProtocolWorld, path: String, body: String) {
+    let r = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .read_section_as_agent(
+            &w.chain,
+            &agent_sk(AGENT),
+            Zone::Circle,
+            &path,
+            &kd(1, "00:00:00"),
+        )
+        .map_err(|e| e.to_string());
+    assert_eq!(r.as_deref(), Ok(body.as_str()));
+}
+
+#[then(expr = "the log's last entry is a delegated {string} under the agent's mandate")]
+fn l_last_entry_delegated(w: &mut ProtocolWorld, kind: String) {
+    let leaf = w.chain.last().unwrap().clone();
+    let e = w.gbundle().gamma_entries().unwrap().pop().unwrap();
+    assert_eq!(e.kind, kind, "kind");
+    assert_eq!(e.authorized_by.as_deref(), Some(leaf.id.as_str()), "leaf");
+    assert_eq!(e.signature.key, leaf.grantee.pubkey, "grantee-signed");
+    assert!(
+        e.body_enc.is_some() && e.target.is_none() && e.payload.is_none(),
+        "sealed body, sealed target (spec 07.3)"
+    );
+}
+
+#[then(expr = "the section {string} is gone from the tree")]
+fn l_section_gone(w: &mut ProtocolWorld, path: String) {
+    let owner = w.owner(0);
+    assert!(
+        w.bundle
+            .as_ref()
+            .unwrap()
+            .read_section(Zone::Circle, &path, &owner)
+            .is_err(),
+        "the tree must forget the deleted node"
+    );
+}
+
+#[then("someone with no key learns neither target nor content from the last entry")]
+fn l_stranger_learns_nothing(w: &mut ProtocolWorld) {
+    let e = w.gbundle().gamma_entries().unwrap().pop().unwrap();
+    assert!(e.target.is_none() && e.payload.is_none() && e.body_enc.is_some());
+    let wire = aithos_core::jcs::canonicalize(&e).unwrap();
+    for leak in ["written by the pen", "memo", "projets"] {
+        assert!(!wire.contains(leak), "clear leak of {leak:?} in the entry");
+    }
+}
+
+#[then("the write is rejected as outside the perimeter")]
+fn l_rejected_perimeter(w: &mut ProtocolWorld) {
+    let r = w.gamma_result.clone().unwrap();
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("not covered")),
+        "expected a perimeter rejection, got {r:?}"
+    );
+}
+
+#[then("the write is rejected as outside the window")]
+fn l_rejected_window(w: &mut ProtocolWorld) {
+    let r = w.gamma_result.clone().unwrap();
+    assert!(
+        r.as_ref()
+            .is_err_and(|e| e.contains("outside validity window")),
+        "expected a window rejection, got {r:?}"
+    );
+}
+
+// --- the one-mandate surface (super-mandate) ---
+
+#[when(
+    expr = "the owner grants the agent one mandate carrying write on {string}, gmail reply, gamma read on actions, issue depth 1 and revoke, max_actions 2, for 30 days"
+)]
+fn l_grant_super_mandate(w: &mut ProtocolWorld, folder: String) {
+    let owner = w.owner(0);
+    let agent_pub = agent_sk(AGENT).verifying_key();
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gb()
+        .deliver_zone_line(&owner, &agent_pub, Zone::Circle, &folder, None, &mut ent)
+        .unwrap();
+    w.ent = ent;
+    let dir = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .resolve_folder(Zone::Circle, &folder)
+        .unwrap();
+    let perimeter = vec![
+        PerimeterEntry::Ethos {
+            verb: Verb::Write,
+            zone: Zone::Circle,
+            dir,
+            tag: None,
+        },
+        PerimeterEntry::parse("act.x.gmail.reply").unwrap(),
+        PerimeterEntry::parse("read.gamma#kind=action").unwrap(),
+        PerimeterEntry::parse("issue#depth=1").unwrap(),
+        PerimeterEntry::parse("revoke").unwrap(),
+    ];
+    let m = w.k_mint_root(
+        "omni",
+        AGENT,
+        perimeter,
+        serde_json::json!({ "max_actions": 2 }),
+    );
+    w.chain = vec![m];
+    w.granted_folder = folder;
+}
+
+#[then(expr = "the agent appends a gmail {string} action and it verifies")]
+fn l_super_action_ok(w: &mut ProtocolWorld, action: String) {
+    let r = w.try_action(false, &action, &kd(1, "01:00:00"));
+    assert!(r.is_ok(), "action under the one mandate fails: {r:?}");
+}
+
+#[then("the agent queries the log for its own action and finds it")]
+fn l_super_queries_log(w: &mut ProtocolWorld) {
+    let hits = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .log_query_as_agent(
+            &w.chain,
+            &agent_sk(AGENT),
+            &aithos_core::mandate::GammaQuery {
+                kind: Some("action".to_owned()),
+                ..Default::default()
+            },
+            &LogFilter {
+                kind: Some("action".to_owned()),
+                ..Default::default()
+            },
+            &kd(1, "02:00:00"),
+        )
+        .unwrap();
+    assert!(
+        hits.iter().any(|h| h.entry.kind == "action"),
+        "the granted read.gamma#kind=action must surface the agent's own act"
+    );
+}
+
+#[when(expr = "the agent delegates read on folder {string} to a helper until day 30")]
+fn l_super_delegates(w: &mut ProtocolWorld, folder: String) {
+    let parent = w.chain[0].clone();
+    let sub = w
+        .bundle
+        .as_mut()
+        .unwrap()
+        .delegate(
+            &parent,
+            &agent_sk(AGENT),
+            "helper",
+            &agent_sk(HELPER).verifying_key(),
+            &[dir_spec(&folder)],
+            NB,
+            NA30,
+            &mut w.ent,
+        )
+        .unwrap();
+    w.helper_chain = vec![parent.clone(), sub.clone()];
+    // Issuance is never silent (spec 07.4).
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gb()
+        .log_delegated_grant(
+            &[parent],
+            &agent_sk(AGENT),
+            &sub.id,
+            &kd(1, "03:00:00"),
+            &mut ent,
+        )
+        .unwrap();
+    w.ent = ent;
+}
+
+#[when("the agent revokes the helper from its own issue authority")]
+fn l_super_revokes_helper(w: &mut ProtocolWorld) {
+    let helper_id = w.helper_chain[1].id.clone();
+    let parent = vec![w.chain[0].clone()];
+    let mut ent = std::mem::take(&mut w.ent);
+    w.gb()
+        .log_revoke_as(
+            &parent,
+            &agent_sk(AGENT),
+            &helper_id,
+            "cleanup",
+            &kd(2, "12:00:00"),
+            &mut ent,
+        )
+        .unwrap();
+    w.ent = ent;
+}
+
+#[then("the helper's chain is rejected as revoked at day 13")]
+fn l_super_helper_revoked(w: &mut ProtocolWorld) {
+    let r = w.verify_revocable_at(&w.helper_chain.clone(), &day(13, "00:00:00"));
+    assert!(
+        r.as_ref().is_err_and(|e| e.contains("revoked")),
+        "expected revoked, got {r:?}"
+    );
+}
+
+#[then(expr = "a second gmail {string} action verifies and a third is rejected as budget spent")]
+fn l_super_budget(w: &mut ProtocolWorld, action: String) {
+    let r2 = w.try_action(false, &action, &kd(4, "01:00:00"));
+    assert!(r2.is_ok(), "second action fails: {r2:?}");
+    let r3 = w.try_action(false, &action, &kd(4, "02:00:00"));
+    assert!(
+        r3.as_ref().is_err_and(|e| e.contains("max_actions")),
+        "expected the subtree budget to refuse, got {r3:?}"
+    );
+}
+
+#[then("at day 31 the same mandate can neither read, nor write, nor act, nor delegate")]
+fn l_super_dead_at_31(w: &mut ProtocolWorld) {
+    let at = day(31, "00:00:00");
+    let window = |r: &Result<String, String>| {
+        r.as_ref()
+            .is_err_and(|e| e.contains("outside validity window"))
+    };
+    // Read.
+    let path = format!("{}/note1", w.granted_folder);
+    let r = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .read_section_as_agent(&w.chain, &agent_sk(AGENT), Zone::Circle, &path, &at)
+        .map_err(|e| e.to_string());
+    assert!(window(&r), "read must die at expiry, got {r:?}");
+    // Write.
+    let folder = w.granted_folder.clone();
+    let rw = w.try_agent_add("late", "too late", &folder, &at);
+    assert!(window(&rw), "write must die at expiry, got {rw:?}");
+    // Act.
+    let ra = w.try_action(false, "reply", &at);
+    assert!(window(&ra), "action must die at expiry, got {ra:?}");
+    // Delegate: a child minted under the expired mandate verifies nowhere at T.
+    let parent = w.chain[0].clone();
+    let sub = w
+        .bundle
+        .as_mut()
+        .unwrap()
+        .delegate(
+            &parent,
+            &agent_sk(AGENT),
+            "helper",
+            &agent_sk(HELPER).verifying_key(),
+            &[dir_spec(&folder)],
+            NB,
+            NA30,
+            &mut w.ent,
+        )
+        .unwrap();
+    let rd = w
+        .verify_chain_at(&[parent, sub], &at)
+        .map(|()| "verified".to_owned());
+    assert!(window(&rd), "delegation must die at expiry, got {rd:?}");
+}
+
+#[then("the owner still writes at day 31")]
+fn l_owner_writes_at_31(w: &mut ProtocolWorld) {
+    let owner = w.owner(0);
+    let folder = w.granted_folder.clone();
+    let now = day(31, "02:00:00");
+    let mut ent = std::mem::take(&mut w.ent);
+    let r = w.gbundle().section_add(
+        &SectionSpec {
+            zone: Zone::Circle,
+            folder_path: &folder,
+            name: "posthume",
+            title: "note",
+            tags: &[],
+            body: "the owner never expires",
+            now: &now,
+        },
+        &owner,
+        &mut ent,
+    );
+    w.ent = ent;
+    assert!(r.is_ok(), "the owner key has no window: {r:?}");
 }
 
 // ------------------------------------------------------------------ main

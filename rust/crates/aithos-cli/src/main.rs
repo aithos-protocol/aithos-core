@@ -108,6 +108,9 @@ enum Command {
         folder: String,
         #[arg(long)]
         tag: Option<String>,
+        /// Perimeter verb (spec 04.2): read | edit | append | delete | write.
+        #[arg(long, default_value = "read")]
+        verb: String,
         #[arg(long, default_value_t = 7)]
         ttl_days: u32,
         #[arg(long, default_value_t = 0)]
@@ -600,6 +603,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             label,
             folder,
             tag,
+            verb,
             ttl_days,
             issue_depth,
         } => {
@@ -614,6 +618,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut bundle = bundle_at(&dir)?;
             let spec = aithos_bundle::grants::GrantSpec {
                 zone: Zone::Circle,
+                verb: aithos_core::mandate::Verb::parse(&verb)?,
                 dir: folder,
                 tag,
             };

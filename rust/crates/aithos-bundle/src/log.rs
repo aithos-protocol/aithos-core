@@ -519,6 +519,59 @@ impl<S: Store> Bundle<S> {
         Ok(entry)
     }
 
+    /// A delegated content mutation (§07.2): the sealed-body twin of
+    /// `log_owner_mutation`, signed by the leaf grantee key under its
+    /// chain. The body seals under the target node's key — which the
+    /// agent, having just written the node, necessarily holds; a keyless
+    /// caller cannot even construct the entry (physics half). The
+    /// certificate half (verb lattice, perimeter, window, revocation) is
+    /// checked by the write ops in `grants.rs` before anything mutates.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn log_delegated_mutation(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        kind: Kind,
+        node: &NodePath,
+        payload: serde_json::Value,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<Entry> {
+        let doc = self.did_doc()?;
+        let entries = self.gamma_entries()?;
+        let leaf = chain
+            .last()
+            .ok_or_else(|| Error::InvalidGammaEntry("empty chain".to_owned()))?;
+        let kex = grantee_kex_secret(agent_sk);
+        let key = self.agent_node_key(&leaf.grantee.pubkey, &kex, node)?;
+        let body = aithos_core::gamma::seal_body(
+            &key,
+            &self.did,
+            &node.to_string(),
+            KV,
+            &payload,
+            &ent.e24(),
+        )?;
+        let via: Vec<String> = chain.iter().map(|m| m.id.clone()).collect();
+        let entry = delegated_entry(
+            EntrySpec {
+                id: self.next_gamma_id(ent),
+                prev: gamma::head(&entries)?,
+                prevs: None,
+                at: now.to_owned(),
+                kind,
+                target: None,
+                payload: None,
+                body_enc: Some(body),
+            },
+            via,
+            agent_sk,
+        )?;
+        verify_delegated_entry(&entry, chain, &doc)?;
+        self.gamma_append(&entry)?;
+        Ok(entry)
+    }
+
     /// A delegated minting, logged under the minting (parent) chain (§07.4):
     /// `max_children` gates it, and the logged entry is what makes the
     /// child's future chain presentations alive.

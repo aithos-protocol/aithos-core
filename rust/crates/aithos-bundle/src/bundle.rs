@@ -358,7 +358,7 @@ impl<S: Store> Bundle<S> {
 
     // --------------------------------------------------- folders/sections
 
-    fn new_sid(ent: &mut dyn EntropySource) -> Sid {
+    pub(crate) fn new_sid(ent: &mut dyn EntropySource) -> Sid {
         Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
     }
 

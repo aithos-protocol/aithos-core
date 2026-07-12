@@ -28,7 +28,7 @@ pub enum Verb {
 }
 
 impl Verb {
-    fn parse(s: &str) -> Result<Self> {
+    pub fn parse(s: &str) -> Result<Self> {
         Ok(match s {
             "read" => Verb::Read,
             "edit" => Verb::Edit,
@@ -39,7 +39,8 @@ impl Verb {
         })
     }
 
-    fn as_str(self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             Verb::Read => "read",
             Verb::Edit => "edit",

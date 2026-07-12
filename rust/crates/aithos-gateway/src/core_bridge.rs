@@ -512,6 +512,82 @@ impl Bridge {
         Ok(entry.id)
     }
 
+    // ---------------------------------------------------- delegated writes
+
+    /// Create a section in the ethos under the agent's own mandate chain
+    /// (spec 04.2 `append`, 07.2): the bundle verifies chain, window,
+    /// revocations and the verb lattice at append time, seals the blob
+    /// with the agent's granted line, and logs the delegated
+    /// `section.add`. Fails closed when the agent mandate carries no
+    /// covering write perimeter.
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_section_add(
+        &mut self,
+        folder_path: &str,
+        name: &str,
+        title: &str,
+        tags: &[String],
+        body: &str,
+        now: &str,
+    ) -> Result<()> {
+        let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+        self.bundle
+            .section_add_as_agent(
+                &self.agent_chain,
+                &agent_sk,
+                &aithos_bundle::bundle::SectionSpec {
+                    zone: aithos_core::path::Zone::Circle,
+                    folder_path,
+                    name,
+                    title,
+                    tags,
+                    body,
+                    now,
+                },
+                self.entropy.as_mut(),
+            )
+            .map_err(write_denied)
+    }
+
+    /// Rewrite an existing section under the agent's chain (spec 04.2
+    /// `edit`): delegated `section.modify` logged, same double wall.
+    pub fn record_section_rewrite(
+        &mut self,
+        display_path: &str,
+        body: &str,
+        now: &str,
+    ) -> Result<()> {
+        let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+        self.bundle
+            .section_rewrite_as_agent(
+                &self.agent_chain,
+                &agent_sk,
+                aithos_core::path::Zone::Circle,
+                display_path,
+                body,
+                now,
+                self.entropy.as_mut(),
+            )
+            .map_err(write_denied)
+    }
+
+    /// Delete a section under the agent's chain (spec 04.2 `delete`):
+    /// delegated `section.delete` logged; the sealed blob stays, erasure
+    /// is cryptographic (spec 06).
+    pub fn record_section_delete(&mut self, display_path: &str, now: &str) -> Result<()> {
+        let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+        self.bundle
+            .section_delete_as_agent(
+                &self.agent_chain,
+                &agent_sk,
+                aithos_core::path::Zone::Circle,
+                display_path,
+                now,
+                self.entropy.as_mut(),
+            )
+            .map_err(write_denied)
+    }
+
     // ------------------------------------------------------------- audit
 
     /// Run the auditor's scoped query with the auditor's own key and
@@ -1091,4 +1167,17 @@ fn read_json<T: serde::de::DeserializeOwned>(
 
 fn bridge_err(e: impl std::fmt::Display) -> GatewayError {
     GatewayError::BridgeFailed(e.to_string())
+}
+
+/// Map a refused delegated write to the caller-facing verdict: a mandate
+/// verdict (perimeter, window, revocation) is a denial; anything else is
+/// an append refusal.
+fn write_denied(e: aithos_core::error::Error) -> GatewayError {
+    match e {
+        aithos_core::error::Error::InvalidMandate(reason) => GatewayError::MandateDenied {
+            op: "ethos.write".to_owned(),
+            reason,
+        },
+        other => GatewayError::LogAppendRefused(other.to_string()),
+    }
 }

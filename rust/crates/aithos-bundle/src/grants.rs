@@ -19,10 +19,14 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::collections::BTreeMap;
 
 /// One requested perimeter, in display terms (names). Resolution to sids
-/// happens against the clear index at issuance time.
+/// happens against the clear index at issuance time. The verb spans the
+/// full §04.2 lattice: the delivered key is the same for every verb
+/// (symmetric node keys — whoever can open can seal); the CERTIFICATE is
+/// what separates a reader from a writer, and the verifier enforces it.
 #[derive(Debug, Clone)]
 pub struct GrantSpec {
     pub zone: Zone,
+    pub verb: Verb,
     pub dir: String,
     pub tag: Option<String>,
 }
@@ -211,7 +215,7 @@ impl<S: Store> Bundle<S> {
             let dir = self.resolve_folder(spec.zone, &spec.dir)?;
             self.deliver_entry(owner, &recipient, spec.zone, &dir, spec.tag.as_deref(), ent)?;
             perimeter.push(PerimeterEntry::Ethos {
-                verb: Verb::Read,
+                verb: spec.verb,
                 zone: spec.zone,
                 dir,
                 tag: spec.tag.clone(),
@@ -463,7 +467,7 @@ impl<S: Store> Bundle<S> {
                 self.add_line_on(&node, &dk, &recipient, ent)?;
             }
             perimeter.push(PerimeterEntry::Ethos {
-                verb: Verb::Read,
+                verb: spec.verb,
                 zone: spec.zone,
                 dir,
                 tag: spec.tag.clone(),
@@ -491,5 +495,256 @@ impl<S: Store> Bundle<S> {
         )?;
         self.put_json(&format!("certs/{}.json", child.id), &child)?;
         Ok(child)
+    }
+
+    /// Owner-side key delivery for ONE perimeter entry, without minting a
+    /// certificate (§04.3): what callers assembling a richer mandate by
+    /// hand (constraints, act/gamma/issue/revoke entries) use to pair the
+    /// certificate half with its header line.
+    pub fn deliver_zone_line(
+        &mut self,
+        owner: &OwnerKeys,
+        agent_pub: &VerifyingKey,
+        zone: Zone,
+        dir_display: &str,
+        tag: Option<&str>,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        let recipient = agent_recipient(agent_pub);
+        let dir = self.resolve_folder(zone, dir_display)?;
+        self.deliver_entry(owner, &recipient, zone, &dir, tag, ent)
+    }
+
+    // -------------------------------------------------- delegated writes
+    //
+    // Spec §04.2 (verb lattice), §04.3 (the line IS the pen), §07.2
+    // (delegated mutations are log citizens like actions). Circle only
+    // this pass, like the owner-side rewrite/delete above.
+
+    /// The governing write key for a (possibly new) section, agent side:
+    /// the deepest ancestor folder carrying a header governs, at the
+    /// LATEST version it publishes; the agent must reach that version
+    /// through its own lines and wraps — physics refuses a stale pen
+    /// (§03.4: writing at v1 past a rotation would hand content back to
+    /// whoever the rotation cut). Returns `(key_version, section_key)`.
+    pub(crate) fn agent_current_section_key(
+        &self,
+        kid: &str,
+        kex: &x25519_dalek::StaticSecret,
+        folders: &[Sid],
+        sid: Sid,
+    ) -> Result<(u64, [u8; 32])> {
+        let zone = Zone::Circle;
+        // The governing version is clear header metadata: deepest ancestor
+        // folder with a header, its latest published version. KV when the
+        // whole path is derivation-only.
+        let mut governing = KV;
+        for depth in (0..=folders.len()).rev() {
+            let ancestor = NodePath::folder(zone, folders[..depth].to_vec());
+            let Some(bytes) = self.store.get(&hdr_file(zone, &ancestor)).ok().flatten() else {
+                continue;
+            };
+            let Ok(header) = serde_json::from_slice::<Header>(&bytes) else {
+                continue;
+            };
+            governing = header.latest_version();
+            break;
+        }
+        let key = self.agent_section_key(kid, kex, folders, sid, governing)?;
+        Ok((governing, key))
+    }
+
+    /// Shared preamble of every delegated write: chain valid and unrevoked
+    /// at `now`, operation covered by the leaf perimeter (§04.5 steps 1–7
+    /// for the certificate half; the key acquisition that follows is the
+    /// physics half).
+    fn check_delegated_write(
+        &self,
+        chain: &[Mandate],
+        verb: Verb,
+        zone: Zone,
+        folders: &[Sid],
+        tags: &[String],
+        now: &str,
+    ) -> Result<()> {
+        if zone != Zone::Circle {
+            return Err(Error::InvalidPath(
+                "delegated writes: circle only this pass".to_owned(),
+            ));
+        }
+        let doc = self.did_doc()?;
+        let revs = self.active_revocations()?;
+        aithos_core::mandate::verify_chain_revocable(chain, &doc, now, &revs)?;
+        let leaf = chain
+            .last()
+            .ok_or_else(|| Error::InvalidMandate("empty chain".to_owned()))?;
+        let op = Op {
+            verb,
+            zone,
+            folders,
+            tags,
+        };
+        if !aithos_core::mandate::covers_op(&leaf.parsed_perimeter()?, &op) {
+            return Err(Error::InvalidMandate(format!(
+                "{}: write not covered by the leaf perimeter",
+                leaf.id
+            )));
+        }
+        Ok(())
+    }
+
+    /// Delegated section creation (§04.2 `append` = create within
+    /// perimeter). The blob is UNSIGNED (§02.11: owner signatures are the
+    /// owner's; agent authorship is evidenced by the delegated gamma
+    /// entry, signed by the grantee key under its chain). The folder must
+    /// exist: an append perimeter grows content, never the tree shape.
+    pub fn section_add_as_agent(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        spec: &crate::bundle::SectionSpec<'_>,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        let crate::bundle::SectionSpec {
+            zone,
+            folder_path,
+            name,
+            title,
+            tags,
+            body,
+            now,
+        } = *spec;
+        let folders = self.resolve_folder(zone, folder_path)?;
+        self.check_delegated_write(chain, Verb::Append, zone, &folders, tags, now)?;
+        let leaf = chain.last().expect("checked non-empty");
+        let kid = leaf.grantee.pubkey.clone();
+        let kex = grantee_kex_secret(agent_sk);
+        let sid = Bundle::<S>::new_sid(ent);
+        let node = NodePath::section(zone, folders.clone(), sid);
+        let (kv, key) = self.agent_current_section_key(&kid, &kex, &folders, sid)?;
+        let blob = serde_json::json!({ "md": body });
+        let sha = self.put_blob_v(
+            &format!("e/circle/blobs/{sid}.enc"),
+            &key,
+            &node,
+            kv,
+            &aithos_core::jcs::canonical_bytes(&blob)?,
+            ent,
+        )?;
+        let index_path = "e/circle/index.json";
+        let mut index: ZoneIndex = self.get_json(index_path)?;
+        index.sections.push(crate::bundle::SectionRow {
+            sid: sid.to_string(),
+            name: name.to_owned(),
+            folder_sid: folders.last().map(ToString::to_string),
+            title: title.to_owned(),
+            tags: tags.to_vec(),
+            blob_sha: sha.clone(),
+            key_version: kv,
+            sig: None,
+        });
+        self.put_json(index_path, &index)?;
+        self.log_delegated_mutation(
+            chain,
+            agent_sk,
+            aithos_core::gamma::Kind::SectionAdd,
+            &node,
+            serde_json::json!({ "blob_sha": sha, "name": name }),
+            now,
+            ent,
+        )?;
+        Ok(())
+    }
+
+    /// Delegated rewrite of an existing circle section (§04.2 `edit`):
+    /// new unsigned blob under the governing key, row updated in place,
+    /// delegated `section.modify` logged (§07.2, §07.4).
+    #[allow(clippy::too_many_arguments)]
+    pub fn section_rewrite_as_agent(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        zone: Zone,
+        display_path: &str,
+        body: &str,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        let (row, folders) = self.resolve_clear(zone, display_path)?;
+        self.check_delegated_write(chain, Verb::Edit, zone, &folders, &row.tags, now)?;
+        let leaf = chain.last().expect("checked non-empty");
+        let kid = leaf.grantee.pubkey.clone();
+        let kex = grantee_kex_secret(agent_sk);
+        let sid = Sid::parse(&row.sid)?;
+        let node = NodePath::section(zone, folders.clone(), sid);
+        let (kv, key) = self.agent_current_section_key(&kid, &kex, &folders, sid)?;
+        let blob = serde_json::json!({ "md": body });
+        let sha = self.put_blob_v(
+            &format!("e/circle/blobs/{sid}.enc"),
+            &key,
+            &node,
+            kv,
+            &aithos_core::jcs::canonical_bytes(&blob)?,
+            ent,
+        )?;
+        let index_path = "e/circle/index.json";
+        let mut index: ZoneIndex = self.get_json(index_path)?;
+        let entry = index
+            .sections
+            .iter_mut()
+            .find(|r| r.sid == row.sid)
+            .ok_or_else(|| Error::InvalidPath(format!("no section {display_path}")))?;
+        entry.blob_sha = sha.clone();
+        entry.key_version = kv;
+        entry.sig = None;
+        self.put_json(index_path, &index)?;
+        self.log_delegated_mutation(
+            chain,
+            agent_sk,
+            aithos_core::gamma::Kind::SectionModify,
+            &node,
+            serde_json::json!({ "blob_sha": sha }),
+            now,
+            ent,
+        )?;
+        Ok(())
+    }
+
+    /// Delegated deletion (§04.2 `delete`): the index row goes, the
+    /// delegated `section.delete` is logged. Like the owner op, the sealed
+    /// blob bytes stay — erasure is cryptographic (§06), a row-less blob
+    /// is unreachable.
+    pub fn section_delete_as_agent(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        zone: Zone,
+        display_path: &str,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        let (row, folders) = self.resolve_clear(zone, display_path)?;
+        self.check_delegated_write(chain, Verb::Delete, zone, &folders, &row.tags, now)?;
+        let sid = Sid::parse(&row.sid)?;
+        let node = NodePath::section(zone, folders, sid);
+        // The pen must reach the node it strikes (physics half): a delete
+        // is refused to a chain whose keys never covered the target.
+        let leaf = chain.last().expect("checked non-empty");
+        let kex = grantee_kex_secret(agent_sk);
+        self.agent_node_key(&leaf.grantee.pubkey, &kex, &node)?;
+        let index_path = "e/circle/index.json";
+        let mut index: ZoneIndex = self.get_json(index_path)?;
+        index.sections.retain(|r| r.sid != row.sid);
+        self.put_json(index_path, &index)?;
+        self.log_delegated_mutation(
+            chain,
+            agent_sk,
+            aithos_core::gamma::Kind::SectionDelete,
+            &node,
+            serde_json::json!({ "name": row.name }),
+            now,
+            ent,
+        )?;
+        Ok(())
     }
 }

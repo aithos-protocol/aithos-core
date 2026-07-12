@@ -39,6 +39,7 @@ fn agent_sk(b: u8) -> SigningKey {
 fn dir_spec(dir: &str) -> GrantSpec {
     GrantSpec {
         zone: Zone::Circle,
+        verb: aithos_core::mandate::Verb::Read,
         dir: dir.to_owned(),
         tag: None,
     }
