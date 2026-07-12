@@ -4,46 +4,50 @@ Feature: Journal tools — the agent consolidates its own memory
   consolidates memory into ITS journal, under mandate, fully traced, and
   reads it back. Served by the gateway itself, never relayed upstream.
 
-  v1 mechanics (contract committed @wip — defaults proposed 2026-07-12,
-  pending Mathieu's validation of the five C2 decision points):
-  - D1 scope: write AND search (consolidation without recall is worthless).
-  - D2 target: a note is ONE act entry in the journal gamma (connector
-    `journal`, clear payload, fresh id per write) — the same
-    no-protocol-change move as the xref mirror (§3bis.5). The core has no
-    agent-side section write yet (`section_add` is owner-keys-only), so
-    the `circle:memory/` section target is the recorded v2 migration,
-    not this lot.
-  - D3 pen: a DEDICATED journal pen (`act.x.journal.*`) minted at
-    `owner-init-journal` towards the agent key — one pen per usage, like
-    the inference pen; the xref pen stays untouched. No pen (journals
-    provisioned before this lot) → every journal tool refuses
-    fail-closed, the LLM-tap precedent.
-  - D4 exposure: dotted native names; the `journal` prefix is reserved
-    against context tool maps (config rejected), mirroring HUB-MCP §5;
-    `tools/list` serves the native tools with their real schemas.
-  - D5 search: the gateway scans its own journal store (readability
-    frontier — it holds the files), and the search is ITSELF journalized
-    before results flow back (log-before-effect). Notes only: xref
-    mirrors, inferences and refusals are not memory.
+  v2 contract (all five decision points validated by Mathieu,
+  2026-07-12, on top of pass L — delegated writes):
+  - A note is ONE SECTION in the journal's `circle:memory/` folder
+    (fresh unique technical name per write; the human label rides in
+    title and tags, clear in the zone index; the body is sealed at
+    rest). The gamma trace is a delegated `section.add` with a sealed
+    body — target and content teach the keyless nothing.
+  - The pen is a DEDICATED memory mandate (`append` on circle
+    `memory/`, spec 04.2 lattice) minted at `owner-init-journal`
+    towards the agent key, next to — never inside — the xref pen: one
+    pen per usage, independently revocable. The append verb creates and
+    reads (every mutation verb implies read) but never rewrites nor
+    deletes: v1 memory is append-only. No pen (journals provisioned
+    before this lot) → every journal tool refuses fail-closed, the
+    LLM-tap precedent.
+  - `journal.search` matches the CLEAR index only (name, title, tags —
+    the readability frontier: the gateway holds the files), newest
+    first; the sealed bodies are opened for the returned hits ONLY, and
+    every opened body is one journalized `ethos.read`. A search that
+    matches nothing opens nothing and logs nothing.
+  - Native names are dotted (`journal.write`, `journal.search`); the
+    `journal` prefix is reserved against context tool maps (config
+    rejected — mirrors HUB-MCP §5); `tools/list` serves the native
+    tools with their real argument schemas.
 
-  Rule: The owner grants the journal pen at provisioning
+  Rule: The owner grants the memory pen at provisioning
 
     @wip
-    Scenario: Provisioning mints a dedicated journal pen towards the agent key
+    Scenario: Provisioning mints a dedicated memory pen towards the agent key
       Given an enterprise master seed
       When the owner creates a journal for the agent's public key
-      Then the agent holds a journal pen separate from the xref pen
-      And the journal gamma records that the journal pen was received
+      Then the agent holds a memory pen separate from the xref pen
+      And the journal gamma records that the memory pen was received
 
-  Rule: journal.write consolidates memory, never relayed
+  Rule: journal.write consolidates memory as sealed sections, never relayed
 
     @wip
-    Scenario: A note lands as one journal entry and reaches no upstream
+    Scenario: A note lands as one sealed section and reaches no upstream
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
       When the agent writes a note titled "standup" with text "shipped the brand fetch" and tag "daily"
       Then the call never reaches any upstream
-      And the journal gains one note entry carrying that note in clear
-      And the answer names the recorded note entry
+      And the owner reads back one memory note titled "standup" with text "shipped the brand fetch"
+      And the journal gamma logs one delegated "section.add" with a sealed body
+      And the answer names the recorded note
       And no context gamma gains any entry
 
     @wip
@@ -52,7 +56,7 @@ Feature: Journal tools — the agent consolidates its own memory
       When the agent writes a note carrying an unknown argument field
       Then the call never reaches any upstream
       And the journal gains one refusal entry
-      And the journal gains no note entry
+      And the journal gamma logs no "section.add"
 
     @wip
     Scenario: A note without text is refused fail-closed
@@ -60,26 +64,27 @@ Feature: Journal tools — the agent consolidates its own memory
       When the agent writes a note with an empty text
       Then the call never reaches any upstream
       And the journal gains one refusal entry
-      And the journal gains no note entry
+      And the journal gamma logs no "section.add"
 
     @wip
     Scenario: A journal provisioned without the pen refuses writes
-      Given a runner whose journal predates the journal pen
+      Given a runner whose journal predates the memory pen
       When the agent writes a note titled "standup" with text "shipped the brand fetch" and tag "daily"
       Then the call never reaches any upstream
       And the journal gains one refusal entry
-      And the journal gains no note entry
+      And the journal gamma logs no "section.add"
 
-  Rule: journal.search reads the memory back, and the read is itself traced
+  Rule: journal.search recalls from the clear index; every opened body is a logged read
 
     @wip
-    Scenario: A search returns the matching notes
+    Scenario: A title match returns the note, and only that body is opened
       Given a runner provisioned with contexts "company-brand" and "ui-designer"
-      And the journal holds a note titled "alpha" with text "brand palette approved"
-      And the journal holds a note titled "beta" with text "figma tokens exported"
+      And the journal holds a note titled "brand palette approved" with text "use the ochre set"
+      And the journal holds a note titled "figma tokens exported" with text "v2 tokens shipped"
       When the agent searches the journal for "palette"
-      Then the answer carries the "alpha" note only
-      And the journal gains one search entry naming that query
+      Then the answer carries the note titled "brand palette approved" only
+      And its text "use the ochre set" comes back with it
+      And the journal gamma logs exactly one "ethos.read"
 
     @wip
     Scenario: A tag filter narrows the recall
@@ -87,14 +92,23 @@ Feature: Journal tools — the agent consolidates its own memory
       And the journal holds a note titled "alpha" tagged "brand"
       And the journal holds a note titled "beta" tagged "figma"
       When the agent searches the journal for tag "figma"
-      Then the answer carries the "beta" note only
+      Then the answer carries the note titled "beta" only
+      And the journal gamma logs exactly one "ethos.read"
+
+    @wip
+    Scenario: A search that matches nothing opens nothing and logs nothing
+      Given a runner provisioned with contexts "company-brand" and "ui-designer"
+      And the journal holds a note titled "alpha" tagged "brand"
+      When the agent searches the journal for "nothing-of-the-sort"
+      Then the answer carries no note
+      And the journal gamma logs no "ethos.read"
 
     @wip
     Scenario: A journal provisioned without the pen refuses searches too
-      Given a runner whose journal predates the journal pen
+      Given a runner whose journal predates the memory pen
       When the agent searches the journal for "anything"
       Then the journal gains one refusal entry
-      And the journal gains no search entry
+      And the journal gamma logs no "ethos.read"
 
   Rule: The native names are reserved and listed with their real schemas
 
