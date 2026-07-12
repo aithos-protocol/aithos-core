@@ -61,7 +61,7 @@ Feature: Governed MCP hub — arbitrary servers under mandate
       When the agent calls "github__issues_create" through the hub
       Then the call never reaches the upstream
       And the refusal names "github__issues_create"
-      And the granting context gamma gains one governance refusal
+      And the gamma of the context that knows the tool gains one governance refusal
       And the journal gains one refusal entry
 
   Rule: The approved pin defeats upstream tool poisoning
@@ -96,6 +96,7 @@ Feature: Governed MCP hub — arbitrary servers under mandate
       Examples:
         | server  |
         | journal |
+        | gateway |
 
     @wip
     Scenario: One upstream tool cannot be granted by two contexts
@@ -107,4 +108,10 @@ Feature: Governed MCP hub — arbitrary servers under mandate
     Scenario: Flattened exposed-name collisions are rejected
       Given server "github" grants raw tool "issues.list"
       When that server also grants raw tool "issues_list"
+      Then the config is rejected naming the exposed-name collision
+
+    @wip
+    Scenario: An exposed name reachable from two servers is rejected
+      Given server "a" grants raw tool "b__c"
+      When a hub config also declares server "a__b" granting raw tool "c"
       Then the config is rejected naming the exposed-name collision
