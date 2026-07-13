@@ -189,8 +189,12 @@ d'aplatissement → rejet ; noms réservés → rejet.
   v1 fermée hors `initialize`/`tools/list`/`tools/call`. Bearer optionnel appliqué
   uniquement côté amont. Cucumber : cinq scénarios runtime détaggés et verts ; le
   re-enrollment politique reste le lot owner H2b séparé.
-- **H4 — e2e réseau** : 2 faux MCP dont 1 partagé par 2 Ethos ; drift simulé sur le
-  fil ; audit-export par contexte montre les actes du serveur partagé chez le bon.
+- **H4 — e2e réseau : ✅ CLOS (2026-07-13).** Le vrai binaire provisionne trois
+  contextes, contrôle deux faux MCP HTTP (GitHub partagé par deux Ethos, Linear par
+  un troisième), applique les bearers sur le seul fil amont, sert les pins couverts,
+  restaure les noms bruts, puis `audit-export` retrouve chaque acte dans le bon
+  contexte. Après mutation de description, un nouveau `run` refuse le drift avant
+  d'ouvrir le listener agent.
 
 ## 10. Compléments décidés (Mathieu, 2026-07-13)
 

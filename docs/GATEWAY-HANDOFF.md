@@ -15,9 +15,11 @@ les leçons d'environnement. Session initiale : 2026-07-10.
 > serveur partagé entre deux Ethos, nom brut restauré, `act.x.<server>` + xref,
 > write connu caché/refusé, drift `manifest_drift` gouverné, surface hors
 > `tools/*` fermée, bearer amont. Suite : **40 scénarios / 195 steps**, 36 unit,
-> 4 CLI, 5 owner surface, 3 e2e réseau ; clippy `-D warnings` et fmt clean.
+> 4 CLI, 5 owner surface, **4 e2e réseau** ; clippy `-D warnings` et fmt clean.
 > Il reste **un seul `@wip` hub** : re-enrollment owner (nouveau mandat +
-> révocation politique), isolé en H2b ; puis H4 e2e réseau hub.
+> révocation politique), isolé en H2b. **H4 est clos** : vrai binaire, deux MCP
+> HTTP dont un partagé, bearer wire-only, audit par contexte et restart bloqué sur
+> drift.
 
 **Branche active imposée : `feat/obligations`** (ne jamais switcher). Crate :
 `rust/crates/aithos-gateway/`.
@@ -332,7 +334,7 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
   rejoignent la Phase D si Mathieu tranche. Ses 4 questions ouvertes (§9)
   sont à lui.
 
-**Phase H — hub MCP gouverné (OUVERTE 2026-07-12, H0→H3 ✅).**
+**Phase H — hub MCP gouverné (OUVERTE 2026-07-12, H0→H4 ✅ sauf H2b).**
 
 - ✅ **H0 — contrat** (`dd680ae`, écrit sur la branche dédiée
   `codex/gateway-hub-h0`, **mergé ff sur `feat/obligations`** puis
@@ -367,8 +369,11 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
   gateway, liste couverte reconstruite sans amont, serveur partagé, relais brut,
   log par Ethos + xref, contrôle drift et bearer config. Cinq scénarios runtime
   détaggés ; suite finale 40/195.
-- ⬜ **H2b** re-enrollment + révocation politique (dernier `@wip`) ; **H4** e2e
-  réseau hub (voir `docs/HUB-MCP.md` §9, désormais suivi).
+- ⬜ **H2b** re-enrollment + révocation politique (dernier `@wip`).
+- ✅ **H4 — e2e réseau hub** : `tests/e2e_hub.rs`, vrai binaire + deux MCP sur
+  sockets localhost, trois Ethos, serveur partagé, bearer observé sur le fil et
+  absent des stores, noms bruts, gammas/xrefs/audit-export, restart fail-closed
+  après drift de description.
 
 **Phase D — industrialisation.** Args scellés (quick win : `log_action` les
 accepte, manque `grant_audit_line` + flag), `tools/list` filtré, passthrough
