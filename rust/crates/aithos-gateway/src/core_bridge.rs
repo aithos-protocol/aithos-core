@@ -1333,6 +1333,14 @@ pub struct EquipOutcome {
     pub memory_mandate: Option<String>,
 }
 
+/// Governed replacement result: fresh active equipment plus the prior
+/// certificates that were politically revoked in the same owner gesture.
+#[derive(Debug, Clone)]
+pub struct ReenrollOutcome {
+    pub equipment: EquipOutcome,
+    pub revoked_mandates: Vec<String>,
+}
+
 /// Create the agent's journal: an isolated Ethos owned by the enterprise.
 /// The agent's key gets the xref pen (`act.x.xref.*`), the gateway its
 /// governance pen (`act.x.gateway.*`); both grants are logged — that IS
@@ -1482,6 +1490,118 @@ pub fn owner_enroll_server(
         now,
         ent,
     )
+}
+
+/// Replace an existing server pin for the SAME agent key. The owner
+/// seals the newly approved manifest, issues fresh equipment, then
+/// appends revocations for the superseded agent, gateway and auditor
+/// mandates. Old certificates remain as immutable audit evidence.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_reenroll_server(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    gateway_pub_mb: &str,
+    manifest: &ApprovedManifest,
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<ReenrollOutcome> {
+    validate_approved(manifest)?;
+    let owner = derived_owner(master, "context", label);
+    let reopen = store.clone();
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    let state: BridgeState = read_json(&bundle, STATE_PATH)?;
+    let old_agent: Mandate = read_json(&bundle, &cert_path(&state.agent_mandate))?;
+    let expected_agent = decode_pub(agent_pub_mb)?;
+    if old_agent.grantee_pub().map_err(bridge_err)? != expected_agent {
+        return Err(GatewayError::ConfigRejected(
+            "re-enrollment must keep the same agent public key".into(),
+        ));
+    }
+    let (_, manifest_path) = hub_manifest_paths(&manifest.server);
+    if bundle
+        .store
+        .get(&manifest_path)
+        .map_err(bridge_err)?
+        .is_none()
+    {
+        return Err(GatewayError::ConfigRejected(format!(
+            "server `{}` is not enrolled",
+            manifest.server
+        )));
+    }
+    replace_hub_manifest(&mut bundle, &owner, manifest, ent)?;
+    let read_ops: Vec<String> = manifest
+        .tools
+        .iter()
+        .filter(|tool| tool.risk_class == ToolAccess::Read)
+        .map(|tool| hub_op_for_tool(&manifest.server, &tool.name))
+        .collect();
+    let mut revoked_mandates = vec![state.agent_mandate, state.gateway_mandate];
+    revoked_mandates.extend(state.auditor_mandate);
+    let equipment = equip(
+        bundle,
+        &owner,
+        agent_pub_mb,
+        gateway_pub_mb,
+        &read_ops,
+        true,
+        None,
+        None,
+        window,
+        now,
+        ent,
+    )?;
+    let mut bundle = Bundle::open(reopen).map_err(bridge_err)?;
+    for mandate in &revoked_mandates {
+        bundle
+            .log_revoke_owner(
+                &owner,
+                mandate,
+                "superseded by governed server re-enrollment",
+                now,
+                ent,
+            )
+            .map_err(bridge_err)?;
+    }
+    Ok(ReenrollOutcome {
+        equipment,
+        revoked_mandates,
+    })
+}
+
+fn replace_hub_manifest(
+    bundle: &mut Bundle<GatewayStore>,
+    owner: &OwnerKeys,
+    manifest: &ApprovedManifest,
+    ent: &mut dyn EntropySource,
+) -> Result<()> {
+    let (header_path, manifest_path) = hub_manifest_paths(&manifest.server);
+    let header: Header = read_json(bundle, &header_path)?;
+    header.validate().map_err(bridge_err)?;
+    let expected_node = format!("/x/{}", manifest.server);
+    if header.node != expected_node {
+        return Err(GatewayError::BridgeFailed(format!(
+            "hub manifest header targets `{}`, expected `{expected_node}`",
+            header.node
+        )));
+    }
+    let (version, key) = header
+        .open_latest(&bundle.did, "owner-kex", &owner.owner_kex)
+        .map_err(bridge_err)?;
+    let plain = aithos_core::jcs::canonical_bytes(manifest).map_err(bridge_err)?;
+    let nonce = ent.e24();
+    let aad = aithos_core::seal::blob_aad(&bundle.did, &expected_node, version);
+    let cipher = aithos_core::seal::blob_seal(&key, &plain, &nonce, &aad);
+    let mut sealed = Vec::with_capacity(nonce.len() + cipher.len());
+    sealed.extend_from_slice(&nonce);
+    sealed.extend_from_slice(&cipher);
+    bundle
+        .store
+        .put(&manifest_path, &sealed)
+        .map_err(bridge_err)
 }
 
 fn pin_hub_manifest(

@@ -70,7 +70,6 @@ Feature: Governed MCP hub — arbitrary servers under mandate
       And the granting context gamma gains one governance refusal
       And the journal gains one refusal entry
 
-    @wip
     Scenario: Re-enrollment replaces the pin under a new mandate
       Given server "github" is enrolled with covered tool "issues.list"
       And discovery finds an owner-accepted schema change for "issues.list"

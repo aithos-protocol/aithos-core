@@ -24,8 +24,8 @@ use aithos_gateway::core_bridge::{
     agent_pub_multibase, cert_constraints, cert_grantee_pub, cert_perimeter, gamma_view,
     gateway_pub_multibase, journal_notes_view, owner_enroll_server, owner_grant_context,
     owner_init_context, owner_init_journal, owner_read_hub_manifest, owner_read_journal_note,
-    Bridge, ContextRuntime, EntropySource, EntryView, EquipOutcome, MandateWindow, OnboardOutcome,
-    RawStore, Runner, SeqEntropy, STATE_PATH,
+    owner_reenroll_server, Bridge, ContextRuntime, EntropySource, EntryView, EquipOutcome,
+    MandateWindow, OnboardOutcome, RawStore, ReenrollOutcome, Runner, SeqEntropy, STATE_PATH,
 };
 use aithos_gateway::hub::{approve_manifest, discover_server, ApprovedManifest};
 use aithos_gateway::keyholder::Keyholder;
@@ -200,6 +200,8 @@ struct GatewayWorld {
     hub_server: Option<String>,
     hub_tool: Option<String>,
     approved_manifest: Option<ApprovedManifest>,
+    reenroll: Option<ReenrollOutcome>,
+    old_agent_mandate: Option<String>,
 }
 
 impl GatewayWorld {
@@ -234,6 +236,8 @@ impl GatewayWorld {
             hub_server: None,
             hub_tool: None,
             approved_manifest: None,
+            reenroll: None,
+            old_agent_mandate: None,
         }
     }
 
@@ -772,6 +776,179 @@ async fn hub_call_refused_for_drift(w: &mut GatewayWorld) {
 #[then("the granting context gamma gains one governance refusal")]
 async fn hub_granting_context_refusal(w: &mut GatewayWorld) {
     hub_context_governance_refusal(w).await;
+}
+
+#[given(expr = "discovery finds an owner-accepted schema change for {string}")]
+async fn hub_discovers_accepted_change(w: &mut GatewayWorld, raw_tool: String) {
+    provision_single_hub(w).await;
+    let advertised = {
+        let mut advertised = w.upstream.advertised_tools.lock().unwrap();
+        let tool = advertised
+            .iter_mut()
+            .find(|tool| tool["name"] == raw_tool)
+            .expect("advertised tool");
+        tool["inputSchema"]["properties"]["page"] = json!({ "type": "integer", "minimum": 1 });
+        advertised.clone()
+    };
+    let discovery = FakeMcp::advertising(advertised);
+    let proposed = discover_server("github", &discovery)
+        .await
+        .expect("changed discovery");
+    w.approved_manifest = Some(
+        approve_manifest(
+            &proposed,
+            &BTreeMap::from([
+                ("issues.list".to_owned(), ToolAccess::Read),
+                ("issues.create".to_owned(), ToolAccess::Write),
+            ]),
+        )
+        .expect("owner accepts changed schema"),
+    );
+}
+
+#[when("the owner re-enrolls the tool for the same agent key")]
+async fn owner_reenrolls_hub(w: &mut GatewayWorld) {
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let store = w
+        .ctx_stores
+        .get("customer-support")
+        .expect("context store")
+        .clone();
+    let state: Value = serde_json::from_slice(
+        &store
+            .clone()
+            .get(STATE_PATH)
+            .expect("state readable")
+            .expect("state present"),
+    )
+    .expect("state JSON");
+    w.old_agent_mandate = Some(state["agent_mandate"].as_str().unwrap().to_owned());
+    let mut ent = SeqEntropy::default();
+    let result = owner_reenroll_server(
+        &master,
+        "customer-support",
+        &agent_pub,
+        &gateway_pub,
+        w.approved_manifest.as_ref().expect("changed approval"),
+        store,
+        &GatewayWorld::window(),
+        T0,
+        &mut ent,
+    )
+    .expect("governed replacement");
+
+    let dir = w.scratch.as_ref().expect("hub scratch").path();
+    let quote =
+        |path: &std::path::Path| serde_json::to_string(&path.display().to_string()).unwrap();
+    let cfg = GatewayConfig::from_yaml(&format!(
+        r#"listen: 127.0.0.1:4870
+servers:
+  - name: github
+    transport: http
+    url: https://github.invalid/mcp
+contexts:
+  - name: customer-support
+    store: {{ kind: fs, root: {} }}
+    tools:
+      github__issues_list: {{ server: github, tool: issues.list, access: read }}
+      github__issues_create: {{ server: github, tool: issues.create, access: write }}
+journal:
+  store: {{ kind: fs, root: {} }}
+"#,
+        quote(&dir.join("support")),
+        quote(&dir.join("journal"))
+    ))
+    .unwrap();
+    let mut kh_ent = SeqEntropy::default();
+    let runner = Runner::open(
+        &cfg,
+        Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32()),
+        || Box::new(SeqEntropy::default()),
+    )
+    .expect("runner reopens the replacement pin");
+    w.router = Some(Arc::new(McpRouter {
+        runner: Arc::new(Mutex::new(runner)),
+        upstreams: BTreeMap::from([("github".to_owned(), w.upstream.clone())]),
+        clock: Arc::new(|| T0.to_owned()),
+    }));
+    w.reenroll = Some(result);
+}
+
+#[then("a new mandate covers the newly pinned manifest")]
+async fn new_mandate_covers_reenroll(w: &mut GatewayWorld) {
+    let result = w.reenroll.as_ref().expect("replacement result");
+    assert_ne!(
+        result.equipment.agent_mandate,
+        *w.old_agent_mandate.as_ref().unwrap()
+    );
+    assert_eq!(
+        cert_perimeter(
+            w.ctx_stores["customer-support"].clone(),
+            &result.equipment.agent_mandate
+        )
+        .unwrap(),
+        vec!["act.x.github.issues_list"]
+    );
+    let pinned = owner_read_hub_manifest(
+        &w.master(),
+        "customer-support",
+        "github",
+        w.ctx_stores["customer-support"].clone(),
+    )
+    .unwrap();
+    assert_eq!(
+        pinned
+            .tools
+            .iter()
+            .find(|tool| tool.name == "issues.list")
+            .unwrap()
+            .input_schema["properties"]["page"]["type"],
+        "integer"
+    );
+}
+
+#[then("the old mandate is politically revoked")]
+async fn old_mandate_revoked(w: &mut GatewayWorld) {
+    let old = w.old_agent_mandate.as_ref().unwrap();
+    assert!(w
+        .ctx_gamma("customer-support")
+        .iter()
+        .any(|entry| entry.kind == "revoke" && entry.target.as_deref() == Some(old)));
+}
+
+#[then("the granting context gamma records the new grant and the revocation")]
+async fn reenroll_gamma_story(w: &mut GatewayWorld) {
+    let result = w.reenroll.as_ref().unwrap();
+    let entries = w.ctx_gamma("customer-support");
+    assert!(entries.iter().any(|entry| {
+        entry.kind == "grant"
+            && entry.target.as_deref() == Some(result.equipment.agent_mandate.as_str())
+    }));
+    assert!(entries.iter().any(|entry| {
+        entry.kind == "revoke" && entry.target.as_deref() == w.old_agent_mandate.as_deref()
+    }));
+}
+
+#[then("tools/list serves only the newly pinned schema")]
+async fn tools_list_serves_reenrolled_schema(w: &mut GatewayWorld) {
+    let router = w.router.as_ref().unwrap();
+    w.last_response = Some(
+        process_multi(
+            router,
+            json!({ "jsonrpc": "2.0", "id": 88, "method": "tools/list" }),
+        )
+        .await,
+    );
+    let listed = w.listed_tools();
+    let issue = listed
+        .iter()
+        .find(|tool| tool["name"] == "github__issues_list")
+        .unwrap();
+    assert_eq!(
+        issue["inputSchema"]["properties"]["page"]["type"],
+        "integer"
+    );
 }
 
 impl std::fmt::Debug for GatewayWorld {

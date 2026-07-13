@@ -126,6 +126,10 @@ enum Command {
         store_root: String,
         #[arg(long, default_value_t = 30)]
         ttl_days: u32,
+        /// Replace an existing pin for the same agent key and revoke
+        /// every superseded runtime mandate after issuing fresh ones.
+        #[arg(long)]
+        replace: bool,
     },
     /// Initialise the ethos, mint identities, grant the read-only agent
     /// mandate, the gateway governance mandate and the scoped auditor
@@ -305,6 +309,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             approvals,
             store_root,
             ttl_days,
+            replace,
         } => {
             let master = decode_master(master_seed_hex)?;
             let proposed: aithos_gateway::hub::ProposedManifest =
@@ -312,22 +317,42 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let approved =
                 aithos_gateway::hub::approve_manifest(&proposed, &parse_approvals(approvals)?)?;
             let start = now_secs();
-            let outcome = aithos_gateway::core_bridge::owner_enroll_server(
-                &master,
-                label,
-                agent_pub,
-                gateway_pub,
-                &approved,
-                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
-                    root: store_root.into(),
-                })?,
-                &MandateWindow {
-                    not_before: ts(start),
-                    not_after: ts(start + u64::from(*ttl_days) * 86_400),
-                },
-                &ts(start),
-                &mut OsEntropy,
-            )?;
+            let store = GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                root: store_root.into(),
+            })?;
+            let window = MandateWindow {
+                not_before: ts(start),
+                not_after: ts(start + u64::from(*ttl_days) * 86_400),
+            };
+            let (outcome, revoked) = if *replace {
+                let replaced = aithos_gateway::core_bridge::owner_reenroll_server(
+                    &master,
+                    label,
+                    agent_pub,
+                    gateway_pub,
+                    &approved,
+                    store,
+                    &window,
+                    &ts(start),
+                    &mut OsEntropy,
+                )?;
+                (replaced.equipment, replaced.revoked_mandates)
+            } else {
+                (
+                    aithos_gateway::core_bridge::owner_enroll_server(
+                        &master,
+                        label,
+                        agent_pub,
+                        gateway_pub,
+                        &approved,
+                        store,
+                        &window,
+                        &ts(start),
+                        &mut OsEntropy,
+                    )?,
+                    Vec::new(),
+                )
+            };
             eprintln!("STORE the auditor seed COLD — shown ONCE.");
             println!("context_did: {}", outcome.ethos_did);
             println!("server: {}", approved.server);
@@ -336,6 +361,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             if let (Some(m), Some(s)) = (&outcome.auditor_mandate, &outcome.auditor_seed_hex) {
                 println!("auditor_mandate: {m}");
                 println!("auditor_seed_hex: {s}");
+            }
+            for mandate in revoked {
+                println!("revoked_mandate: {mandate}");
             }
             return Ok(());
         }

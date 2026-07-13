@@ -188,13 +188,18 @@ d'aplatissement → rejet ; noms réservés → rejet.
   erreur ; drift mémorisé puis refusé avant relais sous `manifest_drift`. Surface
   v1 fermée hors `initialize`/`tools/list`/`tools/call`. Bearer optionnel appliqué
   uniquement côté amont. Cucumber : cinq scénarios runtime détaggés et verts ; le
-  re-enrollment politique reste le lot owner H2b séparé.
+  re-enrollment politique est fermé séparément par H2b ci-dessous.
 - **H4 — e2e réseau : ✅ CLOS (2026-07-13).** Le vrai binaire provisionne trois
   contextes, contrôle deux faux MCP HTTP (GitHub partagé par deux Ethos, Linear par
   un troisième), applique les bearers sur le seul fil amont, sert les pins couverts,
   restaure les noms bruts, puis `audit-export` retrouve chaque acte dans le bon
   contexte. Après mutation de description, un nouveau `run` refuse le drift avant
   d'ouvrir le listener agent.
+- **H2b — re-enrollment : ✅ CLOS (2026-07-13).** `owner-enroll-server
+  --replace` exige la même pubkey agent, remplace le manifeste sous la clé vault
+  existante, minte un nouvel équipement, puis révoque politiquement les anciens
+  mandats agent, gateway et auditeur. Les certificats et entrées antérieurs restent
+  append-only ; la sortie nomme chaque mandat révoqué sans exposer de seed.
 
 ## 10. Compléments décidés (Mathieu, 2026-07-13)
 

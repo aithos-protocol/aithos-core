@@ -10,14 +10,15 @@ les leçons d'environnement. Session initiale : 2026-07-10.
 > l'ouverture/sur erreur, classes `read|write`, bearer config v1, collisions
 > post-aplatissement sans bannir `__`, `HUB-MCP.md` suivi. H1 config v3 fermé
 > dans `6b580ff`; H2 discover/approval/pin/grants owner fermé dans `f915d34`;
-> H3 implémenté et QA verte (commit à lire dans le log suivant) : pins ouverts
+> H3 implémenté et QA verte (`4fc4b4d`) : pins ouverts
 > via la ligne gateway, `tools/list` hors-ligne exact et limité aux reads,
 > serveur partagé entre deux Ethos, nom brut restauré, `act.x.<server>` + xref,
 > write connu caché/refusé, drift `manifest_drift` gouverné, surface hors
-> `tools/*` fermée, bearer amont. Suite : **40 scénarios / 195 steps**, 36 unit,
+> `tools/*` fermée, bearer amont. Suite : **41 scénarios / 202 steps**, 36 unit,
 > 4 CLI, 5 owner surface, **4 e2e réseau** ; clippy `-D warnings` et fmt clean.
-> Il reste **un seul `@wip` hub** : re-enrollment owner (nouveau mandat +
-> révocation politique), isolé en H2b. **H4 est clos** : vrai binaire, deux MCP
+> **Zéro `@wip` hub** : H2b re-enrollment est désormais clos (`--replace`, même
+> clé agent, nouveau pin/mandats, révocation politique des anciens). **H4 est
+> clos** : vrai binaire, deux MCP
 > HTTP dont un partagé, bearer wire-only, audit par contexte et restart bloqué sur
 > drift.
 
@@ -334,7 +335,7 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
   rejoignent la Phase D si Mathieu tranche. Ses 4 questions ouvertes (§9)
   sont à lui.
 
-**Phase H — hub MCP gouverné (OUVERTE 2026-07-12, H0→H4 ✅ sauf H2b).**
+**Phase H — hub MCP gouverné : ✅ CLOSE (2026-07-13, H0→H4 + H2b).**
 
 - ✅ **H0 — contrat** (`dd680ae`, écrit sur la branche dédiée
   `codex/gateway-hub-h0`, **mergé ff sur `feat/obligations`** puis
@@ -365,11 +366,14 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
 - ✅ **H2 — enroll owner-side** (`f915d34`) : capture stricte `tools/list`,
   approbation explicite, JCS/SHA-256, manifeste scellé sous `/x/<server>`, ligne
   gateway, mandat exact et grants journalisés ; surface binaire réelle testée.
-- ✅ **H3 — runtime** (6ᵉ session, voir commit suivant) : pins ouverts par le
+- ✅ **H3 — runtime** (`4fc4b4d`) : pins ouverts par le
   gateway, liste couverte reconstruite sans amont, serveur partagé, relais brut,
   log par Ethos + xref, contrôle drift et bearer config. Cinq scénarios runtime
   détaggés ; suite finale 40/195.
-- ⬜ **H2b** re-enrollment + révocation politique (dernier `@wip`).
+- ✅ **H2b — re-enrollment** : `owner-enroll-server --replace`, même pubkey agent
+  obligatoire, remplacement du pin sous la clé vault existante, nouvel équipement,
+  révocation owner des anciens mandats agent/gateway/auditeur ; nouveau schéma servi
+  après réouverture. Dernier scénario H0 détaggé : hub **zéro `@wip`**.
 - ✅ **H4 — e2e réseau hub** : `tests/e2e_hub.rs`, vrai binaire + deux MCP sur
   sockets localhost, trois Ethos, serveur partagé, bearer observé sur le fil et
   absent des stores, noms bruts, gammas/xrefs/audit-export, restart fail-closed
@@ -496,7 +500,8 @@ hub-082f5a2.tar` (tar de review).
 
 Session du 2026-07-13 (6ᵉ gw) : reprise directe sur `feat/obligations`, jamais de
 switch. HEAD d'arrivée `f743cd6` (le document STANDARDS avait entre-temps été suivi
-par Mathieu). Commits sélectifs : `6b580ff` H1 puis `f915d34` H2 ; H3 et ce handoff
-forment le commit suivant. `docs/HUB-MCP.md` a été inclus avec autorisation
-explicite. Les scories `_gitjunk/`, `_to_delete/`, `_transfer/` et
-`docs/EXPLORATION-DESKTOP-GATEWAY.md` sont restées intactes et non stagées.
+par Mathieu). Commits sélectifs : `6b580ff` H1, `f915d34` H2, `4fc4b4d` H3,
+`088b82f` H4 ; H2b et le handoff final forment le commit suivant.
+`docs/HUB-MCP.md` a été inclus avec autorisation explicite. Les scories `_gitjunk/`,
+`_to_delete/`, `_transfer/` et `docs/EXPLORATION-DESKTOP-GATEWAY.md` sont restées
+intactes et non stagées.

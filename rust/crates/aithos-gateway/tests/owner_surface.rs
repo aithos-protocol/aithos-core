@@ -275,6 +275,67 @@ fn owner_enroll_server_pins_the_manifest_then_logs_the_grants() {
         .collect();
     assert_eq!(grants.len(), 3, "agent + gateway + auditor grants");
     assert_no_seed_leak(&console(&out), &id_path);
+
+    let changed_schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "state": { "type": "string" },
+            "page": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+    });
+    let changed = ProposedManifest {
+        version: MANIFEST_VERSION.to_owned(),
+        server: "github".to_owned(),
+        tools: vec![ProposedTool {
+            name: "issues.list".to_owned(),
+            description: Some("List repository issues".to_owned()),
+            input_schema: changed_schema.clone(),
+            pin_sha256: manifest_tool_pin(
+                "issues.list",
+                Some("List repository issues"),
+                &changed_schema,
+            )
+            .unwrap(),
+        }],
+    };
+    let changed_path = tmp.path().join("github.changed.json");
+    std::fs::write(&changed_path, serde_json::to_vec_pretty(&changed).unwrap()).unwrap();
+    let replaced = gateway()
+        .args([
+            "owner-enroll-server",
+            "--master-seed-hex",
+            MASTER,
+            "--label",
+            "engineering",
+            "--agent-pub",
+            &agent_pub,
+            "--gateway-pub",
+            &gateway_pub,
+            "--proposal",
+            changed_path.to_str().unwrap(),
+            "--approve",
+            "issues.list=read",
+            "--store-root",
+            store.to_str().unwrap(),
+            "--replace",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("revoked_mandate:"))
+        .get_output()
+        .clone();
+    let replaced_stdout = String::from_utf8_lossy(&replaced.stdout);
+    let replacement = line_value(&replaced_stdout, "agent_mandate: ");
+    assert_ne!(replacement, agent_mandate);
+    assert_eq!(replaced_stdout.matches("revoked_mandate:").count(), 3);
+    let story = gamma_kinds(&store);
+    assert_eq!(story.iter().filter(|(kind, _)| kind == "grant").count(), 6);
+    assert_eq!(story.iter().filter(|(kind, _)| kind == "revoke").count(), 3);
+    assert!(story
+        .iter()
+        .any(|(kind, target)| kind == "revoke" && target.as_deref() == Some(&agent_mandate)));
+    assert_no_seed_leak(&console(&replaced), &id_path);
 }
 
 #[test]
