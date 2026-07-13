@@ -88,7 +88,6 @@ Feature: Governed MCP hub — arbitrary servers under mandate
 
   Rule: Hub names and routes are unambiguous at configuration time
 
-    @wip
     Scenario Outline: Reserved server names are rejected
       When a hub config declares server "<server>"
       Then the config is rejected naming the reserved server name
@@ -98,19 +97,16 @@ Feature: Governed MCP hub — arbitrary servers under mandate
         | journal |
         | gateway |
 
-    @wip
     Scenario: One upstream tool cannot be granted by two contexts
       Given server "github" advertises tool "issues.list"
       When contexts "customer-support" and "engineering" both grant that upstream tool
       Then the config is rejected as an ambiguous context route
 
-    @wip
     Scenario: Flattened exposed-name collisions are rejected
       Given server "github" grants raw tool "issues.list"
       When that server also grants raw tool "issues_list"
       Then the config is rejected naming the exposed-name collision
 
-    @wip
     Scenario: An exposed name reachable from two servers is rejected
       Given server "a" grants raw tool "b__c"
       When a hub config also declares server "a__b" granting raw tool "c"

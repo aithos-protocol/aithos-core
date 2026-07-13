@@ -289,8 +289,13 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 )?));
                 let upstreams = contexts
                     .iter()
-                    .map(|c| (c.name.clone(), HttpUpstream::new(c.upstream_mcp.clone())))
-                    .collect();
+                    .map(|c| {
+                        Ok::<_, aithos_gateway::GatewayError>((
+                            c.name.clone(),
+                            HttpUpstream::new(c.legacy_upstream()?.to_owned()),
+                        ))
+                    })
+                    .collect::<aithos_gateway::Result<_>>()?;
                 let mut app = router_multi(Arc::new(McpRouter {
                     runner: Arc::clone(&runner),
                     upstreams,

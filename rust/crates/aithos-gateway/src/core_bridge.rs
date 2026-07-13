@@ -833,6 +833,11 @@ impl Runner {
         keyholder: Keyholder,
         mut entropy: impl FnMut() -> Box<dyn EntropySource + Send>,
     ) -> Result<Self> {
+        if cfg.is_hub() {
+            return Err(GatewayError::ConfigRejected(
+                "hub config accepted by H1, but governed runtime requires H3".into(),
+            ));
+        }
         let contexts_cfg = cfg.contexts.as_ref().ok_or_else(|| {
             GatewayError::ConfigRejected("the multi-context runner needs `contexts`".into())
         })?;
@@ -847,7 +852,7 @@ impl Runner {
             contexts.insert(
                 ctx.name.clone(),
                 ContextRuntime {
-                    policy: Policy::new(ctx.tools.clone()),
+                    policy: Policy::new(ctx.legacy_tools()?.clone()),
                     bridge,
                 },
             );

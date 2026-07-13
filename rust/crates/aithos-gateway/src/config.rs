@@ -2,7 +2,7 @@
 //! an agent in. Parsed fail-closed: unknown keys, unknown access levels or
 //! an unusable store are rejected outright, never guessed at.
 //!
-//! Two shapes, never mixed (v2, decisions of 2026-07-10):
+//! Three shapes, never mixed (v3, hub decisions of 2026-07-13):
 //!
 //! **Mono (legacy demo)** — one ethos, one upstream:
 //!
@@ -29,6 +29,27 @@
 //!     tools:
 //!       brand.read: read
 //!       brand.update: write
+//! journal:
+//!   store: { kind: fs, root: /var/lib/aithos/journal }
+//! ```
+//!
+//! **Governed hub (v3)** — servers are first-class shared resources;
+//! every context tool references one upstream tool explicitly:
+//!
+//! ```yaml
+//! listen: 127.0.0.1:4870
+//! servers:
+//!   - name: github
+//!     transport: http
+//!     url: https://mcp.github.example/mcp
+//! contexts:
+//!   - name: engineering
+//!     store: { kind: fs, root: /var/lib/aithos/engineering }
+//!     tools:
+//!       github__issues_list:
+//!         server: github
+//!         tool: issues.list
+//!         access: read
 //! journal:
 //!   store: { kind: fs, root: /var/lib/aithos/journal }
 //! ```
@@ -60,6 +81,66 @@ pub enum ToolAccess {
 /// (mandate generation must be reproducible).
 pub type ToolMap = BTreeMap<String, ToolAccess>;
 
+/// Upstream transport supported by the governed hub v1. `stdio` needs
+/// a separate custody-aware wrapper and is deliberately rejected here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ServerTransport {
+    Http,
+}
+
+/// One first-class upstream MCP server (hub config v3). Connection
+/// credentials deliberately remain a later seam; H1 pins topology and
+/// routing shape only.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServerConfig {
+    pub name: String,
+    pub transport: ServerTransport,
+    pub url: String,
+}
+
+/// A context's reference to one raw tool on a first-class server.
+/// `access` stays read/write in hub v1; the approved manifest added by
+/// H2 will make the risk model extensible without weakening this parse.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HubToolRef {
+    pub server: String,
+    pub tool: String,
+    pub access: ToolAccess,
+}
+
+pub type HubToolMap = BTreeMap<String, HubToolRef>;
+
+/// A context is either the legacy v2 scalar tool map or the hub v3
+/// reference map. Serde rejects a mixture inside one context.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ContextTools {
+    Legacy(ToolMap),
+    Hub(HubToolMap),
+}
+
+impl Default for ContextTools {
+    fn default() -> Self {
+        Self::Legacy(ToolMap::new())
+    }
+}
+
+impl ContextTools {
+    /// Runtime v2 accessor. A hub config parses in H1 but remains
+    /// closed until H3 wires governed pins into the router.
+    pub fn legacy(&self) -> Result<&ToolMap> {
+        match self {
+            Self::Legacy(tools) => Ok(tools),
+            Self::Hub(_) => Err(GatewayError::ConfigRejected(
+                "hub tool references require the H3 governed runtime".into(),
+            )),
+        }
+    }
+}
+
 /// Where the ethos (bundle + gamma) lives. Both variants parse from day
 /// one — decided 2026-07-10: local disk first, cloud must stay possible.
 #[derive(Debug, Clone, Deserialize)]
@@ -86,11 +167,27 @@ pub struct ContextConfig {
     pub name: String,
     /// Where this context's ethos lives.
     pub store: StoreConfig,
-    /// The real MCP server this context's calls relay to.
-    pub upstream_mcp: String,
+    /// Legacy v2: the real MCP server this context's calls relay to.
+    /// Hub v3 contexts omit it and reference `servers:` per tool.
+    #[serde(default)]
+    pub upstream_mcp: Option<String>,
     /// The tool whitelist that maps calls onto this context.
     #[serde(default)]
-    pub tools: ToolMap,
+    pub tools: ContextTools,
+}
+
+impl ContextConfig {
+    pub fn legacy_upstream(&self) -> Result<&str> {
+        self.upstream_mcp.as_deref().ok_or_else(|| {
+            GatewayError::ConfigRejected(
+                "hub contexts have no per-context upstream; H3 is not active".into(),
+            )
+        })
+    }
+
+    pub fn legacy_tools(&self) -> Result<&ToolMap> {
+        self.tools.legacy()
+    }
 }
 
 /// The agent's journal (v2): the enterprise-owned ethos that keeps the
@@ -143,6 +240,11 @@ pub struct GatewayConfig {
     /// denied.
     #[serde(default)]
     pub tools: ToolMap,
+    /// Governed hub shape (v3): shared first-class MCP servers. When
+    /// present, contexts must use referenced tools and omit their v2
+    /// `upstream_mcp` fields.
+    #[serde(default)]
+    pub servers: Option<Vec<ServerConfig>>,
     /// Multi-context shape (v2): the provisioned contexts. Mutually
     /// exclusive with the mono fields above.
     #[serde(default)]
@@ -175,12 +277,16 @@ impl GatewayConfig {
         self.store.as_ref().ok_or_else(mono_only)
     }
 
+    pub fn is_hub(&self) -> bool {
+        self.servers.is_some()
+    }
+
     fn validate(&self) -> Result<()> {
         if self.listen.trim().is_empty() {
             return Err(GatewayError::ConfigRejected("`listen` is empty".into()));
         }
         match (&self.contexts, &self.journal) {
-            // -------------------------------------------- multi-context v2
+            // ------------------------------- multi-context v2 / hub v3
             (Some(contexts), Some(journal)) => {
                 if self.upstream_mcp.is_some() || self.store.is_some() || !self.tools.is_empty() {
                     return Err(GatewayError::ConfigRejected(
@@ -194,7 +300,6 @@ impl GatewayConfig {
                 }
                 validate_store(&journal.store, "journal.store")?;
                 let mut names = std::collections::BTreeSet::new();
-                let mut seen = BTreeMap::new();
                 for ctx in contexts {
                     if ctx.name.trim().is_empty() {
                         return Err(GatewayError::ConfigRejected(
@@ -207,15 +312,11 @@ impl GatewayConfig {
                             ctx.name
                         )));
                     }
-                    validate_upstream(
-                        &ctx.upstream_mcp,
-                        &format!("contexts[{}].upstream_mcp", ctx.name),
-                    )?;
                     validate_store(&ctx.store, &format!("contexts[{}].store", ctx.name))?;
-                    // ONE flattened action namespace across ALL contexts:
-                    // routing is by tool name, so a cross-context collision
-                    // would make the route (and the grant) ambiguous.
-                    validate_tools(&ctx.tools, &ctx.name, &mut seen)?;
+                }
+                match &self.servers {
+                    Some(servers) => validate_hub(servers, contexts)?,
+                    None => validate_legacy_contexts(contexts)?,
                 }
                 if let Some(llm) = &self.llm {
                     validate_llm(llm)?;
@@ -231,6 +332,12 @@ impl GatewayConfig {
             )),
             // -------------------------------------------- mono (legacy demo)
             (None, None) => {
+                if self.servers.is_some() {
+                    return Err(GatewayError::ConfigRejected(
+                        "`servers` requires `contexts` and `journal` — declare the complete hub shape"
+                            .into(),
+                    ));
+                }
                 if self.llm.is_some() {
                     return Err(GatewayError::ConfigRejected(
                         "`llm` needs the multi-context shape (v1): the inference log \
@@ -255,6 +362,138 @@ impl GatewayConfig {
             }
         }
     }
+}
+
+fn validate_legacy_contexts(contexts: &[ContextConfig]) -> Result<()> {
+    let mut seen = BTreeMap::new();
+    for ctx in contexts {
+        let upstream = ctx.upstream_mcp.as_deref().ok_or_else(|| {
+            GatewayError::ConfigRejected(format!(
+                "contexts[{}].upstream_mcp is required without `servers`",
+                ctx.name
+            ))
+        })?;
+        validate_upstream(upstream, &format!("contexts[{}].upstream_mcp", ctx.name))?;
+        let tools = match &ctx.tools {
+            ContextTools::Legacy(tools) => tools,
+            ContextTools::Hub(_) => {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "contexts[{}] uses hub tool references without `servers`",
+                    ctx.name
+                )))
+            }
+        };
+        validate_tools(tools, &ctx.name, &mut seen)?;
+    }
+    Ok(())
+}
+
+fn validate_hub(servers: &[ServerConfig], contexts: &[ContextConfig]) -> Result<()> {
+    use std::collections::BTreeSet;
+
+    if servers.is_empty() {
+        return Err(GatewayError::ConfigRejected("`servers` is empty".into()));
+    }
+
+    let mut server_names = BTreeSet::new();
+    for server in servers {
+        if server.name.trim().is_empty() {
+            return Err(GatewayError::ConfigRejected(
+                "a server has an empty `name`".into(),
+            ));
+        }
+        if is_reserved_server(&server.name) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "reserved server name `{}`",
+                server.name
+            )));
+        }
+        if !server_names.insert(server.name.as_str()) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "duplicate server name `{}`",
+                server.name
+            )));
+        }
+        validate_upstream(&server.url, &format!("servers[{}].url", server.name))?;
+    }
+
+    let mut pairs: BTreeMap<(String, String), String> = BTreeMap::new();
+    let mut exposed: BTreeMap<String, String> = BTreeMap::new();
+    let mut mismatched_names = Vec::new();
+    for ctx in contexts {
+        if ctx.upstream_mcp.is_some() {
+            return Err(GatewayError::ConfigRejected(format!(
+                "contexts[{}].upstream_mcp cannot mix with `servers`",
+                ctx.name
+            )));
+        }
+        let tools = match &ctx.tools {
+            ContextTools::Hub(tools) => tools,
+            ContextTools::Legacy(tools) if tools.is_empty() => continue,
+            ContextTools::Legacy(_) => {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "contexts[{}] must reference hub tools as {{server, tool, access}}",
+                    ctx.name
+                )))
+            }
+        };
+        for (declared, tool) in tools {
+            if declared.trim().is_empty() {
+                return Err(GatewayError::ConfigRejected(
+                    "empty tool name in `tools`".into(),
+                ));
+            }
+            if !server_names.contains(tool.server.as_str()) {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "contexts[{}] tool `{declared}` references unknown server `{}`",
+                    ctx.name, tool.server
+                )));
+            }
+            if tool.tool.trim().is_empty() {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "contexts[{}] tool `{declared}` has an empty upstream tool name",
+                    ctx.name
+                )));
+            }
+
+            let pair = (tool.server.clone(), tool.tool.clone());
+            if let Some(other_ctx) = pairs.get(&pair) {
+                if other_ctx != &ctx.name {
+                    return Err(GatewayError::ConfigRejected(format!(
+                        "ambiguous context route: server `{}` tool `{}` is granted by contexts `{other_ctx}` and `{}`",
+                        tool.server, tool.tool, ctx.name
+                    )));
+                }
+            } else {
+                pairs.insert(pair, ctx.name.clone());
+            }
+
+            let flat = format!(
+                "{}__{}",
+                tool.server,
+                crate::policy::action_name(&tool.tool)
+            );
+            let shown = format!("{}:{declared} ({}:{})", ctx.name, tool.server, tool.tool);
+            if let Some(other) = exposed.insert(flat.clone(), shown.clone()) {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "exposed-name collision `{flat}` between `{other}` and `{shown}`"
+                )));
+            }
+            if declared != &flat {
+                mismatched_names.push((ctx.name.as_str(), declared.as_str(), flat));
+            }
+        }
+    }
+    if let Some((ctx, declared, expected)) = mismatched_names.first() {
+        return Err(GatewayError::ConfigRejected(format!(
+            "contexts[{ctx}] declares exposed name `{declared}`, expected `{expected}` from its server/tool reference"
+        )));
+    }
+    Ok(())
+}
+
+fn is_reserved_server(name: &str) -> bool {
+    matches!(name, "journal" | "gateway")
 }
 
 fn mono_only() -> GatewayError {
@@ -378,6 +617,37 @@ journal:
     root: /var/lib/aithos/journal
 ";
 
+    const HUB: &str = "\
+listen: 127.0.0.1:4870
+servers:
+  - name: github
+    transport: http
+    url: https://mcp.github.example/mcp
+contexts:
+  - name: customer-support
+    store:
+      kind: fs
+      root: /var/lib/aithos/support
+    tools:
+      github__issues_list:
+        server: github
+        tool: issues.list
+        access: read
+  - name: engineering
+    store:
+      kind: fs
+      root: /var/lib/aithos/engineering
+    tools:
+      github__pulls_list:
+        server: github
+        tool: pulls.list
+        access: read
+journal:
+  store:
+    kind: fs
+    root: /var/lib/aithos/journal
+";
+
     #[test]
     fn parses_a_valid_config() {
         let cfg = GatewayConfig::from_yaml(GOOD).unwrap();
@@ -432,7 +702,10 @@ journal:
         let contexts = cfg.contexts.as_ref().unwrap();
         assert_eq!(contexts.len(), 2);
         assert_eq!(contexts[0].name, "company-brand");
-        assert_eq!(contexts[0].tools.get("brand.read"), Some(&ToolAccess::Read));
+        assert_eq!(
+            contexts[0].legacy_tools().unwrap().get("brand.read"),
+            Some(&ToolAccess::Read)
+        );
         assert!(cfg.journal.is_some());
         // The mono accessors refuse: this config has no mono half.
         assert!(matches!(
@@ -532,6 +805,165 @@ journal:
             GatewayConfig::from_yaml(&text),
             Err(GatewayError::ConfigRejected(_))
         ));
+    }
+
+    // ------------------------------------------------ governed hub (v3 / H1)
+
+    #[test]
+    fn parses_a_valid_hub_config() {
+        let cfg = GatewayConfig::from_yaml(HUB).unwrap();
+        assert!(cfg.is_hub());
+        let servers = cfg.servers.as_ref().unwrap();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "github");
+        assert_eq!(servers[0].transport, ServerTransport::Http);
+        assert_eq!(servers[0].url, "https://mcp.github.example/mcp");
+        let contexts = cfg.contexts.as_ref().unwrap();
+        let ContextTools::Hub(tools) = &contexts[0].tools else {
+            panic!("hub tool references")
+        };
+        let tool = tools.get("github__issues_list").unwrap();
+        assert_eq!(tool.server, "github");
+        assert_eq!(tool.tool, "issues.list");
+        assert_eq!(tool.access, ToolAccess::Read);
+    }
+
+    #[test]
+    fn servers_require_the_complete_hub_shape() {
+        let text = "listen: 127.0.0.1:4870\nservers:\n  - name: github\n    transport: http\n    url: https://example.test/mcp\n";
+        assert!(matches!(
+            GatewayConfig::from_yaml(text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("complete hub shape")
+        ));
+    }
+
+    #[test]
+    fn hub_and_legacy_context_upstreams_cannot_mix() {
+        let text = HUB.replace(
+            "  - name: customer-support\n",
+            "  - name: customer-support\n    upstream_mcp: https://legacy.example/mcp\n",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("cannot mix")
+        ));
+    }
+
+    #[test]
+    fn hub_contexts_must_use_referenced_tools() {
+        let text = HUB.replace(
+            "      github__issues_list:\n        server: github\n        tool: issues.list\n        access: read",
+            "      github__issues_list: read",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("must reference hub tools")
+        ));
+    }
+
+    #[test]
+    fn unknown_server_references_are_rejected() {
+        let text = HUB.replace("server: github", "server: missing");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("unknown server `missing`")
+        ));
+    }
+
+    #[test]
+    fn declared_exposed_name_must_match_the_server_tool_reference() {
+        let text = HUB.replace("github__issues_list:", "arbitrary_alias:");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("expected `github__issues_list`")
+        ));
+    }
+
+    #[test]
+    fn one_upstream_tool_cannot_route_to_two_contexts() {
+        let text = HUB.replace("tool: pulls.list", "tool: issues.list");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("ambiguous context route")
+        ));
+    }
+
+    #[test]
+    fn flattened_hub_tool_collisions_are_rejected() {
+        let text = HUB.replace(
+            "      github__pulls_list:\n        server: github\n        tool: pulls.list\n        access: read",
+            "      github__issues_list_alias:\n        server: github\n        tool: issues_list\n        access: read",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("exposed-name collision `github__issues_list`")
+        ));
+    }
+
+    #[test]
+    fn cross_server_flattened_collisions_are_detected_without_banning_double_underscore() {
+        let text = HUB
+            .replace(
+                "  - name: github\n    transport: http\n    url: https://mcp.github.example/mcp",
+                "  - name: a\n    transport: http\n    url: https://a.example/mcp\n  - name: a__b\n    transport: http\n    url: https://ab.example/mcp",
+            )
+            .replace("server: github\n        tool: issues.list", "server: a\n        tool: b__c")
+            .replace("server: github\n        tool: pulls.list", "server: a__b\n        tool: c");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("exposed-name collision `a__b__c`")
+        ));
+    }
+
+    #[test]
+    fn reserved_and_duplicate_server_names_are_rejected() {
+        for name in ["journal", "gateway"] {
+            let text = HUB.replace("name: github", &format!("name: {name}"));
+            assert!(matches!(
+                GatewayConfig::from_yaml(&text),
+                Err(GatewayError::ConfigRejected(m)) if m.contains("reserved server name")
+            ));
+        }
+        let text = HUB.replace(
+            "  - name: github\n    transport: http\n    url: https://mcp.github.example/mcp",
+            "  - name: github\n    transport: http\n    url: https://one.example/mcp\n  - name: github\n    transport: http\n    url: https://two.example/mcp",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("duplicate server name")
+        ));
+    }
+
+    #[test]
+    fn hub_server_transport_and_urls_fail_closed() {
+        for text in [
+            HUB.replace("transport: http", "transport: stdio"),
+            HUB.replace("https://mcp.github.example/mcp", "stdio://github"),
+        ] {
+            assert!(matches!(
+                GatewayConfig::from_yaml(&text),
+                Err(GatewayError::ConfigRejected(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn hub_nested_unknown_fields_are_rejected() {
+        for text in [
+            HUB.replace(
+                "    url: https://mcp.github.example/mcp",
+                "    url: https://mcp.github.example/mcp\n    surprise: true",
+            ),
+            HUB.replace(
+                "        access: read",
+                "        access: read\n        surprise: true",
+            ),
+        ] {
+            assert!(matches!(
+                GatewayConfig::from_yaml(&text),
+                Err(GatewayError::ConfigRejected(_))
+            ));
+        }
     }
 
     // -------------------------------------------------------- llm (Phase C)

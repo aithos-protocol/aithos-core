@@ -178,6 +178,9 @@ struct GatewayWorld {
     llm_status: Option<axum::http::StatusCode>,
     /// Journal tools (lot C2): the parse verdict of a config under test.
     config_error: Option<String>,
+    /// Hub H1 config scenarios: the first declared server/raw tool pair.
+    hub_server: Option<String>,
+    hub_tool: Option<String>,
 }
 
 impl GatewayWorld {
@@ -209,6 +212,8 @@ impl GatewayWorld {
             llm_provider: None,
             llm_status: None,
             config_error: None,
+            hub_server: None,
+            hub_tool: None,
         }
     }
 
@@ -1582,6 +1587,158 @@ async fn config_rejected_reserved(w: &mut GatewayWorld) {
     assert!(
         err.contains("reserved"),
         "the rejection names the reservation: {err}"
+    );
+}
+
+// ------------------------------------------------ governed hub config (H1)
+
+fn remember_config_verdict(w: &mut GatewayWorld, yaml: &str) {
+    w.config_error = Some(
+        GatewayConfig::from_yaml(yaml)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default(),
+    );
+}
+
+#[when(expr = "a hub config declares server {string}")]
+async fn hub_declares_server(w: &mut GatewayWorld, server: String) {
+    let yaml = format!(
+        "\
+listen: 127.0.0.1:4870
+servers:
+  - name: {server}
+    transport: http
+    url: https://example.test/mcp
+contexts:
+  - name: engineering
+    store: {{ kind: fs, root: /var/lib/aithos/engineering }}
+    tools: {{}}
+journal:
+  store: {{ kind: fs, root: /var/lib/aithos/journal }}
+"
+    );
+    remember_config_verdict(w, &yaml);
+}
+
+#[then("the config is rejected naming the reserved server name")]
+async fn config_rejected_reserved_server(w: &mut GatewayWorld) {
+    let err = w.config_error.as_deref().expect("a parse verdict");
+    assert!(
+        err.contains("reserved server name"),
+        "the rejection names the reserved server: {err}"
+    );
+}
+
+#[given(expr = "server {string} advertises tool {string}")]
+async fn server_advertises_tool(w: &mut GatewayWorld, server: String, tool: String) {
+    w.hub_server = Some(server);
+    w.hub_tool = Some(tool);
+}
+
+#[when(expr = "contexts {string} and {string} both grant that upstream tool")]
+async fn contexts_grant_same_tool(w: &mut GatewayWorld, first: String, second: String) {
+    let server = w.hub_server.as_deref().expect("advertised server");
+    let tool = w.hub_tool.as_deref().expect("advertised tool");
+    let yaml = format!(
+        "\
+listen: 127.0.0.1:4870
+servers:
+  - name: {server}
+    transport: http
+    url: https://example.test/mcp
+contexts:
+  - name: {first}
+    store: {{ kind: fs, root: /var/lib/aithos/first }}
+    tools:
+      first-route: {{ server: {server}, tool: {tool}, access: read }}
+  - name: {second}
+    store: {{ kind: fs, root: /var/lib/aithos/second }}
+    tools:
+      second-route: {{ server: {server}, tool: {tool}, access: read }}
+journal:
+  store: {{ kind: fs, root: /var/lib/aithos/journal }}
+"
+    );
+    remember_config_verdict(w, &yaml);
+}
+
+#[then("the config is rejected as an ambiguous context route")]
+async fn config_rejected_ambiguous_route(w: &mut GatewayWorld) {
+    let err = w.config_error.as_deref().expect("a parse verdict");
+    assert!(
+        err.contains("ambiguous context route"),
+        "the rejection names the route ambiguity: {err}"
+    );
+}
+
+#[given(expr = "server {string} grants raw tool {string}")]
+async fn server_grants_raw_tool(w: &mut GatewayWorld, server: String, tool: String) {
+    w.hub_server = Some(server);
+    w.hub_tool = Some(tool);
+}
+
+#[when(expr = "that server also grants raw tool {string}")]
+async fn same_server_grants_second_raw_tool(w: &mut GatewayWorld, second_tool: String) {
+    let server = w.hub_server.as_deref().expect("first server");
+    let first_tool = w.hub_tool.as_deref().expect("first raw tool");
+    let yaml = format!(
+        "\
+listen: 127.0.0.1:4870
+servers:
+  - name: {server}
+    transport: http
+    url: https://example.test/mcp
+contexts:
+  - name: engineering
+    store: {{ kind: fs, root: /var/lib/aithos/engineering }}
+    tools:
+      first-route: {{ server: {server}, tool: {first_tool}, access: read }}
+      second-route: {{ server: {server}, tool: {second_tool}, access: read }}
+journal:
+  store: {{ kind: fs, root: /var/lib/aithos/journal }}
+"
+    );
+    remember_config_verdict(w, &yaml);
+}
+
+#[when(expr = "a hub config also declares server {string} granting raw tool {string}")]
+async fn hub_adds_colliding_server(
+    w: &mut GatewayWorld,
+    second_server: String,
+    second_tool: String,
+) {
+    let first_server = w.hub_server.as_deref().expect("first server");
+    let first_tool = w.hub_tool.as_deref().expect("first raw tool");
+    let yaml = format!(
+        "\
+listen: 127.0.0.1:4870
+servers:
+  - name: {first_server}
+    transport: http
+    url: https://first.example/mcp
+  - name: {second_server}
+    transport: http
+    url: https://second.example/mcp
+contexts:
+  - name: engineering
+    store: {{ kind: fs, root: /var/lib/aithos/engineering }}
+    tools:
+      first-route: {{ server: {first_server}, tool: {first_tool}, access: read }}
+      second-route: {{ server: {second_server}, tool: {second_tool}, access: read }}
+journal:
+  store: {{ kind: fs, root: /var/lib/aithos/journal }}
+"
+    );
+    remember_config_verdict(w, &yaml);
+}
+
+#[then("the config is rejected naming the exposed-name collision")]
+async fn config_rejected_exposed_collision(w: &mut GatewayWorld) {
+    let err = w.config_error.as_deref().expect("a parse verdict");
+    assert!(
+        err.contains("exposed-name collision"),
+        "the rejection names the flattened exposed-name collision: {err}"
     );
 }
 
