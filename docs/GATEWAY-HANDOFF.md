@@ -370,7 +370,7 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
   gateway, liste couverte reconstruite sans amont, serveur partagé, relais brut,
   log par Ethos + xref, contrôle drift et bearer config. Cinq scénarios runtime
   détaggés ; suite finale 40/195.
-- ✅ **H2b — re-enrollment** : `owner-enroll-server --replace`, même pubkey agent
+- ✅ **H2b — re-enrollment** (`aa890b8`) : `owner-enroll-server --replace`, même pubkey agent
   obligatoire, remplacement du pin sous la clé vault existante, nouvel équipement,
   révocation owner des anciens mandats agent/gateway/auditeur ; nouveau schéma servi
   après réouverture. Dernier scénario H0 détaggé : hub **zéro `@wip`**.
@@ -501,7 +501,7 @@ hub-082f5a2.tar` (tar de review).
 Session du 2026-07-13 (6ᵉ gw) : reprise directe sur `feat/obligations`, jamais de
 switch. HEAD d'arrivée `f743cd6` (le document STANDARDS avait entre-temps été suivi
 par Mathieu). Commits sélectifs : `6b580ff` H1, `f915d34` H2, `4fc4b4d` H3,
-`088b82f` H4 ; H2b et le handoff final forment le commit suivant.
+`088b82f` H4, `aa890b8` H2b ; ce paragraphe finalise ensuite le handoff.
 `docs/HUB-MCP.md` a été inclus avec autorisation explicite. Les scories `_gitjunk/`,
 `_to_delete/`, `_transfer/` et `docs/EXPLORATION-DESKTOP-GATEWAY.md` sont restées
 intactes et non stagées.

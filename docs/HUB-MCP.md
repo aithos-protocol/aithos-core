@@ -195,7 +195,7 @@ d'aplatissement → rejet ; noms réservés → rejet.
   restaure les noms bruts, puis `audit-export` retrouve chaque acte dans le bon
   contexte. Après mutation de description, un nouveau `run` refuse le drift avant
   d'ouvrir le listener agent.
-- **H2b — re-enrollment : ✅ CLOS (2026-07-13).** `owner-enroll-server
+- **H2b — re-enrollment : ✅ CLOS (`aa890b8`, 2026-07-13).** `owner-enroll-server
   --replace` exige la même pubkey agent, remplace le manifeste sous la clé vault
   existante, minte un nouvel équipement, puis révoque politiquement les anciens
   mandats agent, gateway et auditeur. Les certificats et entrées antérieurs restent
