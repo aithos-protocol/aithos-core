@@ -15,7 +15,6 @@ Feature: Governed MCP hub — arbitrary servers under mandate
 
   Rule: Enrollment turns upstream discovery into owner-approved pins
 
-    @wip
     Scenario: The owner enrolls a discovered server and grants approved tools
       Given MCP server "github" advertises tools "issues.list" and "issues.create"
       When the owner discovers "github" and approves each tool's risk class

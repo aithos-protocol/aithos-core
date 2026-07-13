@@ -153,7 +153,7 @@ d'aplatissement → rejet ; noms réservés → rejet.
 | Routage, double mur, log ×2, refus routés, journal | **Fait, vert** (Phase B) |
 | `proxy_llm` (métrage inférence, budgets F+) | **Fait, vert** (Phase C) |
 | Config v3 `servers:` + tools référencées | **Fait, vert** (H1) |
-| `discover` / manifeste proposé / approbation / pin | À construire (owner-side) |
+| `discover` / manifeste proposé / approbation / pin | **Fait, vert** (H2) |
 | Vérif pin à runtime + refus drift | À construire |
 | `tools/list` = couverts + schémas pinnés | À construire (remplace noms-seuls) |
 | Nom exposé `<server>__<tool>` + restauration du nom brut | À construire |
@@ -173,8 +173,13 @@ d'aplatissement → rejet ; noms réservés → rejet.
   `(server,tool)` inter-contextes, réservations et collisions d'aplatissement
   intra/inter-serveurs rejetés ; `deny_unknown_fields` imbriqué. Les configs v1/v2
   restent compatibles ; le runtime hub refuse explicitement jusqu'à H3.
-- **H2 — enroll owner-side** : `discover` (capture), manifeste proposé, approbation,
-  pin dans l'Ethos, grant (réutilise `owner-grant-context`).
+- **H2 — enroll owner-side : ✅ CLOS (2026-07-13).** `owner-discover-server`
+  capture et valide strictement `tools/list`, produit un manifeste proposé stable ;
+  `owner-enroll-server` exige une classe explicite `read`/`write` pour chaque outil,
+  scelle le manifeste approuvé sous `e/x/<server>/manifest.enc`, publie le header
+  `/x/<server>` gardé par le gateway puis minte le mandat et journalise les grants.
+  Le test de surface du vrai binaire vérifie le périmètre exact, le blob opaque et
+  l'absence de seed dans la sortie.
 - **H3 — runtime** : pin check, `tools/list` reconstruit des manifestes, nom exposé.
 - **H4 — e2e réseau** : 2 faux MCP dont 1 partagé par 2 Ethos ; drift simulé sur le
   fil ; audit-export par contexte montre les actes du serveur partagé chez le bon.

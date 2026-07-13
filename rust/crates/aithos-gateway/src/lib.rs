@@ -14,6 +14,7 @@
 
 pub mod config;
 pub mod core_bridge;
+pub mod hub;
 pub mod keyholder;
 pub mod policy;
 pub mod proxy_llm;

@@ -63,12 +63,12 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{GatewayError, Result};
 
 /// Access level the enterprise assigns to an MCP tool.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ToolAccess {
     /// Covered by the read-only mandate: relayed and logged.
@@ -401,6 +401,12 @@ fn validate_hub(servers: &[ServerConfig], contexts: &[ContextConfig]) -> Result<
             return Err(GatewayError::ConfigRejected(
                 "a server has an empty `name`".into(),
             ));
+        }
+        if !crate::policy::valid_server_name(&server.name) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "server name `{}` must start with a lowercase letter or digit and contain only lowercase letters, digits, `-` or `_`",
+                server.name
+            )));
         }
         if is_reserved_server(&server.name) {
             return Err(GatewayError::ConfigRejected(format!(
@@ -932,6 +938,23 @@ journal:
             GatewayConfig::from_yaml(&text),
             Err(GatewayError::ConfigRejected(m)) if m.contains("duplicate server name")
         ));
+    }
+
+    #[test]
+    fn unsafe_server_names_are_rejected_but_double_underscore_remains_valid() {
+        for name in ["GitHub", "a/b", ".", "-github"] {
+            let text = HUB.replace("name: github", &format!("name: {name}"));
+            assert!(matches!(
+                GatewayConfig::from_yaml(&text),
+                Err(GatewayError::ConfigRejected(m)) if m.contains("server name")
+            ));
+        }
+        let text = HUB
+            .replace("name: github", "name: git__hub")
+            .replace("server: github", "server: git__hub")
+            .replace("github__issues_list", "git__hub__issues_list")
+            .replace("github__pulls_list", "git__hub__pulls_list");
+        assert!(GatewayConfig::from_yaml(&text).is_ok());
     }
 
     #[test]

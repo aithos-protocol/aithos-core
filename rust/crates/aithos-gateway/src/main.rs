@@ -3,6 +3,7 @@
 //! The library stays pure (T and entropy injected); this surface supplies
 //! the system clock and OS randomness, exactly like the aithos-core CLI.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
@@ -86,6 +87,39 @@ enum Command {
         /// Tool granted for reading (repeatable).
         #[arg(long = "read")]
         read: Vec<String>,
+        #[arg(long)]
+        store_root: String,
+        #[arg(long, default_value_t = 30)]
+        ttl_days: u32,
+    },
+    /// OWNER SIDE: capture one upstream tools/list into a proposed
+    /// manifest. Discovery grants nothing and stores nothing in an Ethos.
+    OwnerDiscoverServer {
+        #[arg(long)]
+        server: String,
+        #[arg(long)]
+        url: String,
+        /// JSON proposal to review before enrollment.
+        #[arg(long)]
+        output: String,
+    },
+    /// OWNER SIDE: approve every discovered tool's risk class, seal the
+    /// approved manifest in /x/<server>, then mint the context grants.
+    OwnerEnrollServer {
+        #[arg(long)]
+        master_seed_hex: String,
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        agent_pub: String,
+        #[arg(long)]
+        gateway_pub: String,
+        /// Proposed manifest emitted by owner-discover-server.
+        #[arg(long)]
+        proposal: String,
+        /// Explicit owner decision, repeat for every tool: TOOL=read|write.
+        #[arg(long = "approve", value_name = "TOOL=read|write", required = true)]
+        approvals: Vec<String>,
         #[arg(long)]
         store_root: String,
         #[arg(long, default_value_t = 30)]
@@ -244,6 +278,65 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
             return Ok(());
         }
+        Command::OwnerDiscoverServer {
+            server,
+            url,
+            output,
+        } => {
+            let upstream = HttpUpstream::new(url.clone());
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+            let proposed = rt.block_on(aithos_gateway::hub::discover_server(server, &upstream))?;
+            std::fs::write(output, serde_json::to_vec_pretty(&proposed)?)?;
+            println!("proposal: {output}");
+            println!("server: {server}");
+            println!("tools: {}", proposed.tools.len());
+            return Ok(());
+        }
+        Command::OwnerEnrollServer {
+            master_seed_hex,
+            label,
+            agent_pub,
+            gateway_pub,
+            proposal,
+            approvals,
+            store_root,
+            ttl_days,
+        } => {
+            let master = decode_master(master_seed_hex)?;
+            let proposed: aithos_gateway::hub::ProposedManifest =
+                serde_json::from_slice(&std::fs::read(proposal)?)?;
+            let approved =
+                aithos_gateway::hub::approve_manifest(&proposed, &parse_approvals(approvals)?)?;
+            let start = now_secs();
+            let outcome = aithos_gateway::core_bridge::owner_enroll_server(
+                &master,
+                label,
+                agent_pub,
+                gateway_pub,
+                &approved,
+                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                    root: store_root.into(),
+                })?,
+                &MandateWindow {
+                    not_before: ts(start),
+                    not_after: ts(start + u64::from(*ttl_days) * 86_400),
+                },
+                &ts(start),
+                &mut OsEntropy,
+            )?;
+            eprintln!("STORE the auditor seed COLD — shown ONCE.");
+            println!("context_did: {}", outcome.ethos_did);
+            println!("server: {}", approved.server);
+            println!("agent_mandate: {}", outcome.agent_mandate);
+            println!("gateway_mandate: {}", outcome.gateway_mandate);
+            if let (Some(m), Some(s)) = (&outcome.auditor_mandate, &outcome.auditor_seed_hex) {
+                println!("auditor_mandate: {m}");
+                println!("auditor_seed_hex: {s}");
+            }
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -255,7 +348,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::Keygen
         | Command::OwnerInitJournal { .. }
         | Command::OwnerInitContext { .. }
-        | Command::OwnerGrantContext { .. } => unreachable!("handled above"),
+        | Command::OwnerGrantContext { .. }
+        | Command::OwnerDiscoverServer { .. }
+        | Command::OwnerEnrollServer { .. } => unreachable!("handled above"),
         Command::Onboard { ttl_days } => {
             let mut ent = OsEntropy;
             let keyholder = Keyholder::from_entropy(ent.e32(), ent.e32());
@@ -375,6 +470,29 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
     }
+}
+
+fn parse_approvals(
+    values: &[String],
+) -> Result<BTreeMap<String, aithos_gateway::config::ToolAccess>, String> {
+    let mut out = BTreeMap::new();
+    for value in values {
+        let (tool, class) = value
+            .split_once('=')
+            .ok_or_else(|| format!("--approve `{value}`: want TOOL=read|write"))?;
+        if tool.trim().is_empty() {
+            return Err("--approve has an empty tool name".into());
+        }
+        let class = match class {
+            "read" => aithos_gateway::config::ToolAccess::Read,
+            "write" => aithos_gateway::config::ToolAccess::Write,
+            _ => return Err(format!("--approve `{value}`: class must be read or write")),
+        };
+        if out.insert(tool.to_owned(), class).is_some() {
+            return Err(format!("--approve repeats tool `{tool}`"));
+        }
+    }
+    Ok(out)
 }
 
 fn print_onboard(o: &OnboardOutcome) {

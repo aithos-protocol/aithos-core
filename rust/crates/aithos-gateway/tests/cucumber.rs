@@ -21,11 +21,13 @@ use tokio::sync::Mutex;
 
 use aithos_gateway::config::{GatewayConfig, ToolAccess, ToolMap};
 use aithos_gateway::core_bridge::{
-    agent_pub_multibase, cert_constraints, cert_grantee_pub, gamma_view, gateway_pub_multibase,
-    journal_notes_view, owner_grant_context, owner_init_context, owner_init_journal,
-    owner_read_journal_note, Bridge, ContextRuntime, EntropySource, EntryView, EquipOutcome,
-    MandateWindow, OnboardOutcome, RawStore, Runner, SeqEntropy, STATE_PATH,
+    agent_pub_multibase, cert_constraints, cert_grantee_pub, cert_perimeter, gamma_view,
+    gateway_pub_multibase, journal_notes_view, owner_enroll_server, owner_grant_context,
+    owner_init_context, owner_init_journal, owner_read_hub_manifest, owner_read_journal_note,
+    Bridge, ContextRuntime, EntropySource, EntryView, EquipOutcome, MandateWindow, OnboardOutcome,
+    RawStore, Runner, SeqEntropy, STATE_PATH,
 };
+use aithos_gateway::hub::{approve_manifest, discover_server, ApprovedManifest};
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
@@ -47,6 +49,7 @@ const NOT_AFTER: &str = "2026-08-09T00:00:00Z";
 struct FakeMcp {
     seen: Arc<StdMutex<Vec<Value>>>,
     text: String,
+    advertised_tools: Arc<StdMutex<Vec<Value>>>,
 }
 
 impl Default for FakeMcp {
@@ -60,6 +63,14 @@ impl FakeMcp {
         Self {
             seen: Arc::default(),
             text: text.to_owned(),
+            advertised_tools: Arc::default(),
+        }
+    }
+
+    fn advertising(tools: Vec<Value>) -> Self {
+        Self {
+            advertised_tools: Arc::new(StdMutex::new(tools)),
+            ..Self::default()
         }
     }
 }
@@ -68,6 +79,13 @@ impl Upstream for FakeMcp {
     async fn forward(&self, body: Value) -> Result<Value> {
         self.seen.lock().unwrap().push(body.clone());
         let id = body.get("id").cloned().unwrap_or(Value::Null);
+        if body.get("method").and_then(Value::as_str) == Some("tools/list") {
+            return Ok(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "tools": self.advertised_tools.lock().unwrap().clone() }
+            }));
+        }
         Ok(json!({
             "jsonrpc": "2.0",
             "id": id,
@@ -181,6 +199,7 @@ struct GatewayWorld {
     /// Hub H1 config scenarios: the first declared server/raw tool pair.
     hub_server: Option<String>,
     hub_tool: Option<String>,
+    approved_manifest: Option<ApprovedManifest>,
 }
 
 impl GatewayWorld {
@@ -214,6 +233,7 @@ impl GatewayWorld {
             config_error: None,
             hub_server: None,
             hub_tool: None,
+            approved_manifest: None,
         }
     }
 
@@ -1588,6 +1608,129 @@ async fn config_rejected_reserved(w: &mut GatewayWorld) {
         err.contains("reserved"),
         "the rejection names the reservation: {err}"
     );
+}
+
+// ------------------------------------------- governed hub enrollment (H2)
+
+#[given(expr = "MCP server {string} advertises tools {string} and {string}")]
+async fn mcp_server_advertises_hub_tools(
+    w: &mut GatewayWorld,
+    server: String,
+    first: String,
+    second: String,
+) {
+    w.hub_server = Some(server);
+    w.upstream = FakeMcp::advertising(vec![
+        json!({
+            "name": first,
+            "description": "List the repository issues",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "state": { "type": "string" } },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": second,
+            "description": "Create one repository issue",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "title": { "type": "string" } },
+                "required": ["title"],
+                "additionalProperties": false
+            }
+        }),
+    ]);
+}
+
+#[when(expr = "the owner discovers {string} and approves each tool's risk class")]
+async fn owner_discovers_and_approves(w: &mut GatewayWorld, server: String) {
+    assert_eq!(w.hub_server.as_deref(), Some(server.as_str()));
+    let proposed = discover_server(&server, &w.upstream)
+        .await
+        .expect("discovery succeeds");
+    let approvals = proposed
+        .tools
+        .iter()
+        .map(|tool| (tool.name.clone(), ToolAccess::Read))
+        .collect();
+    let approved = approve_manifest(&proposed, &approvals).expect("owner approval succeeds");
+
+    let label = "hub-granting-context".to_owned();
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let store = GatewayStore::in_memory();
+    let mut ent = SeqEntropy::default();
+    owner_init_context(&master, &label, store.clone(), T0, &mut ent).expect("context created");
+    let outcome = owner_enroll_server(
+        &master,
+        &label,
+        &agent_pub,
+        &gateway_pub,
+        &approved,
+        store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut ent,
+    )
+    .expect("server enrolled");
+    w.ctx = Some((label, store, String::new(), String::new(), Some(outcome)));
+    w.approved_manifest = Some(approved);
+}
+
+#[then("the approved manifest pins each tool's name, description and input schema")]
+async fn approved_manifest_is_pinned(w: &mut GatewayWorld) {
+    let (label, store, _, _, _) = w.ctx.as_ref().expect("enrolled context");
+    let approved = w.approved_manifest.as_ref().expect("approved manifest");
+    let pinned = owner_read_hub_manifest(
+        &w.master.expect("enterprise master"),
+        label,
+        &approved.server,
+        store.clone(),
+    )
+    .expect("owner opens pinned manifest");
+    assert_eq!(&pinned, approved, "the exact approved fields are pinned");
+    assert!(pinned.tools.iter().all(|tool| {
+        !tool.name.is_empty()
+            && tool.description.is_some()
+            && tool.input_schema.is_object()
+            && tool.pin_sha256.starts_with("sha256:")
+    }));
+
+    // Store custody alone reveals no upstream-controlled prompt text.
+    let sealed = store
+        .clone()
+        .get(&format!("e/x/{}/manifest.enc", approved.server))
+        .expect("vault readable")
+        .expect("sealed manifest present");
+    let visible = String::from_utf8_lossy(&sealed);
+    assert!(!visible.contains("repository issues"));
+}
+
+#[then("the agent receives a mandate covering the approved exposed actions")]
+async fn agent_mandate_covers_approved_actions(w: &mut GatewayWorld) {
+    let (_, store, _, _, outcome) = w.ctx.as_ref().expect("enrolled context");
+    let outcome = outcome.as_ref().expect("equip outcome");
+    let perimeter =
+        cert_perimeter(store.clone(), &outcome.agent_mandate).expect("agent certificate readable");
+    assert_eq!(
+        perimeter,
+        vec![
+            "act.x.github.issues_create".to_owned(),
+            "act.x.github.issues_list".to_owned(),
+        ],
+        "the approved read-class actions become the exact mandate perimeter"
+    );
+}
+
+#[then("the granting context gamma records the grant")]
+async fn granting_context_records_hub_grant(w: &mut GatewayWorld) {
+    let (_, store, _, _, outcome) = w.ctx.as_ref().expect("enrolled context");
+    let outcome = outcome.as_ref().expect("equip outcome");
+    let entries = gamma_view(store.clone()).expect("gamma readable");
+    assert!(entries.iter().any(|entry| {
+        entry.kind == "grant" && entry.target.as_deref() == Some(&outcome.agent_mandate)
+    }));
 }
 
 // ------------------------------------------------ governed hub config (H1)

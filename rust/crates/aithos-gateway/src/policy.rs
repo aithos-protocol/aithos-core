@@ -25,6 +25,26 @@ pub fn action_name(tool: &str) -> String {
     tool.replace('.', "_")
 }
 
+/// MCP-safe server id used both as a mandate connector and as a vault
+/// path segment. Double underscores stay valid; path separators, dots,
+/// uppercase and leading punctuation do not.
+pub fn valid_server_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_lowercase() || c.is_ascii_digit())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_'))
+}
+
+/// Deterministic agent-facing name of one hub tool.
+pub fn hub_exposed_name(server: &str, raw_tool: &str) -> String {
+    format!("{server}__{}", action_name(raw_tool))
+}
+
+/// Hub mandate action: the server id is the connector, the raw tool is
+/// flattened only in the action segment.
+pub fn hub_op_for_tool(server: &str, raw_tool: &str) -> String {
+    format!("act.x.{server}.{}", action_name(raw_tool))
+}
+
 /// The op string an MCP tool call maps to (`act.x.mcp.<action>`).
 pub fn op_for_tool(tool: &str) -> String {
     format!("act.x.{MCP_CONNECTOR}.{}", action_name(tool))
@@ -108,5 +128,15 @@ mod tests {
         // splits at the last dot) — they become underscores.
         assert_eq!(op_for_tool("user.read"), "act.x.mcp.user_read");
         assert_eq!(op_for_tool("search"), "act.x.mcp.search");
+        assert_eq!(
+            hub_op_for_tool("github", "issues.list"),
+            "act.x.github.issues_list"
+        );
+        assert_eq!(
+            hub_exposed_name("github", "issues.list"),
+            "github__issues_list"
+        );
+        assert!(valid_server_name("a__b"));
+        assert!(!valid_server_name("a/b"));
     }
 }

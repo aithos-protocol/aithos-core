@@ -17,6 +17,9 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 
+use aithos_gateway::core_bridge::manifest_tool_pin;
+use aithos_gateway::hub::{ProposedManifest, ProposedTool, MANIFEST_VERSION};
+
 /// A dev master seed (32 bytes hex). Its VALUE must never echo back.
 const MASTER: &str = "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0";
 
@@ -188,6 +191,89 @@ fn owner_init_journal_writes_certs_to_the_granted_pubkeys_and_logs_the_grants() 
         !store.join("gateway/keys.json").exists(),
         "owner-side stores must never hold runner keys"
     );
+    assert_no_seed_leak(&console(&out), &id_path);
+}
+
+#[test]
+fn owner_enroll_server_pins_the_manifest_then_logs_the_grants() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (agent_pub, gateway_pub, id_path) = keygen(tmp.path());
+    let store = tmp.path().join("hub-context");
+    gateway()
+        .args([
+            "owner-init-context",
+            "--master-seed-hex",
+            MASTER,
+            "--label",
+            "engineering",
+            "--store-root",
+            store.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": { "state": { "type": "string" } },
+        "additionalProperties": false
+    });
+    let proposal = ProposedManifest {
+        version: MANIFEST_VERSION.to_owned(),
+        server: "github".to_owned(),
+        tools: vec![ProposedTool {
+            name: "issues.list".to_owned(),
+            description: Some("List repository issues".to_owned()),
+            input_schema: schema.clone(),
+            pin_sha256: manifest_tool_pin("issues.list", Some("List repository issues"), &schema)
+                .unwrap(),
+        }],
+    };
+    let proposal_path = tmp.path().join("github.proposed.json");
+    std::fs::write(
+        &proposal_path,
+        serde_json::to_vec_pretty(&proposal).unwrap(),
+    )
+    .unwrap();
+
+    let out = gateway()
+        .args([
+            "owner-enroll-server",
+            "--master-seed-hex",
+            MASTER,
+            "--label",
+            "engineering",
+            "--agent-pub",
+            &agent_pub,
+            "--gateway-pub",
+            &gateway_pub,
+            "--proposal",
+            proposal_path.to_str().unwrap(),
+            "--approve",
+            "issues.list=read",
+            "--store-root",
+            store.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("server: github"))
+        .stdout(predicate::str::contains("agent_mandate:"))
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let agent_mandate = line_value(&stdout, "agent_mandate: ");
+    assert_eq!(
+        cert_json(&store, &agent_mandate)["perimeter"],
+        serde_json::json!(["act.x.github.issues_list"])
+    );
+    assert!(store.join("e/x/github/header.json").is_file());
+    let sealed = std::fs::read(store.join("e/x/github/manifest.enc")).unwrap();
+    assert!(!String::from_utf8_lossy(&sealed).contains("List repository issues"));
+
+    let grants: Vec<_> = gamma_kinds(&store)
+        .into_iter()
+        .filter(|(kind, _)| kind == "grant")
+        .collect();
+    assert_eq!(grants.len(), 3, "agent + gateway + auditor grants");
     assert_no_seed_leak(&console(&out), &id_path);
 }
 

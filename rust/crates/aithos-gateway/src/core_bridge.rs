@@ -31,13 +31,15 @@ use aithos_bundle::bundle::Bundle;
 use aithos_bundle::log::{ActionSpec, InferenceSpec, LogFilter};
 use aithos_bundle::Store;
 use aithos_core::did::DidDocument;
-use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
+use aithos_core::header::{Header, Recipient};
+use aithos_core::keys::{ed2x, succession_from_entropy, MasterSeed, OwnerKeys};
 use aithos_core::mandate::{verify_chain, GammaQuery, Mandate, MandateSpec, PerimeterEntry, Verb};
 use aithos_core::path::Zone;
 
 use crate::config::GatewayConfig;
+use crate::hub::{validate_approved, ApprovedManifest};
 use crate::keyholder::Keyholder;
-use crate::policy::{op_for_tool, Policy};
+use crate::policy::{hub_op_for_tool, op_for_tool, Policy};
 use crate::store_adapter::GatewayStore;
 use crate::{GatewayError, Result};
 
@@ -57,6 +59,9 @@ pub const MEMORY_FOLDER: &str = "memory";
 /// the same id `owner-init-journal --token-budget` writes into the
 /// inference mandate (v1: one profile, one tap).
 pub const LLM_BUDGET_REF: &str = "llm";
+/// Vault record name for one approved hub manifest. The parent
+/// `/x/<server>` header is pinned by the bundle's vault root.
+const HUB_MANIFEST_FILE: &str = "manifest.enc";
 /// Where mandate certificates live in the store.
 fn cert_path(id: &str) -> String {
     format!("certs/{id}.json")
@@ -1114,6 +1119,165 @@ pub fn owner_grant_context(
     )
 }
 
+/// Discover/approval has already produced a validated manifest. Pin it
+/// sealed under `/x/<server>` with owner + gateway header lines, publish
+/// that vault header, then mint the read-class tool mandate through the
+/// same equip path as `owner_grant_context`.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_enroll_server(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    gateway_pub_mb: &str,
+    manifest: &ApprovedManifest,
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<EquipOutcome> {
+    validate_approved(manifest)?;
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    let (_, manifest_path) = hub_manifest_paths(&manifest.server);
+    if bundle
+        .store
+        .get(&manifest_path)
+        .map_err(bridge_err)?
+        .is_some()
+    {
+        return Err(GatewayError::ConfigRejected(format!(
+            "server `{}` is already enrolled; use governed re-enrollment",
+            manifest.server
+        )));
+    }
+
+    pin_hub_manifest(&mut bundle, &owner, gateway_pub_mb, manifest, now, ent)?;
+    let read_ops: Vec<String> = manifest
+        .tools
+        .iter()
+        .filter(|tool| tool.risk_class == crate::config::ToolAccess::Read)
+        .map(|tool| hub_op_for_tool(&manifest.server, &tool.name))
+        .collect();
+    equip(
+        bundle,
+        &owner,
+        agent_pub_mb,
+        gateway_pub_mb,
+        &read_ops,
+        true,
+        None,
+        None,
+        window,
+        now,
+        ent,
+    )
+}
+
+fn pin_hub_manifest(
+    bundle: &mut Bundle<GatewayStore>,
+    owner: &OwnerKeys,
+    gateway_pub_mb: &str,
+    manifest: &ApprovedManifest,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<()> {
+    let gateway_pub = decode_pub(gateway_pub_mb)?;
+    let gateway_recipient = Recipient {
+        to: gateway_pub_mb.to_owned(),
+        kid: gateway_pub_mb.to_owned(),
+        pubkey: ed2x(&gateway_pub),
+    };
+    let node = format!("/x/{}", manifest.server);
+    let key = bundle
+        .audit_key_owner(owner, &manifest.server)
+        .map_err(bridge_err)?;
+    let header = Header::build(
+        &bundle.did,
+        &node,
+        &key,
+        &[Recipient::owner(owner.owner_kex_pub()), gateway_recipient],
+        &[ent.e32(), ent.e32()],
+        &[ent.e24(), ent.e24()],
+    )
+    .map_err(bridge_err)?;
+    let (header_path, manifest_path) = hub_manifest_paths(&manifest.server);
+    bundle
+        .store
+        .put(
+            &header_path,
+            &serde_json::to_vec_pretty(&header).map_err(bridge_err)?,
+        )
+        .map_err(bridge_err)?;
+
+    let plain = aithos_core::jcs::canonical_bytes(manifest).map_err(bridge_err)?;
+    let nonce = ent.e24();
+    let aad = aithos_core::seal::blob_aad(&bundle.did, &node, 1);
+    let cipher = aithos_core::seal::blob_seal(&key, &plain, &nonce, &aad);
+    let mut sealed = Vec::with_capacity(nonce.len() + cipher.len());
+    sealed.extend_from_slice(&nonce);
+    sealed.extend_from_slice(&cipher);
+    bundle
+        .store
+        .put(&manifest_path, &sealed)
+        .map_err(bridge_err)?;
+    // The vault state root commits the new /x/<server> header before
+    // any grant is issued. The sealed blob is authenticated by that DK.
+    bundle.publish(owner, now).map_err(bridge_err)
+}
+
+/// Owner-side proof/read helper used by enrollment tests and tooling.
+pub fn owner_read_hub_manifest(
+    master: &[u8; 32],
+    label: &str,
+    server: &str,
+    store: GatewayStore,
+) -> Result<ApprovedManifest> {
+    if !crate::policy::valid_server_name(server) {
+        return Err(GatewayError::ConfigRejected(format!(
+            "invalid hub server name `{server}`"
+        )));
+    }
+    let owner = derived_owner(master, "context", label);
+    let bundle = Bundle::open(store).map_err(bridge_err)?;
+    let (header_path, manifest_path) = hub_manifest_paths(server);
+    let header: Header = read_json(&bundle, &header_path)?;
+    header.validate().map_err(bridge_err)?;
+    let expected_node = format!("/x/{server}");
+    if header.node != expected_node {
+        return Err(GatewayError::BridgeFailed(format!(
+            "hub manifest header targets `{}`, expected `{expected_node}`",
+            header.node
+        )));
+    }
+    let (version, key) = header
+        .open_latest(&bundle.did, "owner-kex", &owner.owner_kex)
+        .map_err(bridge_err)?;
+    let sealed = bundle
+        .store
+        .get(&manifest_path)
+        .map_err(bridge_err)?
+        .ok_or_else(|| GatewayError::BridgeFailed(format!("missing {manifest_path}")))?;
+    if sealed.len() < 24 {
+        return Err(GatewayError::BridgeFailed(format!(
+            "truncated {manifest_path}"
+        )));
+    }
+    let nonce: [u8; 24] = sealed[..24].try_into().expect("length checked");
+    let aad = aithos_core::seal::blob_aad(&bundle.did, &expected_node, version);
+    let plain =
+        aithos_core::seal::blob_open(&key, &sealed[24..], &nonce, &aad).map_err(bridge_err)?;
+    let manifest: ApprovedManifest = serde_json::from_slice(&plain).map_err(bridge_err)?;
+    validate_approved(&manifest)?;
+    Ok(manifest)
+}
+
+fn hub_manifest_paths(server: &str) -> (String, String) {
+    (
+        format!("e/x/{server}/header.json"),
+        format!("e/x/{server}/{HUB_MANIFEST_FILE}"),
+    )
+}
+
 /// Shared equip path: mint the mandates towards the agent/gateway PUBLIC
 /// keys, log every grant (issuance is never silent), persist certs+state.
 #[allow(clippy::too_many_arguments)]
@@ -1337,6 +1501,26 @@ pub fn cert_constraints(store: GatewayStore, mandate_id: &str) -> Result<serde_j
     let bundle = Bundle::open(store).map_err(bridge_err)?;
     let m: Mandate = read_json(&bundle, &cert_path(mandate_id))?;
     Ok(m.constraints)
+}
+
+/// Canonical perimeter strings carried by a stored certificate.
+pub fn cert_perimeter(store: GatewayStore, mandate_id: &str) -> Result<Vec<String>> {
+    let bundle = Bundle::open(store).map_err(bridge_err)?;
+    let mandate: Mandate = read_json(&bundle, &cert_path(mandate_id))?;
+    Ok(mandate.perimeter)
+}
+
+/// Pin of exactly the upstream-controlled fields approved by the owner.
+pub fn manifest_tool_pin(
+    name: &str,
+    description: Option<&str>,
+    input_schema: &serde_json::Value,
+) -> Result<String> {
+    hash_of(&serde_json::json!({
+        "name": name,
+        "description": description,
+        "inputSchema": input_schema,
+    }))
 }
 
 // ---------------------------------------------------------------- helpers
