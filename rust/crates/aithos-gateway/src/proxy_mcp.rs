@@ -36,6 +36,7 @@ use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
 use crate::core_bridge::{Bridge, Runner};
+use crate::hub::discover_server;
 use crate::policy::Policy;
 use crate::{GatewayError, Result};
 
@@ -77,6 +78,7 @@ pub trait Upstream: Send + Sync + 'static {
 pub struct HttpUpstream {
     client: reqwest::Client,
     url: String,
+    bearer_token: Option<String>,
 }
 
 impl HttpUpstream {
@@ -84,17 +86,30 @@ impl HttpUpstream {
         Self {
             client: reqwest::Client::new(),
             url: url.into(),
+            bearer_token: None,
+        }
+    }
+
+    pub fn with_bearer(url: impl Into<String>, bearer_token: Option<String>) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            url: url.into(),
+            bearer_token,
         }
     }
 }
 
 impl Upstream for HttpUpstream {
     async fn forward(&self, body: Value) -> Result<Value> {
-        let resp = self
+        let mut request = self
             .client
             .post(&self.url)
             .json(&body)
-            .header("accept", "application/json")
+            .header("accept", "application/json");
+        if let Some(token) = &self.bearer_token {
+            request = request.bearer_auth(token);
+        }
+        let resp = request
             .send()
             .await
             .map_err(|e| GatewayError::UpstreamFailed(e.to_string()))?;
@@ -270,14 +285,7 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
             // The NATIVE journal tools close the list with their REAL
             // schemas: the gateway serves them itself, so it pins what
             // it governs (the hub decision, applied at home first).
-            let mut tools: Vec<Value> = rt
-                .runner
-                .lock()
-                .await
-                .mapped_tools()
-                .into_iter()
-                .map(|name| json!({ "name": name, "inputSchema": { "type": "object" } }))
-                .collect();
+            let mut tools = rt.runner.lock().await.listed_tools();
             tools.extend(native_journal_tools());
             json!({
                 "jsonrpc": "2.0",
@@ -302,7 +310,7 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
 /// act there + the xref in the journal (log-before-relay) → relay to the
 /// context's own upstream. Refusals follow §3bis.8: journal always, the
 /// context too when the tool names one.
-async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value {
+async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Value {
     let id = msg.get("id").cloned().unwrap_or(Value::Null);
     let now = (rt.clock)();
 
@@ -356,12 +364,25 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value {
         return error_response(id, &e);
     };
 
+    if let Some(deny) = runner.manifest_drift_for(&tool) {
+        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    }
+
     // The resolved context's mandate at T — a named tool is not yet an
     // authorised tool (writes live here to be refused precisely).
     if let Err(deny) = runner.authorize(&ctx, &tool, &now) {
         runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
         return error_response(id, &deny);
     }
+
+    let relay = match runner.relay_target(&ctx, &tool) {
+        Ok(relay) => relay,
+        Err(deny) => {
+            runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+            return error_response(id, &deny);
+        }
+    };
 
     // Log before relaying, twice (context act + journal xref): if either
     // append fails, the call does not happen.
@@ -374,14 +395,76 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value {
 
     // Relay to THAT context's upstream. A missing upstream is a config
     // mismatch, surfaced as an upstream failure (fail closed).
-    let Some(upstream) = rt.upstreams.get(&ctx) else {
-        let e = GatewayError::UpstreamFailed(format!("no upstream for context `{ctx}`"));
+    let Some(upstream) = rt.upstreams.get(&relay.server) else {
+        let e = GatewayError::UpstreamFailed(format!("no upstream for route `{}`", relay.server));
         return error_response(id, &e);
     };
-    match upstream.forward(msg).await {
-        Ok(resp) => resp,
-        Err(e) => error_response(id, &e),
+    if let Some(name) = msg.pointer_mut("/params/name") {
+        *name = Value::String(relay.raw_tool);
     }
+    match upstream.forward(msg).await {
+        Ok(resp) if resp.get("error").is_none() => resp,
+        Ok(resp) => {
+            if let Err(drift) = refresh_server_manifest(rt, &relay.server).await {
+                if matches!(drift, GatewayError::ManifestDrift { .. }) {
+                    let mut runner = rt.runner.lock().await;
+                    runner.record_refusal(Some(&ctx), &tool, drift.refusal_code(), &now);
+                    return error_response(id, &drift);
+                }
+            }
+            resp
+        }
+        Err(error) => {
+            if let Err(drift) = refresh_server_manifest(rt, &relay.server).await {
+                if matches!(drift, GatewayError::ManifestDrift { .. }) {
+                    let mut runner = rt.runner.lock().await;
+                    runner.record_refusal(Some(&ctx), &tool, drift.refusal_code(), &now);
+                    return error_response(id, &drift);
+                }
+            }
+            error_response(id, &error)
+        }
+    }
+}
+
+/// Session-open drift control for every governed server. `tools/list`
+/// served to the agent remains entirely local; this control plane call
+/// only compares the upstream with owner-approved pins.
+pub async fn verify_hub_upstreams<U: Upstream>(rt: &McpRouter<U>) -> Result<()> {
+    let servers = rt.runner.lock().await.hub_servers();
+    for server in servers {
+        refresh_server_manifest(rt, &server).await?;
+    }
+    Ok(())
+}
+
+/// Refresh one server's control-plane observation. Exposed for the
+/// explicit test seam and reused after an upstream tool error.
+pub async fn refresh_server_manifest<U: Upstream>(rt: &McpRouter<U>, server: &str) -> Result<()> {
+    let expected =
+        rt.runner.lock().await.server_pins(server).ok_or_else(|| {
+            GatewayError::ConfigRejected(format!("unknown hub server `{server}`"))
+        })?;
+    let upstream = rt.upstreams.get(server).ok_or_else(|| {
+        GatewayError::UpstreamFailed(format!("no upstream for hub server `{server}`"))
+    })?;
+    let observed = discover_server(server, upstream).await?;
+    let actual: BTreeMap<String, String> = observed
+        .tools
+        .into_iter()
+        .map(|tool| (tool.name, tool.pin_sha256))
+        .collect();
+    let mut runner = rt.runner.lock().await;
+    if actual == expected {
+        runner.clear_manifest_drift(server);
+        return Ok(());
+    }
+    let reason = "upstream tools/list differs from the owner-approved pin".to_owned();
+    runner.mark_manifest_drift(server, reason.clone());
+    Err(GatewayError::ManifestDrift {
+        server: server.to_owned(),
+        reason,
+    })
 }
 
 // -------------------------------------------------- native journal tools

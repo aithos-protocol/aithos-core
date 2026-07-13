@@ -25,6 +25,10 @@ pub enum GatewayError {
     #[error("upstream MCP failed: {0}")]
     UpstreamFailed(String),
 
+    /// A governed server no longer advertises the owner-approved manifest.
+    #[error("manifest drift for server `{server}`: {reason}")]
+    ManifestDrift { server: String, reason: String },
+
     /// The agent-facing request is not something the gateway relays.
     #[error("request rejected: {0}")]
     RequestRejected(String),
@@ -51,6 +55,7 @@ impl GatewayError {
             GatewayError::LogAppendRefused(_) => "log_append_refused",
             GatewayError::ConfigRejected(_) => "config_rejected",
             GatewayError::UpstreamFailed(_) => "upstream_failed",
+            GatewayError::ManifestDrift { .. } => "manifest_drift",
             GatewayError::RequestRejected(_) => "request_rejected",
             GatewayError::AuditDenied(_) => "audit_denied",
             GatewayError::IdentityUnavailable(_) => "identity_unavailable",

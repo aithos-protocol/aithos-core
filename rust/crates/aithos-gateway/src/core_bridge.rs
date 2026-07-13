@@ -32,12 +32,12 @@ use aithos_bundle::log::{ActionSpec, InferenceSpec, LogFilter};
 use aithos_bundle::Store;
 use aithos_core::did::DidDocument;
 use aithos_core::header::{Header, Recipient};
-use aithos_core::keys::{ed2x, succession_from_entropy, MasterSeed, OwnerKeys};
+use aithos_core::keys::{ed2x, grantee_kex_secret, succession_from_entropy, MasterSeed, OwnerKeys};
 use aithos_core::mandate::{verify_chain, GammaQuery, Mandate, MandateSpec, PerimeterEntry, Verb};
 use aithos_core::path::Zone;
 
-use crate::config::GatewayConfig;
-use crate::hub::{validate_approved, ApprovedManifest};
+use crate::config::{ContextTools, GatewayConfig, ToolAccess};
+use crate::hub::{validate_approved, ApprovedManifest, ApprovedTool};
 use crate::keyholder::Keyholder;
 use crate::policy::{hub_op_for_tool, op_for_tool, Policy};
 use crate::store_adapter::GatewayStore;
@@ -345,32 +345,91 @@ impl Bridge {
         })
     }
 
+    /// Open and validate one owner-approved hub manifest through the
+    /// gateway recipient line. The runner never needs the owner seed.
+    pub fn read_hub_manifest(&self, server: &str) -> Result<ApprovedManifest> {
+        let (header_path, manifest_path) = hub_manifest_paths(server);
+        let header: Header = read_json(&self.bundle, &header_path)?;
+        header.validate().map_err(bridge_err)?;
+        let expected_node = format!("/x/{server}");
+        if header.node != expected_node {
+            return Err(GatewayError::BridgeFailed(format!(
+                "hub manifest header targets `{}`, expected `{expected_node}`",
+                header.node
+            )));
+        }
+        let gateway_sk = SigningKey::from_bytes(self.keyholder.gateway_seed());
+        let gateway_kex = grantee_kex_secret(&gateway_sk);
+        let gateway_kid = gateway_pub_multibase(&self.keyholder);
+        let (version, key) = header
+            .open_latest(&self.bundle.did, &gateway_kid, &gateway_kex)
+            .map_err(bridge_err)?;
+        let sealed = self
+            .bundle
+            .store
+            .get(&manifest_path)
+            .map_err(bridge_err)?
+            .ok_or_else(|| GatewayError::BridgeFailed(format!("missing {manifest_path}")))?;
+        if sealed.len() < 24 {
+            return Err(GatewayError::BridgeFailed(format!(
+                "truncated {manifest_path}"
+            )));
+        }
+        let nonce: [u8; 24] = sealed[..24].try_into().expect("length checked");
+        let aad = aithos_core::seal::blob_aad(&self.bundle.did, &expected_node, version);
+        let plain =
+            aithos_core::seal::blob_open(&key, &sealed[24..], &nonce, &aad).map_err(bridge_err)?;
+        let manifest: ApprovedManifest = serde_json::from_slice(&plain).map_err(bridge_err)?;
+        validate_approved(&manifest)?;
+        if manifest.server != server {
+            return Err(GatewayError::BridgeFailed(format!(
+                "manifest server is `{}`, expected `{server}`",
+                manifest.server
+            )));
+        }
+        Ok(manifest)
+    }
+
     // ------------------------------------------------------------ policy
 
     /// Is this tool covered by the agent's mandate at `now`? The polite
     /// pre-check — `record_act` re-verifies everything at append time.
     pub fn authorize(&self, tool: &str, now: &str) -> Result<()> {
+        self.authorize_action(
+            crate::policy::MCP_CONNECTOR,
+            &crate::policy::action_name(tool),
+            &op_for_tool(tool),
+            now,
+        )
+    }
+
+    fn authorize_action(&self, connector: &str, action: &str, op: &str, now: &str) -> Result<()> {
         let doc = self.did_doc()?;
         verify_chain(&self.agent_chain, &doc, now).map_err(|e| GatewayError::MandateDenied {
-            op: op_for_tool(tool),
+            op: op.to_owned(),
             reason: e.to_string(),
         })?;
         let covered = self
             .bundle
-            .action_covered(
-                &self.agent_chain,
-                crate::policy::MCP_CONNECTOR,
-                &crate::policy::action_name(tool),
-            )
+            .action_covered(&self.agent_chain, connector, action)
             .map_err(bridge_err)?;
         if covered {
             Ok(())
         } else {
             Err(GatewayError::MandateDenied {
-                op: op_for_tool(tool),
+                op: op.to_owned(),
                 reason: "outside the granted perimeter".to_owned(),
             })
         }
+    }
+
+    pub fn authorize_hub(&self, server: &str, raw_tool: &str, now: &str) -> Result<()> {
+        self.authorize_action(
+            server,
+            &crate::policy::action_name(raw_tool),
+            &hub_op_for_tool(server, raw_tool),
+            now,
+        )
     }
 
     // ------------------------------------------------------------- gamma
@@ -400,6 +459,39 @@ impl Bridge {
                     args_hash: &args_hash,
                     now,
                     budget: Some(serde_json::json!({ "tool": tool })),
+                    sealed_args: None,
+                },
+                self.entropy.as_mut(),
+            )
+            .map_err(|e| GatewayError::LogAppendRefused(e.to_string()))?;
+        Ok(entry.id)
+    }
+
+    pub fn record_hub_act(
+        &mut self,
+        exposed_tool: &str,
+        server: &str,
+        raw_tool: &str,
+        args: &serde_json::Value,
+        now: &str,
+    ) -> Result<String> {
+        let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+        let args_hash = hash_of(args)?;
+        let entry = self
+            .bundle
+            .log_action(
+                &self.agent_chain,
+                &agent_sk,
+                &ActionSpec {
+                    connector: server,
+                    action: &crate::policy::action_name(raw_tool),
+                    args_hash: &args_hash,
+                    now,
+                    budget: Some(serde_json::json!({
+                        "tool": exposed_tool,
+                        "server": server,
+                        "upstream_tool": raw_tool
+                    })),
                     sealed_args: None,
                 },
                 self.entropy.as_mut(),
@@ -813,6 +905,23 @@ pub struct ContextRuntime {
     pub bridge: Bridge,
 }
 
+#[derive(Debug, Clone)]
+struct HubRuntimeTool {
+    context: String,
+    server: String,
+    raw_tool: String,
+    description: Option<String>,
+    input_schema: serde_json::Value,
+    pin_sha256: String,
+    access: ToolAccess,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HubRelayTarget {
+    pub server: String,
+    pub raw_tool: String,
+}
+
 /// The multi-Ethos runtime (Phase B lot 3): N context bridges plus the
 /// agent's journal bridge, all signing with the runner's ONE identity.
 /// An act writes twice — the context gamma (the proof) and a journal
@@ -821,12 +930,21 @@ pub struct ContextRuntime {
 pub struct Runner {
     contexts: BTreeMap<String, ContextRuntime>,
     journal: Bridge,
+    hub_tools: BTreeMap<String, HubRuntimeTool>,
+    hub_server_pins: BTreeMap<String, BTreeMap<String, String>>,
+    hub_drift: BTreeMap<String, String>,
 }
 
 impl Runner {
     /// Assemble from pre-built parts (the acceptance tests' door).
     pub fn from_parts(contexts: BTreeMap<String, ContextRuntime>, journal: Bridge) -> Self {
-        Self { contexts, journal }
+        Self {
+            contexts,
+            journal,
+            hub_tools: BTreeMap::new(),
+            hub_server_pins: BTreeMap::new(),
+            hub_drift: BTreeMap::new(),
+        }
     }
 
     /// Open every context and the journal declared by a multi-context
@@ -838,11 +956,6 @@ impl Runner {
         keyholder: Keyholder,
         mut entropy: impl FnMut() -> Box<dyn EntropySource + Send>,
     ) -> Result<Self> {
-        if cfg.is_hub() {
-            return Err(GatewayError::ConfigRejected(
-                "hub config accepted by H1, but governed runtime requires H3".into(),
-            ));
-        }
         let contexts_cfg = cfg.contexts.as_ref().ok_or_else(|| {
             GatewayError::ConfigRejected("the multi-context runner needs `contexts`".into())
         })?;
@@ -851,23 +964,67 @@ impl Runner {
         })?;
         let keyholder = Arc::new(keyholder);
         let mut contexts = BTreeMap::new();
+        let mut hub_tools = BTreeMap::new();
+        let mut hub_server_pins: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
         for ctx in contexts_cfg {
             let store = GatewayStore::from_config(&ctx.store)?;
             let bridge = Bridge::open(store, Arc::clone(&keyholder), entropy())?;
-            contexts.insert(
-                ctx.name.clone(),
-                ContextRuntime {
-                    policy: Policy::new(ctx.legacy_tools()?.clone()),
-                    bridge,
-                },
-            );
+            let policy = match &ctx.tools {
+                ContextTools::Legacy(tools) => Policy::new(tools.clone()),
+                ContextTools::Hub(refs) => {
+                    let mut policy_map = BTreeMap::new();
+                    let mut manifests = BTreeMap::new();
+                    for (exposed, reference) in refs {
+                        if !manifests.contains_key(&reference.server) {
+                            manifests.insert(
+                                reference.server.clone(),
+                                bridge.read_hub_manifest(&reference.server)?,
+                            );
+                        }
+                        let manifest = manifests.get(&reference.server).expect("inserted above");
+                        merge_server_pins(&mut hub_server_pins, manifest)?;
+                        let approved = manifest
+                            .tools
+                            .iter()
+                            .find(|tool| tool.name == reference.tool)
+                            .ok_or_else(|| {
+                                GatewayError::ConfigRejected(format!(
+                                    "context `{}` references `{}/{}` absent from its approved manifest",
+                                    ctx.name, reference.server, reference.tool
+                                ))
+                            })?;
+                        validate_runtime_tool(&ctx.name, exposed, reference.access, approved)?;
+                        policy_map.insert(exposed.clone(), reference.access);
+                        hub_tools.insert(
+                            exposed.clone(),
+                            HubRuntimeTool {
+                                context: ctx.name.clone(),
+                                server: reference.server.clone(),
+                                raw_tool: reference.tool.clone(),
+                                description: approved.description.clone(),
+                                input_schema: approved.input_schema.clone(),
+                                pin_sha256: approved.pin_sha256.clone(),
+                                access: reference.access,
+                            },
+                        );
+                    }
+                    Policy::new(policy_map)
+                }
+            };
+            contexts.insert(ctx.name.clone(), ContextRuntime { policy, bridge });
         }
         let journal = Bridge::open(
             GatewayStore::from_config(&journal_cfg.store)?,
             keyholder,
             entropy(),
         )?;
-        Ok(Self { contexts, journal })
+        Ok(Self {
+            contexts,
+            journal,
+            hub_tools,
+            hub_server_pins,
+            hub_drift: BTreeMap::new(),
+        })
     }
 
     /// The context whose tool map names this tool (read or write).
@@ -889,9 +1046,113 @@ impl Runner {
             .collect()
     }
 
+    /// Agent-visible descriptors. Hub mode exposes covered (`read`)
+    /// pins only; legacy mode preserves the v2 names-only surface.
+    pub fn listed_tools(&self) -> Vec<serde_json::Value> {
+        if self.hub_tools.is_empty() {
+            return self
+                .mapped_tools()
+                .into_iter()
+                .map(|name| {
+                    serde_json::json!({
+                        "name": name,
+                        "inputSchema": { "type": "object" }
+                    })
+                })
+                .collect();
+        }
+        self.hub_tools
+            .iter()
+            .filter(|(_, tool)| tool.access == ToolAccess::Read)
+            .map(|(name, tool)| {
+                let mut descriptor = serde_json::json!({
+                    "name": name,
+                    "inputSchema": tool.input_schema
+                });
+                if let Some(description) = &tool.description {
+                    descriptor["description"] = serde_json::Value::String(description.clone());
+                }
+                descriptor
+            })
+            .collect()
+    }
+
+    pub fn relay_target(&self, ctx: &str, tool: &str) -> Result<HubRelayTarget> {
+        if let Some(hub) = self.hub_tools.get(tool) {
+            if hub.context != ctx {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "hub route `{tool}` resolved to `{ctx}`, pin belongs to `{}`",
+                    hub.context
+                )));
+            }
+            return Ok(HubRelayTarget {
+                server: hub.server.clone(),
+                raw_tool: hub.raw_tool.clone(),
+            });
+        }
+        Ok(HubRelayTarget {
+            server: ctx.to_owned(),
+            raw_tool: tool.to_owned(),
+        })
+    }
+
+    pub fn server_pins(&self, server: &str) -> Option<BTreeMap<String, String>> {
+        self.hub_server_pins.get(server).cloned()
+    }
+
+    pub fn hub_servers(&self) -> Vec<String> {
+        self.hub_server_pins.keys().cloned().collect()
+    }
+
+    pub fn mark_manifest_drift(&mut self, server: &str, reason: String) {
+        self.hub_drift.insert(server.to_owned(), reason);
+    }
+
+    pub fn clear_manifest_drift(&mut self, server: &str) {
+        self.hub_drift.remove(server);
+    }
+
+    pub fn manifest_drift_for(&self, tool: &str) -> Option<GatewayError> {
+        let hub = self.hub_tools.get(tool)?;
+        match manifest_tool_pin(&hub.raw_tool, hub.description.as_deref(), &hub.input_schema) {
+            Ok(pin) if pin == hub.pin_sha256 => {}
+            Ok(_) => {
+                return Some(GatewayError::ManifestDrift {
+                    server: hub.server.clone(),
+                    reason: format!("local pin for `{}` is inconsistent", hub.raw_tool),
+                })
+            }
+            Err(error) => {
+                return Some(GatewayError::ManifestDrift {
+                    server: hub.server.clone(),
+                    reason: error.to_string(),
+                })
+            }
+        }
+        self.hub_drift
+            .get(&hub.server)
+            .map(|reason| GatewayError::ManifestDrift {
+                server: hub.server.clone(),
+                reason: reason.clone(),
+            })
+    }
+
     /// Pre-check on the resolved context: does its mandate cover the
     /// tool at `now`? (`record_act_with_xref` re-verifies at append.)
     pub fn authorize(&self, ctx: &str, tool: &str, now: &str) -> Result<()> {
+        if let Some(hub) = self.hub_tools.get(tool) {
+            return self
+                .context(ctx)?
+                .bridge
+                .authorize_hub(&hub.server, &hub.raw_tool, now)
+                .map_err(|error| match error {
+                    GatewayError::MandateDenied { op, reason } => GatewayError::MandateDenied {
+                        op,
+                        reason: format!("exposed tool `{tool}`: {reason}"),
+                    },
+                    other => other,
+                });
+        }
         self.context(ctx)?.bridge.authorize(tool, now)
     }
 
@@ -908,8 +1169,16 @@ impl Runner {
         args: &serde_json::Value,
         now: &str,
     ) -> Result<String> {
+        let hub = self.hub_tools.get(tool).cloned();
         let context = self.context_mut(ctx)?;
-        let entry_id = context.bridge.record_act(tool, args, now)?;
+        let entry_id = match hub {
+            Some(hub) => {
+                context
+                    .bridge
+                    .record_hub_act(tool, &hub.server, &hub.raw_tool, args, now)?
+            }
+            None => context.bridge.record_act(tool, args, now)?,
+        };
         let ethos_did = context.bridge.ethos_did().to_owned();
         self.journal.record_xref(tool, &ethos_did, &entry_id, now)?;
         Ok(entry_id)
@@ -983,6 +1252,48 @@ impl Runner {
             .get_mut(name)
             .ok_or_else(|| GatewayError::RequestRejected(format!("unknown context `{name}`")))
     }
+}
+
+fn validate_runtime_tool(
+    context: &str,
+    exposed: &str,
+    access: ToolAccess,
+    approved: &ApprovedTool,
+) -> Result<()> {
+    if approved.exposed_name != exposed {
+        return Err(GatewayError::ConfigRejected(format!(
+            "context `{context}` names `{exposed}`, approved manifest names `{}`",
+            approved.exposed_name
+        )));
+    }
+    if approved.risk_class != access {
+        return Err(GatewayError::ConfigRejected(format!(
+            "context `{context}` class for `{exposed}` differs from the approved manifest"
+        )));
+    }
+    Ok(())
+}
+
+fn merge_server_pins(
+    pins: &mut BTreeMap<String, BTreeMap<String, String>>,
+    manifest: &ApprovedManifest,
+) -> Result<()> {
+    let candidate: BTreeMap<String, String> = manifest
+        .tools
+        .iter()
+        .map(|tool| (tool.name.clone(), tool.pin_sha256.clone()))
+        .collect();
+    if let Some(existing) = pins.get(&manifest.server) {
+        if existing != &candidate {
+            return Err(GatewayError::ConfigRejected(format!(
+                "contexts pin conflicting manifests for shared server `{}`",
+                manifest.server
+            )));
+        }
+    } else {
+        pins.insert(manifest.server.clone(), candidate);
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------- owner tooling

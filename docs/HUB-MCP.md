@@ -154,10 +154,10 @@ d'aplatissement → rejet ; noms réservés → rejet.
 | `proxy_llm` (métrage inférence, budgets F+) | **Fait, vert** (Phase C) |
 | Config v3 `servers:` + tools référencées | **Fait, vert** (H1) |
 | `discover` / manifeste proposé / approbation / pin | **Fait, vert** (H2) |
-| Vérif pin à runtime + refus drift | À construire |
-| `tools/list` = couverts + schémas pinnés | À construire (remplace noms-seuls) |
-| Nom exposé `<server>__<tool>` + restauration du nom brut | À construire |
-| Credentials amont (bearer/OAuth) | Couture v1 = config (comme `llm:`), cible vault §3bis.4 |
+| Vérif pin à runtime + refus drift | **Fait, vert** (H3) |
+| `tools/list` = couverts + schémas pinnés | **Fait, vert** (H3) |
+| Nom exposé `<server>__<tool>` + restauration du nom brut | **Fait, vert** (H3) |
+| Credentials amont (bearer/OAuth) | Bearer config **fait** (H3), cible vault §3bis.4 |
 | Wrapper stdio, SSE/streaming, `resources/*` | Hors v1 (Phase D) |
 
 ## 9. Lots proposés (Gherkin-first, dans l'ordre)
@@ -180,7 +180,15 @@ d'aplatissement → rejet ; noms réservés → rejet.
   `/x/<server>` gardé par le gateway puis minte le mandat et journalise les grants.
   Le test de surface du vrai binaire vérifie le périmètre exact, le blob opaque et
   l'absence de seed dans la sortie.
-- **H3 — runtime** : pin check, `tools/list` reconstruit des manifestes, nom exposé.
+- **H3 — runtime : ✅ CLOS (2026-07-13).** Le runner ouvre les manifests par la
+  ligne gateway du vault, refuse les vues conflictuelles d'un serveur partagé,
+  reconstruit `tools/list` depuis les seuls pins `read`, restaure le nom brut au
+  relais et logge `act.x.<server>.<action>` dans l'Ethos couvrant + xref journal.
+  Cohérence locale vérifiée à chaque call ; contrôle amont à l'ouverture et après
+  erreur ; drift mémorisé puis refusé avant relais sous `manifest_drift`. Surface
+  v1 fermée hors `initialize`/`tools/list`/`tools/call`. Bearer optionnel appliqué
+  uniquement côté amont. Cucumber : cinq scénarios runtime détaggés et verts ; le
+  re-enrollment politique reste le lot owner H2b séparé.
 - **H4 — e2e réseau** : 2 faux MCP dont 1 partagé par 2 Ethos ; drift simulé sur le
   fil ; audit-export par contexte montre les actes du serveur partagé chez le bon.
 

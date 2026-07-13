@@ -15,7 +15,9 @@ use aithos_gateway::core_bridge::{
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{router_llm, HttpLlmUpstream, LlmProxy};
-use aithos_gateway::proxy_mcp::{router, router_multi, HttpUpstream, McpProxy, McpRouter};
+use aithos_gateway::proxy_mcp::{
+    router, router_multi, verify_hub_upstreams, HttpUpstream, McpProxy, McpRouter,
+};
 use aithos_gateway::store_adapter::GatewayStore;
 
 #[derive(Parser)]
@@ -373,6 +375,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::Run => {
             let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()?;
             // Multi-context config → the routed runtime (v2, lot 3):
             // one bridge per context + the journal, one upstream per
             // context, the same single agent-facing endpoint.
@@ -382,20 +387,39 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     keyholder,
                     || Box::new(OsEntropy),
                 )?));
-                let upstreams = contexts
-                    .iter()
-                    .map(|c| {
-                        Ok::<_, aithos_gateway::GatewayError>((
-                            c.name.clone(),
-                            HttpUpstream::new(c.legacy_upstream()?.to_owned()),
-                        ))
-                    })
-                    .collect::<aithos_gateway::Result<_>>()?;
-                let mut app = router_multi(Arc::new(McpRouter {
+                let upstreams = if let Some(servers) = &cfg.servers {
+                    servers
+                        .iter()
+                        .map(|server| {
+                            (
+                                server.name.clone(),
+                                HttpUpstream::with_bearer(
+                                    server.url.clone(),
+                                    server.bearer_token.clone(),
+                                ),
+                            )
+                        })
+                        .collect()
+                } else {
+                    contexts
+                        .iter()
+                        .map(|c| {
+                            Ok::<_, aithos_gateway::GatewayError>((
+                                c.name.clone(),
+                                HttpUpstream::new(c.legacy_upstream()?.to_owned()),
+                            ))
+                        })
+                        .collect::<aithos_gateway::Result<_>>()?
+                };
+                let routing = Arc::new(McpRouter {
                     runner: Arc::clone(&runner),
                     upstreams,
                     clock: Arc::new(|| ts(now_secs())),
-                }));
+                });
+                if cfg.is_hub() {
+                    rt.block_on(verify_hub_upstreams(&routing))?;
+                }
+                let mut app = router_multi(routing);
                 // The LLM front (Phase C): same runner, same journal —
                 // the completions endpoint rides the same listener.
                 if let Some(llm) = &cfg.llm {
@@ -421,9 +445,6 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     clock: Arc::new(|| ts(now_secs())),
                 }))
             };
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()?;
             rt.block_on(async {
                 let listener = tokio::net::TcpListener::bind(&cfg.listen).await?;
                 eprintln!("gateway listening on http://{}/mcp", cfg.listen);

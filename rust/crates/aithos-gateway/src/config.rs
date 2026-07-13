@@ -98,6 +98,10 @@ pub struct ServerConfig {
     pub name: String,
     pub transport: ServerTransport,
     pub url: String,
+    /// Temporary v1 custody seam. The gateway applies this bearer on
+    /// the wire; it is never exposed on the agent-facing MCP surface.
+    #[serde(default)]
+    pub bearer_token: Option<String>,
 }
 
 /// A context's reference to one raw tool on a first-class server.
@@ -421,6 +425,16 @@ fn validate_hub(servers: &[ServerConfig], contexts: &[ContextConfig]) -> Result<
             )));
         }
         validate_upstream(&server.url, &format!("servers[{}].url", server.name))?;
+        if server
+            .bearer_token
+            .as_deref()
+            .is_some_and(|token| token.trim().is_empty())
+        {
+            return Err(GatewayError::ConfigRejected(format!(
+                "servers[{}].bearer_token is empty",
+                server.name
+            )));
+        }
     }
 
     let mut pairs: BTreeMap<(String, String), String> = BTreeMap::new();
@@ -968,6 +982,27 @@ journal:
                 Err(GatewayError::ConfigRejected(_))
             ));
         }
+    }
+
+    #[test]
+    fn hub_bearer_is_optional_but_never_empty() {
+        let with_bearer = HUB.replace(
+            "    url: https://mcp.github.example/mcp",
+            "    url: https://mcp.github.example/mcp\n    bearer_token: secret-token",
+        );
+        let cfg = GatewayConfig::from_yaml(&with_bearer).unwrap();
+        assert_eq!(
+            cfg.servers.as_ref().unwrap()[0].bearer_token.as_deref(),
+            Some("secret-token")
+        );
+        let empty = HUB.replace(
+            "    url: https://mcp.github.example/mcp",
+            "    url: https://mcp.github.example/mcp\n    bearer_token: '  '",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&empty),
+            Err(GatewayError::ConfigRejected(message)) if message.contains("bearer_token is empty")
+        ));
     }
 
     #[test]

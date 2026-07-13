@@ -4,41 +4,23 @@
 Complète `GATEWAY-BOOTSTRAP.md` (le pourquoi/quoi) avec l'état exact du code et
 les leçons d'environnement. Session initiale : 2026-07-10.
 
-> **ÉTAT EXPRESS (2026-07-12, 5ᵉ session gw — review + merge H0)** : **LOT C2 CLOS —
-> les outils journal vivent sur pass L.** Les 5 décisions C2 validées
-> par Mathieu (AskUserQuestion, cette session) ; la **pass L** (écritures
-> déléguées circle, développée en sandbox parallèle) a été revalidée
-> depuis les fichiers du disque puis committée (`939accb`) ; le contrat
-> v2 réécrit sections (`a39eb91`) puis l'impl verte (`5c77753`) :
-> `journal.write` = UNE section scellée dans `circle:memory/` (nom
-> technique frais, title/tags clairs à l'index, `section.add` délégué à
-> corps scellé sous le pen mémoire) ; `journal.search` = match sur
-> l'index CLAIR seulement, antéchrono, ouvre les SEULS hits rendus — un
-> `ethos.read` journalisé par corps ouvert, zéro match = zéro entrée ;
-> pen mémoire DÉDIÉ (`append.circle#dir=memory`, minté à
-> `owner-init-journal` + `deliver_zone_line`, révocable indépendamment,
-> pas de pen → refus fail-closed) ; préfixe `journal` réservé (mono ET
-> multi) ; tools/list sert les natifs avec leurs VRAIS schémas. Suite
-> gateway : **29 scénarios / 145 steps (zéro @wip), 22 unit, 4 CLI +
-> 4 owner surface, 3 e2e réseau** ; workspace : bundle 203/826, clippy
-> -D warnings clean partout. **Hub H0 MERGÉ sur `feat/obligations`**
-> (5ᵉ session gw : review conforme HUB-MCP §3/§5/§9, ff manuel →
-> `082f5a2`, aucune question §10 tranchée en douce) **et amendé**
-> (`42e378e`) : `gateway-hub.feature`, 11 blocs `@wip` (12 scénarios à
-> l'expansion — l'Outline réserve `journal` ET `gateway`), collision
-> inter-serveurs épinglée (`a`+`b__c` vs `a__b`+`c`), le refus du
-> write connu nomme « the context that knows the tool ». Suite
-> historique 29/145 verte, H0 parsé puis filtré (revérifié conteneur
-> 1.96.1 : crate vert, clippy -D warnings, fmt). Prochaine tranche :
-> H1, config v3 `servers:`. Reste Phase C : creds provider → vault
-> `/x/` (§3bis.4). Design du hub : `docs/HUB-MCP.md` (tranché 12/07).
-> Untracked à trancher par
-> Mathieu : HUB-MCP.md, EXPLORATION-DESKTOP-GATEWAY.md,
-> STANDARDS-COMPAT.md (apparu en cours de session). ⚠ Env : sondes des
-> DEUX profils avant d'agir (§5 — tester l'unlink SUR LE MONTAGE, pas
-> /tmp).
+> **ÉTAT EXPRESS (2026-07-13, 6ᵉ session gw — H1/H2/H3)** : **HUB MCP
+> GOUVERNÉ RUNTIME VERT.** Décisions complémentaires validées par Mathieu :
+> manifest `/x/<server>` par Ethos, contrôle drift local chaque call + amont à
+> l'ouverture/sur erreur, classes `read|write`, bearer config v1, collisions
+> post-aplatissement sans bannir `__`, `HUB-MCP.md` suivi. H1 config v3 fermé
+> dans `6b580ff`; H2 discover/approval/pin/grants owner fermé dans `f915d34`;
+> H3 implémenté et QA verte (commit à lire dans le log suivant) : pins ouverts
+> via la ligne gateway, `tools/list` hors-ligne exact et limité aux reads,
+> serveur partagé entre deux Ethos, nom brut restauré, `act.x.<server>` + xref,
+> write connu caché/refusé, drift `manifest_drift` gouverné, surface hors
+> `tools/*` fermée, bearer amont. Suite : **40 scénarios / 195 steps**, 36 unit,
+> 4 CLI, 5 owner surface, 3 e2e réseau ; clippy `-D warnings` et fmt clean.
+> Il reste **un seul `@wip` hub** : re-enrollment owner (nouveau mandat +
+> révocation politique), isolé en H2b ; puis H4 e2e réseau hub.
 
-**Branche : `feat/gateway`** (depuis feat/f-plus). Crate : `rust/crates/aithos-gateway/`.
+**Branche active imposée : `feat/obligations`** (ne jamais switcher). Crate :
+`rust/crates/aithos-gateway/`.
 
 ---
 
@@ -350,7 +332,7 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
   rejoignent la Phase D si Mathieu tranche. Ses 4 questions ouvertes (§9)
   sont à lui.
 
-**Phase H — hub MCP gouverné (OUVERTE 2026-07-12, H0 ✅).**
+**Phase H — hub MCP gouverné (OUVERTE 2026-07-12, H0→H3 ✅).**
 
 - ✅ **H0 — contrat** (`dd680ae`, écrit sur la branche dédiée
   `codex/gateway-hub-h0`, **mergé ff sur `feat/obligations`** puis
@@ -375,11 +357,18 @@ Contrat : `tests/features/gateway-provisioning.feature` (6 scénarios, 6 verts).
   historique **29 scénarios / 145 steps verts** ; H0 parsé puis ignoré
   par `@wip` (sonde : dé-tagger UN scénario fait apparaître 5 features /
   30 scénarios, 1 skipped — le fichier est bien parsé, pas contourné).
-- ⬜ **H1 — config v3 `servers:`** : ressources serveur de première classe,
-  outils de contexte référencés par `(server, tool)`, validations H0 ;
-  dé-tagger seulement les scénarios de config devenus verts.
-- ⬜ H2 enroll owner-side ; H3 runtime pin/list/names ; H4 e2e réseau (voir
-  `docs/HUB-MCP.md` §9 dans le worktree source, encore non suivi).
+- ✅ **H1 — config v3 `servers:`** (`6b580ff`) : ressources serveur de première
+  classe, outils référencés par `(server, tool)`, formes exclusives et toutes les
+  ambiguïtés H0 rejetées fail-closed ; legacy v1/v2 compatible.
+- ✅ **H2 — enroll owner-side** (`f915d34`) : capture stricte `tools/list`,
+  approbation explicite, JCS/SHA-256, manifeste scellé sous `/x/<server>`, ligne
+  gateway, mandat exact et grants journalisés ; surface binaire réelle testée.
+- ✅ **H3 — runtime** (6ᵉ session, voir commit suivant) : pins ouverts par le
+  gateway, liste couverte reconstruite sans amont, serveur partagé, relais brut,
+  log par Ethos + xref, contrôle drift et bearer config. Cinq scénarios runtime
+  détaggés ; suite finale 40/195.
+- ⬜ **H2b** re-enrollment + révocation politique (dernier `@wip`) ; **H4** e2e
+  réseau hub (voir `docs/HUB-MCP.md` §9, désormais suivi).
 
 **Phase D — industrialisation.** Args scellés (quick win : `log_action` les
 accepte, manque `grant_audit_line` + flag), `tools/list` filtré, passthrough
@@ -432,6 +421,13 @@ l'export d'audit dès son merge, sans travail gateway.
   (b) au commit, les warnings `unable to unlink .git/objects/*/tmp_obj_*`
   et `HEAD.lock` sont COSMÉTIQUES (le commit aboutit) ; janitoriser
   `HEAD.lock` avant la commande git suivante, comme d'habitude.
+- **2026-07-13 (6ᵉ session gw) : profil local utilisable.** Egress toujours
+  coupé, mais unlink fonctionne sur le montage et la toolchain locale est
+  `rustc/cargo 1.95.0`. Builds avec `CARGO_INCREMENTAL=0` et target isolé
+  `rust/target-gw-codex-20260713`. Les E2E ont seulement nécessité l'autorisation
+  sandbox d'ouvrir des sockets localhost. `.git/objects/maintenance.lock` daté du
+  11/07 reste présent et n'a bloqué ni staging ni commit ; ne pas le supprimer à
+  l'aveugle.
 
 ## 6. ⚠ Git : sessions parallèles, un seul working tree
 
@@ -492,3 +488,10 @@ chaque commande git écrivante, warnings tmp_obj/HEAD.lock cosmétiques
 confirmés. La branche `codex/gateway-hub-h0` reste posée sur `082f5a2`
 (la supprimer = décision Mathieu). Scorie ajoutée : `_transfer/
 hub-082f5a2.tar` (tar de review).
+
+Session du 2026-07-13 (6ᵉ gw) : reprise directe sur `feat/obligations`, jamais de
+switch. HEAD d'arrivée `f743cd6` (le document STANDARDS avait entre-temps été suivi
+par Mathieu). Commits sélectifs : `6b580ff` H1 puis `f915d34` H2 ; H3 et ce handoff
+forment le commit suivant. `docs/HUB-MCP.md` a été inclus avec autorisation
+explicite. Les scories `_gitjunk/`, `_to_delete/`, `_transfer/` et
+`docs/EXPLORATION-DESKTOP-GATEWAY.md` sont restées intactes et non stagées.

@@ -24,7 +24,6 @@ Feature: Governed MCP hub — arbitrary servers under mandate
 
   Rule: The agent sees only covered tools and the exact approved schemas
 
-    @wip
     Scenario: tools/list is built from covered pins without consulting the upstream
       Given server "github" is enrolled with covered tool "issues.list"
       And server "github" has known but ungranted tool "issues.create"
@@ -33,7 +32,6 @@ Feature: Governed MCP hub — arbitrary servers under mandate
       And the list does not include "github__issues_create"
       And no request reaches the upstream
 
-    @wip
     Scenario: Methods outside the tools surface remain closed in hub v1
       Given server "github" is enrolled with covered tool "issues.list"
       When the agent requests MCP resources through the hub
@@ -42,7 +40,6 @@ Feature: Governed MCP hub — arbitrary servers under mandate
 
   Rule: A shared server routes each covered tool through exactly one Ethos
 
-    @wip
     Scenario: Two Ethos grant different tools from one shared server
       Given server "github" is shared by contexts "customer-support" and "engineering"
       And "customer-support" covers exposed tool "github__issues_list"
@@ -53,7 +50,6 @@ Feature: Governed MCP hub — arbitrary servers under mandate
       And "github__pulls_list" is logged in the "engineering" gamma only
       And the journal holds one cross-reference per act, joinable both ways
 
-    @wip
     Scenario: A known but ungranted write is hidden and refused precisely
       Given server "github" is enrolled with covered tool "issues.list"
       And server "github" has known but ungranted tool "issues.create"
@@ -65,7 +61,6 @@ Feature: Governed MCP hub — arbitrary servers under mandate
 
   Rule: The approved pin defeats upstream tool poisoning
 
-    @wip
     Scenario: A description drift closes the route and is governed
       Given server "github" is enrolled with covered tool "issues.list"
       And the upstream now advertises a different description for "issues.list"

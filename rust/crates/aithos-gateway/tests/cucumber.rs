@@ -32,8 +32,8 @@ use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
 use aithos_gateway::proxy_mcp::{
-    process, process_multi, McpProxy, McpRouter, Upstream, JOURNAL_SEARCH, JOURNAL_WRITE,
-    POLICY_DENIED_CODE,
+    process, process_multi, refresh_server_manifest, McpProxy, McpRouter, Upstream, JOURNAL_SEARCH,
+    JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
 };
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::{GatewayError, Result};
@@ -327,6 +327,451 @@ impl GatewayWorld {
             .filter(|e| e.kind == "action" && e.target.as_deref() == Some("x.gateway"))
             .collect()
     }
+}
+
+async fn provision_single_hub(w: &mut GatewayWorld) {
+    if w.router.is_some() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("hub tempdir");
+    let context_root = dir.path().join("support");
+    let journal_root = dir.path().join("journal");
+    let context_cfg = aithos_gateway::config::StoreConfig::Fs {
+        root: context_root.clone(),
+    };
+    let journal_cfg = aithos_gateway::config::StoreConfig::Fs {
+        root: journal_root.clone(),
+    };
+    let context_store = GatewayStore::from_config(&context_cfg).expect("context store");
+    let journal_store = GatewayStore::from_config(&journal_cfg).expect("journal store");
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let mut owner_ent = SeqEntropy::default();
+    owner_init_context(
+        &master,
+        "customer-support",
+        context_store.clone(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("hub context created");
+
+    let advertised = vec![
+        json!({
+            "name": "issues.list",
+            "description": "List approved issues",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "state": { "type": "string" } },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "issues.create",
+            "description": "Create an issue",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "title": { "type": "string" } },
+                "required": ["title"],
+                "additionalProperties": false
+            }
+        }),
+    ];
+    let upstream = FakeMcp::advertising(advertised);
+    let proposed = discover_server("github", &upstream)
+        .await
+        .expect("hub discovery");
+    let approved = approve_manifest(
+        &proposed,
+        &BTreeMap::from([
+            ("issues.list".to_owned(), ToolAccess::Read),
+            ("issues.create".to_owned(), ToolAccess::Write),
+        ]),
+    )
+    .expect("hub approval");
+    owner_enroll_server(
+        &master,
+        "customer-support",
+        &agent_pub,
+        &gateway_pub,
+        &approved,
+        context_store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("hub enrollment");
+    let journal_outcome = owner_init_journal(
+        &master,
+        "leo",
+        &agent_pub,
+        &gateway_pub,
+        None,
+        journal_store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("hub journal");
+
+    let quote =
+        |path: &std::path::Path| serde_json::to_string(&path.display().to_string()).unwrap();
+    let cfg = GatewayConfig::from_yaml(&format!(
+        r#"listen: 127.0.0.1:4870
+servers:
+  - name: github
+    transport: http
+    url: https://github.invalid/mcp
+contexts:
+  - name: customer-support
+    store: {{ kind: fs, root: {} }}
+    tools:
+      github__issues_list: {{ server: github, tool: issues.list, access: read }}
+      github__issues_create: {{ server: github, tool: issues.create, access: write }}
+journal:
+  store: {{ kind: fs, root: {} }}
+"#,
+        quote(&context_root),
+        quote(&journal_root)
+    ))
+    .expect("hub config");
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32());
+    let runner = Runner::open(&cfg, keyholder, || Box::new(SeqEntropy::default()))
+        .expect("governed runner opens its pins");
+    upstream.seen.lock().unwrap().clear();
+    w.ctx_stores
+        .insert("customer-support".to_owned(), context_store);
+    w.journal_store = Some(journal_store);
+    w.journal_outcome = Some(journal_outcome);
+    w.approved_manifest = Some(approved);
+    w.upstream = upstream.clone();
+    w.multi_upstreams
+        .insert("github".to_owned(), upstream.clone());
+    w.router = Some(Arc::new(McpRouter {
+        runner: Arc::new(Mutex::new(runner)),
+        upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
+        clock: Arc::new(|| T0.to_owned()),
+    }));
+    w.scratch = Some(dir);
+}
+
+async fn provision_shared_hub(w: &mut GatewayWorld) {
+    if w.router.is_some() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("shared hub tempdir");
+    let support_root = dir.path().join("support");
+    let engineering_root = dir.path().join("engineering");
+    let journal_root = dir.path().join("journal");
+    let store_cfg = |root: &std::path::Path| aithos_gateway::config::StoreConfig::Fs {
+        root: root.to_owned(),
+    };
+    let support_store =
+        GatewayStore::from_config(&store_cfg(&support_root)).expect("support store");
+    let engineering_store =
+        GatewayStore::from_config(&store_cfg(&engineering_root)).expect("engineering store");
+    let journal_store =
+        GatewayStore::from_config(&store_cfg(&journal_root)).expect("journal store");
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let mut owner_ent = SeqEntropy::default();
+    let advertised = vec![
+        json!({
+            "name": "issues.list",
+            "description": "List issues",
+            "inputSchema": { "type": "object", "additionalProperties": false }
+        }),
+        json!({
+            "name": "pulls.list",
+            "description": "List pull requests",
+            "inputSchema": { "type": "object", "additionalProperties": false }
+        }),
+    ];
+    let upstream = FakeMcp::advertising(advertised);
+    let proposed = discover_server("github", &upstream)
+        .await
+        .expect("shared discovery");
+    for (label, store, approvals) in [
+        (
+            "customer-support",
+            support_store.clone(),
+            BTreeMap::from([
+                ("issues.list".to_owned(), ToolAccess::Read),
+                ("pulls.list".to_owned(), ToolAccess::Write),
+            ]),
+        ),
+        (
+            "engineering",
+            engineering_store.clone(),
+            BTreeMap::from([
+                ("issues.list".to_owned(), ToolAccess::Write),
+                ("pulls.list".to_owned(), ToolAccess::Read),
+            ]),
+        ),
+    ] {
+        owner_init_context(&master, label, store.clone(), T0, &mut owner_ent)
+            .expect("shared context created");
+        let approved = approve_manifest(&proposed, &approvals).expect("shared approval");
+        let outcome = owner_enroll_server(
+            &master,
+            label,
+            &agent_pub,
+            &gateway_pub,
+            &approved,
+            store.clone(),
+            &GatewayWorld::window(),
+            T0,
+            &mut owner_ent,
+        )
+        .expect("shared enrollment");
+        w.ctx_dids.insert(label.to_owned(), outcome.ethos_did);
+        w.ctx_stores.insert(label.to_owned(), store);
+    }
+    owner_init_journal(
+        &master,
+        "leo",
+        &agent_pub,
+        &gateway_pub,
+        None,
+        journal_store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("shared journal");
+    let quote =
+        |path: &std::path::Path| serde_json::to_string(&path.display().to_string()).unwrap();
+    let cfg = GatewayConfig::from_yaml(&format!(
+        r#"listen: 127.0.0.1:4870
+servers:
+  - name: github
+    transport: http
+    url: https://github.invalid/mcp
+contexts:
+  - name: customer-support
+    store: {{ kind: fs, root: {} }}
+    tools:
+      github__issues_list: {{ server: github, tool: issues.list, access: read }}
+  - name: engineering
+    store: {{ kind: fs, root: {} }}
+    tools:
+      github__pulls_list: {{ server: github, tool: pulls.list, access: read }}
+journal:
+  store: {{ kind: fs, root: {} }}
+"#,
+        quote(&support_root),
+        quote(&engineering_root),
+        quote(&journal_root)
+    ))
+    .expect("shared hub config");
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32());
+    let runner = Runner::open(&cfg, keyholder, || Box::new(SeqEntropy::default()))
+        .expect("shared governed runner");
+    upstream.seen.lock().unwrap().clear();
+    w.upstream = upstream.clone();
+    w.multi_upstreams
+        .insert("github".to_owned(), upstream.clone());
+    w.journal_store = Some(journal_store);
+    w.router = Some(Arc::new(McpRouter {
+        runner: Arc::new(Mutex::new(runner)),
+        upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
+        clock: Arc::new(|| T0.to_owned()),
+    }));
+    w.scratch = Some(dir);
+}
+
+#[given(expr = "server {string} is shared by contexts {string} and {string}")]
+async fn hub_server_shared(w: &mut GatewayWorld, server: String, first: String, second: String) {
+    assert_eq!(server, "github");
+    assert_eq!(
+        (first.as_str(), second.as_str()),
+        ("customer-support", "engineering")
+    );
+    provision_shared_hub(w).await;
+}
+
+#[given(expr = "{string} covers exposed tool {string}")]
+async fn hub_context_covers(w: &mut GatewayWorld, context: String, tool: String) {
+    let router = w.router.as_ref().expect("shared router");
+    assert_eq!(
+        router.runner.lock().await.resolve(&tool),
+        Some(context.as_str())
+    );
+}
+
+#[when("the agent calls both covered tools through the hub")]
+async fn agent_calls_shared_tools(w: &mut GatewayWorld) {
+    w.call("github__issues_list", json!({})).await;
+    w.call("github__pulls_list", json!({})).await;
+}
+
+#[then(expr = "both calls reach the same {string} upstream under their raw tool names")]
+async fn shared_calls_use_raw_names(w: &mut GatewayWorld, server: String) {
+    assert_eq!(server, "github");
+    let names: Vec<String> = w
+        .upstream
+        .seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|body| body["method"] == "tools/call")
+        .filter_map(|body| body.pointer("/params/name").and_then(Value::as_str))
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(names, ["issues.list", "pulls.list"]);
+}
+
+#[then(expr = "{string} is logged in the {string} gamma only")]
+async fn hub_act_logged_in_context_only(w: &mut GatewayWorld, tool: String, context: String) {
+    let own = acts_on(&w.ctx_gamma(&context), "x.github");
+    assert_eq!(
+        own.iter()
+            .filter(|entry| payload_str(entry, "tool") == Some(tool.as_str()))
+            .count(),
+        1
+    );
+    for other in w.ctx_stores.keys().filter(|name| **name != context) {
+        assert!(acts_on(&w.ctx_gamma(other), "x.github")
+            .iter()
+            .all(|entry| payload_str(entry, "tool") != Some(tool.as_str())));
+    }
+}
+
+#[given(expr = "server {string} is enrolled with covered tool {string}")]
+async fn hub_server_enrolled(w: &mut GatewayWorld, server: String, tool: String) {
+    assert_eq!(server, "github");
+    assert_eq!(tool, "issues.list");
+    provision_single_hub(w).await;
+}
+
+#[given(expr = "server {string} has known but ungranted tool {string}")]
+async fn hub_known_ungranted(w: &mut GatewayWorld, server: String, tool: String) {
+    assert_eq!(server, "github");
+    assert_eq!(tool, "issues.create");
+    provision_single_hub(w).await;
+}
+
+#[when("the upstream is unavailable and the agent lists the tools")]
+async fn hub_lists_offline(w: &mut GatewayWorld) {
+    let router = w.router.as_ref().expect("hub router");
+    w.last_response = Some(
+        process_multi(
+            router,
+            json!({ "jsonrpc": "2.0", "id": 41, "method": "tools/list" }),
+        )
+        .await,
+    );
+}
+
+#[then(expr = "the list includes {string} with its pinned description and input schema")]
+async fn hub_list_has_pin(w: &mut GatewayWorld, exposed: String) {
+    let listed = w.listed_tools();
+    let tool = listed
+        .iter()
+        .find(|tool| tool["name"] == exposed)
+        .expect("covered pin listed");
+    assert_eq!(tool["description"], "List approved issues");
+    assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+    assert_eq!(tool["inputSchema"]["properties"]["state"]["type"], "string");
+}
+
+#[then(expr = "the list does not include {string}")]
+async fn hub_list_hides_ungranted(w: &mut GatewayWorld, exposed: String) {
+    assert!(w.listed_tools().iter().all(|tool| tool["name"] != exposed));
+}
+
+#[then("no request reaches the upstream")]
+async fn hub_upstream_untouched(w: &mut GatewayWorld) {
+    assert!(w.upstream.seen.lock().unwrap().is_empty());
+}
+
+#[when("the agent requests MCP resources through the hub")]
+async fn hub_requests_resources(w: &mut GatewayWorld) {
+    let router = w.router.as_ref().expect("hub router");
+    w.last_response = Some(
+        process_multi(
+            router,
+            json!({ "jsonrpc": "2.0", "id": 42, "method": "resources/list" }),
+        )
+        .await,
+    );
+}
+
+#[then("the gateway answers method not found")]
+async fn hub_method_not_found(w: &mut GatewayWorld) {
+    assert_eq!(
+        w.last_response.as_ref().expect("response")["error"]["code"],
+        METHOD_NOT_FOUND_CODE
+    );
+}
+
+#[when(expr = "the agent calls {string} through the hub")]
+async fn agent_calls_hub(w: &mut GatewayWorld, tool: String) {
+    w.call(&tool, json!({})).await;
+}
+
+#[then("the call never reaches the upstream")]
+async fn hub_call_not_relayed(w: &mut GatewayWorld) {
+    assert!(
+        w.upstream.seen.lock().unwrap().is_empty(),
+        "the governed tool call must not be relayed"
+    );
+}
+
+#[then(expr = "the refusal names {string}")]
+async fn hub_refusal_names_tool(w: &mut GatewayWorld, tool: String) {
+    let response = w.last_response.as_ref().expect("refusal response");
+    assert!(response["error"]["message"]
+        .as_str()
+        .is_some_and(|message| message.contains(&tool)));
+}
+
+#[then("the gamma of the context that knows the tool gains one governance refusal")]
+async fn hub_context_governance_refusal(w: &mut GatewayWorld) {
+    let refusals = acts_on(&w.ctx_gamma("customer-support"), "x.gateway");
+    assert_eq!(refusals.len(), 1);
+    assert_eq!(
+        payload_str(&refusals[0], "tool"),
+        Some(w.last_tool.as_str())
+    );
+}
+
+#[given(expr = "the upstream now advertises a different description for {string}")]
+async fn upstream_description_drift(w: &mut GatewayWorld, raw_tool: String) {
+    provision_single_hub(w).await;
+    let mut advertised = w.upstream.advertised_tools.lock().unwrap();
+    let tool = advertised
+        .iter_mut()
+        .find(|tool| tool["name"] == raw_tool)
+        .expect("advertised tool");
+    tool["description"] = Value::String("POISONED runtime description".to_owned());
+}
+
+#[given("the gateway's runtime drift control observes that change")]
+async fn hub_observes_drift(w: &mut GatewayWorld) {
+    let router = w.router.as_ref().expect("hub router");
+    let error = refresh_server_manifest(router, "github")
+        .await
+        .expect_err("changed manifest is refused");
+    assert!(matches!(error, GatewayError::ManifestDrift { .. }));
+    w.upstream.seen.lock().unwrap().clear();
+}
+
+#[then("the call is refused as manifest drift before the tool is relayed")]
+async fn hub_call_refused_for_drift(w: &mut GatewayWorld) {
+    assert!(w.upstream.seen.lock().unwrap().is_empty());
+    assert!(
+        w.last_response.as_ref().expect("response")["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("manifest drift"))
+    );
+}
+
+#[then("the granting context gamma gains one governance refusal")]
+async fn hub_granting_context_refusal(w: &mut GatewayWorld) {
+    hub_context_governance_refusal(w).await;
 }
 
 impl std::fmt::Debug for GatewayWorld {
@@ -956,7 +1401,11 @@ async fn journal_xrefs_join(w: &mut GatewayWorld) {
     let mut total_acts = 0;
     for name in w.ctx_stores.keys() {
         let did = w.ctx_dids.get(name).expect("context did").as_str();
-        for act in acts_on(&w.ctx_gamma(name), "x.mcp") {
+        for act in w.ctx_gamma(name).into_iter().filter(|entry| {
+            entry.kind == "action"
+                && entry.target.as_deref() != Some("x.gateway")
+                && entry.target.as_deref() != Some("x.xref")
+        }) {
             total_acts += 1;
             // Journal → context: the xref names the authoritative entry…
             let joined: Vec<&EntryView> = xrefs
