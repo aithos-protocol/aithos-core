@@ -4,6 +4,43 @@
 Complète `GATEWAY-BOOTSTRAP.md` (le pourquoi/quoi) avec l'état exact du code et
 les leçons d'environnement. Session initiale : 2026-07-10.
 
+> **ÉTAT EXPRESS (2026-07-15 nuit, 9ᵉ session gw — démo Léa K+D)** :
+> **RÉPÉTITION GÉNÉRALE VERTE, zéro `@wip` sur les quatre contrats
+> démo.** **Lot K clos** (`b2f5b69`) : `briefing.read` natif servi des
+> zones public+circle des contextes grantés (`self` jamais — hors de
+> portée structurellement), surface conditionnelle (descripteur
+> `tools/list` + `initialize.instructions`, recalculés PAR APPEL — une
+> édition owner bascule la surface sans redémarrage), chaque lecture
+> circle journalisée `ethos.read` sous un **pen briefing dédié**
+> (`owner-grant-briefing`, geste séparé, survit au re-enrollment ;
+> ligne circle livrée à l'agent ET à l'auditeur), `owner-set-briefing`
+> création + rewrite circle (public/self write-once v1, public = clair
+> keyless sans entrée de lecture — frontière de lisibilité,
+> documenté), préfixe `briefing` réservé dans toute tool map et tout
+> nom de serveur. **Lot D clos** (`0db670e`) : les 8 beats détaggés
+> (monde Innoestate wire : faux Vault + 3 MCP sockets, vrais brokers)
+> + e2e réseau `tests/e2e_demo_lea.rs` (vrai binaire, édition de
+> consigne À CHAUD par le CLI owner pendant que le gateway tourne,
+> balayage sentinelles, note self jamais en clair sur disque) ;
+> `owner-enroll-server` accepte N `--proposal` → UN mandat agent
+> couvrant l'union des grants (`owner_enroll_servers`, all-or-nothing,
+> approvals ventilées par outil, collisions refusées, `--replace`
+> mono-serveur) ; **auditeur de contexte élargi**
+> `kind=action`+`kind=ethos.read` (les lectures de briefing font
+> partie du replay ; toute requête plus large reste refusée — mono
+> `onboard` inchangé) ; refus `bound_violated` porteurs de leur
+> **détail pédagogique en clair** (payload.detail = champ, valeurs
+> fautives, règle approuvée — la politique scellée de l'owner, les
+> autres refus gardent le code nu). Runbook `docs/DEMO-LEA.md` (état
+> connecteurs vérifié 2026-07-15 : Notion self-hosted HTTP+bearer
+> statique prêt coffre ; MCP officiels Google Gmail/Calendar distants
+> HTTP+OAuth en Developer Preview — access tokens courts au coffre ;
+> caveats sessions stateless/TLS `rustls-tls`/bornes racine). Suite :
+> **88 scénarios / 473 steps**, 62 unit, 4 CLI, **6 e2e**, 5 owner ;
+> clippy `-D warnings` et fmt clean. **GATE : répétition générale avec
+> Mathieu en conditions réelles avant le jour J** →
+> `docs/HANDOFF-DEMO-LEA-DONE-2026-07-15.md`.
+
 > **ÉTAT EXPRESS (2026-07-13, 6ᵉ session gw — H1/H2/H3)** : **HUB MCP
 > GOUVERNÉ RUNTIME VERT.** Décisions complémentaires validées par Mathieu :
 > manifest `/x/<server>` par Ethos, contrôle drift local chaque call + amont à
@@ -557,3 +594,16 @@ scénario de référence validé par Mathieu puis commits sélectifs
 handoff K-D. Transferts fichier-par-fichier sha256-croisés, janitor
 habituel, warnings tmp_obj cosmétiques. Leçon neuve : Cucumber passé en
 séquentiel (voir état express).
+
+Session du 2026-07-15 nuit (9e gw, lots K+D, même profil cloud+janitor) :
+arrivée sur `4563f72`, transfert `git archive HEAD` →
+`_transfer/head-4563f72.tar` (sha256 croisé), build/test cloud rustc
+1.95.0, retours fichier-par-fichier device_commit_files sha256-croisés
+par tranche : `b2f5b69` (lot K, 7 fichiers), `0db670e` (lot D, 6
+fichiers dont `tests/e2e_demo_lea.rs` neuf), puis le commit docs
+(runbook `DEMO-LEA.md`, cet état express, ce paragraphe, le handoff
+DONE). Janitor des locks avant chaque commande git écrivante, warnings
+tmp_obj cosmétiques, scories intactes. Leçon d'environnement : le pont
+desktop s'est déconnecté en cours de session (précédent de la 3ᵉ gw) —
+les tranches K et D étaient déjà committées ; la tranche docs a attendu
+la reconnexion, le travail cloud a continué entre-temps.
