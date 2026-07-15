@@ -416,18 +416,19 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     || Box::new(OsEntropy),
                 )?));
                 let upstreams = if let Some(servers) = &cfg.servers {
+                    // Brokered credentials: build every configured
+                    // broker once, then wire each server to its source
+                    // (vault reference, legacy inline bearer, or none).
+                    let brokers = aithos_gateway::credentials::build_brokers(&cfg)?;
                     servers
                         .iter()
                         .map(|server| {
-                            (
+                            Ok::<_, aithos_gateway::GatewayError>((
                                 server.name.clone(),
-                                HttpUpstream::with_bearer(
-                                    server.url.clone(),
-                                    server.bearer_token.clone(),
-                                ),
-                            )
+                                HttpUpstream::for_server(server, &brokers)?,
+                            ))
                         })
-                        .collect()
+                        .collect::<aithos_gateway::Result<_>>()?
                 } else {
                     contexts
                         .iter()

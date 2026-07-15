@@ -202,6 +202,12 @@ struct GatewayWorld {
     approved_manifest: Option<ApprovedManifest>,
     reenroll: Option<ReenrollOutcome>,
     old_agent_mandate: Option<String>,
+    /// Vault credential scenarios: secrets declared before provisioning
+    /// (path → field → value), an optional path answering garbage, and
+    /// the live harness once enrolled.
+    vault_pending: BTreeMap<String, BTreeMap<String, String>>,
+    vault_malformed: Option<String>,
+    vault: Option<VaultHarness>,
 }
 
 impl GatewayWorld {
@@ -238,6 +244,9 @@ impl GatewayWorld {
             approved_manifest: None,
             reenroll: None,
             old_agent_mandate: None,
+            vault_pending: BTreeMap::new(),
+            vault_malformed: None,
+            vault: None,
         }
     }
 
@@ -296,11 +305,17 @@ impl GatewayWorld {
             "params": params
         });
         self.last_tool = tool.to_owned();
-        self.last_response = Some(if let Some(router) = &self.router {
+        let response = if let Some(vault) = &self.vault {
+            process_multi(&vault.router, body).await
+        } else if let Some(router) = &self.router {
             process_multi(router, body).await
         } else {
             process(self.proxy(), body).await
-        });
+        };
+        if let Some(vault) = &mut self.vault {
+            vault.responses.push(response.clone());
+        }
+        self.last_response = Some(response);
     }
 
     /// Owner-side gamma view of a named context store.
@@ -654,6 +669,10 @@ async fn hub_server_enrolled(w: &mut GatewayWorld, server: String, tool: String)
 async fn hub_known_ungranted(w: &mut GatewayWorld, server: String, tool: String) {
     assert_eq!(server, "github");
     assert_eq!(tool, "issues.create");
+    // The vault harness enrolls the write half too — nothing to add.
+    if w.vault.is_some() {
+        return;
+    }
     provision_single_hub(w).await;
 }
 
@@ -711,6 +730,7 @@ async fn hub_method_not_found(w: &mut GatewayWorld) {
     );
 }
 
+#[given(expr = "the agent calls {string} through the hub")]
 #[when(expr = "the agent calls {string} through the hub")]
 async fn agent_calls_hub(w: &mut GatewayWorld, tool: String) {
     w.call(&tool, json!({})).await;
@@ -2144,14 +2164,17 @@ async fn journal_logs_exactly_one(w: &mut GatewayWorld, kind: String) {
 
 #[when("the agent lists the tools")]
 async fn agent_lists_tools(w: &mut GatewayWorld) {
-    let router = w.router.as_ref().expect("a provisioned router");
-    w.last_response = Some(
-        process_multi(
-            router,
-            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }),
-        )
-        .await,
-    );
+    let body = json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" });
+    let response = if let Some(vault) = &w.vault {
+        process_multi(&vault.router, body).await
+    } else {
+        let router = w.router.as_ref().expect("a provisioned router");
+        process_multi(router, body).await
+    };
+    if let Some(vault) = &mut w.vault {
+        vault.responses.push(response.clone());
+    }
+    w.last_response = Some(response);
 }
 
 #[then(expr = "the list includes {string} and {string} with their argument schemas")]
@@ -2513,7 +2536,9 @@ async fn config_rejected_exposed_collision(w: &mut GatewayWorld) {
 
 // ------------------------------------------- vault credential broker (V1)
 
-#[when("a hub config gives one server both a vault credential reference and an inline bearer_token")]
+#[when(
+    "a hub config gives one server both a vault credential reference and an inline bearer_token"
+)]
 async fn config_declares_double_credential_source(w: &mut GatewayWorld) {
     let yaml = "\
 listen: 127.0.0.1:4870
@@ -2552,6 +2577,794 @@ async fn config_rejected_double_credential_source(w: &mut GatewayWorld) {
         err.contains("both `credential` and `bearer_token`")
             && err.contains("one credential source"),
         "the rejection names the double credential source: {err}"
+    );
+}
+
+// -------------------------------------------- vault runtime harness (V2)
+//
+// These scenarios exercise the REAL pieces end to end inside the test
+// process: the real `VaultKv2Broker` (reqwest) against a fake KV v2
+// HTTP server, the real `HttpUpstream` against fake MCP servers that
+// record the Authorization header, and the real router — so "the
+// upstream saw the bearer" is observed on an actual wire, and "zero
+// vault hits" is a counted fact, not an inference.
+
+/// Fake HashiCorp Vault KV v2: strict token check, per-path secrets,
+/// optional malformed answer, and observability (paths hit, tokens
+/// seen, context-act count at each hit — the log-before-resolve proof).
+#[derive(Clone, Default)]
+struct FakeVault {
+    expected_token: String,
+    secrets: Arc<StdMutex<BTreeMap<String, BTreeMap<String, String>>>>,
+    malformed: Arc<StdMutex<Option<String>>>,
+    hits: Arc<StdMutex<Vec<String>>>,
+    tokens: Arc<StdMutex<Vec<Option<String>>>>,
+    acts_at_hit: Arc<StdMutex<Vec<usize>>>,
+    #[allow(clippy::type_complexity)]
+    acts_probe: Arc<StdMutex<Option<Box<dyn Fn() -> usize + Send + Sync>>>>,
+}
+
+async fn spawn_fake_vault(fake: FakeVault) -> u16 {
+    use axum::extract::{Path as AxumPath, State};
+    use axum::http::{HeaderMap, StatusCode};
+    use axum::routing::get;
+    use axum::{Json, Router};
+
+    let app = Router::new()
+        .route(
+            "/v1/secret/data/{*path}",
+            get(
+                |State(fake): State<FakeVault>,
+                 AxumPath(path): AxumPath<String>,
+                 headers: HeaderMap| async move {
+                    let token = headers
+                        .get("x-vault-token")
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_owned);
+                    fake.tokens.lock().unwrap().push(token.clone());
+                    fake.hits.lock().unwrap().push(path.clone());
+                    if let Some(probe) = fake.acts_probe.lock().unwrap().as_ref() {
+                        let count = probe();
+                        fake.acts_at_hit.lock().unwrap().push(count);
+                    }
+                    if token.as_deref() != Some(fake.expected_token.as_str()) {
+                        return (
+                            StatusCode::FORBIDDEN,
+                            Json(json!({ "errors": ["permission denied"] })),
+                        );
+                    }
+                    if fake.malformed.lock().unwrap().as_deref() == Some(path.as_str()) {
+                        return (StatusCode::OK, Json(json!({ "data": "not-a-kv2-secret" })));
+                    }
+                    match fake.secrets.lock().unwrap().get(&path) {
+                        Some(fields) => (
+                            StatusCode::OK,
+                            Json(json!({
+                                "data": { "data": fields, "metadata": { "version": 1 } }
+                            })),
+                        ),
+                        None => (StatusCode::NOT_FOUND, Json(json!({ "errors": [] }))),
+                    }
+                },
+            ),
+        )
+        .with_state(fake);
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("fake vault binds");
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    port
+}
+
+/// Fake MCP server on a real socket: records every body AND the
+/// Authorization header the gateway put on the wire.
+#[derive(Clone)]
+struct WireMcp {
+    requests: Arc<StdMutex<Vec<Value>>>,
+    auths: Arc<StdMutex<Vec<Option<String>>>>,
+    answer: String,
+}
+
+impl WireMcp {
+    fn new(answer: &str) -> Self {
+        Self {
+            requests: Arc::default(),
+            auths: Arc::default(),
+            answer: answer.to_owned(),
+        }
+    }
+}
+
+async fn spawn_wire_mcp(fake: WireMcp) -> u16 {
+    use axum::extract::State;
+    use axum::http::HeaderMap;
+    use axum::routing::post;
+    use axum::{Json, Router};
+
+    let app = Router::new()
+        .route(
+            "/mcp",
+            post(
+                |State(fake): State<WireMcp>, headers: HeaderMap, Json(body): Json<Value>| async move {
+                    fake.requests.lock().unwrap().push(body.clone());
+                    fake.auths.lock().unwrap().push(
+                        headers
+                            .get("authorization")
+                            .and_then(|value| value.to_str().ok())
+                            .map(str::to_owned),
+                    );
+                    let id = body.get("id").cloned().unwrap_or(Value::Null);
+                    Json(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": fake.answer }],
+                            "isError": false
+                        }
+                    }))
+                },
+            ),
+        )
+        .with_state(fake);
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("wire mcp binds");
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    port
+}
+
+/// One enrolled server of the vault harness.
+struct VaultServerSpec {
+    server: &'static str,
+    context: &'static str,
+    read_raw: &'static str,
+    write_raw: Option<&'static str>,
+    path: String,
+    field: String,
+    answer: &'static str,
+}
+
+impl VaultServerSpec {
+    fn github(path: &str, field: &str) -> Self {
+        Self {
+            server: "github",
+            context: "customer-support",
+            read_raw: "issues.list",
+            write_raw: Some("issues.create"),
+            path: path.to_owned(),
+            field: field.to_owned(),
+            answer: "github-ok",
+        }
+    }
+
+    fn linear() -> Self {
+        Self {
+            server: "linear",
+            context: "operations",
+            read_raw: "tickets.list",
+            write_raw: None,
+            path: "aithos/mcp/linear".to_owned(),
+            field: "token".to_owned(),
+            answer: "linear-ok",
+        }
+    }
+}
+
+/// The live vault world: the router under test, both fakes, and every
+/// agent-facing response captured for the non-leak scans.
+struct VaultHarness {
+    router: Arc<McpRouter<aithos_gateway::proxy_mcp::HttpUpstream>>,
+    vault: FakeVault,
+    wires: BTreeMap<String, WireMcp>,
+    config_path: std::path::PathBuf,
+    config_text: String,
+    vault_token: String,
+    store_roots: Vec<std::path::PathBuf>,
+    responses: Vec<Value>,
+}
+
+async fn provision_vault_hub(w: &mut GatewayWorld, specs: Vec<VaultServerSpec>, vault_down: bool) {
+    use aithos_gateway::credentials::build_brokers;
+    use aithos_gateway::proxy_mcp::HttpUpstream;
+
+    if w.vault.is_some() {
+        return;
+    }
+    static VAULT_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let seq = VAULT_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let env_name = format!("AITHOS_CUCUMBER_VAULT_TOKEN_{seq}");
+    let vault_token = format!("vault-access-cucumber-{seq}");
+    std::env::set_var(&env_name, &vault_token);
+
+    let dir = tempfile::tempdir().expect("vault tempdir");
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let mut owner_ent = SeqEntropy::default();
+
+    let fake_vault = FakeVault {
+        expected_token: vault_token.clone(),
+        secrets: Arc::new(StdMutex::new(w.vault_pending.clone())),
+        malformed: Arc::new(StdMutex::new(w.vault_malformed.clone())),
+        ..FakeVault::default()
+    };
+    let vault_port = if vault_down {
+        // A port nothing serves: the broker meets connection-refused.
+        let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = dead.local_addr().unwrap().port();
+        drop(dead);
+        port
+    } else {
+        spawn_fake_vault(fake_vault.clone()).await
+    };
+
+    let quote =
+        |path: &std::path::Path| serde_json::to_string(&path.display().to_string()).unwrap();
+    let journal_root = dir.path().join("journal");
+    let journal_store = GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+        root: journal_root.clone(),
+    })
+    .expect("journal store");
+
+    let mut yaml_servers = String::new();
+    let mut yaml_contexts = String::new();
+    let mut wires = BTreeMap::new();
+    let mut store_roots = vec![journal_root.clone()];
+    for spec in &specs {
+        let root = dir.path().join(spec.context);
+        let store = GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+            root: root.clone(),
+        })
+        .expect("context store");
+        owner_init_context(&master, spec.context, store.clone(), T0, &mut owner_ent)
+            .expect("vault context created");
+        let mut advertised = vec![json!({
+            "name": spec.read_raw,
+            "description": "Read half of the vault harness",
+            "inputSchema": { "type": "object", "additionalProperties": false }
+        })];
+        let mut approvals = BTreeMap::from([(spec.read_raw.to_owned(), ToolAccess::Read)]);
+        if let Some(write_raw) = spec.write_raw {
+            advertised.push(json!({
+                "name": write_raw,
+                "description": "Write half of the vault harness",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            }));
+            approvals.insert(write_raw.to_owned(), ToolAccess::Write);
+        }
+        let discovery = FakeMcp::advertising(advertised);
+        let proposed = discover_server(spec.server, &discovery)
+            .await
+            .expect("vault discovery");
+        let approved = approve_manifest(&proposed, &approvals).expect("vault approval");
+        owner_enroll_server(
+            &master,
+            spec.context,
+            &agent_pub,
+            &gateway_pub,
+            &approved,
+            store.clone(),
+            &GatewayWorld::window(),
+            T0,
+            &mut owner_ent,
+        )
+        .expect("vault enrollment");
+        w.ctx_stores.insert(spec.context.to_owned(), store);
+        store_roots.push(root.clone());
+
+        let wire = WireMcp::new(spec.answer);
+        let port = spawn_wire_mcp(wire.clone()).await;
+        wires.insert(spec.server.to_owned(), wire);
+
+        yaml_servers.push_str(&format!(
+            "  - name: {}\n    transport: http\n    url: http://127.0.0.1:{}/mcp\n    credential:\n      broker: enterprise\n      path: {}\n      field: {}\n",
+            spec.server, port, spec.path, spec.field
+        ));
+        yaml_contexts.push_str(&format!(
+            "  - name: {}\n    store: {{ kind: fs, root: {} }}\n    tools:\n",
+            spec.context,
+            quote(&root)
+        ));
+        yaml_contexts.push_str(&format!(
+            "      {}: {{ server: {}, tool: {}, access: read }}\n",
+            aithos_gateway::policy::hub_exposed_name(spec.server, spec.read_raw),
+            spec.server,
+            spec.read_raw
+        ));
+        if let Some(write_raw) = spec.write_raw {
+            yaml_contexts.push_str(&format!(
+                "      {}: {{ server: {}, tool: {}, access: write }}\n",
+                aithos_gateway::policy::hub_exposed_name(spec.server, write_raw),
+                spec.server,
+                write_raw
+            ));
+        }
+    }
+    owner_init_journal(
+        &master,
+        "leo",
+        &agent_pub,
+        &gateway_pub,
+        None,
+        journal_store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("vault journal");
+
+    let config_text = format!(
+        "listen: 127.0.0.1:4870\ncredential_brokers:\n  enterprise:\n    kind: vault-kv2\n    address: http://127.0.0.1:{vault_port}\n    mount: secret\n    auth:\n      kind: token-env\n      env: {env_name}\nservers:\n{yaml_servers}contexts:\n{yaml_contexts}journal:\n  store: {{ kind: fs, root: {} }}\n",
+        quote(&journal_root)
+    );
+    let config_path = dir.path().join("gateway.yaml");
+    std::fs::write(&config_path, &config_text).expect("config written");
+    let cfg = GatewayConfig::from_yaml(&config_text).expect("vault hub config parses");
+    let brokers = build_brokers(&cfg).expect("brokers build");
+    let upstreams: BTreeMap<String, HttpUpstream> = cfg
+        .servers
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|server| {
+            (
+                server.name.clone(),
+                HttpUpstream::for_server(server, &brokers).expect("upstream wires"),
+            )
+        })
+        .collect();
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32());
+    let runner = Runner::open(&cfg, keyholder, || Box::new(SeqEntropy::default()))
+        .expect("vault governed runner");
+
+    // The ordering probe: at every vault hit, how many acts the first
+    // context's gamma already holds — log-before-resolve, observed.
+    {
+        let store = w
+            .ctx_stores
+            .get(specs[0].context)
+            .expect("probe store")
+            .clone();
+        let target = format!("x.{}", specs[0].server);
+        *fake_vault.acts_probe.lock().unwrap() = Some(Box::new(move || {
+            gamma_view(store.clone())
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .filter(|entry| {
+                            entry.kind == "action"
+                                && entry.target.as_deref() == Some(target.as_str())
+                        })
+                        .count()
+                })
+                .unwrap_or(0)
+        }));
+    }
+
+    w.journal_store = Some(journal_store);
+    w.vault = Some(VaultHarness {
+        router: Arc::new(McpRouter {
+            runner: Arc::new(Mutex::new(runner)),
+            upstreams,
+            clock: Arc::new(|| T0.to_owned()),
+        }),
+        vault: fake_vault,
+        wires,
+        config_path,
+        config_text,
+        vault_token,
+        store_roots,
+        responses: Vec::new(),
+    });
+    w.scratch = Some(dir);
+}
+
+impl GatewayWorld {
+    fn vault_harness(&self) -> &VaultHarness {
+        self.vault.as_ref().expect("a provisioned vault harness")
+    }
+
+    /// Every string surface the agent saw in this scenario.
+    fn vault_agent_text(&self) -> String {
+        self.vault_harness()
+            .responses
+            .iter()
+            .map(|response| response.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Every gamma and journal entry, debug-rendered (headers, targets,
+    /// payloads) — the "logged text" surface of the non-leak scans.
+    fn vault_logged_text(&self) -> String {
+        let mut out = String::new();
+        for store in self.ctx_stores.values() {
+            for entry in gamma_view(store.clone()).expect("context gamma readable") {
+                out.push_str(&format!("{entry:?}\n"));
+            }
+        }
+        for entry in self.journal_gamma() {
+            out.push_str(&format!("{entry:?}\n"));
+        }
+        out
+    }
+
+    fn wire_auths(&self, server: &str) -> Vec<Option<String>> {
+        self.vault_harness()
+            .wires
+            .get(server)
+            .expect("a wired upstream")
+            .auths
+            .lock()
+            .unwrap()
+            .clone()
+    }
+}
+
+/// Recursive scan: no file under these roots may contain the needle.
+fn files_exclude(root: &std::path::Path, needle: &str) {
+    for entry in std::fs::read_dir(root).expect("store root readable") {
+        let entry = entry.expect("dir entry");
+        if entry.file_type().expect("file type").is_dir() {
+            files_exclude(&entry.path(), needle);
+        } else {
+            let bytes = std::fs::read(entry.path()).expect("file readable");
+            assert!(
+                !String::from_utf8_lossy(&bytes).contains(needle),
+                "credential leaked into {}",
+                entry.path().display()
+            );
+        }
+    }
+}
+
+#[given(expr = "a vault stores {string} under path {string} field {string}")]
+async fn vault_stores(w: &mut GatewayWorld, value: String, path: String, field: String) {
+    w.vault_pending
+        .entry(path)
+        .or_default()
+        .insert(field, value);
+}
+
+#[given(expr = "the vault also stores {string} under path {string} field {string}")]
+async fn vault_also_stores(w: &mut GatewayWorld, value: String, path: String, field: String) {
+    w.vault_pending
+        .entry(path)
+        .or_default()
+        .insert(field, value);
+}
+
+#[given(expr = "a vault answers path {string} with a payload that is not a KV v2 secret")]
+async fn vault_answers_malformed(w: &mut GatewayWorld, path: String) {
+    w.vault_malformed = Some(path);
+}
+
+#[given(
+    expr = "server {string} is enrolled with covered tool {string} referencing that vault secret"
+)]
+async fn vault_server_enrolled(w: &mut GatewayWorld, server: String, tool: String) {
+    assert_eq!(server, "github");
+    assert_eq!(tool, "issues.list");
+    assert!(
+        w.vault_pending.contains_key("aithos/mcp/github"),
+        "the scenario declared the vault secret first"
+    );
+    provision_vault_hub(
+        w,
+        vec![VaultServerSpec::github("aithos/mcp/github", "token")],
+        false,
+    )
+    .await;
+}
+
+#[given(
+    expr = "server {string} is enrolled with covered tool {string} referencing vault path {string} field {string}"
+)]
+async fn vault_server_enrolled_custom_ref(
+    w: &mut GatewayWorld,
+    server: String,
+    tool: String,
+    path: String,
+    field: String,
+) {
+    assert_eq!(server, "github");
+    assert_eq!(tool, "issues.list");
+    provision_vault_hub(w, vec![VaultServerSpec::github(&path, &field)], false).await;
+}
+
+#[given(
+    expr = "server {string} is enrolled with covered tool {string} referencing a vault that is down"
+)]
+async fn vault_server_enrolled_vault_down(w: &mut GatewayWorld, server: String, tool: String) {
+    assert_eq!(server, "github");
+    assert_eq!(tool, "issues.list");
+    provision_vault_hub(
+        w,
+        vec![VaultServerSpec::github("aithos/mcp/github", "token")],
+        true,
+    )
+    .await;
+}
+
+#[given(
+    expr = "server {string} is enrolled with covered tool {string} referencing that vault path"
+)]
+async fn vault_server_enrolled_malformed_path(w: &mut GatewayWorld, server: String, tool: String) {
+    assert_eq!(server, "github");
+    assert_eq!(tool, "issues.list");
+    let path = w
+        .vault_malformed
+        .clone()
+        .expect("the malformed path was declared first");
+    provision_vault_hub(w, vec![VaultServerSpec::github(&path, "token")], false).await;
+}
+
+#[given(
+    expr = "servers {string} and {string} are enrolled with covered tools referencing their own secrets"
+)]
+async fn vault_two_servers_enrolled(w: &mut GatewayWorld, first: String, second: String) {
+    assert_eq!((first.as_str(), second.as_str()), ("github", "linear"));
+    provision_vault_hub(
+        w,
+        vec![
+            VaultServerSpec::github("aithos/mcp/github", "token"),
+            VaultServerSpec::linear(),
+        ],
+        false,
+    )
+    .await;
+}
+
+#[when("the agent initializes, lists the tools, calls the covered tool and calls an unknown tool")]
+async fn vault_agent_full_surface(w: &mut GatewayWorld) {
+    let bodies = [
+        json!({ "jsonrpc": "2.0", "id": 701, "method": "initialize" }),
+        json!({ "jsonrpc": "2.0", "id": 702, "method": "tools/list" }),
+        json!({ "jsonrpc": "2.0", "id": 703, "method": "tools/call",
+                "params": { "name": "github__issues_list", "arguments": {} } }),
+        json!({ "jsonrpc": "2.0", "id": 704, "method": "tools/call",
+                "params": { "name": "nosuch__tool", "arguments": {} } }),
+    ];
+    for body in bodies {
+        let router = Arc::clone(&w.vault_harness().router);
+        let response = process_multi(&router, body).await;
+        w.vault.as_mut().unwrap().responses.push(response.clone());
+        w.last_response = Some(response);
+    }
+}
+
+#[when(expr = "the agent calls {string} and then a completely unknown tool")]
+async fn vault_agent_calls_refused_pair(w: &mut GatewayWorld, tool: String) {
+    w.call(&tool, json!({})).await;
+    w.call("nosuch__tool", json!({})).await;
+}
+
+#[when("the agent calls one covered tool of each server through the hub")]
+async fn vault_agent_calls_both_servers(w: &mut GatewayWorld) {
+    w.call("github__issues_list", json!({})).await;
+    w.call("linear__tickets_list", json!({})).await;
+}
+
+#[when(expr = "the vault value rotates to {string}")]
+async fn vault_value_rotates(w: &mut GatewayWorld, value: String) {
+    let harness = w.vault_harness();
+    harness
+        .vault
+        .secrets
+        .lock()
+        .unwrap()
+        .get_mut("aithos/mcp/github")
+        .expect("the rotated path exists")
+        .insert("token".to_owned(), value);
+}
+
+#[then(expr = "the call succeeds and the upstream saw exactly one bearer {string}")]
+async fn vault_call_succeeded_with_bearer(w: &mut GatewayWorld, value: String) {
+    let response = w.last_response.as_ref().expect("a response");
+    assert!(
+        response.get("error").is_none(),
+        "the covered call passes: {response}"
+    );
+    assert_eq!(
+        w.wire_auths("github"),
+        [Some(format!("Bearer {value}"))],
+        "exactly one relay, bearing the vault value"
+    );
+}
+
+#[then("the vault was consulted after the act was logged")]
+async fn vault_consulted_after_log(w: &mut GatewayWorld) {
+    let harness = w.vault_harness();
+    assert_eq!(
+        harness.vault.hits.lock().unwrap().as_slice(),
+        ["aithos/mcp/github"],
+        "one resolution for one relay"
+    );
+    assert_eq!(
+        harness.vault.acts_at_hit.lock().unwrap().as_slice(),
+        [1],
+        "at resolution time the act was already in the context gamma"
+    );
+    assert_eq!(
+        harness.vault.tokens.lock().unwrap().as_slice(),
+        [Some(harness.vault_token.clone())],
+        "the vault read carried the X-Vault-Token from the environment"
+    );
+}
+
+#[then(expr = "no agent-facing response contains {string}")]
+async fn vault_no_response_contains(w: &mut GatewayWorld, needle: String) {
+    assert!(
+        !w.vault_harness().responses.is_empty(),
+        "responses captured"
+    );
+    assert!(
+        !w.vault_agent_text().contains(&needle),
+        "an agent-facing response leaked `{needle}`"
+    );
+}
+
+#[then("no agent-facing response contains the vault access token")]
+async fn vault_no_response_contains_vault_token(w: &mut GatewayWorld) {
+    let token = w.vault_harness().vault_token.clone();
+    assert!(
+        !w.vault_agent_text().contains(&token),
+        "an agent-facing response leaked the vault access token"
+    );
+}
+
+#[then(expr = "the gateway config text contains the reference but never {string}")]
+async fn vault_config_is_reference_only(w: &mut GatewayWorld, needle: String) {
+    let config = &w.vault_harness().config_text;
+    assert!(
+        config.contains("aithos/mcp/github") && config.contains("broker: enterprise"),
+        "the config names the non-secret reference"
+    );
+    assert!(
+        !config.contains(&needle),
+        "the config must never hold the secret value"
+    );
+}
+
+#[then(expr = "no file of any Ethos store contains {string}")]
+async fn vault_no_store_file_contains(w: &mut GatewayWorld, needle: String) {
+    for root in &w.vault_harness().store_roots {
+        files_exclude(root, &needle);
+    }
+}
+
+#[then(expr = "no gamma or journal entry contains {string}")]
+async fn vault_no_entry_contains(w: &mut GatewayWorld, needle: String) {
+    assert!(
+        !w.vault_logged_text().contains(&needle),
+        "a gamma or journal entry leaked `{needle}`"
+    );
+}
+
+#[then(expr = "no agent-facing or logged text contains {string}")]
+async fn vault_no_text_contains(w: &mut GatewayWorld, needle: String) {
+    assert!(
+        !w.vault_agent_text().contains(&needle) && !w.vault_logged_text().contains(&needle),
+        "`{needle}` escaped into an agent-facing or logged surface"
+    );
+}
+
+#[then("both calls are refused")]
+async fn vault_both_calls_refused(w: &mut GatewayWorld) {
+    let responses = &w.vault_harness().responses;
+    assert!(responses.len() >= 2, "two calls were made");
+    for response in &responses[responses.len() - 2..] {
+        assert!(
+            response.get("error").is_some(),
+            "the call is refused: {response}"
+        );
+    }
+}
+
+#[then("the vault received zero requests")]
+async fn vault_zero_hits(w: &mut GatewayWorld) {
+    assert!(
+        w.vault_harness().vault.hits.lock().unwrap().is_empty(),
+        "no request may wake the vault"
+    );
+}
+
+#[then("the upstream received zero requests")]
+async fn vault_upstreams_zero_hits(w: &mut GatewayWorld) {
+    for (server, wire) in &w.vault_harness().wires {
+        assert!(
+            wire.requests.lock().unwrap().is_empty(),
+            "no request may reach upstream `{server}`"
+        );
+    }
+}
+
+#[then("the call is refused as credential unavailable")]
+async fn vault_call_refused_credential(w: &mut GatewayWorld) {
+    let response = w.last_response.as_ref().expect("a response");
+    let message = response["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("credential unavailable"),
+        "the refusal carries the stable credential code: {response}"
+    );
+}
+
+#[then("the journal gains one refusal entry naming the credential failure")]
+async fn vault_journal_refusal(w: &mut GatewayWorld) {
+    let refusals = acts_on(&w.journal_gamma(), "x.gateway");
+    assert_eq!(refusals.len(), 1, "exactly one journal refusal");
+    assert_eq!(
+        payload_str(&refusals[0], "tool"),
+        Some("github__issues_list"),
+        "the refusal names the tool whose credential failed"
+    );
+    assert_eq!(
+        payload_str(&refusals[0], "reason"),
+        Some("credential_unavailable"),
+        "the refusal carries the stable reason code"
+    );
+}
+
+#[then("the refusal text names neither the vault answer nor any secret value")]
+async fn vault_refusal_redacted(w: &mut GatewayWorld) {
+    let harness = w.vault_harness();
+    let message = w.last_response.as_ref().expect("a response")["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    assert!(
+        !message.contains("github-mcp-sentinel") && !message.contains(&harness.vault_token),
+        "the refusal must not carry secret material: {message}"
+    );
+    assert!(
+        !message.contains("data\":") && !message.contains("errors\":"),
+        "the refusal must not embed the raw vault answer: {message}"
+    );
+}
+
+#[then(expr = "the {string} upstream saw only bearer {string}")]
+async fn vault_upstream_saw_only(w: &mut GatewayWorld, server: String, value: String) {
+    let auths = w.wire_auths(&server);
+    assert!(!auths.is_empty(), "the `{server}` upstream was reached");
+    assert!(
+        auths
+            .iter()
+            .all(|auth| auth.as_deref() == Some(format!("Bearer {value}").as_str())),
+        "`{server}` saw exactly its own bearer: {auths:?}"
+    );
+}
+
+#[then(expr = "the upstream saw bearer {string} then bearer {string}")]
+async fn vault_upstream_saw_rotation(w: &mut GatewayWorld, first: String, second: String) {
+    assert_eq!(
+        w.wire_auths("github"),
+        [
+            Some(format!("Bearer {first}")),
+            Some(format!("Bearer {second}"))
+        ],
+        "the rotation is honoured on the very next relay"
+    );
+}
+
+#[then("the gateway config was never modified")]
+async fn vault_config_untouched(w: &mut GatewayWorld) {
+    let harness = w.vault_harness();
+    let on_disk = std::fs::read_to_string(&harness.config_path).expect("config readable");
+    assert_eq!(
+        on_disk, harness.config_text,
+        "rotation must not touch the config"
+    );
+}
+
+#[then(expr = "the list includes {string}")]
+async fn vault_list_includes(w: &mut GatewayWorld, name: String) {
+    assert!(
+        w.listed_tools()
+            .iter()
+            .any(|tool| tool["name"].as_str() == Some(name.as_str())),
+        "`{name}` must be listed"
     );
 }
 

@@ -36,6 +36,7 @@ use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
 use crate::core_bridge::{Bridge, Runner};
+use crate::credentials::{CredentialBroker, CredentialRef};
 use crate::hub::discover_server;
 use crate::policy::Policy;
 use crate::{GatewayError, Result};
@@ -74,11 +75,30 @@ pub trait Upstream: Send + Sync + 'static {
     fn forward(&self, body: Value) -> impl std::future::Future<Output = Result<Value>> + Send;
 }
 
+/// How one HTTP upstream authenticates on the wire. The agent never
+/// chooses this — it is config custody (inline legacy) or vault custody
+/// (brokered), decided at startup.
+enum UpstreamAuth {
+    /// No wire credential (dev fakes, open upstreams).
+    None,
+    /// LEGACY/UNSAFE (H3 seam): the clear token from the config file,
+    /// durably in process memory. Kept for old configs only.
+    InlineBearer(String),
+    /// The governed seam: a non-secret reference resolved through the
+    /// enterprise broker per call — at the last possible moment, after
+    /// the caller logged the act. No secret is retained between calls,
+    /// so a vault-side rotation is honoured on the very next relay.
+    Brokered {
+        broker: Arc<dyn CredentialBroker>,
+        reference: CredentialRef,
+    },
+}
+
 /// Production upstream: JSON-RPC over POST (Streamable HTTP, stateless).
 pub struct HttpUpstream {
     client: reqwest::Client,
     url: String,
-    bearer_token: Option<String>,
+    auth: UpstreamAuth,
 }
 
 impl HttpUpstream {
@@ -86,7 +106,7 @@ impl HttpUpstream {
         Self {
             client: reqwest::Client::new(),
             url: url.into(),
-            bearer_token: None,
+            auth: UpstreamAuth::None,
         }
     }
 
@@ -94,8 +114,50 @@ impl HttpUpstream {
         Self {
             client: reqwest::Client::new(),
             url: url.into(),
-            bearer_token,
+            auth: match bearer_token {
+                Some(token) => UpstreamAuth::InlineBearer(token),
+                None => UpstreamAuth::None,
+            },
         }
+    }
+
+    pub fn with_credential(
+        url: impl Into<String>,
+        broker: Arc<dyn CredentialBroker>,
+        reference: CredentialRef,
+    ) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            url: url.into(),
+            auth: UpstreamAuth::Brokered { broker, reference },
+        }
+    }
+
+    /// The one constructor the binary and the harnesses share: wire one
+    /// declared server to its credential source (brokered reference,
+    /// legacy inline bearer, or none), fail-closed on a dangling broker
+    /// name — the config validator already refused ambiguity.
+    pub fn for_server(
+        server: &crate::config::ServerConfig,
+        brokers: &BTreeMap<String, Arc<dyn CredentialBroker>>,
+    ) -> Result<Self> {
+        if let Some(reference) = &server.credential {
+            let broker = brokers.get(&reference.broker).cloned().ok_or_else(|| {
+                GatewayError::ConfigRejected(format!(
+                    "servers[{}].credential references unknown credential broker `{}`",
+                    server.name, reference.broker
+                ))
+            })?;
+            return Ok(Self::with_credential(
+                server.url.clone(),
+                broker,
+                reference.clone(),
+            ));
+        }
+        Ok(Self::with_bearer(
+            server.url.clone(),
+            server.bearer_token.clone(),
+        ))
     }
 }
 
@@ -106,8 +168,18 @@ impl Upstream for HttpUpstream {
             .post(&self.url)
             .json(&body)
             .header("accept", "application/json");
-        if let Some(token) = &self.bearer_token {
-            request = request.bearer_auth(token);
+        match &self.auth {
+            UpstreamAuth::None => {}
+            UpstreamAuth::InlineBearer(token) => request = request.bearer_auth(token),
+            UpstreamAuth::Brokered { broker, reference } => {
+                // Resolved at the last possible moment: any broker
+                // failure surfaces BEFORE the request is sent, so a
+                // vault outage can never produce an unauthenticated or
+                // half-credentialed upstream call. The secret drops
+                // (and zeroizes) as soon as the header is built.
+                let secret = broker.resolve(reference).await?;
+                request = request.bearer_auth(secret.expose());
+            }
         }
         let resp = request
             .send()
@@ -413,6 +485,16 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Valu
                 }
             }
             resp
+        }
+        // The brokered credential could not be resolved: the upstream
+        // was never contacted (resolution precedes the request), so
+        // this is a governed refusal, not an upstream failure — logged
+        // as such, and no drift probe (it would only wake the vault
+        // again for a route that is already closed).
+        Err(deny @ GatewayError::CredentialUnavailable(_)) => {
+            let mut runner = rt.runner.lock().await;
+            runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+            error_response(id, &deny)
         }
         Err(error) => {
             if let Err(drift) = refresh_server_manifest(rt, &relay.server).await {

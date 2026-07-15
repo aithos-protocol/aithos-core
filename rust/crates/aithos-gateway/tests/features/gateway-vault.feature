@@ -11,7 +11,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
 
   Rule: A granted call carries its vault-resolved bearer — wire-side only
 
-    @wip
     Scenario: A granted tool fetches its bearer from Vault KV v2 and the upstream sees it
       Given a vault stores "github-mcp-sentinel" under path "aithos/mcp/github" field "token"
       And server "github" is enrolled with covered tool "issues.list" referencing that vault secret
@@ -19,7 +18,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
       Then the call succeeds and the upstream saw exactly one bearer "github-mcp-sentinel"
       And the vault was consulted after the act was logged
 
-    @wip
     Scenario: The agent sees the bearer in no MCP response
       Given a vault stores "github-mcp-sentinel" under path "aithos/mcp/github" field "token"
       And server "github" is enrolled with covered tool "issues.list" referencing that vault secret
@@ -27,7 +25,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
       Then no agent-facing response contains "github-mcp-sentinel"
       And no agent-facing response contains the vault access token
 
-    @wip
     Scenario: The credential lives in no config, store, gamma, journal or gateway output
       Given a vault stores "github-mcp-sentinel" under path "aithos/mcp/github" field "token"
       And server "github" is enrolled with covered tool "issues.list" referencing that vault secret
@@ -39,7 +36,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
 
   Rule: Refused calls never wake the vault; a failing vault never lets a call out
 
-    @wip
     Scenario: An unknown or ungranted tool triggers zero vault and zero upstream requests
       Given a vault stores "github-mcp-sentinel" under path "aithos/mcp/github" field "token"
       And server "github" is enrolled with covered tool "issues.list" referencing that vault secret
@@ -49,7 +45,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
       And the vault received zero requests
       And the upstream received zero requests
 
-    @wip
     Scenario: A vault outage refuses the call before any upstream contact
       Given server "github" is enrolled with covered tool "issues.list" referencing a vault that is down
       When the agent calls "github__issues_list" through the hub
@@ -57,7 +52,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
       And the upstream received zero requests
       And the journal gains one refusal entry naming the credential failure
 
-    @wip
     Scenario Outline: A missing or malformed vault answer fails closed
       Given a vault stores "github-mcp-sentinel" under path "aithos/mcp/github" field "token"
       And server "github" is enrolled with covered tool "issues.list" referencing vault path "<path>" field "<field>"
@@ -71,7 +65,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
         | aithos/mcp/absent | token |
         | aithos/mcp/github | tok   |
 
-    @wip
     Scenario: A malformed vault payload fails closed even under the right path and field
       Given a vault answers path "aithos/mcp/github" with a payload that is not a KV v2 secret
       And server "github" is enrolled with covered tool "issues.list" referencing that vault path
@@ -81,7 +74,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
 
   Rule: References stay per-server and follow the vault, not the config
 
-    @wip
     Scenario: Two servers resolve two distinct references without confusion
       Given a vault stores "github-mcp-sentinel" under path "aithos/mcp/github" field "token"
       And the vault also stores "linear-mcp-sentinel" under path "aithos/mcp/linear" field "token"
@@ -90,7 +82,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
       Then the "github" upstream saw only bearer "github-mcp-sentinel"
       And the "linear" upstream saw only bearer "linear-mcp-sentinel"
 
-    @wip
     Scenario: A rotated KV value is used on the next call without any config change
       Given a vault stores "github-mcp-sentinel" under path "aithos/mcp/github" field "token"
       And server "github" is enrolled with covered tool "issues.list" referencing that vault secret
@@ -100,7 +91,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
       Then the upstream saw bearer "github-mcp-sentinel" then bearer "github-mcp-rotated"
       And the gateway config was never modified
 
-    @wip
     Scenario: tools/list consults neither the vault nor the upstream
       Given a vault stores "github-mcp-sentinel" under path "aithos/mcp/github" field "token"
       And server "github" is enrolled with covered tool "issues.list" referencing that vault secret

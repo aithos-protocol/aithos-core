@@ -1423,7 +1423,10 @@ journal:
                 "      env: AITHOS_VAULT_TOKEN\n",
                 "      env: AITHOS_VAULT_TOKEN\n      surprise: true\n",
             ),
-            ("      field: token\n", "      field: token\n      surprise: true\n"),
+            (
+                "      field: token\n",
+                "      field: token\n      surprise: true\n",
+            ),
         ] {
             let text = HUB_VAULT.replace(from, to);
             assert!(
