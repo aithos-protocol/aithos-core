@@ -157,7 +157,7 @@ d'aplatissement → rejet ; noms réservés → rejet.
 | Vérif pin à runtime + refus drift | **Fait, vert** (H3) |
 | `tools/list` = couverts + schémas pinnés | **Fait, vert** (H3) |
 | Nom exposé `<server>__<tool>` + restauration du nom brut | **Fait, vert** (H3) |
-| Credentials amont (bearer/OAuth) | Bearer config **fait** (H3), cible vault §3bis.4 |
+| Credentials amont (bearer/OAuth) | **Coffre d'entreprise fait** (2026-07-15) : broker Vault KV v2, référence par serveur, résolution par appel post-log, fail-closed — `gateway-vault.feature` + `e2e_vault`. Bearer config = couture LEGACY (exclusive) ; la cible §3bis.4 (vault `/x/` décentralisé) reste distincte |
 | Wrapper stdio, SSE/streaming, `resources/*` | Hors v1 (Phase D) |
 
 ## 9. Lots proposés (Gherkin-first, dans l'ordre)

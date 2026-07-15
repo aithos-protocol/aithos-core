@@ -22,6 +22,22 @@ les leçons d'environnement. Session initiale : 2026-07-10.
 > HTTP dont un partagé, bearer wire-only, audit par contexte et restart bloqué sur
 > drift.
 
+> **ÉTAT EXPRESS (2026-07-15, 7ᵉ session gw — coffre Vault)** : **CREDENTIALS
+> MCP BROKERÉS VERTS (V0→V3).** Les tokens MCP sortent du YAML : références
+> non secrètes `credential_brokers`/`servers[].credential`, adapter
+> **HashiCorp Vault KV v2** (`src/credentials.rs`), résolution PAR APPEL dans
+> `HttpUpstream::forward()` après authorize + log-before-relay, refus
+> `credential_unavailable` fail-closed sans contact amont, rotation KV sans
+> config, erreurs expurgées structurellement, `SecretValue` sans
+> Debug/Serialize/Clone zeroizé au drop. Commits `9dd81fc` (contrat @wip)
+> → `ea224d3` (config+abstraction) → `34dfd22` (adapter+câblage+détag) →
+> `916ecb3` (e2e réseau + runbook `DEMO-GATEWAY-VAULT.md` + exemple
+> `demo_mcp`). Suite : **53 scénarios / 269 steps**, 55 unit, 4 CLI,
+> **5 e2e réseau** (dont `e2e_vault`), 5 owner ; clippy `-D warnings` et fmt
+> crate clean. Couture `bearer_token` conservée LEGACY (exclusivité
+> enforced) ; V4 LLM, TLS reqwest, AppRole, writes grantés et `resources/*`
+> restent ouverts → `docs/HANDOFF-GATEWAY-VAULT-DONE-2026-07-15.md`.
+
 **Branche active imposée : `feat/obligations`** (ne jamais switcher). Crate :
 `rust/crates/aithos-gateway/`.
 
@@ -505,3 +521,17 @@ par Mathieu). Commits sélectifs : `6b580ff` H1, `f915d34` H2, `4fc4b4d` H3,
 `docs/HUB-MCP.md` a été inclus avec autorisation explicite. Les scories `_gitjunk/`,
 `_to_delete/`, `_transfer/` et `docs/EXPLORATION-DESKTOP-GATEWAY.md` sont restées
 intactes et non stagées.
+
+Session du 2026-07-15 (7ᵉ gw, coffre Vault, profil cloud+janitor) : arrivée
+sur `e9d2a8d` avec un `index.lock` du 13/07 traînant — janitorisé vers
+`_gitjunk/` comme le reste. Transfert par `git archive HEAD` →
+`_transfer/aithos-src-20260715.tgz` (un premier tar naïf de 465 Mo a timeout
+le pont : target pris par un pattern d'exclusion défaillant — écrasé par
+l'archive propre), build/test cloud rustc 1.95.0, retours
+device_commit_files **par tranche** (16 payloads, sha256 croisés un à un)
+pour que chaque commit Mac porte l'état exact de sa tranche : `9dd81fc`
+contrat V0 @wip seul, `ea224d3` V1, `34dfd22` V2, `916ecb3` V3, puis le
+commit docs (ce paragraphe, l'état express, HUB-MCP §8 et le handoff DONE).
+Warnings `tmp_obj` toujours cosmétiques. L'input
+`HANDOFF-GATEWAY-VAULT-FINALIZATION-2026-07-15.md` reste untracked (décision
+Mathieu). Scories intactes.
