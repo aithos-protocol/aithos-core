@@ -538,8 +538,38 @@ impl Bridge {
     /// the reason code stay readable in the clear payload — that is what
     /// the audit sells.
     pub fn record_refusal(&mut self, tool: &str, reason: &str, now: &str) -> Result<String> {
+        self.record_refusal_entry(tool, reason, None, now)
+    }
+
+    /// A refusal carrying its pedagogical detail in clear (lot D): used
+    /// for bound violations ONLY — the detail is exactly the owner's
+    /// sealed rule plus the offending values, already served to the
+    /// agent, no secret (decision 2026-07-15 n°1). Other refusal kinds
+    /// keep the bare code: their messages are not structurally
+    /// guaranteed leak-free the way bound refusals are.
+    pub fn record_refusal_detailed(
+        &mut self,
+        tool: &str,
+        reason: &str,
+        detail: &str,
+        now: &str,
+    ) -> Result<String> {
+        self.record_refusal_entry(tool, reason, Some(detail), now)
+    }
+
+    fn record_refusal_entry(
+        &mut self,
+        tool: &str,
+        reason: &str,
+        detail: Option<&str>,
+        now: &str,
+    ) -> Result<String> {
         let gateway_sk = SigningKey::from_bytes(self.keyholder.gateway_seed());
-        let detail = serde_json::json!({ "tool": tool, "reason": reason });
+        let mut detail_json = serde_json::json!({ "tool": tool, "reason": reason });
+        if let Some(text) = detail {
+            detail_json["detail"] = serde_json::Value::String(text.to_owned());
+        }
+        let detail = detail_json;
         let args_hash = hash_of(&detail)?;
         let entry = self
             .bundle
@@ -1449,6 +1479,28 @@ impl Runner {
         }
     }
 
+    /// The bound-violation refusal (lot D): same §3bis.8 routing, plus
+    /// the pedagogical detail in the clear payload — field, offending
+    /// values and approved rule, exactly what the agent was told and
+    /// what beat 8 replays. Bound refusals only: that message is the
+    /// owner's own sealed policy, structurally secret-free.
+    pub fn record_bound_refusal(
+        &mut self,
+        ctx: Option<&str>,
+        tool: &str,
+        deny: &GatewayError,
+        now: &str,
+    ) {
+        let code = deny.refusal_code();
+        let detail = deny.to_string();
+        let _ = self
+            .journal
+            .record_refusal_detailed(tool, code, &detail, now);
+        if let Some(c) = ctx.and_then(|name| self.contexts.get_mut(name)) {
+            let _ = c.bridge.record_refusal_detailed(tool, code, &detail, now);
+        }
+    }
+
     fn context(&self, name: &str) -> Result<&ContextRuntime> {
         self.contexts
             .get(name)
@@ -1667,30 +1719,84 @@ pub fn owner_enroll_server(
     now: &str,
     ent: &mut dyn EntropySource,
 ) -> Result<EquipOutcome> {
-    validate_approved(manifest)?;
+    owner_enroll_servers(
+        master,
+        label,
+        agent_pub_mb,
+        gateway_pub_mb,
+        std::slice::from_ref(manifest),
+        store,
+        window,
+        now,
+        ent,
+    )
+}
+
+/// Enroll N servers into ONE context under ONE owner gesture (lot D):
+/// each approved manifest is pinned sealed under its own `/x/<server>`,
+/// then a SINGLE agent mandate covers the union of the granted tools —
+/// « un seul mandat agent couvre les outils grantés », the demo's
+/// provisioning shape. All-or-nothing on validation: a duplicate server
+/// in the batch, an already-enrolled server or an invalid manifest
+/// refuses the whole gesture before anything is pinned.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_enroll_servers(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    gateway_pub_mb: &str,
+    manifests: &[ApprovedManifest],
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<EquipOutcome> {
+    if manifests.is_empty() {
+        return Err(GatewayError::ConfigRejected(
+            "enrollment needs at least one approved manifest".into(),
+        ));
+    }
+    let mut servers = std::collections::BTreeSet::new();
+    for manifest in manifests {
+        validate_approved(manifest)?;
+        if !servers.insert(manifest.server.as_str()) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "the batch enrolls server `{}` twice",
+                manifest.server
+            )));
+        }
+    }
     let owner = derived_owner(master, "context", label);
     let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    let (_, manifest_path) = hub_manifest_paths(&manifest.server);
-    if bundle
-        .store
-        .get(&manifest_path)
-        .map_err(bridge_err)?
-        .is_some()
-    {
-        return Err(GatewayError::ConfigRejected(format!(
-            "server `{}` is already enrolled; use governed re-enrollment",
-            manifest.server
-        )));
+    for manifest in manifests {
+        let (_, manifest_path) = hub_manifest_paths(&manifest.server);
+        if bundle
+            .store
+            .get(&manifest_path)
+            .map_err(bridge_err)?
+            .is_some()
+        {
+            return Err(GatewayError::ConfigRejected(format!(
+                "server `{}` is already enrolled; use governed re-enrollment",
+                manifest.server
+            )));
+        }
     }
-
-    pin_hub_manifest(&mut bundle, &owner, gateway_pub_mb, manifest, now, ent)?;
+    for manifest in manifests {
+        pin_hub_manifest(&mut bundle, &owner, gateway_pub_mb, manifest, now, ent)?;
+    }
     // The mandate covers the GRANTED tools — the decision, not the
-    // class (lot W): a granted write is covered, a denied read is not.
-    let granted_ops: Vec<String> = manifest
-        .tools
+    // class (lot W): a granted write is covered, a denied read is not —
+    // across every server of the batch.
+    let granted_ops: Vec<String> = manifests
         .iter()
-        .filter(|tool| tool.is_granted())
-        .map(|tool| hub_op_for_tool(&manifest.server, &tool.name))
+        .flat_map(|manifest| {
+            manifest
+                .tools
+                .iter()
+                .filter(|tool| tool.is_granted())
+                .map(|tool| hub_op_for_tool(&manifest.server, &tool.name))
+        })
         .collect();
     equip(
         bundle,
@@ -1850,6 +1956,27 @@ pub fn owner_grant_briefing(
     bundle
         .deliver_zone_line(&owner, &agent_pub, Zone::Circle, BRIEFING_FOLDER, None, ent)
         .map_err(bridge_err)?;
+    // The context AUDITOR gets the same circle line: the journalized
+    // briefing reads seal their bodies under the section keys of this
+    // dir (§07.9.2), and a gamma query only serves sealed entries the
+    // querier can physically open — the auditor mandated on
+    // `kind=ethos.read` needs the keys to replay its own slice. The
+    // owner accepts what this implies: the context auditor can read the
+    // circle directives it audits the reads of.
+    if let Some(auditor_id) = &state.auditor_mandate {
+        let auditor_cert: Mandate = read_json(&bundle, &cert_path(auditor_id))?;
+        let auditor_pub = auditor_cert.grantee_pub().map_err(bridge_err)?;
+        bundle
+            .deliver_zone_line(
+                &owner,
+                &auditor_pub,
+                Zone::Circle,
+                BRIEFING_FOLDER,
+                None,
+                ent,
+            )
+            .map_err(bridge_err)?;
+    }
     let mut perimeter = Vec::new();
     for zone in [Zone::Public, Zone::Circle] {
         let dir = bundle
@@ -2169,13 +2296,21 @@ fn equip(
     let (auditor_mandate, auditor_seed_hex) = if with_auditor {
         let seed = ent.e32();
         let sk = SigningKey::from_bytes(&seed);
+        // The context auditor replays acts AND journalized reads (lot K
+        // briefing entries are `ethos.read`) — two scoped entries, each
+        // query still names ONE kind and anything wider stays refused by
+        // the certificate half (§07.8). The mono `onboard` auditor keeps
+        // its historic act-only scope (gateway-audit contract).
         let m = mint(
             owner,
             &bundle,
             ent,
             "auditor",
             &sk.verifying_key(),
-            &["read.gamma#kind=action".to_owned()],
+            &[
+                "read.gamma#kind=action".to_owned(),
+                "read.gamma#kind=ethos.read".to_owned(),
+            ],
             no_constraints(),
             window,
             now,

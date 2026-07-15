@@ -501,9 +501,11 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Valu
     // the agent may do, the bounds say ON WHAT. A violation refuses the
     // whole call before anything is logged as an act — no rewriting,
     // no vault wake-up, no upstream contact; the pedagogical refusal
-    // (field, offending values, approved rule) is the teaching surface.
+    // (field, offending values, approved rule) is the teaching surface,
+    // and it goes on the record verbatim (lot D): the auditor replays
+    // the same lesson the agent was taught.
     if let Err(deny) = runner.check_bounds(&tool, &args) {
-        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+        runner.record_bound_refusal(Some(&ctx), &tool, &deny, &now);
         return error_response(id, &deny);
     }
 

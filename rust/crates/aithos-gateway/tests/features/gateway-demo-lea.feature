@@ -28,7 +28,6 @@ Feature: Demo Léa — one bounded, briefed sales agent over three governed conn
     And the "ventes" circle zone directs "Tout mail de prise de rendez-vous mentionne le DPE du bien et propose d'abord une visite virtuelle."
     And the "ventes" self zone holds an owner-only note
 
-  @wip
   Scenario: Beat 1 — the agent surface is exactly the granted, briefed world
     When the agent initializes and lists the tools
     Then the initialize result recommends "briefing.read" before outbound actions
@@ -39,14 +38,12 @@ Feature: Demo Léa — one bounded, briefed sales agent over three governed conn
     And the vault received zero requests
     And the upstream received zero requests
 
-  @wip
   Scenario: Beat 2 — the prospect list comes from notion under the read grant
     When the agent calls "notion__query_database" through the hub
     Then the answer carries the five prospects
     And the "notion" upstream saw only its own vault bearer
     And the act is logged in the "ventes" gamma with one journal cross-reference
 
-  @wip
   Scenario: Beat 3 — sending to everyone is refused and teaches the approved three
     When the agent sends a meeting email to all five prospects
     Then the call is refused as a bound violation
@@ -55,14 +52,12 @@ Feature: Demo Léa — one bounded, briefed sales agent over three governed conn
     And the "gmail" upstream received zero requests
     And the "ventes" gamma and the journal each gain one "bound_violated" refusal
 
-  @wip
   Scenario: Beat 4 — the corrected send passes and the wire carries the vault bearer
     When the agent sends a meeting email to prospects "a", "b" and "c"
     Then the call succeeds
     And the "gmail" upstream saw exactly one call under raw name "send_email" bearing its vault token
     And the act is logged in the "ventes" gamma with one journal cross-reference
 
-  @wip
   Scenario: Beat 5 — the visit lands inside the approved slots only
     When the agent books a visit starting "2026-07-15T10:00:00+02:00"
     Then the call is refused as a bound violation naming the approved slots
@@ -70,14 +65,12 @@ Feature: Demo Léa — one bounded, briefed sales agent over three governed conn
     Then the call succeeds
     And the "calendar" upstream saw exactly one call under raw name "create_event" bearing its vault token
 
-  @wip
   Scenario: Beat 6 — the briefing steers before action and its read is on the record
     When the agent calls "briefing.read"
     Then the answer carries the DPE directive verbatim
     And no agent-facing response contains the owner-only note
     And the "ventes" gamma gains one briefing read entry
 
-  @wip
   Scenario: Beat 7 — a circle edit changes the character before the next read
     Given the agent has read the briefing once
     When the owner appends "Joindre le lien du dossier de visite." to the circle directive
@@ -85,7 +78,6 @@ Feature: Demo Léa — one bounded, briefed sales agent over three governed conn
     Then the answer carries the appended directive verbatim
     And both reads are journalized in the "ventes" gamma
 
-  @wip
   Scenario: Beat 8 — the auditor replays the whole story from the gamma
     Given the agent has walked beats 2 through 7
     When the auditor exports the "ventes" context with the auditor mandate

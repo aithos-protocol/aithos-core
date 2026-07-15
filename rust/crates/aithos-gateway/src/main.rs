@@ -107,6 +107,10 @@ enum Command {
     },
     /// OWNER SIDE: approve every discovered tool's risk class, seal the
     /// approved manifest in /x/<server>, then mint the context grants.
+    /// Repeat --proposal to enroll several servers into the context in
+    /// ONE gesture: a single agent mandate then covers the union of the
+    /// granted tools (the demo shape). Tool names must be unambiguous
+    /// across the batch — a name advertised by two servers refuses.
     OwnerEnrollServer {
         #[arg(long)]
         master_seed_hex: String,
@@ -116,9 +120,10 @@ enum Command {
         agent_pub: String,
         #[arg(long)]
         gateway_pub: String,
-        /// Proposed manifest emitted by owner-discover-server.
-        #[arg(long)]
-        proposal: String,
+        /// Proposed manifest emitted by owner-discover-server
+        /// (repeatable — one per server).
+        #[arg(long = "proposal", required = true)]
+        proposals: Vec<String>,
         /// Explicit owner decision, repeat for every tool:
         /// TOOL=read|write[:granted|denied]. Without a decision the
         /// safe defaults apply — reads granted, writes denied.
@@ -401,7 +406,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             label,
             agent_pub,
             gateway_pub,
-            proposal,
+            proposals,
             approvals,
             bounds,
             store_root,
@@ -409,11 +414,47 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             replace,
         } => {
             let master = decode_master(master_seed_hex)?;
-            let proposed: aithos_gateway::hub::ProposedManifest =
-                serde_json::from_slice(&std::fs::read(proposal)?)?;
+            let mut proposed_manifests = Vec::new();
+            for proposal in proposals {
+                let proposed: aithos_gateway::hub::ProposedManifest =
+                    serde_json::from_slice(&std::fs::read(proposal)?)?;
+                proposed_manifests.push(proposed);
+            }
             let mut approvals = parse_approvals(approvals)?;
             attach_bounds(&mut approvals, bounds)?;
-            let approved = aithos_gateway::hub::approve_manifest(&proposed, &approvals)?;
+            // Split the flat approvals across the proposals by tool
+            // name, fail-closed: a name advertised by two servers is
+            // ambiguous, an approval matching no server is a typo, and
+            // approve_manifest still requires every tool decided.
+            let mut owners_of: BTreeMap<&str, &str> = BTreeMap::new();
+            for proposed in &proposed_manifests {
+                for tool in &proposed.tools {
+                    if let Some(other) = owners_of.insert(&tool.name, &proposed.server) {
+                        return Err(format!(
+                            "tool `{}` is advertised by both `{other}` and `{}` — enroll them separately",
+                            tool.name, proposed.server
+                        )
+                        .into());
+                    }
+                }
+            }
+            if let Some(unknown) = approvals
+                .keys()
+                .find(|t| !owners_of.contains_key(t.as_str()))
+            {
+                return Err(format!("--approve names undiscovered tool `{unknown}`").into());
+            }
+            let mut approved_manifests = Vec::new();
+            for proposed in &proposed_manifests {
+                let subset: BTreeMap<String, aithos_gateway::hub::ToolApproval> = approvals
+                    .iter()
+                    .filter(|(tool, _)| {
+                        owners_of.get(tool.as_str()) == Some(&proposed.server.as_str())
+                    })
+                    .map(|(tool, approval)| (tool.clone(), approval.clone()))
+                    .collect();
+                approved_manifests.push(aithos_gateway::hub::approve_manifest(proposed, &subset)?);
+            }
             let start = now_secs();
             let store = GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
                 root: store_root.into(),
@@ -423,12 +464,15 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 not_after: ts(start + u64::from(*ttl_days) * 86_400),
             };
             let (outcome, revoked) = if *replace {
+                if approved_manifests.len() != 1 {
+                    return Err("--replace re-enrolls exactly one server at a time".into());
+                }
                 let replaced = aithos_gateway::core_bridge::owner_reenroll_server(
                     &master,
                     label,
                     agent_pub,
                     gateway_pub,
-                    &approved,
+                    &approved_manifests[0],
                     store,
                     &window,
                     &ts(start),
@@ -437,12 +481,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 (replaced.equipment, replaced.revoked_mandates)
             } else {
                 (
-                    aithos_gateway::core_bridge::owner_enroll_server(
+                    aithos_gateway::core_bridge::owner_enroll_servers(
                         &master,
                         label,
                         agent_pub,
                         gateway_pub,
-                        &approved,
+                        &approved_manifests,
                         store,
                         &window,
                         &ts(start),
@@ -453,7 +497,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             };
             eprintln!("STORE the auditor seed COLD — shown ONCE.");
             println!("context_did: {}", outcome.ethos_did);
-            println!("server: {}", approved.server);
+            for approved in &approved_manifests {
+                println!("server: {}", approved.server);
+            }
             println!("agent_mandate: {}", outcome.agent_mandate);
             println!("gateway_mandate: {}", outcome.gateway_mandate);
             if let (Some(m), Some(s)) = (&outcome.auditor_mandate, &outcome.auditor_seed_hex) {

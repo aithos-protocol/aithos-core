@@ -237,6 +237,25 @@ struct GatewayWorld {
     last_init: Option<Value>,
     agent_responses: Vec<Value>,
     briefing_owner_ent: Option<SeqEntropy>,
+    /// Demo Léa (lot D): the Background's provisioning table, the notion
+    /// prospect list, the circle directive and self note, the per-server
+    /// wire bearers and the ventes auditor seed for beat 8.
+    demo_specs: Vec<DemoToolSpec>,
+    demo_prospects: Vec<String>,
+    demo_directive: Option<String>,
+    demo_note: Option<String>,
+    demo_bearers: BTreeMap<String, String>,
+    demo_auditor_seed: Option<String>,
+}
+
+/// One row of the demo Background table.
+#[derive(Debug, Clone)]
+struct DemoToolSpec {
+    server: String,
+    tool: String,
+    class: ToolAccess,
+    granted: bool,
+    bounds: Vec<ArgumentBound>,
 }
 
 impl GatewayWorld {
@@ -288,6 +307,12 @@ impl GatewayWorld {
             last_init: None,
             agent_responses: Vec::new(),
             briefing_owner_ent: None,
+            demo_specs: Vec::new(),
+            demo_prospects: Vec::new(),
+            demo_directive: None,
+            demo_note: None,
+            demo_bearers: BTreeMap::new(),
+            demo_auditor_seed: None,
         }
     }
 
@@ -813,6 +838,7 @@ async fn hub_method_not_found(w: &mut GatewayWorld) {
 #[given(expr = "the agent calls {string} through the hub")]
 #[when(expr = "the agent calls {string} through the hub")]
 async fn agent_calls_hub(w: &mut GatewayWorld, tool: String) {
+    provision_pending_world(w).await;
     w.call(&tool, json!({})).await;
 }
 
@@ -4224,8 +4250,19 @@ impl GatewayWorld {
     }
 }
 
+/// Provision whichever lazy world the scenario's Givens declared: the
+/// demo Léa harness when a Background table is pending, the briefing
+/// world otherwise. No-op once any world is live.
+async fn provision_pending_world(w: &mut GatewayWorld) {
+    if w.demo_specs.is_empty() {
+        provision_briefing_world(w).await;
+    } else {
+        provision_demo_world(w).await;
+    }
+}
+
 async fn briefing_call(w: &mut GatewayWorld, args: Value) {
-    provision_briefing_world(w).await;
+    provision_pending_world(w).await;
     w.last_tool = BRIEFING_READ.to_owned();
     let body = json!({
         "jsonrpc": "2.0",
@@ -4291,7 +4328,7 @@ async fn briefing_read_once(w: &mut GatewayWorld) {
 
 #[when("the agent initializes and lists the tools")]
 async fn briefing_init_and_list(w: &mut GatewayWorld) {
-    provision_briefing_world(w).await;
+    provision_pending_world(w).await;
     let init = w
         .agent_request(json!({ "jsonrpc": "2.0", "id": 60, "method": "initialize" }))
         .await;
@@ -5258,6 +5295,897 @@ async fn bounds_ungranted_rejected(w: &mut GatewayWorld) {
     assert!(
         err.contains("did not grant"),
         "the rejection names the ungranted bound: {err}"
+    );
+}
+
+// ------------------------------------------------- demo Léa world (lot D)
+//
+// The dress rehearsal: the fusion of the worlds that came before it —
+// the bounds world's real wires (fake Vault + wire MCPs on sockets,
+// real brokers, real router) generalised to THREE servers under ONE
+// "ventes" context, plus the briefing world's owner directives. Every
+// upstream is deliberately permissive and fully credentialed: whatever
+// restriction the beats show is the gateway's alone.
+
+/// The owner-only self note (never served — the sentinel the leak
+/// assertions sweep for).
+const DEMO_SELF_NOTE: &str = "Marge de negociation interne max 8% — owner only.";
+
+fn demo_fixture(server: &str, tool: &str) -> Value {
+    match (server, tool) {
+        ("notion", "query_database") => json!({
+            "name": "query_database",
+            "description": "Query one Notion database",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "database": { "type": "string" } },
+                "additionalProperties": false
+            }
+        }),
+        ("notion", "create_page") => json!({
+            "name": "create_page",
+            "description": "Create one Notion page",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "title": { "type": "string" } },
+                "required": ["title"],
+                "additionalProperties": false
+            }
+        }),
+        ("gmail", "search_emails") => json!({
+            "name": "search_emails",
+            "description": "Search the mailbox",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "query": { "type": "string" } },
+                "additionalProperties": false
+            }
+        }),
+        ("gmail", "send_email") => json!({
+            "name": "send_email",
+            "description": "Send an email",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "to": { "type": "array", "items": { "type": "string" } },
+                    "cc": { "type": "array", "items": { "type": "string" } },
+                    "bcc": { "type": "array", "items": { "type": "string" } },
+                    "subject": { "type": "string" },
+                    "body": { "type": "string" }
+                },
+                "required": ["to"],
+                "additionalProperties": false
+            }
+        }),
+        ("gmail", "delete_email") => json!({
+            "name": "delete_email",
+            "description": "Delete one email",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "required": ["id"],
+                "additionalProperties": false
+            }
+        }),
+        ("calendar", "list_events") => json!({
+            "name": "list_events",
+            "description": "List calendar events",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "from": { "type": "string" }, "to": { "type": "string" } },
+                "additionalProperties": false
+            }
+        }),
+        ("calendar", "create_event") => json!({
+            "name": "create_event",
+            "description": "Create one calendar event",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "start": { "type": "string" },
+                    "title": { "type": "string" }
+                },
+                "required": ["start"],
+                "additionalProperties": false
+            }
+        }),
+        other => panic!("unknown demo fixture {other:?}"),
+    }
+}
+
+/// Parse the Background table's bounds mini-language:
+/// `to one_of {a,b,c}; bcc forbid; to max 3; subject require` and
+/// `start slots tue,thu 14:00-18:00`.
+fn parse_demo_bounds(text: &str) -> Vec<ArgumentBound> {
+    let day = |short: &str| -> String {
+        match short {
+            "mon" => "monday",
+            "tue" => "tuesday",
+            "wed" => "wednesday",
+            "thu" => "thursday",
+            "fri" => "friday",
+            "sat" => "saturday",
+            "sun" => "sunday",
+            other => other,
+        }
+        .to_owned()
+    };
+    text.split(';')
+        .map(str::trim)
+        .filter(|rule| !rule.is_empty())
+        .map(|rule| {
+            let mut words = rule.split_whitespace();
+            let field = words.next().expect("bound field").to_owned();
+            match words.next().expect("bound kind") {
+                "one_of" => {
+                    let set = rule
+                        .split_once('{')
+                        .and_then(|(_, rest)| rest.split_once('}'))
+                        .map(|(inner, _)| inner)
+                        .expect("one_of set");
+                    ArgumentBound::OneOf {
+                        field,
+                        values: set.split(',').map(|v| v.trim().to_owned()).collect(),
+                    }
+                }
+                "forbid" => ArgumentBound::Forbid { field },
+                "require" => ArgumentBound::Require { field },
+                "max" => ArgumentBound::MaxItems {
+                    field,
+                    max: words.next().expect("max size").parse().expect("a number"),
+                },
+                "slots" => {
+                    let days = words
+                        .next()
+                        .expect("slot days")
+                        .split(',')
+                        .map(day)
+                        .collect();
+                    let window = words.next().expect("slot window");
+                    let (from, to) = window.split_once('-').expect("HH:MM-HH:MM");
+                    ArgumentBound::TimeSlots {
+                        field,
+                        days,
+                        from: from.to_owned(),
+                        to: to.to_owned(),
+                    }
+                }
+                other => panic!("unknown bound rule `{other}` in `{rule}`"),
+            }
+        })
+        .collect()
+}
+
+#[given("the Innoestate demo world is provisioned:")]
+async fn demo_table(w: &mut GatewayWorld, step: &cucumber::gherkin::Step) {
+    let table = step.table.as_ref().expect("a provisioning table");
+    for row in table.rows.iter().skip(1) {
+        let bounds_text = row.get(4).map(String::as_str).unwrap_or_default();
+        w.demo_specs.push(DemoToolSpec {
+            server: row[0].clone(),
+            tool: row[1].clone(),
+            class: match row[2].as_str() {
+                "read" => ToolAccess::Read,
+                "write" => ToolAccess::Write,
+                other => panic!("unknown class `{other}`"),
+            },
+            granted: match row[3].as_str() {
+                "granted" => true,
+                "denied" => false,
+                other => panic!("unknown decision `{other}`"),
+            },
+            bounds: parse_demo_bounds(bounds_text),
+        });
+    }
+    assert!(!w.demo_specs.is_empty(), "the table provisions tools");
+}
+
+#[given("the vault stores one distinct token per server")]
+async fn demo_vault_tokens(w: &mut GatewayWorld) {
+    // The provisioning mints one wire bearer per server by construction;
+    // this Given pins the intent (asserted live in beats 2, 4 and 5).
+    assert!(!w.demo_specs.is_empty(), "the table comes first");
+}
+
+#[given(
+    expr = "the notion database holds prospects {string}, {string}, {string}, {string} and {string}"
+)]
+async fn demo_prospects(
+    w: &mut GatewayWorld,
+    a: String,
+    b: String,
+    c: String,
+    d: String,
+    e: String,
+) {
+    w.demo_prospects = vec![a, b, c, d, e];
+}
+
+#[given(expr = "the {string} circle zone directs {string}")]
+async fn demo_circle_directive(w: &mut GatewayWorld, context: String, text: String) {
+    assert_eq!(context, "ventes");
+    w.demo_directive = Some(text);
+}
+
+#[given(expr = "the {string} self zone holds an owner-only note")]
+async fn demo_self_note(w: &mut GatewayWorld, context: String) {
+    assert_eq!(context, "ventes");
+    w.demo_note = Some(DEMO_SELF_NOTE.to_owned());
+}
+
+async fn provision_demo_world(w: &mut GatewayWorld) {
+    use aithos_gateway::credentials::build_brokers;
+    use aithos_gateway::proxy_mcp::HttpUpstream;
+
+    if w.vault.is_some() {
+        return;
+    }
+    static DEMO_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let seq = DEMO_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let env_name = format!("AITHOS_CUCUMBER_DEMO_TOKEN_{seq}");
+    let vault_token = format!("vault-access-demo-{seq}");
+    std::env::set_var(&env_name, &vault_token);
+
+    let dir = tempfile::tempdir().expect("demo tempdir");
+    let context_root = dir.path().join("ventes");
+    let journal_root = dir.path().join("journal");
+    let store_cfg = |root: &std::path::Path| aithos_gateway::config::StoreConfig::Fs {
+        root: root.to_owned(),
+    };
+    let context_store =
+        GatewayStore::from_config(&store_cfg(&context_root)).expect("demo context store");
+    let journal_store =
+        GatewayStore::from_config(&store_cfg(&journal_root)).expect("demo journal store");
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let window = GatewayWorld::window();
+    let mut owner_ent = SeqEntropy::default();
+
+    owner_init_context(&master, "ventes", context_store.clone(), T0, &mut owner_ent)
+        .expect("ventes context created");
+
+    // One approved manifest per server, from the Background table.
+    let servers: Vec<String> = {
+        let mut seen = Vec::new();
+        for spec in &w.demo_specs {
+            if !seen.contains(&spec.server) {
+                seen.push(spec.server.clone());
+            }
+        }
+        seen
+    };
+    let mut approved_manifests = Vec::new();
+    for server in &servers {
+        let fixtures: Vec<Value> = w
+            .demo_specs
+            .iter()
+            .filter(|spec| &spec.server == server)
+            .map(|spec| demo_fixture(server, &spec.tool))
+            .collect();
+        let discovery = FakeMcp::advertising(fixtures);
+        let proposed = discover_server(server, &discovery)
+            .await
+            .expect("demo discovery");
+        let approvals: BTreeMap<String, ToolApproval> = w
+            .demo_specs
+            .iter()
+            .filter(|spec| &spec.server == server)
+            .map(|spec| {
+                let approval = if spec.granted {
+                    ToolApproval::granted(spec.class)
+                } else {
+                    ToolApproval::denied(spec.class)
+                };
+                (spec.tool.clone(), approval.with_bounds(spec.bounds.clone()))
+            })
+            .collect();
+        approved_manifests.push(approve_manifest(&proposed, &approvals).expect("demo approval"));
+    }
+    let outcome = aithos_gateway::core_bridge::owner_enroll_servers(
+        &master,
+        "ventes",
+        &agent_pub,
+        &gateway_pub,
+        &approved_manifests,
+        context_store.clone(),
+        &window,
+        T0,
+        &mut owner_ent,
+    )
+    .expect("demo batch enrollment");
+    w.demo_auditor_seed = outcome.auditor_seed_hex.clone();
+
+    // The briefing: pen + circle directive + owner-only self note.
+    let pen = owner_grant_briefing(
+        &master,
+        "ventes",
+        &agent_pub,
+        context_store.clone(),
+        &window,
+        T0,
+        &mut owner_ent,
+    )
+    .expect("demo briefing pen");
+    w.briefing_mandates.insert("ventes".to_owned(), pen);
+    if let Some(text) = w.demo_directive.clone() {
+        owner_set_briefing(
+            &master,
+            "ventes",
+            "circle",
+            "Consigne commerciale",
+            &text,
+            context_store.clone(),
+            T0,
+            &mut owner_ent,
+        )
+        .expect("demo circle directive");
+    }
+    if let Some(note) = w.demo_note.clone() {
+        owner_set_briefing(
+            &master,
+            "ventes",
+            "self",
+            "Note owner",
+            &note,
+            context_store.clone(),
+            T0,
+            &mut owner_ent,
+        )
+        .expect("demo self note");
+    }
+    owner_init_journal(
+        &master,
+        "lea",
+        &agent_pub,
+        &gateway_pub,
+        None,
+        journal_store.clone(),
+        &window,
+        T0,
+        &mut owner_ent,
+    )
+    .expect("demo journal");
+
+    // The wires: one fake Vault holding one DISTINCT bearer per server,
+    // one recording MCP per server — all real sockets.
+    let fake_vault = FakeVault {
+        expected_token: vault_token.clone(),
+        ..FakeVault::default()
+    };
+    let mut wires = BTreeMap::new();
+    for server in &servers {
+        let bearer = format!("wire-bearer-{server}-{seq}");
+        fake_vault
+            .secrets
+            .lock()
+            .unwrap()
+            .entry(format!("aithos/mcp/{server}"))
+            .or_default()
+            .insert("token".to_owned(), bearer.clone());
+        w.demo_bearers.insert(server.clone(), bearer);
+        let answer = match server.as_str() {
+            "notion" => format!("prospects: {}", w.demo_prospects.join(", ")),
+            "gmail" => "email sent".to_owned(),
+            "calendar" => "event booked".to_owned(),
+            other => format!("{other}-ok"),
+        };
+        wires.insert(server.clone(), WireMcp::new(&answer));
+    }
+    let vault_port = spawn_fake_vault(fake_vault.clone()).await;
+    let mut server_blocks = String::new();
+    let mut tool_lines = String::new();
+    for server in &servers {
+        let wire_port = spawn_wire_mcp(wires[server].clone()).await;
+        server_blocks.push_str(&format!(
+            "  - name: {server}\n    transport: http\n    url: http://127.0.0.1:{wire_port}/mcp\n    credential:\n      broker: enterprise\n      path: aithos/mcp/{server}\n      field: token\n",
+        ));
+        for spec in w.demo_specs.iter().filter(|s| &s.server == server) {
+            let exposed = aithos_gateway::policy::hub_exposed_name(server, &spec.tool);
+            let class = match spec.class {
+                ToolAccess::Read => "read",
+                ToolAccess::Write => "write",
+            };
+            tool_lines.push_str(&format!(
+                "      {exposed}: {{ server: {server}, tool: {}, access: {class}, granted: {} }}\n",
+                spec.tool, spec.granted
+            ));
+        }
+    }
+    let quote =
+        |path: &std::path::Path| serde_json::to_string(&path.display().to_string()).unwrap();
+    let config_text = format!(
+        "listen: 127.0.0.1:4890\ncredential_brokers:\n  enterprise:\n    kind: vault-kv2\n    address: http://127.0.0.1:{vault_port}\n    mount: secret\n    auth:\n      kind: token-env\n      env: {env_name}\nservers:\n{server_blocks}contexts:\n  - name: ventes\n    store: {{ kind: fs, root: {} }}\n    tools:\n{tool_lines}journal:\n  store: {{ kind: fs, root: {} }}\n",
+        quote(&context_root),
+        quote(&journal_root)
+    );
+    let config_path = dir.path().join("gateway.yaml");
+    std::fs::write(&config_path, &config_text).expect("demo config written");
+    let cfg = GatewayConfig::from_yaml(&config_text).expect("demo config parses");
+    let brokers = build_brokers(&cfg).expect("demo brokers");
+    let upstreams: BTreeMap<String, HttpUpstream> = cfg
+        .servers
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|entry| {
+            (
+                entry.name.clone(),
+                HttpUpstream::for_server(entry, &brokers).expect("demo upstream"),
+            )
+        })
+        .collect();
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32());
+    let runner =
+        Runner::open(&cfg, keyholder, || Box::new(SeqEntropy::default())).expect("demo runner");
+
+    w.ctx_stores.insert("ventes".to_owned(), context_store);
+    w.journal_store = Some(journal_store);
+    w.briefing_owner_ent = Some(owner_ent);
+    w.vault = Some(VaultHarness {
+        router: Arc::new(McpRouter {
+            runner: Arc::new(Mutex::new(runner)),
+            upstreams,
+            clock: Arc::new(|| T0.to_owned()),
+        }),
+        vault: fake_vault,
+        wires,
+        config_path,
+        config_text,
+        vault_token,
+        store_roots: vec![context_root, journal_root],
+        responses: Vec::new(),
+    });
+    w.scratch = Some(dir);
+}
+
+// ------------------------------------------------------ demo beat steps
+
+async fn demo_send(w: &mut GatewayWorld, recipients: Vec<String>) {
+    provision_pending_world(w).await;
+    w.call(
+        "gmail__send_email",
+        json!({ "arguments": {
+            "to": recipients,
+            "subject": "Prise de rendez-vous — visite du bien",
+            "body": "Bonjour, proposons un créneau."
+        } }),
+    )
+    .await;
+}
+
+async fn demo_book(w: &mut GatewayWorld, start: &str) {
+    provision_pending_world(w).await;
+    w.call(
+        "calendar__create_event",
+        json!({ "arguments": { "start": start, "title": "Visite du bien" } }),
+    )
+    .await;
+}
+
+#[when("the agent sends a meeting email to all five prospects")]
+async fn demo_send_all_five(w: &mut GatewayWorld) {
+    let all = w.demo_prospects.clone();
+    demo_send(w, all).await;
+}
+
+#[when(expr = "the agent sends a meeting email to prospects {string}, {string} and {string}")]
+async fn demo_send_three(w: &mut GatewayWorld, a: String, b: String, c: String) {
+    demo_send(w, vec![a, b, c]).await;
+}
+
+#[when(expr = "the agent books a visit starting {string}")]
+async fn demo_book_visit(w: &mut GatewayWorld, start: String) {
+    demo_book(w, &start).await;
+}
+
+#[then(expr = "the initialize result recommends {string} before outbound actions")]
+async fn demo_init_recommends(w: &mut GatewayWorld, tool: String) {
+    let init = w.last_init.as_ref().expect("an initialize answer");
+    let instructions = init
+        .pointer("/result/instructions")
+        .and_then(Value::as_str)
+        .expect("initialize carries instructions");
+    assert!(
+        instructions.contains(&tool) && instructions.contains("before"),
+        "the instructions recommend the briefing first: {instructions}"
+    );
+}
+
+#[then(expr = "the list is exactly the granted tools, {string} and the journal tools")]
+async fn demo_list_exact(w: &mut GatewayWorld, briefing: String) {
+    let mut listed: Vec<String> = w
+        .listed_tools()
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("a name").to_owned())
+        .collect();
+    listed.sort();
+    let mut expected: Vec<String> = w
+        .demo_specs
+        .iter()
+        .filter(|spec| spec.granted)
+        .map(|spec| aithos_gateway::policy::hub_exposed_name(&spec.server, &spec.tool))
+        .collect();
+    expected.push(briefing);
+    expected.push(JOURNAL_WRITE.to_owned());
+    expected.push(JOURNAL_SEARCH.to_owned());
+    expected.sort();
+    assert_eq!(listed, expected, "exposure = the mandate's coverage");
+}
+
+#[then(expr = "the list includes {string} and {string}")]
+async fn demo_list_includes_two(w: &mut GatewayWorld, first: String, second: String) {
+    let listed = w.listed_tools();
+    for name in [first, second] {
+        assert!(
+            listed.iter().any(|tool| tool["name"] == name.as_str()),
+            "`{name}` is listed"
+        );
+    }
+}
+
+#[then("the answer carries the five prospects")]
+async fn demo_answer_five_prospects(w: &mut GatewayWorld) {
+    let text = w.last_result_text();
+    for prospect in &w.demo_prospects {
+        assert!(text.contains(prospect), "prospect `{prospect}` is served");
+    }
+}
+
+#[then(expr = "the {string} upstream saw only its own vault bearer")]
+async fn demo_upstream_own_bearer(w: &mut GatewayWorld, server: String) {
+    let expected = format!("Bearer {}", w.demo_bearers[&server]);
+    let auths = w.vault_harness().wires[&server]
+        .auths
+        .lock()
+        .unwrap()
+        .clone();
+    assert!(!auths.is_empty(), "the upstream was reached");
+    assert!(
+        auths.iter().all(|auth| auth.as_deref() == Some(&expected)),
+        "`{server}` saw exactly its own vault bearer: {auths:?}"
+    );
+}
+
+#[then(expr = "the act is logged in the {string} gamma with one journal cross-reference")]
+async fn demo_act_logged_with_xref(w: &mut GatewayWorld, context: String) {
+    let tool = w.last_tool.clone();
+    let acts: Vec<EntryView> = w
+        .ctx_gamma(&context)
+        .iter()
+        .filter(|entry| {
+            entry.kind == "action"
+                && payload_str(entry, "tool") == Some(tool.as_str())
+                && entry
+                    .target
+                    .as_deref()
+                    .is_some_and(|target| target != "x.gateway")
+        })
+        .cloned()
+        .collect();
+    assert_eq!(acts.len(), 1, "exactly one `{tool}` act in `{context}`");
+    let xrefs: Vec<EntryView> = w
+        .journal_gamma()
+        .into_iter()
+        .filter(|entry| {
+            entry.kind == "action"
+                && entry.target.as_deref() == Some("x.xref")
+                && payload_str(entry, "entry_id") == Some(acts[0].id.as_str())
+        })
+        .collect();
+    assert_eq!(xrefs.len(), 1, "one journal xref mirrors the act");
+}
+
+#[then(
+    expr = "the refusal names field {string}, prospects {string} and {string} and the approved set"
+)]
+async fn demo_refusal_names_intruders(w: &mut GatewayWorld, field: String, d: String, e: String) {
+    let response = w.last_response.as_ref().expect("a response");
+    let message = response["error"]["message"].as_str().unwrap_or_default();
+    for needle in [
+        format!(".{field}"),
+        d.clone(),
+        e.clone(),
+        "approved set".to_owned(),
+    ] {
+        assert!(
+            message.contains(&needle),
+            "the refusal teaches `{needle}`: {message}"
+        );
+    }
+}
+
+#[then("the gmail vault path received zero requests")]
+async fn demo_gmail_vault_untouched(w: &mut GatewayWorld) {
+    let hits = w.vault_harness().vault.hits.lock().unwrap().clone();
+    assert!(
+        hits.iter().all(|path| !path.contains("gmail")),
+        "the gmail secret never woke: {hits:?}"
+    );
+}
+
+#[then(expr = "the {string} upstream received zero requests")]
+async fn demo_upstream_untouched(w: &mut GatewayWorld, server: String) {
+    assert!(
+        w.vault_harness().wires[&server]
+            .requests
+            .lock()
+            .unwrap()
+            .is_empty(),
+        "no request may reach `{server}`"
+    );
+}
+
+#[then(expr = "the {string} gamma and the journal each gain one {string} refusal")]
+async fn demo_one_refusal_each(w: &mut GatewayWorld, context: String, reason: String) {
+    let count = |entries: Vec<EntryView>| {
+        entries
+            .iter()
+            .filter(|entry| {
+                entry.kind == "action"
+                    && entry.target.as_deref() == Some("x.gateway")
+                    && payload_str(entry, "reason") == Some(reason.as_str())
+            })
+            .count()
+    };
+    assert_eq!(count(w.ctx_gamma(&context)), 1, "one in the context");
+    assert_eq!(count(w.journal_gamma()), 1, "one in the journal");
+}
+
+#[then("the call succeeds")]
+async fn demo_call_succeeds(w: &mut GatewayWorld) {
+    let response = w.last_response.as_ref().expect("a response");
+    assert!(
+        response.get("error").is_none() && response.get("result").is_some(),
+        "the call went through: {response}"
+    );
+}
+
+#[then(
+    expr = "the {string} upstream saw exactly one call under raw name {string} bearing its vault token"
+)]
+async fn demo_upstream_one_raw_call(w: &mut GatewayWorld, server: String, raw: String) {
+    let wire = w.vault_harness().wires[&server].clone();
+    let requests = wire.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 1, "exactly one call reached `{server}`");
+    assert_eq!(
+        requests[0].pointer("/params/name").and_then(Value::as_str),
+        Some(raw.as_str()),
+        "the raw upstream name is restored"
+    );
+    let expected = format!("Bearer {}", w.demo_bearers[&server]);
+    let auths = wire.auths.lock().unwrap().clone();
+    assert_eq!(
+        auths,
+        vec![Some(expected)],
+        "the wire carried the vault bearer"
+    );
+}
+
+#[then("the call is refused as a bound violation naming the approved slots")]
+async fn demo_refused_naming_slots(w: &mut GatewayWorld) {
+    let response = w.last_response.as_ref().expect("a response");
+    let message = response["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("bound violated"),
+        "a bound refusal: {message}"
+    );
+    for needle in ["tuesday", "thursday", "14:00", "18:00"] {
+        assert!(
+            message.contains(needle),
+            "the slots are named (`{needle}`): {message}"
+        );
+    }
+}
+
+#[then("the answer carries the DPE directive verbatim")]
+async fn demo_answer_dpe(w: &mut GatewayWorld) {
+    let directive = w.demo_directive.clone().expect("a circle directive");
+    let text = w.last_result_text();
+    assert!(
+        text.contains(&directive),
+        "the exact owner text is served: {text}"
+    );
+}
+
+#[then("no agent-facing response contains the owner-only note")]
+async fn demo_no_note_leak(w: &mut GatewayWorld) {
+    let note = w.demo_note.clone().expect("an owner-only note");
+    let mut texts: Vec<String> = w.agent_responses.iter().map(ToString::to_string).collect();
+    if let Some(vault) = &w.vault {
+        texts.extend(vault.responses.iter().map(ToString::to_string));
+    }
+    assert!(!texts.is_empty(), "responses captured");
+    assert!(
+        !texts.join("\n").contains(&note),
+        "the self zone never reaches the agent"
+    );
+}
+
+#[then(expr = "the {string} gamma gains one briefing read entry")]
+async fn demo_one_briefing_read(w: &mut GatewayWorld, context: String) {
+    let reads = w
+        .ctx_gamma(&context)
+        .iter()
+        .filter(|entry| entry.kind == "ethos.read")
+        .count();
+    assert_eq!(reads, 1, "the briefing read is on the record");
+}
+
+#[when(expr = "the owner appends {string} to the circle directive")]
+async fn demo_owner_appends(w: &mut GatewayWorld, appended: String) {
+    let master = w.master();
+    let old = w.demo_directive.clone().expect("a circle directive");
+    let text = format!("{old} {appended}");
+    let store = w.ctx_stores.get("ventes").expect("ventes store").clone();
+    let ent = w.briefing_owner_ent.as_mut().expect("owner entropy");
+    owner_set_briefing(
+        &master,
+        "ventes",
+        "circle",
+        "Consigne commerciale",
+        &text,
+        store,
+        T0,
+        ent,
+    )
+    .expect("owner append lands");
+    w.briefing_rewritten = Some(appended);
+}
+
+#[then("the answer carries the appended directive verbatim")]
+async fn demo_answer_appended(w: &mut GatewayWorld) {
+    let appended = w.briefing_rewritten.clone().expect("an appended sentence");
+    let text = w.last_result_text();
+    assert!(text.contains(&appended), "the hot edit is served: {text}");
+}
+
+#[then(expr = "both reads are journalized in the {string} gamma")]
+async fn demo_both_reads_journalized(w: &mut GatewayWorld, context: String) {
+    let reads = w
+        .ctx_gamma(&context)
+        .iter()
+        .filter(|entry| entry.kind == "ethos.read")
+        .count();
+    assert_eq!(reads, 2, "one journalized read per briefing call");
+}
+
+#[given("the agent has walked beats 2 through 7")]
+async fn demo_walk_beats(w: &mut GatewayWorld) {
+    provision_pending_world(w).await;
+    // Beat 2 — the data comes from notion.
+    w.call("notion__query_database", json!({ "arguments": {} }))
+        .await;
+    // Beat 3 — the wall that teaches.
+    let all = w.demo_prospects.clone();
+    demo_send(w, all).await;
+    // Beat 4 — the corrected send.
+    let three = w.demo_prospects[..3].to_vec();
+    demo_send(w, three).await;
+    // Beat 5 — outside then inside the slots.
+    demo_book(w, "2026-07-15T10:00:00+02:00").await;
+    demo_book(w, "2026-07-16T15:00:00+02:00").await;
+    // Beat 6 — the briefing.
+    briefing_call(w, json!({})).await;
+    // Beat 7 — the hot edit, then the next read.
+    demo_owner_appends(w, "Joindre le lien du dossier de visite.".to_owned()).await;
+    briefing_call(w, json!({})).await;
+}
+
+#[when(expr = "the auditor exports the {string} context with the auditor mandate")]
+async fn demo_auditor_exports(w: &mut GatewayWorld, context: String) {
+    let seed_hex = w.demo_auditor_seed.clone().expect("an auditor seed");
+    let seed: [u8; 32] = hex_to_seed(&seed_hex);
+    let store = w.ctx_stores.get(&context).expect("context store").clone();
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Arc::new(Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32()));
+    let bridge = Bridge::open(store, keyholder, Box::new(SeqEntropy::default()))
+        .expect("auditor-side bridge opens");
+    // One scoped query per granted kind — anything wider stays refused
+    // by the certificate half; the merged document is the demo's replay.
+    let acts: Value = serde_json::from_str(
+        &bridge
+            .export_audit(&seed, Some("action"), T0)
+            .expect("the act slice exports"),
+    )
+    .expect("valid act export");
+    let reads: Value = serde_json::from_str(
+        &bridge
+            .export_audit(&seed, Some("ethos.read"), T0)
+            .expect("the read slice exports"),
+    )
+    .expect("valid read export");
+    w.audit_export = Some(json!({ "acts": acts, "reads": reads }).to_string());
+}
+
+fn hex_to_seed(hex_str: &str) -> [u8; 32] {
+    let bytes = (0..hex_str.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex_str[i..i + 2], 16).expect("hex"))
+        .collect::<Vec<_>>();
+    bytes.try_into().expect("32 bytes")
+}
+
+#[then("the export carries the notion act, the gmail act and the calendar act")]
+async fn demo_export_carries_acts(w: &mut GatewayWorld) {
+    let export: Value =
+        serde_json::from_str(w.audit_export.as_deref().expect("an export")).expect("valid JSON");
+    let entries = export["acts"]["entries"].as_array().expect("act entries");
+    for target in ["x.notion", "x.gmail", "x.calendar"] {
+        assert!(
+            entries.iter().any(|entry| entry["target"] == target),
+            "the `{target}` act is exported"
+        );
+    }
+}
+
+#[then(expr = "the export carries the {string} refusals naming {string} and {string}")]
+async fn demo_export_carries_refusals(
+    w: &mut GatewayWorld,
+    reason: String,
+    first: String,
+    second: String,
+) {
+    let export: Value =
+        serde_json::from_str(w.audit_export.as_deref().expect("an export")).expect("valid JSON");
+    let entries = export["acts"]["entries"].as_array().expect("act entries");
+    let refusal_details: Vec<&str> = entries
+        .iter()
+        .filter(|entry| entry["payload"]["reason"] == reason.as_str())
+        .filter_map(|entry| entry["payload"]["detail"].as_str())
+        .collect();
+    assert_eq!(refusal_details.len(), 2, "the two refusals are exported");
+    for field in [first, second] {
+        assert!(
+            refusal_details
+                .iter()
+                .any(|detail| detail.contains(&format!(".{field}"))),
+            "one refusal detail names `{field}`: {refusal_details:?}"
+        );
+    }
+}
+
+#[then("the export carries the briefing read entries")]
+async fn demo_export_carries_reads(w: &mut GatewayWorld) {
+    let export: Value =
+        serde_json::from_str(w.audit_export.as_deref().expect("an export")).expect("valid JSON");
+    let reads = export["reads"]["entries"].as_array().expect("read entries");
+    assert_eq!(
+        reads.len(),
+        2,
+        "both journalized briefing reads are in the auditor's slice"
+    );
+    assert!(reads.iter().all(|entry| entry["kind"] == "ethos.read"));
+}
+
+#[then("no file of any Ethos store contains any vault token or upstream secret")]
+async fn demo_stores_leak_free(w: &mut GatewayWorld) {
+    let mut needles: Vec<String> = w.demo_bearers.values().cloned().collect();
+    needles.push(w.vault_harness().vault_token.clone());
+    let roots = w.vault_harness().store_roots.clone();
+    for root in roots {
+        for needle in &needles {
+            files_exclude(&root, needle);
+        }
+    }
+}
+
+#[then("the gateway config text contains references only")]
+async fn demo_config_references_only(w: &mut GatewayWorld) {
+    let harness = w.vault_harness();
+    assert!(
+        harness.config_text.contains("aithos/mcp/gmail"),
+        "the reference is declared"
+    );
+    for bearer in w.demo_bearers.values() {
+        assert!(
+            !harness.config_text.contains(bearer),
+            "no wire bearer in the config"
+        );
+    }
+    assert!(
+        !harness.config_text.contains(&harness.vault_token),
+        "no vault access token in the config"
     );
 }
 
