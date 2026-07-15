@@ -596,7 +596,7 @@ fn validate_hub(
 }
 
 fn is_reserved_server(name: &str) -> bool {
-    matches!(name, "journal" | "gateway")
+    matches!(name, "journal" | "gateway" | "briefing")
 }
 
 /// The declared brokers: names follow the server-id charset, addresses
@@ -753,11 +753,12 @@ fn validate_store(store: &StoreConfig, at: &str) -> Result<()> {
     Ok(())
 }
 
-/// The tool-name prefix reserved for the gateway's own journal tools
-/// (lot C2, mirrors HUB-MCP §5): no tool map may name a tool `journal`,
-/// `journal.*` or `journal__*` — the name belongs to the platform, in
-/// the mono shape too.
-const RESERVED_PREFIX: &str = "journal";
+/// The tool-name prefixes reserved for the gateway's own native tools
+/// (`journal` since lot C2, `briefing` since lot K; mirrors HUB-MCP §5):
+/// no tool map may name a tool `<prefix>`, `<prefix>.*` or
+/// `<prefix>__*` — the names belong to the platform, in the mono shape
+/// too.
+const RESERVED_PREFIXES: [&str; 2] = ["journal", "briefing"];
 
 /// Register a tool map into the shared flattened-action namespace.
 /// Mandate actions flatten dots to underscores; two tools that flatten
@@ -774,14 +775,16 @@ fn validate_tools(
                 "empty tool name in `tools`".into(),
             ));
         }
-        if tool == RESERVED_PREFIX
-            || tool.starts_with(&format!("{RESERVED_PREFIX}."))
-            || tool.starts_with(&format!("{RESERVED_PREFIX}__"))
-        {
-            return Err(GatewayError::ConfigRejected(format!(
-                "tool `{tool}`: the `{RESERVED_PREFIX}` prefix is reserved for the \
-                 gateway's native journal tools"
-            )));
+        for reserved in RESERVED_PREFIXES {
+            if tool == reserved
+                || tool.starts_with(&format!("{reserved}."))
+                || tool.starts_with(&format!("{reserved}__"))
+            {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "tool `{tool}`: the `{reserved}` prefix is reserved for the \
+                     gateway's native tools"
+                )));
+            }
         }
         let shown = if prefix.is_empty() {
             tool.clone()
@@ -1010,6 +1013,29 @@ journal:
     }
 
     #[test]
+    fn reserved_briefing_prefix_is_rejected_in_every_tool_map() {
+        // Lot K: `briefing` joins `journal` in the platform namespace.
+        for reserved in ["briefing.read: read", "briefing: read", "briefing__x: read"] {
+            let text = MULTI.replace("figma.read: read", reserved);
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&text),
+                    Err(GatewayError::ConfigRejected(m)) if m.contains("reserved")
+                ),
+                "must reserve: {reserved}"
+            );
+        }
+        let mono = format!("{GOOD}  briefing.read: read\n");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&mono),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("reserved")
+        ));
+        // `briefings.read` shares letters, not the reserved namespace.
+        let neighbour = MULTI.replace("figma.read: read", "briefings.read: read");
+        assert!(GatewayConfig::from_yaml(&neighbour).is_ok());
+    }
+
+    #[test]
     fn duplicate_context_names_are_rejected() {
         let text = MULTI.replace("name: ui-designer", "name: company-brand");
         assert!(matches!(
@@ -1158,7 +1184,7 @@ journal:
 
     #[test]
     fn reserved_and_duplicate_server_names_are_rejected() {
-        for name in ["journal", "gateway"] {
+        for name in ["journal", "gateway", "briefing"] {
             let text = HUB.replace("name: github", &format!("name: {name}"));
             assert!(matches!(
                 GatewayConfig::from_yaml(&text),

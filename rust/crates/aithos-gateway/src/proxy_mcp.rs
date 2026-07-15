@@ -55,6 +55,12 @@ pub const METHOD_NOT_FOUND_CODE: i64 = -32601;
 /// reserved at config time so no context tool can ever shadow them.
 pub const JOURNAL_WRITE: &str = "journal.write";
 pub const JOURNAL_SEARCH: &str = "journal.search";
+/// The native briefing tool (lot K): the owner's directives, served by
+/// the hub itself from the public+circle zones of the granted contexts
+/// (`self` never). Conditional surface: it is listed — and `initialize`
+/// recommends it — only while a granted zone has something to say. The
+/// `briefing` prefix is reserved at config time like `journal`.
+pub const BRIEFING_READ: &str = "briefing.read";
 /// `journal.search` result cap: the default page, and the hard ceiling
 /// a caller-supplied `limit` may not exceed (each opened hit is one
 /// journalized read — the cap bounds the gamma cost of one recall).
@@ -338,27 +344,48 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
 
     match method.as_str() {
         "tools/call" => tool_call_multi(rt, msg).await,
-        "initialize" => json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": {
+        "initialize" => {
+            // The static minimal result, plus the briefing instructions
+            // WHEN a granted zone has directives (lot K, decision n°5).
+            // Recomputed per call on purpose: an owner edit or a first
+            // directive flips the surface with no restart.
+            let mut result = json!({
                 "protocolVersion": MCP_PROTOCOL_VERSION,
                 "capabilities": { "tools": {} },
                 "serverInfo": {
                     "name": "aithos-gateway",
                     "version": env!("CARGO_PKG_VERSION"),
                 }
+            });
+            if rt.runner.lock().await.briefing_available() {
+                result["instructions"] = Value::String(
+                    "The owner left directives for this agent: call `briefing.read` \
+                     FIRST, before any outbound action, and follow what it says."
+                        .to_owned(),
+                );
             }
-        }),
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": result
+            })
+        }
         "tools/list" => {
             // Names only, aggregated from the declared maps (read AND
             // write: refusals must name the tool precisely). Schemas are
             // not proxied in v1 — the open object is the honest minimum.
             // The NATIVE journal tools close the list with their REAL
             // schemas: the gateway serves them itself, so it pins what
-            // it governs (the hub decision, applied at home first).
-            let mut tools = rt.runner.lock().await.listed_tools();
+            // it governs (the hub decision, applied at home first). The
+            // briefing tool joins them only while there is something to
+            // brief (conditional surface, lot K).
+            let runner = rt.runner.lock().await;
+            let mut tools = runner.listed_tools();
             tools.extend(native_journal_tools());
+            if runner.briefing_available() {
+                tools.push(briefing_tool());
+            }
+            drop(runner);
             json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -414,6 +441,28 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Valu
     // identifiable for a native tool, so the journal alone records them.
     if tool == JOURNAL_WRITE || tool == JOURNAL_SEARCH {
         return match journal_dispatch(&mut runner, &tool, &args, &now) {
+            Ok(text) => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "content": [{ "type": "text", "text": text }],
+                    "isError": false
+                }
+            }),
+            Err(deny) => {
+                runner.record_refusal(None, &tool, deny.refusal_code(), &now);
+                error_response(id, &deny)
+            }
+        };
+    }
+
+    // The native briefing tool (lot K), served HERE, never relayed: the
+    // owner's directives from the granted public+circle zones, every
+    // served section a journalized read in ITS context's gamma. The
+    // reads live in the context (that is the record the demo sells);
+    // the refusals follow §3bis.8 journal-only, like every native tool.
+    if tool == BRIEFING_READ {
+        return match briefing_dispatch(&mut runner, &args, &now) {
             Ok(text) => json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -596,6 +645,53 @@ fn native_journal_tools() -> Vec<Value> {
             }
         }),
     ]
+}
+
+/// The native briefing tool's MCP descriptor (lot K): REAL argument
+/// schema, unknown fields pinned closed, and a description that tells
+/// the agent to consult it BEFORE acting — the tool description and the
+/// initialize instructions are the same recommendation, twice.
+fn briefing_tool() -> Value {
+    json!({
+        "name": BRIEFING_READ,
+        "description": "The owner's standing directives for this agent. \
+                        Consult it FIRST, before acting — especially before \
+                        any outbound action — and follow what it says. \
+                        Directives are labeled by context and zone; every \
+                        read is on the record.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "context": { "type": "string" }
+            },
+            "additionalProperties": false
+        }
+    })
+}
+
+/// Validate and run one `briefing.read` against the runner's contexts.
+/// Argument parsing is fail-closed (unknown fields, wrong types refuse
+/// naming the field); the bridges then enforce the pen and journalize
+/// every served section.
+fn briefing_dispatch(runner: &mut Runner, args: &Value, now: &str) -> Result<String> {
+    let obj = args
+        .as_object()
+        .ok_or_else(|| bad_args(BRIEFING_READ, "arguments must be an object"))?;
+    for key in obj.keys() {
+        if key != "context" {
+            return Err(bad_args(BRIEFING_READ, &format!("unknown field `{key}`")));
+        }
+    }
+    let context = match obj.get("context") {
+        None => None,
+        Some(Value::String(s)) if !s.trim().is_empty() => Some(s.as_str()),
+        Some(Value::String(_)) => {
+            return Err(bad_args(BRIEFING_READ, "`context` must not be empty"))
+        }
+        Some(_) => return Err(bad_args(BRIEFING_READ, "`context` must be a string")),
+    };
+    let briefing = runner.briefing_read(context, now)?;
+    serde_json::to_string(&briefing).map_err(|e| GatewayError::BridgeFailed(e.to_string()))
 }
 
 /// One rejected argument shape — the reason names the field precisely.

@@ -22,10 +22,11 @@ use tokio::sync::Mutex;
 use aithos_gateway::config::{GatewayConfig, ToolAccess, ToolMap};
 use aithos_gateway::core_bridge::{
     agent_pub_multibase, cert_constraints, cert_grantee_pub, cert_perimeter, gamma_view,
-    gateway_pub_multibase, journal_notes_view, owner_enroll_server, owner_grant_context,
-    owner_init_context, owner_init_journal, owner_read_hub_manifest, owner_read_journal_note,
-    owner_reenroll_server, Bridge, ContextRuntime, EntropySource, EntryView, EquipOutcome,
-    MandateWindow, OnboardOutcome, RawStore, ReenrollOutcome, Runner, SeqEntropy, STATE_PATH,
+    gateway_pub_multibase, journal_notes_view, owner_enroll_server, owner_grant_briefing,
+    owner_grant_context, owner_init_context, owner_init_journal, owner_read_hub_manifest,
+    owner_read_journal_note, owner_reenroll_server, owner_set_briefing, Bridge, ContextRuntime,
+    EntropySource, EntryView, EquipOutcome, MandateWindow, OnboardOutcome, RawStore,
+    ReenrollOutcome, Runner, SeqEntropy, STATE_PATH,
 };
 use aithos_gateway::hub::{
     approve_manifest, discover_server, ApprovedManifest, ArgumentBound, ToolApproval,
@@ -34,8 +35,8 @@ use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
 use aithos_gateway::proxy_mcp::{
-    process, process_multi, refresh_server_manifest, McpProxy, McpRouter, Upstream, JOURNAL_SEARCH,
-    JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
+    process, process_multi, refresh_server_manifest, McpProxy, McpRouter, Upstream, BRIEFING_READ,
+    JOURNAL_SEARCH, JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
 };
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::{GatewayError, Result};
@@ -154,6 +155,7 @@ fn context_tools(label: &str) -> (String, String) {
     match label {
         "company-brand" => ("brand.read".into(), "brand.update".into()),
         "ui-designer" => ("figma.read".into(), "figma.update".into()),
+        "ventes" => ("crm.read".into(), "crm.update".into()),
         other => panic!("unknown context label in the harness: {other}"),
     }
 }
@@ -224,6 +226,17 @@ struct GatewayWorld {
     /// Bounds scenarios (lot P): the exact arguments of the last bounded
     /// call, for the arguments-unmodified assertion.
     last_args: Option<Value>,
+    /// Briefing scenarios (lot K): directives declared before the world
+    /// opens — (context, zone, title, text) — the granted pen per
+    /// context, the last initialize answer, every agent-facing response
+    /// of the scenario (the self-zone leak assertion sweeps them all),
+    /// and the owner entropy kept alive for hot edits.
+    briefing_pending: Vec<(String, String, String, String)>,
+    briefing_mandates: BTreeMap<String, String>,
+    briefing_rewritten: Option<String>,
+    last_init: Option<Value>,
+    agent_responses: Vec<Value>,
+    briefing_owner_ent: Option<SeqEntropy>,
 }
 
 impl GatewayWorld {
@@ -269,6 +282,12 @@ impl GatewayWorld {
             grants_label: None,
             grants_roots: None,
             last_args: None,
+            briefing_pending: Vec::new(),
+            briefing_mandates: BTreeMap::new(),
+            briefing_rewritten: None,
+            last_init: None,
+            agent_responses: Vec::new(),
+            briefing_owner_ent: None,
         }
     }
 
@@ -337,6 +356,7 @@ impl GatewayWorld {
         if let Some(vault) = &mut self.vault {
             vault.responses.push(response.clone());
         }
+        self.agent_responses.push(response.clone());
         self.last_response = Some(response);
     }
 
@@ -3273,13 +3293,16 @@ async fn vault_consulted_after_log(w: &mut GatewayWorld) {
 }
 
 #[then(expr = "no agent-facing response contains {string}")]
-async fn vault_no_response_contains(w: &mut GatewayWorld, needle: String) {
+async fn no_agent_response_contains(w: &mut GatewayWorld, needle: String) {
+    // Whatever world answered — vault harness or plain router — every
+    // agent-facing response of the scenario is swept.
+    let mut texts: Vec<String> = w.agent_responses.iter().map(ToString::to_string).collect();
+    if let Some(vault) = &w.vault {
+        texts.extend(vault.responses.iter().map(ToString::to_string));
+    }
+    assert!(!texts.is_empty(), "responses captured");
     assert!(
-        !w.vault_harness().responses.is_empty(),
-        "responses captured"
-    );
-    assert!(
-        !w.vault_agent_text().contains(&needle),
+        !texts.join("\n").contains(&needle),
         "an agent-facing response leaked `{needle}`"
     );
 }
@@ -4050,6 +4073,446 @@ const BOUNDS_APPROVED: [&str; 3] = [
     "prospect-b@clients.example",
     "prospect-c@clients.example",
 ];
+
+// ------------------------------------------------ briefing world (lot K)
+//
+// The smallest world the briefing scenarios need: one legacy context
+// ("ventes") granted to the runner's key, the briefing pen on top, the
+// directives declared by the Givens written owner-side BEFORE the
+// bridges open, a journal, and the plain multi-context router. No hub,
+// no vault, no sockets — the briefing is the gateway's own surface.
+
+/// The default directive of the count-only Given ("holds a directive").
+const BRIEFING_DEFAULT_DIRECTIVE: &str = "Toujours confirmer le créneau par écrit.";
+
+async fn provision_briefing_world(w: &mut GatewayWorld) {
+    if w.router.is_some() || w.vault.is_some() || w.proxy.is_some() {
+        return;
+    }
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let window = GatewayWorld::window();
+    let mut owner_ent = SeqEntropy::default();
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Arc::new(Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32()));
+
+    let mut labels: std::collections::BTreeSet<String> =
+        w.briefing_pending.iter().map(|d| d.0.clone()).collect();
+    labels.insert("ventes".to_owned());
+
+    let mut contexts = BTreeMap::new();
+    for label in labels {
+        let (read, write) = context_tools(&label);
+        let store = GatewayStore::in_memory();
+        owner_init_context(&master, &label, store.clone(), T0, &mut owner_ent)
+            .expect("briefing context created");
+        owner_grant_context(
+            &master,
+            &label,
+            &agent_pub,
+            &gateway_pub,
+            std::slice::from_ref(&read),
+            store.clone(),
+            &window,
+            T0,
+            &mut owner_ent,
+        )
+        .expect("briefing context granted");
+        let pen = owner_grant_briefing(
+            &master,
+            &label,
+            &agent_pub,
+            store.clone(),
+            &window,
+            T0,
+            &mut owner_ent,
+        )
+        .expect("briefing pen granted");
+        w.briefing_mandates.insert(label.clone(), pen);
+        for (ctx, zone, title, text) in w.briefing_pending.clone() {
+            if ctx == label {
+                owner_set_briefing(
+                    &master,
+                    &label,
+                    &zone,
+                    &title,
+                    &text,
+                    store.clone(),
+                    T0,
+                    &mut owner_ent,
+                )
+                .expect("directive written owner-side");
+            }
+        }
+        let bridge = Bridge::open(
+            store.clone(),
+            Arc::clone(&keyholder),
+            Box::new(SeqEntropy::default()),
+        )
+        .expect("briefing context bridge opens");
+        let mut tools = ToolMap::new();
+        tools.insert(read, ToolAccess::Read);
+        tools.insert(write, ToolAccess::Write);
+        w.ctx_stores.insert(label.clone(), store);
+        w.multi_upstreams.insert(
+            label.clone(),
+            FakeMcp::with_text(&format!("{label}-answer")),
+        );
+        contexts.insert(
+            label,
+            ContextRuntime {
+                policy: Policy::new(tools),
+                bridge,
+            },
+        );
+    }
+
+    let journal_store = GatewayStore::in_memory();
+    owner_init_journal(
+        &master,
+        "lea",
+        &agent_pub,
+        &gateway_pub,
+        None,
+        journal_store.clone(),
+        &window,
+        T0,
+        &mut owner_ent,
+    )
+    .expect("briefing journal created");
+    let journal = Bridge::open(
+        journal_store.clone(),
+        keyholder,
+        Box::new(SeqEntropy::default()),
+    )
+    .expect("briefing journal bridge opens");
+    w.journal_store = Some(journal_store);
+    w.briefing_owner_ent = Some(owner_ent);
+    w.router = Some(Arc::new(McpRouter {
+        runner: Arc::new(Mutex::new(Runner::from_parts(contexts, journal))),
+        upstreams: w.multi_upstreams.clone(),
+        clock: Arc::new(|| T0.to_owned()),
+    }));
+}
+
+impl GatewayWorld {
+    /// One agent-facing request through whichever world is live, the
+    /// answer recorded like every other (the self-zone leak assertion
+    /// sweeps `agent_responses`).
+    async fn agent_request(&mut self, body: Value) -> Value {
+        let response = if let Some(vault) = &self.vault {
+            process_multi(&vault.router, body).await
+        } else if let Some(router) = &self.router {
+            process_multi(router, body).await
+        } else {
+            process(self.proxy(), body).await
+        };
+        if let Some(vault) = &mut self.vault {
+            vault.responses.push(response.clone());
+        }
+        self.agent_responses.push(response.clone());
+        response
+    }
+
+    /// The directive texts declared for one zone of one context.
+    fn briefing_texts(&self, zone: &str) -> Vec<String> {
+        self.briefing_pending
+            .iter()
+            .filter(|(_, z, _, _)| z == zone)
+            .map(|(_, _, _, text)| text.clone())
+            .collect()
+    }
+}
+
+async fn briefing_call(w: &mut GatewayWorld, args: Value) {
+    provision_briefing_world(w).await;
+    w.last_tool = BRIEFING_READ.to_owned();
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 61,
+        "method": "tools/call",
+        "params": { "name": BRIEFING_READ, "arguments": args }
+    });
+    let response = w.agent_request(body).await;
+    w.last_response = Some(response);
+}
+
+#[given(expr = "the {string} context circle zone holds the directive {string}")]
+async fn briefing_circle_directive(w: &mut GatewayWorld, context: String, text: String) {
+    w.briefing_pending
+        .push((context, "circle".into(), "Consigne".into(), text));
+}
+
+#[given(expr = "the {string} context public zone holds the directive {string}")]
+async fn briefing_public_directive(w: &mut GatewayWorld, context: String, text: String) {
+    w.briefing_pending
+        .push((context, "public".into(), "Consigne".into(), text));
+}
+
+#[given(expr = "the {string} context self zone holds the note {string}")]
+async fn briefing_self_note(w: &mut GatewayWorld, context: String, text: String) {
+    w.briefing_pending
+        .push((context, "self".into(), "Note owner".into(), text));
+}
+
+#[given(expr = "the {string} context circle zone holds a directive")]
+async fn briefing_some_directive(w: &mut GatewayWorld, context: String) {
+    w.briefing_pending.push((
+        context,
+        "circle".into(),
+        "Consigne".into(),
+        BRIEFING_DEFAULT_DIRECTIVE.into(),
+    ));
+}
+
+#[given("no granted zone of any context holds a directive")]
+async fn briefing_nothing_declared(w: &mut GatewayWorld) {
+    assert!(
+        w.briefing_pending.is_empty(),
+        "the mute-surface scenario starts empty"
+    );
+}
+
+#[given("the agent has no write right on any briefing zone")]
+async fn briefing_no_write_right(_w: &mut GatewayWorld) {
+    // Structural in v1: the gateway exposes no briefing write tool and
+    // the briefing pen carries the Read verb only — nothing to doctor.
+}
+
+#[given("the agent has read the briefing once")]
+async fn briefing_read_once(w: &mut GatewayWorld) {
+    briefing_call(w, json!({})).await;
+    let text = w.last_result_text();
+    assert!(
+        !text.is_empty(),
+        "the first read serves the directive before the edit"
+    );
+}
+
+#[when("the agent initializes and lists the tools")]
+async fn briefing_init_and_list(w: &mut GatewayWorld) {
+    provision_briefing_world(w).await;
+    let init = w
+        .agent_request(json!({ "jsonrpc": "2.0", "id": 60, "method": "initialize" }))
+        .await;
+    w.last_init = Some(init);
+    let list = w
+        .agent_request(json!({ "jsonrpc": "2.0", "id": 62, "method": "tools/list" }))
+        .await;
+    w.last_list = Some(list);
+}
+
+#[when(expr = "the agent calls {string}")]
+async fn briefing_agent_calls(w: &mut GatewayWorld, tool: String) {
+    assert_eq!(tool, BRIEFING_READ, "the bare call step serves briefing");
+    briefing_call(w, json!({})).await;
+}
+
+#[when(expr = "the agent calls {string} twice")]
+async fn briefing_agent_calls_twice(w: &mut GatewayWorld, tool: String) {
+    assert_eq!(tool, BRIEFING_READ);
+    briefing_call(w, json!({})).await;
+    briefing_call(w, json!({})).await;
+}
+
+#[when(expr = "the agent calls {string} again")]
+async fn briefing_agent_calls_again(w: &mut GatewayWorld, tool: String) {
+    assert_eq!(tool, BRIEFING_READ);
+    briefing_call(w, json!({})).await;
+}
+
+#[when(expr = "the agent calls {string} with an unknown argument field")]
+async fn briefing_agent_calls_unknown_field(w: &mut GatewayWorld, tool: String) {
+    assert_eq!(tool, BRIEFING_READ);
+    briefing_call(w, json!({ "audience": "everyone" })).await;
+}
+
+#[when(expr = "the owner rewrites the directive to {string}")]
+async fn briefing_owner_rewrites(w: &mut GatewayWorld, text: String) {
+    let master = w.master();
+    let store = w.ctx_stores.get("ventes").expect("ventes store").clone();
+    let ent = w.briefing_owner_ent.as_mut().expect("owner entropy");
+    owner_set_briefing(
+        &master, "ventes", "circle", "Consigne", &text, store, T0, ent,
+    )
+    .expect("owner rewrite lands");
+    w.briefing_rewritten = Some(text);
+}
+
+#[then(
+    expr = "the initialize result carries instructions recommending {string} before outbound actions"
+)]
+async fn briefing_init_recommends(w: &mut GatewayWorld, tool: String) {
+    let init = w.last_init.as_ref().expect("an initialize answer");
+    let instructions = init
+        .pointer("/result/instructions")
+        .and_then(Value::as_str)
+        .expect("initialize carries instructions");
+    assert!(
+        instructions.contains(&tool),
+        "the instructions name the tool: {instructions}"
+    );
+    assert!(
+        instructions.contains("before") && instructions.contains("outbound"),
+        "the instructions say to look before outbound actions: {instructions}"
+    );
+}
+
+#[then("the initialize result carries no instructions")]
+async fn briefing_init_mute(w: &mut GatewayWorld) {
+    let init = w.last_init.as_ref().expect("an initialize answer");
+    assert!(
+        init.pointer("/result/instructions").is_none(),
+        "a mute surface recommends nothing"
+    );
+}
+
+#[then(
+    expr = "the list includes {string} with a description that says to consult it before acting"
+)]
+async fn briefing_listed_with_description(w: &mut GatewayWorld, tool: String) {
+    let listed = w.listed_tools();
+    let descriptor = listed
+        .iter()
+        .find(|t| t["name"] == tool.as_str())
+        .expect("the briefing tool is listed");
+    let description = descriptor["description"].as_str().expect("a description");
+    assert!(
+        description.to_lowercase().contains("consult") && description.contains("before acting"),
+        "the description says to consult it before acting: {description}"
+    );
+}
+
+#[then(expr = "the answer carries both directives verbatim under the {string} label")]
+async fn briefing_answer_both_directives(w: &mut GatewayWorld, context: String) {
+    let text = w.last_result_text();
+    assert!(text.contains(&context), "the context label rides along");
+    for directive in [w.briefing_texts("public"), w.briefing_texts("circle")].concat() {
+        assert!(
+            text.contains(&directive),
+            "the exact owner text is served: {directive}"
+        );
+    }
+}
+
+#[then("the answer names the zone of each directive")]
+async fn briefing_answer_names_zones(w: &mut GatewayWorld) {
+    let text = w.last_result_text();
+    for zone in ["public", "circle"] {
+        if !w.briefing_texts(zone).is_empty() {
+            assert!(text.contains(zone), "the `{zone}` zone is named");
+        }
+    }
+}
+
+#[then("the answer carries the circle directive")]
+async fn briefing_answer_circle(w: &mut GatewayWorld) {
+    let text = w.last_result_text();
+    for directive in w.briefing_texts("circle") {
+        assert!(text.contains(&directive), "the circle directive is served");
+    }
+}
+
+#[then(expr = "the {string} context gamma gains exactly two read entries for the briefing")]
+async fn briefing_two_reads_journalized(w: &mut GatewayWorld, context: String) {
+    let reads: Vec<EntryView> = w
+        .ctx_gamma(&context)
+        .into_iter()
+        .filter(|e| e.kind == "ethos.read")
+        .collect();
+    assert_eq!(reads.len(), 2, "one journalized read per served section");
+}
+
+#[then("each entry is covered by the agent's read mandate")]
+async fn briefing_reads_covered(w: &mut GatewayWorld) {
+    let pen = w.briefing_mandates.get("ventes").expect("briefing pen");
+    let reads: Vec<EntryView> = w
+        .ctx_gamma("ventes")
+        .into_iter()
+        .filter(|e| e.kind == "ethos.read")
+        .collect();
+    assert!(!reads.is_empty(), "there are journalized reads to check");
+    for entry in reads {
+        assert_eq!(
+            entry.authorized_via.as_deref(),
+            Some(std::slice::from_ref(pen)),
+            "the read rides the briefing pen"
+        );
+    }
+}
+
+#[then(expr = "the answer carries the rewritten directive verbatim")]
+async fn briefing_answer_rewritten(w: &mut GatewayWorld) {
+    let rewritten = w.briefing_rewritten.clone().expect("a rewrite happened");
+    let text = w.last_result_text();
+    assert!(
+        text.contains(&rewritten),
+        "the rewritten directive is served: {text}"
+    );
+}
+
+#[then("the previous wording appears nowhere in the answer")]
+async fn briefing_old_wording_gone(w: &mut GatewayWorld) {
+    let text = w.last_result_text();
+    let old = w
+        .briefing_texts("circle")
+        .first()
+        .cloned()
+        .expect("the original directive");
+    assert!(!text.contains(&old), "the pre-edit wording is gone: {text}");
+}
+
+#[when(expr = "a hub config declares a server or a tool named under the {string} prefix")]
+async fn briefing_reserved_config(w: &mut GatewayWorld, prefix: String) {
+    // One hub shape naming the SERVER after the prefix, one legacy map
+    // naming a TOOL under it — both must die at the config door.
+    let server_shape = format!(
+        "listen: 127.0.0.1:4877\nservers:\n  - name: {prefix}\n    transport: http\n    url: http://127.0.0.1:9/mcp\ncontexts:\n  - name: ventes\n    store: {{ kind: fs, root: /tmp/ventes }}\n    tools:\n      {prefix}__x: {{ server: {prefix}, tool: x, access: read }}\njournal:\n  store: {{ kind: fs, root: /tmp/journal }}\n"
+    );
+    let tool_shape = format!(
+        "listen: 127.0.0.1:4877\ncontexts:\n  - name: ventes\n    upstream_mcp: http://127.0.0.1:9/mcp\n    store: {{ kind: fs, root: /tmp/ventes }}\n    tools:\n      {prefix}.read: read\njournal:\n  store: {{ kind: fs, root: /tmp/journal }}\n"
+    );
+    let mut verdicts = Vec::new();
+    for text in [server_shape, tool_shape] {
+        match GatewayConfig::from_yaml(&text) {
+            Ok(_) => panic!("a `{prefix}`-named surface must be rejected"),
+            Err(e) => {
+                let verdict = e.to_string();
+                assert!(
+                    verdict.contains("reserved"),
+                    "each shape dies for the reservation, not another rule: {verdict}"
+                );
+                verdicts.push(verdict);
+            }
+        }
+    }
+    w.config_error = Some(verdicts.join("\n"));
+}
+
+#[then("the call is refused naming the unknown field")]
+async fn briefing_unknown_field_refused(w: &mut GatewayWorld) {
+    let response = w.last_response.as_ref().expect("a response");
+    assert_eq!(response["error"]["code"], POLICY_DENIED_CODE);
+    let message = response["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("unknown field") && message.contains("audience"),
+        "the refusal names the field: {message}"
+    );
+}
+
+#[then("the refusal is journalized")]
+async fn briefing_refusal_journalized(w: &mut GatewayWorld) {
+    let refusals: Vec<EntryView> = w
+        .journal_gamma()
+        .into_iter()
+        .filter(|e| {
+            e.kind == "action"
+                && e.target.as_deref() == Some("x.gateway")
+                && payload_str(e, "tool") == Some(BRIEFING_READ)
+        })
+        .collect();
+    assert_eq!(refusals.len(), 1, "the journal records the refusal");
+}
 
 fn bounds_server_for(raw_tool: &str) -> &'static str {
     match raw_tool {

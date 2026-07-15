@@ -142,6 +142,41 @@ enum Command {
         #[arg(long)]
         replace: bool,
     },
+    /// OWNER SIDE: grant the briefing pen on an equipped context — the
+    /// read mandate and zone lines on the `briefing/` folders of the
+    /// public and circle zones (lot K). Separate gesture on purpose: one
+    /// pen per usage, revocable independently of the tool grants.
+    OwnerGrantBriefing {
+        #[arg(long)]
+        master_seed_hex: String,
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        agent_pub: String,
+        #[arg(long)]
+        store_root: String,
+        #[arg(long, default_value_t = 30)]
+        ttl_days: u32,
+    },
+    /// OWNER SIDE: write or update one zone's directive (creation on
+    /// first use, in-place rewrite afterwards — served on the very next
+    /// briefing.read, no restart). `self` holds owner-only notes that
+    /// never reach the agent.
+    OwnerSetBriefing {
+        #[arg(long)]
+        master_seed_hex: String,
+        #[arg(long)]
+        label: String,
+        /// Target zone: public | circle | self.
+        #[arg(long)]
+        zone: String,
+        #[arg(long, default_value = "")]
+        title: String,
+        #[arg(long)]
+        text: String,
+        #[arg(long)]
+        store_root: String,
+    },
     /// Initialise the ethos, mint identities, grant the read-only agent
     /// mandate, the gateway governance mandate and the scoped auditor
     /// mandate; print the endpoint to plug into the agent runtime.
@@ -295,6 +330,56 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
             return Ok(());
         }
+        Command::OwnerGrantBriefing {
+            master_seed_hex,
+            label,
+            agent_pub,
+            store_root,
+            ttl_days,
+        } => {
+            let master = decode_master(master_seed_hex)?;
+            let start = now_secs();
+            let mandate = aithos_gateway::core_bridge::owner_grant_briefing(
+                &master,
+                label,
+                agent_pub,
+                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                    root: store_root.into(),
+                })?,
+                &MandateWindow {
+                    not_before: ts(start),
+                    not_after: ts(start + u64::from(*ttl_days) * 86_400),
+                },
+                &ts(start),
+                &mut OsEntropy,
+            )?;
+            println!("briefing_mandate: {mandate}");
+            return Ok(());
+        }
+        Command::OwnerSetBriefing {
+            master_seed_hex,
+            label,
+            zone,
+            title,
+            text,
+            store_root,
+        } => {
+            let master = decode_master(master_seed_hex)?;
+            aithos_gateway::core_bridge::owner_set_briefing(
+                &master,
+                label,
+                zone,
+                title,
+                text,
+                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                    root: store_root.into(),
+                })?,
+                &ts(now_secs()),
+                &mut OsEntropy,
+            )?;
+            println!("briefing_zone: {zone}");
+            return Ok(());
+        }
         Command::OwnerDiscoverServer {
             server,
             url,
@@ -392,6 +477,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         | Command::OwnerInitJournal { .. }
         | Command::OwnerInitContext { .. }
         | Command::OwnerGrantContext { .. }
+        | Command::OwnerGrantBriefing { .. }
+        | Command::OwnerSetBriefing { .. }
         | Command::OwnerDiscoverServer { .. }
         | Command::OwnerEnrollServer { .. } => unreachable!("handled above"),
         Command::Onboard { ttl_days } => {

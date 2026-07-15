@@ -55,6 +55,15 @@ pub const STATE_PATH: &str = "gateway/state.json";
 /// The journal's memory shelf: the circle folder `owner-init-journal`
 /// prepares and the memory pen writes into (lot C2).
 pub const MEMORY_FOLDER: &str = "memory";
+/// The context's briefing shelf (lot K): the owner's directives live as
+/// sections of a `briefing/` folder in the public and circle zones of
+/// the CONTEXT ethos — `self` holds owner-only notes and never reaches
+/// the agent (the briefing pen simply carries no self entry).
+pub const BRIEFING_FOLDER: &str = "briefing";
+/// The one briefing section per zone (v1): `owner-set-briefing` creates
+/// it on first use and rewrites it afterwards — the directive has a
+/// stable address, so a hot edit is served on the very next read.
+pub const BRIEFING_SECTION: &str = "directives";
 /// The one budget profile id the gateway cites on inference entries —
 /// the same id `owner-init-journal --token-budget` writes into the
 /// inference mandate (v1: one profile, one tap).
@@ -97,6 +106,13 @@ struct BridgeState {
     /// before this lot (their journal tools refuse fail-closed).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     memory_mandate: Option<String>,
+    /// The briefing pen (contexts only, lot K): the READ mandate on the
+    /// `briefing/` folders of the public and circle zones, granted by
+    /// `owner-grant-briefing` — a separate owner gesture, orthogonal to
+    /// server enrollment (re-enrollment preserves it). Absent = this
+    /// context serves no directives (mute surface, fail-closed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    briefing_mandate: Option<String>,
 }
 
 /// What onboarding hands back to the operator. Secrets appear ONCE here
@@ -164,6 +180,15 @@ pub struct NoteView {
     pub text: Option<String>,
 }
 
+/// One served directive (lot K): the owner's exact text, the zone it
+/// came from named next to it — what `briefing.read` hands the agent.
+#[derive(Debug, Clone, Serialize)]
+pub struct BriefingItem {
+    pub zone: String,
+    pub title: String,
+    pub text: String,
+}
+
 /// Live bridge: the ethos, the mandate chains and the keyholder,
 /// assembled and ready to authorise, log and export. The keyholder is
 /// shared (`Arc`): one runner identity signs into N ethos at once
@@ -177,6 +202,7 @@ pub struct Bridge {
     auditor_mandate: Option<Mandate>,
     inference_chain: Option<Vec<Mandate>>,
     memory_chain: Option<Vec<Mandate>>,
+    briefing_chain: Option<Vec<Mandate>>,
     entropy: Box<dyn EntropySource + Send>,
 }
 
@@ -276,6 +302,7 @@ impl Bridge {
             auditor_mandate: Some(auditor_mandate.id.clone()),
             inference_mandate: None,
             memory_mandate: None,
+            briefing_mandate: None,
         };
         bundle
             .store
@@ -302,6 +329,7 @@ impl Bridge {
             auditor_mandate: Some(auditor_mandate),
             inference_chain: None,
             memory_chain: None,
+            briefing_chain: None,
             entropy,
         };
         Ok((bridge, outcome))
@@ -333,6 +361,10 @@ impl Bridge {
             Some(id) => Some(vec![read_json(&bundle, &cert_path(id))?]),
             None => None,
         };
+        let briefing_chain = match &state.briefing_mandate {
+            Some(id) => Some(vec![read_json(&bundle, &cert_path(id))?]),
+            None => None,
+        };
         Ok(Self {
             bundle,
             keyholder,
@@ -341,6 +373,7 @@ impl Bridge {
             auditor_mandate,
             inference_chain,
             memory_chain,
+            briefing_chain,
             entropy,
         })
     }
@@ -797,7 +830,7 @@ impl Bridge {
             let text = self
                 .bundle
                 .read_section_as_agent(&chain, &agent_sk, Zone::Circle, &path, now)
-                .map_err(read_denied)?;
+                .map_err(read_denied_op("journal.search"))?;
             self.bundle
                 .log_read_as_agent(
                     &chain,
@@ -816,6 +849,88 @@ impl Bridge {
             });
         }
         Ok(hits)
+    }
+
+    // ---------------------------------------------------- briefing (lot K)
+
+    /// Does this context have anything to brief? True when the briefing
+    /// pen is granted AND a granted zone (public or circle — never self)
+    /// holds at least one directive. Index-only: no body is opened, no
+    /// entry is journalized — this is the conditional-surface probe the
+    /// router runs on `initialize` and `tools/list`. Every failure reads
+    /// as "nothing to say" (mute surface, fail-closed); the read path
+    /// errors loudly when actually called.
+    pub fn briefing_available(&self) -> bool {
+        if self.briefing_chain.is_none() {
+            return false;
+        }
+        [Zone::Public, Zone::Circle].iter().any(|zone| {
+            zone_rows(&self.bundle, *zone, BRIEFING_FOLDER, None, None)
+                .map(|rows| !rows.is_empty())
+                .unwrap_or(false)
+        })
+    }
+
+    /// Serve the owner's directives, exact text, zone named on each —
+    /// public first, then circle; `self` is structurally out of reach
+    /// (the pen carries no self entry and no self index is ever listed).
+    /// Every served CIRCLE section is one journalized `ethos.read` under
+    /// the briefing pen (§07.9.2, the C2 precedent): a sealed read that
+    /// cannot be journalized fails the whole briefing. Public sections
+    /// are the readability frontier (§02.1 — clear, keyless, hash-
+    /// pinned): no key opens them, so no sealed read entry exists for
+    /// them in v1; the demo's directives live in circle, on the record.
+    pub fn briefing_read(&mut self, now: &str) -> Result<Vec<BriefingItem>> {
+        let chain =
+            self.briefing_chain
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| GatewayError::MandateDenied {
+                    op: "briefing.read".to_owned(),
+                    reason: "no briefing pen granted on this context".into(),
+                })?;
+        let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+        let mut items = Vec::new();
+        for zone in [Zone::Public, Zone::Circle] {
+            let rows = zone_rows(&self.bundle, zone, BRIEFING_FOLDER, None, None)?;
+            for row in rows {
+                let path = format!("{BRIEFING_FOLDER}/{}", row.name);
+                let text = match zone {
+                    // Public bodies are clear by design (§02.1): the
+                    // keyless read is the honest one — the hash pin in
+                    // the index still authenticates the text.
+                    Zone::Public => Bundle::public_read(&self.bundle.store, &path)
+                        .map_err(read_denied_op("briefing.read"))?,
+                    // Circle bodies are sealed: the full §04.5 verifier
+                    // runs (certificate half), the delivered zone line
+                    // opens the blob (physics half), and the read goes
+                    // on the record under the same pen.
+                    _ => {
+                        let text = self
+                            .bundle
+                            .read_section_as_agent(&chain, &agent_sk, zone, &path, now)
+                            .map_err(read_denied_op("briefing.read"))?;
+                        self.bundle
+                            .log_read_as_agent(
+                                &chain,
+                                &agent_sk,
+                                zone,
+                                &path,
+                                now,
+                                self.entropy.as_mut(),
+                            )
+                            .map_err(|e| GatewayError::LogAppendRefused(e.to_string()))?;
+                        text
+                    }
+                };
+                items.push(BriefingItem {
+                    zone: zone.as_str().to_owned(),
+                    title: row.title,
+                    text,
+                });
+            }
+        }
+        Ok(items)
     }
 
     // ------------------------------------------------------------- audit
@@ -1271,6 +1386,57 @@ impl Runner {
         self.journal.journal_search(query, tag, limit, now)
     }
 
+    /// Is there anything to brief anywhere? The conditional-surface
+    /// probe (lot K): true when at least one context holds a granted,
+    /// non-empty briefing zone. Recomputed on every `initialize` and
+    /// `tools/list` — a hot owner edit flips the surface without any
+    /// restart. Index-only, no journal entry.
+    pub fn briefing_available(&self) -> bool {
+        self.contexts
+            .values()
+            .any(|context| context.bridge.briefing_available())
+    }
+
+    /// Serve the owner's directives across the granted contexts —
+    /// `context: None` serves them all, labeled by context name, the
+    /// zone named on each directive; a named context serves that one
+    /// only. Every served section is one journalized read in ITS
+    /// context's gamma (see [`Bridge::briefing_read`]). Nothing to say
+    /// anywhere → the call refuses: a mute surface has no callable tool.
+    pub fn briefing_read(&mut self, context: Option<&str>, now: &str) -> Result<serde_json::Value> {
+        let names: Vec<String> = match context {
+            Some(name) => {
+                if !self.contexts.contains_key(name) {
+                    return Err(GatewayError::RequestRejected(format!(
+                        "briefing.read: unknown context `{name}`"
+                    )));
+                }
+                vec![name.to_owned()]
+            }
+            None => self.contexts.keys().cloned().collect(),
+        };
+        let mut served = Vec::new();
+        for name in names {
+            let bridge = &mut self.context_mut(&name)?.bridge;
+            if !bridge.briefing_available() {
+                continue;
+            }
+            let items = bridge.briefing_read(now)?;
+            if !items.is_empty() {
+                served.push(serde_json::json!({
+                    "context": name,
+                    "directives": items,
+                }));
+            }
+        }
+        if served.is_empty() {
+            return Err(GatewayError::RequestRejected(
+                "briefing.read: no directives in any granted briefing zone".into(),
+            ));
+        }
+        Ok(serde_json::json!({ "contexts": served }))
+    }
+
     /// Refusal routing, decided §3bis.8: the journal gets EVERY refusal
     /// (it is the agent's story); the context gets it too when the tool
     /// maps to one (its auditor must see attempts against its
@@ -1588,8 +1754,8 @@ pub fn owner_reenroll_server(
         .filter(|tool| tool.is_granted())
         .map(|tool| hub_op_for_tool(&manifest.server, &tool.name))
         .collect();
-    let mut revoked_mandates = vec![state.agent_mandate, state.gateway_mandate];
-    revoked_mandates.extend(state.auditor_mandate);
+    let mut revoked_mandates = vec![state.agent_mandate.clone(), state.gateway_mandate.clone()];
+    revoked_mandates.extend(state.auditor_mandate.clone());
     let equipment = equip(
         bundle,
         &owner,
@@ -1604,6 +1770,20 @@ pub fn owner_reenroll_server(
         ent,
     )?;
     let mut bundle = Bundle::open(reopen).map_err(bridge_err)?;
+    // The briefing pen (lot K) is orthogonal equipment: re-enrolling a
+    // server replaces the TOOL mandates, never the owner's directive
+    // channel — the pen survives the pin swap, unrevoked.
+    if state.briefing_mandate.is_some() {
+        let mut fresh: BridgeState = read_json(&bundle, STATE_PATH)?;
+        fresh.briefing_mandate = state.briefing_mandate.clone();
+        bundle
+            .store
+            .put(
+                STATE_PATH,
+                &serde_json::to_vec_pretty(&fresh).map_err(bridge_err)?,
+            )
+            .map_err(bridge_err)?;
+    }
     for mandate in &revoked_mandates {
         bundle
             .log_revoke_owner(
@@ -1619,6 +1799,193 @@ pub fn owner_reenroll_server(
         equipment,
         revoked_mandates,
     })
+}
+
+/// Grant the briefing pen on a context (lot K, the minimal seam): the
+/// owner prepares the `briefing/` folders in the public and circle
+/// zones, delivers their zone lines to the agent's PUBLIC key (§04.3 —
+/// the line is the pen's physics half) and mints ONE read mandate
+/// covering both dirs (the certificate half). A separate owner gesture,
+/// deliberately: one pen per usage, independently revocable, and the
+/// existing tool equipment (grants, counts, re-enrollment) is never
+/// touched. The `self` zone gets no line and no perimeter entry — it is
+/// structurally out of the agent's reach. Requires prior equipment
+/// (`owner-grant-context` / `owner-enroll-server`): the pen extends a
+/// provisioned context, it never creates one.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_briefing(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<String> {
+    let owner = derived_owner(master, "context", label);
+    let agent_pub = decode_pub(agent_pub_mb)?;
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    let mut state: BridgeState = read_json(&bundle, STATE_PATH)?;
+    let expected_agent = &state.agent_mandate;
+    let agent_cert: Mandate = read_json(&bundle, &cert_path(expected_agent))?;
+    if agent_cert.grantee_pub().map_err(bridge_err)? != agent_pub {
+        return Err(GatewayError::ConfigRejected(
+            "the briefing pen must go to the equipped agent public key".into(),
+        ));
+    }
+    // The shelves: owner-prepared folders in both served zones. A read
+    // perimeter serves content, never grows the tree — they must exist.
+    bundle
+        .ensure_folder(Zone::Public, BRIEFING_FOLDER, &owner, ent)
+        .map_err(bridge_err)?;
+    bundle
+        .ensure_folder(Zone::Circle, BRIEFING_FOLDER, &owner, ent)
+        .map_err(bridge_err)?;
+    bundle.publish(&owner, now).map_err(bridge_err)?;
+    // The physics half exists for CIRCLE only: public is clear by
+    // design (§02.1 — no zone key, no header line to deliver), so the
+    // circle dir gets the sealed line and the certificate names both
+    // zones (the public entry documents the granted read even though no
+    // key gates it).
+    bundle
+        .deliver_zone_line(&owner, &agent_pub, Zone::Circle, BRIEFING_FOLDER, None, ent)
+        .map_err(bridge_err)?;
+    let mut perimeter = Vec::new();
+    for zone in [Zone::Public, Zone::Circle] {
+        let dir = bundle
+            .resolve_folder(zone, BRIEFING_FOLDER)
+            .map_err(bridge_err)?;
+        perimeter.push(PerimeterEntry::Ethos {
+            verb: Verb::Read,
+            zone,
+            dir,
+            tag: None,
+        });
+    }
+    let mandate = mint_entries(
+        &owner,
+        &bundle,
+        ent,
+        "briefing",
+        &agent_pub,
+        perimeter,
+        no_constraints(),
+        window,
+        now,
+    )?;
+    bundle
+        .store
+        .put(
+            &cert_path(&mandate.id),
+            &serde_json::to_vec_pretty(&mandate).map_err(bridge_err)?,
+        )
+        .map_err(bridge_err)?;
+    bundle
+        .log_owner_grant(&owner, &mandate.id, now, ent)
+        .map_err(bridge_err)?;
+    state.briefing_mandate = Some(mandate.id.clone());
+    bundle
+        .store
+        .put(
+            STATE_PATH,
+            &serde_json::to_vec_pretty(&state).map_err(bridge_err)?,
+        )
+        .map_err(bridge_err)?;
+    Ok(mandate.id)
+}
+
+/// Write or update one zone's directive (lot K owner tooling): creation
+/// on first use, in-place rewrite afterwards — the very next
+/// `briefing.read` serves the new text, no restart. `self` is accepted
+/// as a target (owner-only notes live there) but is NEVER served: the
+/// runtime holds no self line and lists no self index. v1 limits,
+/// documented: one section per zone (`briefing/directives`), and the
+/// owner-side rewrite is circle-only (the core's `section_rewrite`
+/// pass) — a public or self directive is written once.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_set_briefing(
+    master: &[u8; 32],
+    label: &str,
+    zone: &str,
+    title: &str,
+    text: &str,
+    store: GatewayStore,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<()> {
+    let zone = match zone {
+        "public" => Zone::Public,
+        "circle" => Zone::Circle,
+        "self" => Zone::Self_,
+        other => {
+            return Err(GatewayError::ConfigRejected(format!(
+                "briefing zone must be public, circle or self, not `{other}`"
+            )))
+        }
+    };
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    bundle
+        .ensure_folder(zone, BRIEFING_FOLDER, &owner, ent)
+        .map_err(bridge_err)?;
+    let path = format!("{BRIEFING_FOLDER}/{BRIEFING_SECTION}");
+    let exists = bundle.read_section(zone, &path, &owner).is_ok();
+    if !exists {
+        return bundle
+            .section_add(
+                &aithos_bundle::bundle::SectionSpec {
+                    zone,
+                    folder_path: BRIEFING_FOLDER,
+                    name: BRIEFING_SECTION,
+                    title,
+                    tags: &[],
+                    body: text,
+                    now,
+                },
+                &owner,
+                ent,
+            )
+            .map_err(bridge_err);
+    }
+    if zone != Zone::Circle {
+        return Err(GatewayError::ConfigRejected(format!(
+            "rewriting a `{}` directive is circle-only in v1 — the {} zone directive is written once",
+            zone.as_str(),
+            zone.as_str()
+        )));
+    }
+    bundle
+        .section_rewrite(zone, &path, text, &owner, now, ent)
+        .map_err(bridge_err)
+}
+
+/// Owner-side read of one zone's directive (test/ops assertions — the
+/// sovereignty mirror of `owner_read_journal_note`).
+pub fn owner_read_briefing(
+    master: &[u8; 32],
+    label: &str,
+    zone: &str,
+    store: GatewayStore,
+) -> Result<String> {
+    let zone = match zone {
+        "public" => Zone::Public,
+        "circle" => Zone::Circle,
+        "self" => Zone::Self_,
+        other => {
+            return Err(GatewayError::ConfigRejected(format!(
+                "briefing zone must be public, circle or self, not `{other}`"
+            )))
+        }
+    };
+    let owner = derived_owner(master, "context", label);
+    let bundle = Bundle::open(store).map_err(bridge_err)?;
+    bundle
+        .read_section(
+            zone,
+            &format!("{BRIEFING_FOLDER}/{BRIEFING_SECTION}"),
+            &owner,
+        )
+        .map_err(bridge_err)
 }
 
 fn replace_hub_manifest(
@@ -1899,6 +2266,7 @@ fn equip(
         auditor_mandate: auditor_mandate.as_ref().map(|m| m.id.clone()),
         inference_mandate: inference_mandate.as_ref().map(|m| m.id.clone()),
         memory_mandate: memory_mandate.as_ref().map(|m| m.id.clone()),
+        briefing_mandate: None,
     };
     bundle
         .store
@@ -2118,24 +2486,36 @@ struct MemoryRow {
     tags: Vec<String>,
 }
 
-/// The memory shelf's clear index rows, oldest first, optionally
-/// filtered by a case-insensitive `query` over name/title/tags and an
-/// exact `tag`. This reads the SKELETON the readability frontier
-/// already grants whoever holds the files — no body is touched here.
+/// The memory shelf's clear index rows, oldest first — see [`zone_rows`].
 fn memory_rows(
     bundle: &Bundle<GatewayStore>,
     query: Option<&str>,
     tag: Option<&str>,
 ) -> Result<Vec<MemoryRow>> {
-    let folders = bundle
-        .resolve_folder(Zone::Circle, MEMORY_FOLDER)
-        .map_err(bridge_err)?;
-    let memory_sid = folders.last().map(ToString::to_string);
-    let index: serde_json::Value = read_json(bundle, "e/circle/index.json")?;
+    zone_rows(bundle, Zone::Circle, MEMORY_FOLDER, query, tag)
+}
+
+/// One zone folder's clear index rows, oldest first, optionally filtered
+/// by a case-insensitive `query` over name/title/tags and an exact
+/// `tag`. This reads the SKELETON the readability frontier already
+/// grants whoever holds the files — no body is touched here. A folder
+/// that does not exist yields no rows (nothing was ever shelved there).
+fn zone_rows(
+    bundle: &Bundle<GatewayStore>,
+    zone: Zone,
+    folder: &str,
+    query: Option<&str>,
+    tag: Option<&str>,
+) -> Result<Vec<MemoryRow>> {
+    let Ok(folders) = bundle.resolve_folder(zone, folder) else {
+        return Ok(Vec::new());
+    };
+    let folder_sid = folders.last().map(ToString::to_string);
+    let index: serde_json::Value = read_json(bundle, &format!("e/{}/index.json", zone.as_str()))?;
     let needle = query.map(str::to_lowercase);
     let mut rows = Vec::new();
     for row in index["sections"].as_array().into_iter().flatten() {
-        if row["folder_sid"].as_str().map(str::to_owned) != memory_sid {
+        if row["folder_sid"].as_str().map(str::to_owned) != folder_sid {
             continue;
         }
         let name = row["name"].as_str().unwrap_or_default().to_owned();
@@ -2172,10 +2552,10 @@ fn memory_rows(
 /// Map a refused delegated read to the caller-facing verdict: a mandate
 /// verdict (perimeter, window, revocation) is a denial; anything else
 /// is a bridge failure (never silently empty).
-fn read_denied(e: aithos_core::error::Error) -> GatewayError {
-    match e {
+fn read_denied_op(op: &'static str) -> impl Fn(aithos_core::error::Error) -> GatewayError {
+    move |e| match e {
         aithos_core::error::Error::InvalidMandate(reason) => GatewayError::MandateDenied {
-            op: "journal.search".to_owned(),
+            op: op.to_owned(),
             reason,
         },
         other => GatewayError::BridgeFailed(other.to_string()),
