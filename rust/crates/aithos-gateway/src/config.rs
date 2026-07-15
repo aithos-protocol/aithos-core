@@ -146,6 +146,17 @@ pub struct HubToolRef {
     pub server: String,
     pub tool: String,
     pub access: ToolAccess,
+    /// The grant decision this context claims for the tool (lot W).
+    /// Absent = historic default (read granted, write denied). Must
+    /// agree with the sealed approved manifest at runtime, fail-closed.
+    #[serde(default)]
+    pub granted: Option<bool>,
+}
+
+impl HubToolRef {
+    pub fn is_granted(&self) -> bool {
+        self.granted.unwrap_or(self.access == ToolAccess::Read)
+    }
 }
 
 pub type HubToolMap = BTreeMap<String, HubToolRef>;
@@ -1035,6 +1046,27 @@ journal:
         assert_eq!(tool.server, "github");
         assert_eq!(tool.tool, "issues.list");
         assert_eq!(tool.access, ToolAccess::Read);
+    }
+
+    #[test]
+    fn hub_tool_grant_decisions_parse_and_default_safely() {
+        // Explicit decision: a read can be declared denied.
+        let text = HUB.replace(
+            "        access: read",
+            "        access: read\n        granted: false",
+        );
+        let cfg = GatewayConfig::from_yaml(&text).unwrap();
+        let ContextTools::Hub(tools) = &cfg.contexts.as_ref().unwrap()[0].tools else {
+            panic!("hub tools")
+        };
+        assert!(!tools.get("github__issues_list").unwrap().is_granted());
+        // Default: reads granted (writes deny by default symmetrically).
+        let cfg = GatewayConfig::from_yaml(HUB).unwrap();
+        let ContextTools::Hub(tools) = &cfg.contexts.as_ref().unwrap()[0].tools else {
+            panic!("hub tools")
+        };
+        let tool = tools.get("github__issues_list").unwrap();
+        assert!(tool.granted.is_none() && tool.is_granted());
     }
 
     #[test]

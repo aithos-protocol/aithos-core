@@ -54,6 +54,57 @@ pub struct ApprovedTool {
     pub input_schema: Value,
     pub pin_sha256: String,
     pub risk_class: ToolAccess,
+    /// The owner's grant decision, separate from the risk class (lot W):
+    /// what kind of power a tool is never decides whether THIS agent may
+    /// use it. Absent in pre-W sealed manifests, where the historic
+    /// default applies — reads granted, writes denied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub granted: Option<bool>,
+}
+
+impl ApprovedTool {
+    /// The effective decision: explicit if recorded, historic default
+    /// (`read` → granted, `write` → denied) for pre-W manifests.
+    pub fn is_granted(&self) -> bool {
+        self.granted.unwrap_or(self.risk_class == ToolAccess::Read)
+    }
+}
+
+/// One owner approval: risk class plus the explicit grant decision.
+/// `granted: None` keeps the historic safe default — an approval that
+/// names only a class grants reads and denies writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolApproval {
+    pub risk_class: ToolAccess,
+    pub granted: Option<bool>,
+}
+
+impl ToolApproval {
+    /// Class only — the safe defaults decide the grant.
+    pub fn class(risk_class: ToolAccess) -> Self {
+        Self {
+            risk_class,
+            granted: None,
+        }
+    }
+
+    pub fn granted(risk_class: ToolAccess) -> Self {
+        Self {
+            risk_class,
+            granted: Some(true),
+        }
+    }
+
+    pub fn denied(risk_class: ToolAccess) -> Self {
+        Self {
+            risk_class,
+            granted: Some(false),
+        }
+    }
+
+    pub fn is_granted(&self) -> bool {
+        self.granted.unwrap_or(self.risk_class == ToolAccess::Read)
+    }
 }
 
 /// Capture an upstream `tools/list` into a deterministic proposed
@@ -135,10 +186,12 @@ pub async fn discover_server<U: Upstream>(server: &str, upstream: &U) -> Result<
 }
 
 /// Owner approval: every discovered tool needs one explicit class and
-/// no undiscovered name may be smuggled into the approval map.
+/// no undiscovered name may be smuggled into the approval map. The
+/// grant decision is recorded explicitly in the sealed manifest, even
+/// when it came from the safe defaults.
 pub fn approve_manifest(
     proposed: &ProposedManifest,
-    approvals: &BTreeMap<String, ToolAccess>,
+    approvals: &BTreeMap<String, ToolApproval>,
 ) -> Result<ApprovedManifest> {
     validate_proposed(proposed)?;
     let discovered: BTreeSet<&str> = proposed
@@ -157,7 +210,7 @@ pub fn approve_manifest(
     let mut exposed = BTreeSet::new();
     let mut tools = Vec::with_capacity(proposed.tools.len());
     for tool in &proposed.tools {
-        let risk_class = approvals.get(&tool.name).copied().ok_or_else(|| {
+        let approval = approvals.get(&tool.name).copied().ok_or_else(|| {
             GatewayError::ConfigRejected(format!(
                 "owner approval missing risk class for `{}`",
                 tool.name
@@ -175,7 +228,8 @@ pub fn approve_manifest(
             description: tool.description.clone(),
             input_schema: tool.input_schema.clone(),
             pin_sha256: tool.pin_sha256.clone(),
-            risk_class,
+            risk_class: approval.risk_class,
+            granted: Some(approval.is_granted()),
         });
     }
     let approved = ApprovedManifest {

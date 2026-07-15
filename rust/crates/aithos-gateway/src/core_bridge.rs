@@ -913,7 +913,11 @@ struct HubRuntimeTool {
     description: Option<String>,
     input_schema: serde_json::Value,
     pin_sha256: String,
+    #[allow(dead_code)]
     access: ToolAccess,
+    /// The effective grant decision (lot W): drives the exposed
+    /// `tools/list`. Refusals still flow from the mandate itself.
+    granted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -993,7 +997,7 @@ impl Runner {
                                     ctx.name, reference.server, reference.tool
                                 ))
                             })?;
-                        validate_runtime_tool(&ctx.name, exposed, reference.access, approved)?;
+                        validate_runtime_tool(&ctx.name, exposed, reference, approved)?;
                         policy_map.insert(exposed.clone(), reference.access);
                         hub_tools.insert(
                             exposed.clone(),
@@ -1005,6 +1009,7 @@ impl Runner {
                                 input_schema: approved.input_schema.clone(),
                                 pin_sha256: approved.pin_sha256.clone(),
                                 access: reference.access,
+                                granted: approved.is_granted(),
                             },
                         );
                     }
@@ -1046,8 +1051,9 @@ impl Runner {
             .collect()
     }
 
-    /// Agent-visible descriptors. Hub mode exposes covered (`read`)
-    /// pins only; legacy mode preserves the v2 names-only surface.
+    /// Agent-visible descriptors. Hub mode exposes GRANTED pins only
+    /// (lot W: reads and writes alike — the decision, not the class);
+    /// legacy mode preserves the v2 names-only surface.
     pub fn listed_tools(&self) -> Vec<serde_json::Value> {
         if self.hub_tools.is_empty() {
             return self
@@ -1063,7 +1069,7 @@ impl Runner {
         }
         self.hub_tools
             .iter()
-            .filter(|(_, tool)| tool.access == ToolAccess::Read)
+            .filter(|(_, tool)| tool.granted)
             .map(|(name, tool)| {
                 let mut descriptor = serde_json::json!({
                     "name": name,
@@ -1257,7 +1263,7 @@ impl Runner {
 fn validate_runtime_tool(
     context: &str,
     exposed: &str,
-    access: ToolAccess,
+    reference: &crate::config::HubToolRef,
     approved: &ApprovedTool,
 ) -> Result<()> {
     if approved.exposed_name != exposed {
@@ -1266,9 +1272,14 @@ fn validate_runtime_tool(
             approved.exposed_name
         )));
     }
-    if approved.risk_class != access {
+    if approved.risk_class != reference.access {
         return Err(GatewayError::ConfigRejected(format!(
             "context `{context}` class for `{exposed}` differs from the approved manifest"
+        )));
+    }
+    if reference.is_granted() != approved.is_granted() {
+        return Err(GatewayError::ConfigRejected(format!(
+            "context `{context}` grant decision for `{exposed}` differs from the approved manifest"
         )));
     }
     Ok(())
@@ -1471,10 +1482,12 @@ pub fn owner_enroll_server(
     }
 
     pin_hub_manifest(&mut bundle, &owner, gateway_pub_mb, manifest, now, ent)?;
-    let read_ops: Vec<String> = manifest
+    // The mandate covers the GRANTED tools — the decision, not the
+    // class (lot W): a granted write is covered, a denied read is not.
+    let granted_ops: Vec<String> = manifest
         .tools
         .iter()
-        .filter(|tool| tool.risk_class == crate::config::ToolAccess::Read)
+        .filter(|tool| tool.is_granted())
         .map(|tool| hub_op_for_tool(&manifest.server, &tool.name))
         .collect();
     equip(
@@ -1482,7 +1495,7 @@ pub fn owner_enroll_server(
         &owner,
         agent_pub_mb,
         gateway_pub_mb,
-        &read_ops,
+        &granted_ops,
         true,
         None,
         None,
@@ -1533,10 +1546,10 @@ pub fn owner_reenroll_server(
         )));
     }
     replace_hub_manifest(&mut bundle, &owner, manifest, ent)?;
-    let read_ops: Vec<String> = manifest
+    let granted_ops: Vec<String> = manifest
         .tools
         .iter()
-        .filter(|tool| tool.risk_class == ToolAccess::Read)
+        .filter(|tool| tool.is_granted())
         .map(|tool| hub_op_for_tool(&manifest.server, &tool.name))
         .collect();
     let mut revoked_mandates = vec![state.agent_mandate, state.gateway_mandate];
@@ -1546,7 +1559,7 @@ pub fn owner_reenroll_server(
         &owner,
         agent_pub_mb,
         gateway_pub_mb,
-        &read_ops,
+        &granted_ops,
         true,
         None,
         None,

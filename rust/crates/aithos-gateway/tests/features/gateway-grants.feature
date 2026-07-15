@@ -12,7 +12,6 @@ Feature: Granting writes — risk class and grant decision are two owner gesture
 
   Rule: A write is granted explicitly, never by default
 
-    @wip
     Scenario: An explicitly granted write is listed, relayed and logged
       Given server "gmail" advertises tools "search_emails" and "send_email"
       And the owner enrolls "gmail" approving "search_emails" as a granted read and "send_email" as a granted write
@@ -21,14 +20,12 @@ Feature: Granting writes — risk class and grant decision are two owner gesture
       And the call reaches the upstream under raw name "send_email"
       And the act is logged in the granting context gamma with one journal cross-reference
 
-    @wip
     Scenario: An approval naming only classes keeps the safe defaults
       Given server "gmail" advertises tools "search_emails" and "send_email"
       When the owner enrolls "gmail" approving only classes "search_emails=read" and "send_email=write"
       Then "gmail__search_emails" is listed and served
       And "gmail__send_email" is hidden and precisely refused with zero upstream contact
 
-    @wip
     Scenario: A read can be known but denied too
       Given server "gmail" advertises tools "search_emails" and "send_email"
       And the owner enrolls "gmail" approving "search_emails" as a denied read and "send_email" as a granted write
@@ -39,19 +36,16 @@ Feature: Granting writes — risk class and grant decision are two owner gesture
 
   Rule: The decision is on the record and enforced end to end
 
-    @wip
     Scenario: The grant log records both the class and the decision
       Given the owner enrolls "gmail" approving "send_email" as a granted write
       Then the granting context gamma grant entry names "send_email" as a granted "write"
       And the sealed manifest records the decision next to the risk class
 
-    @wip
     Scenario: Config and manifest must agree on the grant decision
       Given the owner enrolls "gmail" approving "send_email" as a denied write
       When a runtime config declares "gmail__send_email" as granted
       Then the gateway refuses to open, naming the grant mismatch
 
-    @wip
     Scenario: Revoking a write grant is a re-enrollment under a new mandate
       Given server "gmail" is enrolled with "send_email" as a granted write
       And the agent has called "gmail__send_email" through the hub once

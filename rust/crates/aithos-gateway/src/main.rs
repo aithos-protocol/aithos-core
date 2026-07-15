@@ -119,8 +119,14 @@ enum Command {
         /// Proposed manifest emitted by owner-discover-server.
         #[arg(long)]
         proposal: String,
-        /// Explicit owner decision, repeat for every tool: TOOL=read|write.
-        #[arg(long = "approve", value_name = "TOOL=read|write", required = true)]
+        /// Explicit owner decision, repeat for every tool:
+        /// TOOL=read|write[:granted|denied]. Without a decision the
+        /// safe defaults apply — reads granted, writes denied.
+        #[arg(
+            long = "approve",
+            value_name = "TOOL=read|write[:granted|denied]",
+            required = true
+        )]
         approvals: Vec<String>,
         #[arg(long)]
         store_root: String,
@@ -524,21 +530,37 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
 fn parse_approvals(
     values: &[String],
-) -> Result<BTreeMap<String, aithos_gateway::config::ToolAccess>, String> {
+) -> Result<BTreeMap<String, aithos_gateway::hub::ToolApproval>, String> {
+    use aithos_gateway::hub::ToolApproval;
+
     let mut out = BTreeMap::new();
     for value in values {
-        let (tool, class) = value
+        let (tool, spec) = value
             .split_once('=')
-            .ok_or_else(|| format!("--approve `{value}`: want TOOL=read|write"))?;
+            .ok_or_else(|| format!("--approve `{value}`: want TOOL=read|write[:granted|denied]"))?;
         if tool.trim().is_empty() {
             return Err("--approve has an empty tool name".into());
         }
+        let (class, decision) = match spec.split_once(':') {
+            Some((class, decision)) => (class, Some(decision)),
+            None => (spec, None),
+        };
         let class = match class {
             "read" => aithos_gateway::config::ToolAccess::Read,
             "write" => aithos_gateway::config::ToolAccess::Write,
             _ => return Err(format!("--approve `{value}`: class must be read or write")),
         };
-        if out.insert(tool.to_owned(), class).is_some() {
+        let approval = match decision {
+            None => ToolApproval::class(class),
+            Some("granted") => ToolApproval::granted(class),
+            Some("denied") => ToolApproval::denied(class),
+            Some(_) => {
+                return Err(format!(
+                    "--approve `{value}`: decision must be granted or denied"
+                ))
+            }
+        };
+        if out.insert(tool.to_owned(), approval).is_some() {
             return Err(format!("--approve repeats tool `{tool}`"));
         }
     }

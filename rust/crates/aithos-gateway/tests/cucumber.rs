@@ -27,7 +27,7 @@ use aithos_gateway::core_bridge::{
     owner_reenroll_server, Bridge, ContextRuntime, EntropySource, EntryView, EquipOutcome,
     MandateWindow, OnboardOutcome, RawStore, ReenrollOutcome, Runner, SeqEntropy, STATE_PATH,
 };
-use aithos_gateway::hub::{approve_manifest, discover_server, ApprovedManifest};
+use aithos_gateway::hub::{approve_manifest, discover_server, ApprovedManifest, ToolApproval};
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
@@ -208,6 +208,17 @@ struct GatewayWorld {
     vault_pending: BTreeMap<String, BTreeMap<String, String>>,
     vault_malformed: Option<String>,
     vault: Option<VaultHarness>,
+    /// The last tools/list answer when a step captured it separately
+    /// from `last_response` (combined list+call steps).
+    last_list: Option<Value>,
+    /// Expected pinned surface per exposed name: (description, schema) —
+    /// set by whichever provisioning ran, asserted by the shared step.
+    expected_pins: BTreeMap<String, (Option<String>, Value)>,
+    /// Grants scenarios (lot W): the enrolled store when no runtime is
+    /// opened yet, and its context label.
+    grants_store: Option<GatewayStore>,
+    grants_label: Option<String>,
+    grants_roots: Option<(std::path::PathBuf, std::path::PathBuf)>,
 }
 
 impl GatewayWorld {
@@ -247,6 +258,11 @@ impl GatewayWorld {
             vault_pending: BTreeMap::new(),
             vault_malformed: None,
             vault: None,
+            last_list: None,
+            expected_pins: BTreeMap::new(),
+            grants_store: None,
+            grants_label: None,
+            grants_roots: None,
         }
     }
 
@@ -403,8 +419,14 @@ async fn provision_single_hub(w: &mut GatewayWorld) {
     let approved = approve_manifest(
         &proposed,
         &BTreeMap::from([
-            ("issues.list".to_owned(), ToolAccess::Read),
-            ("issues.create".to_owned(), ToolAccess::Write),
+            (
+                "issues.list".to_owned(),
+                ToolApproval::class(ToolAccess::Read),
+            ),
+            (
+                "issues.create".to_owned(),
+                ToolApproval::class(ToolAccess::Write),
+            ),
         ]),
     )
     .expect("hub approval");
@@ -459,6 +481,17 @@ journal:
     let runner = Runner::open(&cfg, keyholder, || Box::new(SeqEntropy::default()))
         .expect("governed runner opens its pins");
     upstream.seen.lock().unwrap().clear();
+    w.expected_pins.insert(
+        "github__issues_list".to_owned(),
+        (
+            Some("List approved issues".to_owned()),
+            json!({
+                "type": "object",
+                "properties": { "state": { "type": "string" } },
+                "additionalProperties": false
+            }),
+        ),
+    );
     w.ctx_stores
         .insert("customer-support".to_owned(), context_store);
     w.journal_store = Some(journal_store);
@@ -516,16 +549,28 @@ async fn provision_shared_hub(w: &mut GatewayWorld) {
             "customer-support",
             support_store.clone(),
             BTreeMap::from([
-                ("issues.list".to_owned(), ToolAccess::Read),
-                ("pulls.list".to_owned(), ToolAccess::Write),
+                (
+                    "issues.list".to_owned(),
+                    ToolApproval::class(ToolAccess::Read),
+                ),
+                (
+                    "pulls.list".to_owned(),
+                    ToolApproval::class(ToolAccess::Write),
+                ),
             ]),
         ),
         (
             "engineering",
             engineering_store.clone(),
             BTreeMap::from([
-                ("issues.list".to_owned(), ToolAccess::Write),
-                ("pulls.list".to_owned(), ToolAccess::Read),
+                (
+                    "issues.list".to_owned(),
+                    ToolApproval::class(ToolAccess::Write),
+                ),
+                (
+                    "pulls.list".to_owned(),
+                    ToolApproval::class(ToolAccess::Read),
+                ),
             ]),
         ),
     ] {
@@ -695,9 +740,18 @@ async fn hub_list_has_pin(w: &mut GatewayWorld, exposed: String) {
         .iter()
         .find(|tool| tool["name"] == exposed)
         .expect("covered pin listed");
-    assert_eq!(tool["description"], "List approved issues");
-    assert_eq!(tool["inputSchema"]["additionalProperties"], false);
-    assert_eq!(tool["inputSchema"]["properties"]["state"]["type"], "string");
+    let (description, schema) = w
+        .expected_pins
+        .get(&exposed)
+        .expect("the provisioning recorded the expected pin");
+    match description {
+        Some(text) => assert_eq!(tool["description"], text.as_str()),
+        None => assert!(tool.get("description").is_none()),
+    }
+    assert_eq!(
+        &tool["inputSchema"], schema,
+        "the exact pinned schema is served"
+    );
 }
 
 #[then(expr = "the list does not include {string}")]
@@ -818,8 +872,14 @@ async fn hub_discovers_accepted_change(w: &mut GatewayWorld, raw_tool: String) {
         approve_manifest(
             &proposed,
             &BTreeMap::from([
-                ("issues.list".to_owned(), ToolAccess::Read),
-                ("issues.create".to_owned(), ToolAccess::Write),
+                (
+                    "issues.list".to_owned(),
+                    ToolApproval::class(ToolAccess::Read),
+                ),
+                (
+                    "issues.create".to_owned(),
+                    ToolApproval::class(ToolAccess::Write),
+                ),
             ]),
         )
         .expect("owner accepts changed schema"),
@@ -1982,10 +2042,12 @@ impl GatewayWorld {
             .to_owned()
     }
 
-    /// The tool entries of the last tools/list answer.
+    /// The tool entries of the last tools/list answer — preferring the
+    /// separately captured one when a combined step listed before calling.
     fn listed_tools(&self) -> Vec<Value> {
-        self.last_response
+        self.last_list
             .as_ref()
+            .or(self.last_response.as_ref())
             .and_then(|r| r.pointer("/result/tools"))
             .and_then(Value::as_array)
             .expect("tools listed")
@@ -2301,7 +2363,7 @@ async fn owner_discovers_and_approves(w: &mut GatewayWorld, server: String) {
     let approvals = proposed
         .tools
         .iter()
-        .map(|tool| (tool.name.clone(), ToolAccess::Read))
+        .map(|tool| (tool.name.clone(), ToolApproval::class(ToolAccess::Read)))
         .collect();
     let approved = approve_manifest(&proposed, &approvals).expect("owner approval succeeds");
 
@@ -2824,14 +2886,17 @@ async fn provision_vault_hub(w: &mut GatewayWorld, specs: Vec<VaultServerSpec>, 
             "description": "Read half of the vault harness",
             "inputSchema": { "type": "object", "additionalProperties": false }
         })];
-        let mut approvals = BTreeMap::from([(spec.read_raw.to_owned(), ToolAccess::Read)]);
+        let mut approvals = BTreeMap::from([(
+            spec.read_raw.to_owned(),
+            ToolApproval::class(ToolAccess::Read),
+        )]);
         if let Some(write_raw) = spec.write_raw {
             advertised.push(json!({
                 "name": write_raw,
                 "description": "Write half of the vault harness",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             }));
-            approvals.insert(write_raw.to_owned(), ToolAccess::Write);
+            approvals.insert(write_raw.to_owned(), ToolApproval::class(ToolAccess::Write));
         }
         let discovery = FakeMcp::advertising(advertised);
         let proposed = discover_server(spec.server, &discovery)
@@ -3366,6 +3431,597 @@ async fn vault_list_includes(w: &mut GatewayWorld, name: String) {
             .any(|tool| tool["name"].as_str() == Some(name.as_str())),
         "`{name}` must be listed"
     );
+}
+
+// --------------------------------------------------- write grants (lot W)
+
+const GRANTS_SERVER: &str = "gmail";
+const GRANTS_CONTEXT: &str = "ventes";
+
+fn grants_fixture(name: &str) -> Value {
+    match name {
+        "search_emails" => json!({
+            "name": "search_emails",
+            "description": "Search the mailbox",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "query": { "type": "string" } },
+                "additionalProperties": false
+            }
+        }),
+        "send_email" => json!({
+            "name": "send_email",
+            "description": "Send an email",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "to": { "type": "array", "items": { "type": "string" } },
+                    "subject": { "type": "string" },
+                    "body": { "type": "string" }
+                },
+                "required": ["to"],
+                "additionalProperties": false
+            }
+        }),
+        other => panic!("unknown grants fixture `{other}`"),
+    }
+}
+
+fn grants_raw_name(exposed: &str) -> String {
+    exposed
+        .strip_prefix("gmail__")
+        .expect("a gmail exposed name")
+        .to_owned()
+}
+
+fn grants_config_text(
+    context_root: &std::path::Path,
+    journal_root: &std::path::Path,
+    approved: &ApprovedManifest,
+    overrides: &BTreeMap<String, bool>,
+) -> String {
+    let quote =
+        |path: &std::path::Path| serde_json::to_string(&path.display().to_string()).unwrap();
+    let mut tools = String::new();
+    for tool in &approved.tools {
+        let access = match tool.risk_class {
+            ToolAccess::Read => "read",
+            ToolAccess::Write => "write",
+        };
+        let granted = overrides
+            .get(&tool.name)
+            .copied()
+            .unwrap_or_else(|| tool.is_granted());
+        tools.push_str(&format!(
+            "      {}: {{ server: {GRANTS_SERVER}, tool: {}, access: {access}, granted: {granted} }}\n",
+            tool.exposed_name, tool.name
+        ));
+    }
+    format!(
+        "listen: 127.0.0.1:4870\nservers:\n  - name: {GRANTS_SERVER}\n    transport: http\n    url: https://gmail.invalid/mcp\ncontexts:\n  - name: {GRANTS_CONTEXT}\n    store: {{ kind: fs, root: {} }}\n    tools:\n{tools}journal:\n  store: {{ kind: fs, root: {} }}\n",
+        quote(context_root),
+        quote(journal_root)
+    )
+}
+
+/// Enroll the gmail fixture under the ventes context with the given
+/// approvals; optionally open the governed runtime over a fake wire.
+async fn provision_grants_world(
+    w: &mut GatewayWorld,
+    approvals: BTreeMap<String, ToolApproval>,
+    open_runtime: bool,
+) {
+    if w.router.is_some() || w.grants_store.is_some() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("grants tempdir");
+    let context_root = dir.path().join(GRANTS_CONTEXT);
+    let journal_root = dir.path().join("journal");
+    let store_cfg = |root: &std::path::Path| aithos_gateway::config::StoreConfig::Fs {
+        root: root.to_owned(),
+    };
+    let context_store =
+        GatewayStore::from_config(&store_cfg(&context_root)).expect("grants context store");
+    let journal_store =
+        GatewayStore::from_config(&store_cfg(&journal_root)).expect("grants journal store");
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let mut owner_ent = SeqEntropy::default();
+    owner_init_context(
+        &master,
+        GRANTS_CONTEXT,
+        context_store.clone(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("grants context created");
+    let advertised: Vec<Value> = approvals.keys().map(|name| grants_fixture(name)).collect();
+    let upstream = FakeMcp::advertising(advertised);
+    let proposed = discover_server(GRANTS_SERVER, &upstream)
+        .await
+        .expect("grants discovery");
+    let approved = approve_manifest(&proposed, &approvals).expect("grants approval");
+    owner_enroll_server(
+        &master,
+        GRANTS_CONTEXT,
+        &agent_pub,
+        &gateway_pub,
+        &approved,
+        context_store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("grants enrollment");
+    owner_init_journal(
+        &master,
+        "leo",
+        &agent_pub,
+        &gateway_pub,
+        None,
+        journal_store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("grants journal");
+    for tool in &approved.tools {
+        w.expected_pins.insert(
+            tool.exposed_name.clone(),
+            (tool.description.clone(), tool.input_schema.clone()),
+        );
+    }
+    w.ctx_stores
+        .insert(GRANTS_CONTEXT.to_owned(), context_store.clone());
+    w.journal_store = Some(journal_store);
+    w.grants_store = Some(context_store);
+    w.grants_label = Some(GRANTS_CONTEXT.to_owned());
+    w.grants_roots = Some((context_root.clone(), journal_root.clone()));
+    w.approved_manifest = Some(approved.clone());
+    w.upstream = upstream.clone();
+
+    if open_runtime {
+        open_grants_runtime(w, &approved, &BTreeMap::new());
+    }
+    w.scratch = Some(dir);
+}
+
+/// (Re)open the governed runtime for the grants world against the
+/// current sealed manifest, with optional per-tool config overrides of
+/// the granted flag (the mismatch scenario).
+fn open_grants_runtime(
+    w: &mut GatewayWorld,
+    approved: &ApprovedManifest,
+    overrides: &BTreeMap<String, bool>,
+) {
+    let (context_root, journal_root) = w.grants_roots.clone().expect("grants roots");
+    let text = grants_config_text(&context_root, &journal_root, approved, overrides);
+    let cfg = GatewayConfig::from_yaml(&text).expect("grants config parses");
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32());
+    let runner = Runner::open(&cfg, keyholder, || Box::new(SeqEntropy::default()))
+        .expect("grants governed runner");
+    w.upstream.seen.lock().unwrap().clear();
+    w.multi_upstreams
+        .insert(GRANTS_SERVER.to_owned(), w.upstream.clone());
+    w.router = Some(Arc::new(McpRouter {
+        runner: Arc::new(Mutex::new(runner)),
+        upstreams: BTreeMap::from([(GRANTS_SERVER.to_owned(), w.upstream.clone())]),
+        clock: Arc::new(|| T0.to_owned()),
+    }));
+}
+
+fn parse_class_spec(spec: &str) -> (String, ToolAccess) {
+    let (tool, class) = spec.split_once('=').expect("TOOL=class");
+    let class = match class {
+        "read" => ToolAccess::Read,
+        "write" => ToolAccess::Write,
+        other => panic!("unknown class `{other}`"),
+    };
+    (tool.to_owned(), class)
+}
+
+#[given(expr = "server {string} advertises tools {string} and {string}")]
+async fn grants_server_advertises(
+    w: &mut GatewayWorld,
+    server: String,
+    first: String,
+    second: String,
+) {
+    assert_eq!(server, GRANTS_SERVER);
+    assert_eq!(
+        (first.as_str(), second.as_str()),
+        ("search_emails", "send_email")
+    );
+    let _ = w;
+}
+
+#[given(
+    expr = "the owner enrolls {string} approving {string} as a granted read and {string} as a granted write"
+)]
+async fn grants_enroll_granted_pair(
+    w: &mut GatewayWorld,
+    server: String,
+    read_tool: String,
+    write_tool: String,
+) {
+    assert_eq!(server, GRANTS_SERVER);
+    provision_grants_world(
+        w,
+        BTreeMap::from([
+            (read_tool, ToolApproval::granted(ToolAccess::Read)),
+            (write_tool, ToolApproval::granted(ToolAccess::Write)),
+        ]),
+        true,
+    )
+    .await;
+}
+
+#[when(expr = "the owner enrolls {string} approving only classes {string} and {string}")]
+async fn grants_enroll_classes_only(
+    w: &mut GatewayWorld,
+    server: String,
+    first: String,
+    second: String,
+) {
+    assert_eq!(server, GRANTS_SERVER);
+    let (first_tool, first_class) = parse_class_spec(&first);
+    let (second_tool, second_class) = parse_class_spec(&second);
+    provision_grants_world(
+        w,
+        BTreeMap::from([
+            (first_tool, ToolApproval::class(first_class)),
+            (second_tool, ToolApproval::class(second_class)),
+        ]),
+        true,
+    )
+    .await;
+}
+
+#[given(
+    expr = "the owner enrolls {string} approving {string} as a denied read and {string} as a granted write"
+)]
+async fn grants_enroll_denied_read(
+    w: &mut GatewayWorld,
+    server: String,
+    read_tool: String,
+    write_tool: String,
+) {
+    assert_eq!(server, GRANTS_SERVER);
+    provision_grants_world(
+        w,
+        BTreeMap::from([
+            (read_tool, ToolApproval::denied(ToolAccess::Read)),
+            (write_tool, ToolApproval::granted(ToolAccess::Write)),
+        ]),
+        true,
+    )
+    .await;
+}
+
+#[given(expr = "the owner enrolls {string} approving {string} as a granted write")]
+async fn grants_enroll_single_granted(w: &mut GatewayWorld, server: String, tool: String) {
+    assert_eq!(server, GRANTS_SERVER);
+    provision_grants_world(
+        w,
+        BTreeMap::from([(tool, ToolApproval::granted(ToolAccess::Write))]),
+        false,
+    )
+    .await;
+}
+
+#[given(expr = "the owner enrolls {string} approving {string} as a denied write")]
+async fn grants_enroll_single_denied(w: &mut GatewayWorld, server: String, tool: String) {
+    assert_eq!(server, GRANTS_SERVER);
+    provision_grants_world(
+        w,
+        BTreeMap::from([(tool, ToolApproval::denied(ToolAccess::Write))]),
+        false,
+    )
+    .await;
+}
+
+#[given(expr = "server {string} is enrolled with {string} as a granted write")]
+async fn grants_enrolled_running(w: &mut GatewayWorld, server: String, tool: String) {
+    assert_eq!(server, GRANTS_SERVER);
+    provision_grants_world(
+        w,
+        BTreeMap::from([(tool, ToolApproval::granted(ToolAccess::Write))]),
+        true,
+    )
+    .await;
+}
+
+#[when(expr = "the agent lists the tools and calls {string} through the hub")]
+async fn grants_list_then_call(w: &mut GatewayWorld, tool: String) {
+    let router = Arc::clone(w.router.as_ref().expect("grants router"));
+    w.last_list = Some(
+        process_multi(
+            &router,
+            json!({ "jsonrpc": "2.0", "id": 61, "method": "tools/list" }),
+        )
+        .await,
+    );
+    w.call(&tool, json!({})).await;
+}
+
+#[then(expr = "the call reaches the upstream under raw name {string}")]
+async fn grants_call_reached_raw(w: &mut GatewayWorld, raw: String) {
+    let calls: Vec<String> = w
+        .upstream
+        .seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|body| body["method"] == "tools/call")
+        .filter_map(|body| body.pointer("/params/name").and_then(Value::as_str))
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(calls.last().map(String::as_str), Some(raw.as_str()));
+}
+
+#[then("the act is logged in the granting context gamma with one journal cross-reference")]
+async fn grants_act_logged(w: &mut GatewayWorld) {
+    let target = format!("x.{GRANTS_SERVER}");
+    assert_eq!(acts_on(&w.ctx_gamma(GRANTS_CONTEXT), &target).len(), 1);
+    assert_eq!(acts_on(&w.journal_gamma(), "x.xref").len(), 1);
+}
+
+#[then(expr = "{string} is listed and served")]
+async fn grants_listed_and_served(w: &mut GatewayWorld, tool: String) {
+    let listed = grants_fresh_list(w).await;
+    assert!(
+        listed
+            .iter()
+            .any(|entry| entry["name"].as_str() == Some(tool.as_str())),
+        "`{tool}` must be listed"
+    );
+    w.call(&tool, json!({})).await;
+    let response = w.last_response.as_ref().expect("a response");
+    assert!(
+        response.get("error").is_none(),
+        "`{tool}` serves: {response}"
+    );
+}
+
+/// One fresh tools/list through the grants router.
+async fn grants_fresh_list(w: &GatewayWorld) -> Vec<Value> {
+    let router = Arc::clone(w.router.as_ref().expect("grants router"));
+    let listed = process_multi(
+        &router,
+        json!({ "jsonrpc": "2.0", "id": 63, "method": "tools/list" }),
+    )
+    .await;
+    listed["result"]["tools"]
+        .as_array()
+        .expect("tools listed")
+        .clone()
+}
+
+#[then(expr = "{string} is hidden and precisely refused with zero upstream contact")]
+async fn grants_hidden_refused(w: &mut GatewayWorld, tool: String) {
+    let listed = grants_fresh_list(w).await;
+    assert!(
+        listed
+            .iter()
+            .all(|entry| entry["name"].as_str() != Some(tool.as_str())),
+        "`{tool}` must stay hidden"
+    );
+    w.call(&tool, json!({})).await;
+    let response = w.last_response.as_ref().expect("a response");
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains(&tool)),
+        "the refusal names `{tool}`: {response}"
+    );
+    let raw = grants_raw_name(&tool);
+    assert!(
+        w.upstream
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|body| body["method"] == "tools/call")
+            .all(|body| body.pointer("/params/name").and_then(Value::as_str) != Some(raw.as_str())),
+        "`{raw}` never reaches the upstream"
+    );
+}
+
+#[then(expr = "the granting context gamma grant entry names {string} as a granted {string}")]
+async fn grants_grant_on_record(w: &mut GatewayWorld, tool: String, class: String) {
+    let store = w.grants_store.clone().expect("grants store");
+    let state: Value = serde_json::from_slice(
+        &store
+            .clone()
+            .get(STATE_PATH)
+            .expect("state readable")
+            .expect("state present"),
+    )
+    .expect("state JSON");
+    let agent_mandate = state["agent_mandate"]
+        .as_str()
+        .expect("agent mandate")
+        .to_owned();
+    let op = format!("act.x.{GRANTS_SERVER}.{}", tool.replace('.', "_"));
+    let perimeter = cert_perimeter(store.clone(), &agent_mandate).expect("perimeter readable");
+    assert!(
+        perimeter.contains(&op),
+        "the granted mandate covers `{op}`: {perimeter:?}"
+    );
+    let grants: Vec<EntryView> = gamma_view(store)
+        .expect("gamma readable")
+        .into_iter()
+        .filter(|entry| {
+            entry.kind == "grant" && entry.target.as_deref() == Some(agent_mandate.as_str())
+        })
+        .collect();
+    assert_eq!(
+        grants.len(),
+        1,
+        "the grant of that mandate is on the record"
+    );
+    let manifest = w.approved_manifest.as_ref().expect("approved manifest");
+    let approved = manifest
+        .tools
+        .iter()
+        .find(|t| t.name == tool)
+        .expect("tool");
+    let recorded_class = match approved.risk_class {
+        ToolAccess::Read => "read",
+        ToolAccess::Write => "write",
+    };
+    assert_eq!(recorded_class, class);
+    assert!(approved.is_granted());
+}
+
+#[then("the sealed manifest records the decision next to the risk class")]
+async fn grants_sealed_decision(w: &mut GatewayWorld) {
+    let master = w.master();
+    let store = w.grants_store.clone().expect("grants store");
+    let manifest = owner_read_hub_manifest(&master, GRANTS_CONTEXT, GRANTS_SERVER, store)
+        .expect("sealed manifest opens owner-side");
+    let tool = manifest
+        .tools
+        .iter()
+        .find(|tool| tool.name == "send_email")
+        .expect("send_email sealed");
+    assert_eq!(tool.granted, Some(true), "the decision is explicit at rest");
+    assert_eq!(tool.risk_class, ToolAccess::Write);
+}
+
+#[when(expr = "a runtime config declares {string} as granted")]
+async fn grants_config_overclaims(w: &mut GatewayWorld, tool: String) {
+    let raw = grants_raw_name(&tool);
+    let approved = w.approved_manifest.clone().expect("approved manifest");
+    let (context_root, journal_root) = w.grants_roots.clone().expect("grants roots");
+    let text = grants_config_text(
+        &context_root,
+        &journal_root,
+        &approved,
+        &BTreeMap::from([(raw, true)]),
+    );
+    let cfg = GatewayConfig::from_yaml(&text).expect("the shape itself parses");
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32());
+    w.config_error = Some(
+        Runner::open(&cfg, keyholder, || Box::new(SeqEntropy::default()))
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default(),
+    );
+}
+
+#[then("the gateway refuses to open, naming the grant mismatch")]
+async fn grants_open_refused(w: &mut GatewayWorld) {
+    let err = w.config_error.as_deref().expect("an open verdict");
+    assert!(
+        err.contains("grant decision"),
+        "the refusal names the grant mismatch: {err}"
+    );
+}
+
+#[given(expr = "the agent has called {string} through the hub once")]
+async fn grants_called_once(w: &mut GatewayWorld, tool: String) {
+    w.call(&tool, json!({})).await;
+    let response = w.last_response.as_ref().expect("a response");
+    assert!(response.get("error").is_none(), "the granted call passes");
+}
+
+#[when(expr = "the owner re-enrolls {string} with {string} denied for the same agent key")]
+async fn grants_reenroll_denied(w: &mut GatewayWorld, server: String, tool: String) {
+    assert_eq!(server, GRANTS_SERVER);
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let store = w.grants_store.clone().expect("grants store");
+    let state: Value = serde_json::from_slice(
+        &store
+            .clone()
+            .get(STATE_PATH)
+            .expect("state readable")
+            .expect("state present"),
+    )
+    .expect("state JSON");
+    w.old_agent_mandate = Some(state["agent_mandate"].as_str().unwrap().to_owned());
+    let discovery = FakeMcp::advertising(vec![grants_fixture(&tool)]);
+    let proposed = discover_server(GRANTS_SERVER, &discovery)
+        .await
+        .expect("re-discovery");
+    let approved = approve_manifest(
+        &proposed,
+        &BTreeMap::from([(tool, ToolApproval::denied(ToolAccess::Write))]),
+    )
+    .expect("denied approval");
+    let mut ent = SeqEntropy::default();
+    let outcome = owner_reenroll_server(
+        &master,
+        GRANTS_CONTEXT,
+        &agent_pub,
+        &gateway_pub,
+        &approved,
+        store,
+        &GatewayWorld::window(),
+        T0,
+        &mut ent,
+    )
+    .expect("re-enrollment");
+    w.reenroll = Some(outcome);
+    w.approved_manifest = Some(approved.clone());
+    open_grants_runtime(w, &approved, &BTreeMap::new());
+}
+
+#[then("a new mandate excludes the write and the old mandate is politically revoked")]
+async fn grants_reenroll_verdict(w: &mut GatewayWorld) {
+    let result = w.reenroll.as_ref().expect("re-enrollment outcome");
+    let old = w.old_agent_mandate.as_deref().expect("old mandate id");
+    assert!(result.revoked_mandates.iter().any(|mandate| mandate == old));
+    let store = w.grants_store.clone().expect("grants store");
+    let perimeter =
+        cert_perimeter(store.clone(), &result.equipment.agent_mandate).expect("new perimeter");
+    assert!(
+        !perimeter.contains(&format!("act.x.{GRANTS_SERVER}.send_email")),
+        "the new mandate excludes the write: {perimeter:?}"
+    );
+    assert!(gamma_view(store)
+        .expect("gamma readable")
+        .iter()
+        .any(|entry| entry.kind == "revoke" && entry.target.as_deref() == Some(old)));
+}
+
+#[then(expr = "the next call to {string} is refused and never reaches the upstream")]
+async fn grants_next_call_refused(w: &mut GatewayWorld, tool: String) {
+    w.call(&tool, json!({})).await;
+    let response = w.last_response.as_ref().expect("a response");
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains(&tool)),
+        "the refusal names `{tool}`: {response}"
+    );
+    assert!(
+        w.upstream
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|body| body["method"] != "tools/call"),
+        "nothing reaches the upstream after revocation"
+    );
+}
+
+#[then(expr = "tools\\/list no longer includes {string}")]
+async fn grants_list_excludes(w: &mut GatewayWorld, tool: String) {
+    let router = Arc::clone(w.router.as_ref().expect("grants router"));
+    let listed = process_multi(
+        &router,
+        json!({ "jsonrpc": "2.0", "id": 62, "method": "tools/list" }),
+    )
+    .await;
+    assert!(listed["result"]["tools"]
+        .as_array()
+        .expect("tools listed")
+        .iter()
+        .all(|entry| entry["name"].as_str() != Some(tool.as_str())));
 }
 
 // ------------------------------------------------------------------ main
