@@ -2511,6 +2511,50 @@ async fn config_rejected_exposed_collision(w: &mut GatewayWorld) {
     );
 }
 
+// ------------------------------------------- vault credential broker (V1)
+
+#[when("a hub config gives one server both a vault credential reference and an inline bearer_token")]
+async fn config_declares_double_credential_source(w: &mut GatewayWorld) {
+    let yaml = "\
+listen: 127.0.0.1:4870
+credential_brokers:
+  enterprise:
+    kind: vault-kv2
+    address: http://127.0.0.1:8200
+    mount: secret
+    auth:
+      kind: token-env
+      env: AITHOS_VAULT_TOKEN
+servers:
+  - name: github
+    transport: http
+    url: https://mcp.github.example/mcp
+    bearer_token: inline-legacy-secret
+    credential:
+      broker: enterprise
+      path: aithos/mcp/github
+      field: token
+contexts:
+  - name: customer-support
+    store: { kind: fs, root: /var/lib/aithos/support }
+    tools:
+      github__issues_list: { server: github, tool: issues.list, access: read }
+journal:
+  store: { kind: fs, root: /var/lib/aithos/journal }
+";
+    remember_config_verdict(w, yaml);
+}
+
+#[then("the config is rejected naming the double credential source")]
+async fn config_rejected_double_credential_source(w: &mut GatewayWorld) {
+    let err = w.config_error.as_deref().expect("a parse verdict");
+    assert!(
+        err.contains("both `credential` and `bearer_token`")
+            && err.contains("one credential source"),
+        "the rejection names the double credential source: {err}"
+    );
+}
+
 // ------------------------------------------------------------------ main
 
 #[tokio::main]

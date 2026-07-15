@@ -25,6 +25,14 @@ pub enum GatewayError {
     #[error("upstream MCP failed: {0}")]
     UpstreamFailed(String),
 
+    /// The brokered credential could not be resolved — vault down,
+    /// reference absent, malformed answer. The reason is always a
+    /// gateway-built summary (status class, fixed cause), NEVER the
+    /// remote body, a header value or any secret material. The call
+    /// this credential was for must not reach the upstream.
+    #[error("credential unavailable: {0}")]
+    CredentialUnavailable(String),
+
     /// A governed server no longer advertises the owner-approved manifest.
     #[error("manifest drift for server `{server}`: {reason}")]
     ManifestDrift { server: String, reason: String },
@@ -55,6 +63,7 @@ impl GatewayError {
             GatewayError::LogAppendRefused(_) => "log_append_refused",
             GatewayError::ConfigRejected(_) => "config_rejected",
             GatewayError::UpstreamFailed(_) => "upstream_failed",
+            GatewayError::CredentialUnavailable(_) => "credential_unavailable",
             GatewayError::ManifestDrift { .. } => "manifest_drift",
             GatewayError::RequestRejected(_) => "request_rejected",
             GatewayError::AuditDenied(_) => "audit_denied",

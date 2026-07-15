@@ -65,6 +65,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::credentials::CredentialRef;
 use crate::{GatewayError, Result};
 
 /// Access level the enterprise assigns to an MCP tool.
@@ -89,19 +90,51 @@ pub enum ServerTransport {
     Http,
 }
 
-/// One first-class upstream MCP server (hub config v3). Connection
-/// credentials deliberately remain a later seam; H1 pins topology and
-/// routing shape only.
+/// One first-class upstream MCP server (hub config v3).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerConfig {
     pub name: String,
     pub transport: ServerTransport,
     pub url: String,
-    /// Temporary v1 custody seam. The gateway applies this bearer on
-    /// the wire; it is never exposed on the agent-facing MCP surface.
+    /// LEGACY/UNSAFE inline custody seam (H3): the token sits in clear
+    /// in this file and durably in process memory. Kept only for old
+    /// configs and scenarios; new configs use `credential`. Declaring
+    /// both is rejected — exactly one credential source per server.
     #[serde(default)]
     pub bearer_token: Option<String>,
+    /// The governed custody seam: a non-secret reference resolved
+    /// through a configured `credential_brokers` entry, per call, after
+    /// authorize + log-before-relay. The secret itself never lives in
+    /// this file, in any store or in any log.
+    #[serde(default)]
+    pub credential: Option<CredentialRef>,
+}
+
+/// One enterprise credential broker (top-level `credential_brokers:`).
+/// Only non-secret coordinates live here — the vault access token is
+/// itself read from the environment at resolution time, never from YAML.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum BrokerConfig {
+    /// HashiCorp Vault KV v2 over HTTP(S). `address` must be HTTPS
+    /// unless it points at loopback (the explicitly bounded dev/demo
+    /// mode); `mount` is the KV v2 secrets engine mount.
+    VaultKv2 {
+        address: String,
+        mount: String,
+        auth: BrokerAuthConfig,
+    },
+}
+
+/// How the gateway authenticates TO the vault.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum BrokerAuthConfig {
+    /// Demo/dev: the vault token is read from this environment variable
+    /// at resolution time. Enterprise auth methods (AppRole, Kubernetes)
+    /// are later adapters behind the same seam.
+    TokenEnv { env: String },
 }
 
 /// A context's reference to one raw tool on a first-class server.
@@ -249,6 +282,10 @@ pub struct GatewayConfig {
     /// `upstream_mcp` fields.
     #[serde(default)]
     pub servers: Option<Vec<ServerConfig>>,
+    /// Enterprise credential brokers (hub shape only): the non-secret
+    /// coordinates of the vault(s) that hold upstream MCP tokens.
+    #[serde(default)]
+    pub credential_brokers: Option<BTreeMap<String, BrokerConfig>>,
     /// Multi-context shape (v2): the provisioned contexts. Mutually
     /// exclusive with the mono fields above.
     #[serde(default)]
@@ -319,8 +356,19 @@ impl GatewayConfig {
                     validate_store(&ctx.store, &format!("contexts[{}].store", ctx.name))?;
                 }
                 match &self.servers {
-                    Some(servers) => validate_hub(servers, contexts)?,
-                    None => validate_legacy_contexts(contexts)?,
+                    Some(servers) => {
+                        validate_hub(servers, contexts, self.credential_brokers.as_ref())?
+                    }
+                    None => {
+                        if self.credential_brokers.is_some() {
+                            return Err(GatewayError::ConfigRejected(
+                                "`credential_brokers` requires the hub shape (`servers`) — \
+                                 only first-class servers reference brokered credentials"
+                                    .into(),
+                            ));
+                        }
+                        validate_legacy_contexts(contexts)?
+                    }
                 }
                 if let Some(llm) = &self.llm {
                     validate_llm(llm)?;
@@ -339,6 +387,13 @@ impl GatewayConfig {
                 if self.servers.is_some() {
                     return Err(GatewayError::ConfigRejected(
                         "`servers` requires `contexts` and `journal` — declare the complete hub shape"
+                            .into(),
+                    ));
+                }
+                if self.credential_brokers.is_some() {
+                    return Err(GatewayError::ConfigRejected(
+                        "`credential_brokers` requires the hub shape (`servers`) — \
+                         only first-class servers reference brokered credentials"
                             .into(),
                     ));
                 }
@@ -392,11 +447,18 @@ fn validate_legacy_contexts(contexts: &[ContextConfig]) -> Result<()> {
     Ok(())
 }
 
-fn validate_hub(servers: &[ServerConfig], contexts: &[ContextConfig]) -> Result<()> {
+fn validate_hub(
+    servers: &[ServerConfig],
+    contexts: &[ContextConfig],
+    brokers: Option<&BTreeMap<String, BrokerConfig>>,
+) -> Result<()> {
     use std::collections::BTreeSet;
 
     if servers.is_empty() {
         return Err(GatewayError::ConfigRejected("`servers` is empty".into()));
+    }
+    if let Some(brokers) = brokers {
+        validate_brokers(brokers)?;
     }
 
     let mut server_names = BTreeSet::new();
@@ -434,6 +496,16 @@ fn validate_hub(servers: &[ServerConfig], contexts: &[ContextConfig]) -> Result<
                 "servers[{}].bearer_token is empty",
                 server.name
             )));
+        }
+        if let Some(credential) = &server.credential {
+            if server.bearer_token.is_some() {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "servers[{}] declares both `credential` and `bearer_token` — \
+                     exactly one credential source per server",
+                    server.name
+                )));
+            }
+            validate_server_credential(&server.name, credential, brokers)?;
         }
     }
 
@@ -514,6 +586,123 @@ fn validate_hub(servers: &[ServerConfig], contexts: &[ContextConfig]) -> Result<
 
 fn is_reserved_server(name: &str) -> bool {
     matches!(name, "journal" | "gateway")
+}
+
+/// The declared brokers: names follow the server-id charset, addresses
+/// are HTTP(S) with plaintext HTTP bounded to loopback (the explicit
+/// dev/demo mode), mounts are single path segments and the vault-token
+/// environment variable is a plausible name. All fail-closed.
+fn validate_brokers(brokers: &BTreeMap<String, BrokerConfig>) -> Result<()> {
+    if brokers.is_empty() {
+        return Err(GatewayError::ConfigRejected(
+            "`credential_brokers` is empty".into(),
+        ));
+    }
+    for (name, broker) in brokers {
+        if !crate::policy::valid_server_name(name) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "credential broker name `{name}` must start with a lowercase letter or digit \
+                 and contain only lowercase letters, digits, `-` or `_`"
+            )));
+        }
+        let BrokerConfig::VaultKv2 {
+            address,
+            mount,
+            auth,
+        } = broker;
+        let at = format!("credential_brokers[{name}]");
+        validate_upstream(address, &format!("{at}.address"))?;
+        if address.starts_with("http://") && !is_loopback_http(address) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.address` uses plaintext http off loopback — a remote vault requires TLS"
+            )));
+        }
+        if mount.trim().is_empty()
+            || mount.contains('/')
+            || !mount
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.mount` must be one non-empty path segment \
+                 (letters, digits, `-`, `_`, `.`)"
+            )));
+        }
+        let BrokerAuthConfig::TokenEnv { env } = auth;
+        let mut chars = env.chars();
+        let valid_env = matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !valid_env {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.auth.env` is not a valid environment variable name"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// One server's brokered reference: the broker must be declared, the
+/// path must be clean KV segments, the field must be a plain name.
+fn validate_server_credential(
+    server: &str,
+    credential: &CredentialRef,
+    brokers: Option<&BTreeMap<String, BrokerConfig>>,
+) -> Result<()> {
+    let at = format!("servers[{server}].credential");
+    if !brokers.is_some_and(|brokers| brokers.contains_key(&credential.broker)) {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}` references unknown credential broker `{}`",
+            credential.broker
+        )));
+    }
+    let path_ok = !credential.path.is_empty()
+        && credential.path.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment != "."
+                && segment != ".."
+                && segment
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        });
+    if !path_ok {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}.path` must be `/`-separated non-empty segments \
+             (letters, digits, `-`, `_`, `.`; no `.`/`..`)"
+        )));
+    }
+    let field_ok = !credential.field.is_empty()
+        && credential
+            .field
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    if !field_ok {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}.field` must be a non-empty plain field name \
+             (letters, digits, `-`, `_`, `.`)"
+        )));
+    }
+    Ok(())
+}
+
+/// Is this `http://` URL bounded to loopback? (`127.*`, `localhost`,
+/// `[::1]` — the explicitly allowed dev/demo hosts.)
+fn is_loopback_http(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let host_port = rest.split('/').next().unwrap_or_default();
+    let host = if let Some(bracketed) = host_port.strip_prefix('[') {
+        bracketed.split(']').next().unwrap_or_default()
+    } else {
+        host_port
+            .rsplit_once(':')
+            .map_or(host_port, |(host, _)| host)
+    };
+    host == "localhost"
+        || host == "::1"
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 fn mono_only() -> GatewayError {
@@ -1022,6 +1211,274 @@ journal:
                 Err(GatewayError::ConfigRejected(_))
             ));
         }
+    }
+
+    // -------------------------------------- credential brokers (vault slice)
+
+    const HUB_VAULT: &str = "\
+listen: 127.0.0.1:4870
+credential_brokers:
+  enterprise:
+    kind: vault-kv2
+    address: http://127.0.0.1:8200
+    mount: secret
+    auth:
+      kind: token-env
+      env: AITHOS_VAULT_TOKEN
+servers:
+  - name: github
+    transport: http
+    url: https://mcp.github.example/mcp
+    credential:
+      broker: enterprise
+      path: aithos/mcp/github
+      field: token
+contexts:
+  - name: customer-support
+    store:
+      kind: fs
+      root: /var/lib/aithos/support
+    tools:
+      github__issues_list:
+        server: github
+        tool: issues.list
+        access: read
+journal:
+  store:
+    kind: fs
+    root: /var/lib/aithos/journal
+";
+
+    #[test]
+    fn parses_a_hub_config_with_a_brokered_credential() {
+        let cfg = GatewayConfig::from_yaml(HUB_VAULT).unwrap();
+        let brokers = cfg.credential_brokers.as_ref().unwrap();
+        let BrokerConfig::VaultKv2 {
+            address,
+            mount,
+            auth,
+        } = brokers.get("enterprise").unwrap();
+        assert_eq!(address, "http://127.0.0.1:8200");
+        assert_eq!(mount, "secret");
+        let BrokerAuthConfig::TokenEnv { env } = auth;
+        assert_eq!(env, "AITHOS_VAULT_TOKEN");
+        let server = &cfg.servers.as_ref().unwrap()[0];
+        let credential = server.credential.as_ref().unwrap();
+        assert_eq!(credential.broker, "enterprise");
+        assert_eq!(credential.path, "aithos/mcp/github");
+        assert_eq!(credential.field, "token");
+        assert!(server.bearer_token.is_none());
+    }
+
+    #[test]
+    fn credential_and_bearer_token_together_are_rejected() {
+        let text = HUB_VAULT.replace(
+            "    url: https://mcp.github.example/mcp\n",
+            "    url: https://mcp.github.example/mcp\n    bearer_token: inline-secret\n",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m))
+                if m.contains("both `credential` and `bearer_token`")
+                    && m.contains("one credential source")
+        ));
+    }
+
+    #[test]
+    fn a_credential_referencing_an_unknown_broker_is_rejected() {
+        let text = HUB_VAULT.replace("broker: enterprise", "broker: missing");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m))
+                if m.contains("unknown credential broker `missing`")
+        ));
+    }
+
+    #[test]
+    fn a_credential_without_any_declared_broker_is_rejected() {
+        let text = HUB_VAULT.replace(
+            "credential_brokers:
+  enterprise:
+    kind: vault-kv2
+    address: http://127.0.0.1:8200
+    mount: secret
+    auth:
+      kind: token-env
+      env: AITHOS_VAULT_TOKEN
+",
+            "",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m))
+                if m.contains("unknown credential broker")
+        ));
+    }
+
+    #[test]
+    fn credential_brokers_outside_the_hub_shape_are_rejected() {
+        let broker_block = "credential_brokers:
+  enterprise:
+    kind: vault-kv2
+    address: http://127.0.0.1:8200
+    mount: secret
+    auth:
+      kind: token-env
+      env: AITHOS_VAULT_TOKEN
+";
+        for base in [GOOD.to_owned(), MULTI.to_owned()] {
+            let text = format!("{base}{broker_block}");
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&text),
+                    Err(GatewayError::ConfigRejected(m)) if m.contains("hub shape")
+                ),
+                "brokers must require the hub shape"
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_broker_map_is_rejected() {
+        let text = HUB_VAULT
+            .replace(
+                "credential_brokers:
+  enterprise:
+    kind: vault-kv2
+    address: http://127.0.0.1:8200
+    mount: secret
+    auth:
+      kind: token-env
+      env: AITHOS_VAULT_TOKEN
+",
+                "credential_brokers: {}
+",
+            )
+            .replace(
+                "    credential:
+      broker: enterprise
+      path: aithos/mcp/github
+      field: token
+",
+                "",
+            );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("`credential_brokers` is empty")
+        ));
+    }
+
+    #[test]
+    fn a_plaintext_broker_address_off_loopback_is_rejected() {
+        let text = HUB_VAULT.replace("http://127.0.0.1:8200", "http://vault.internal:8200");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("requires TLS")
+        ));
+        for allowed in [
+            "http://127.0.0.1:8200",
+            "http://localhost:8200",
+            "http://[::1]:8200",
+            "https://vault.internal:8200",
+        ] {
+            let text = HUB_VAULT.replace("http://127.0.0.1:8200", allowed);
+            assert!(
+                GatewayConfig::from_yaml(&text).is_ok(),
+                "must accept: {allowed}"
+            );
+        }
+    }
+
+    #[test]
+    fn broker_and_credential_shapes_fail_closed() {
+        for (broken, what) in [
+            ("mount: secret", "mount: se/cret"),
+            ("mount: secret", "mount: ''"),
+            ("env: AITHOS_VAULT_TOKEN", "env: '9BAD NAME'"),
+            ("path: aithos/mcp/github", "path: aithos//github"),
+            ("path: aithos/mcp/github", "path: ../escape"),
+            ("path: aithos/mcp/github", "path: ''"),
+            ("field: token", "field: ''"),
+            ("field: token", "field: to ken"),
+        ] {
+            let text = HUB_VAULT.replace(broken, what);
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&text),
+                    Err(GatewayError::ConfigRejected(_))
+                ),
+                "must reject: {what}"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_fields_in_broker_and_credential_blocks_are_rejected() {
+        for (from, to) in [
+            (
+                "    mount: secret\n",
+                "    mount: secret\n    surprise: true\n",
+            ),
+            (
+                "      env: AITHOS_VAULT_TOKEN\n",
+                "      env: AITHOS_VAULT_TOKEN\n      surprise: true\n",
+            ),
+            ("      field: token\n", "      field: token\n      surprise: true\n"),
+        ] {
+            let text = HUB_VAULT.replace(from, to);
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&text),
+                    Err(GatewayError::ConfigRejected(_))
+                ),
+                "must reject unknown field in: {to}"
+            );
+        }
+    }
+
+    #[test]
+    fn broker_kinds_and_auth_kinds_fail_closed() {
+        for (from, to) in [
+            ("kind: vault-kv2", "kind: vault-kv1"),
+            ("kind: token-env", "kind: token-inline"),
+        ] {
+            let text = HUB_VAULT.replace(from, to);
+            assert!(matches!(
+                GatewayConfig::from_yaml(&text),
+                Err(GatewayError::ConfigRejected(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn broker_names_follow_the_server_charset() {
+        for bad in ["Enterprise", "ent/prise", "-enterprise"] {
+            let text = HUB_VAULT
+                .replace("  enterprise:", &format!("  {bad}:"))
+                .replace("broker: enterprise", &format!("broker: {bad}"));
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&text),
+                    Err(GatewayError::ConfigRejected(m)) if m.contains("broker name")
+                ),
+                "must reject broker name: {bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unused_broker_is_allowed() {
+        // Declaring a broker no server references yet is configuration,
+        // not ambiguity — the reference direction is what is validated.
+        let text = HUB_VAULT.replace(
+            "    credential:
+      broker: enterprise
+      path: aithos/mcp/github
+      field: token
+",
+            "",
+        );
+        assert!(GatewayConfig::from_yaml(&text).is_ok());
     }
 
     // -------------------------------------------------------- llm (Phase C)

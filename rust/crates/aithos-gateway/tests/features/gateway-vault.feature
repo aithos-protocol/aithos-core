@@ -111,7 +111,6 @@ Feature: Enterprise credential vault — upstream MCP tokens brokered per call
 
   Rule: One credential source per server, decided at configuration time
 
-    @wip
     Scenario: Declaring credential and bearer_token together is rejected at config time
       When a hub config gives one server both a vault credential reference and an inline bearer_token
       Then the config is rejected naming the double credential source
