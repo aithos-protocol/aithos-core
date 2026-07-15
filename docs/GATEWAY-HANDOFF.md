@@ -22,6 +22,20 @@ les leçons d'environnement. Session initiale : 2026-07-10.
 > HTTP dont un partagé, bearer wire-only, audit par contexte et restart bloqué sur
 > drift.
 
+> **ÉTAT EXPRESS (2026-07-15 soir, 8e session gw — démo Léa W+P)** : le
+> scénario de référence `docs/DEMO-LEA-SCENARIO.md` est VALIDÉ et les
+> quatre contrats de la démo committés seuls (`190d6b4`). **Lot W clos**
+> (`0e59e91`) : décision d'octroi ≠ classe de risque — writes grantables
+> explicitement, défauts sûrs, révocation politique au re-enrollment.
+> **Lot P clos** (`56d2a14`) : bornes d'arguments owner-approuvées
+> (`one_of`/`time_slots`/`forbid`/`require`/`max_items`) scellées au
+> manifeste HORS pin hash, check post-authorize pré-log, refus
+> `bound_violated` pédagogique, zéro hit coffre/amont, CLI `--bound`.
+> Suite : **72 scénarios / 355 steps**, 61 unit, 4 CLI, 5 e2e, 5 owner ;
+> Cucumber désormais SÉQUENTIEL (starvation tokio sous mondes à sockets —
+> ne pas retirer). Restent `@wip` : `gateway-briefing` (lot K) et
+> `gateway-demo-lea` (lot D) → `docs/HANDOFF-DEMO-LEA-K-D-2026-07-15.md`.
+
 > **ÉTAT EXPRESS (2026-07-15, 7ᵉ session gw — coffre Vault)** : **CREDENTIALS
 > MCP BROKERÉS VERTS (V0→V3).** Les tokens MCP sortent du YAML : références
 > non secrètes `credential_brokers`/`servers[].credential`, adapter
@@ -535,3 +549,11 @@ commit docs (ce paragraphe, l'état express, HUB-MCP §8 et le handoff DONE).
 Warnings `tmp_obj` toujours cosmétiques. L'input
 `HANDOFF-GATEWAY-VAULT-FINALIZATION-2026-07-15.md` reste untracked (décision
 Mathieu). Scories intactes.
+
+Session du 2026-07-15 soir (8e gw, démo Léa, même profil cloud+janitor) :
+scénario de référence validé par Mathieu puis commits sélectifs
+`6ba28d6` (doc scénario), `190d6b4` (4 contrats @wip seuls), `0e59e91`
+(lot W), `56d2a14` (lot P), plus le commit docs de ce paragraphe et du
+handoff K-D. Transferts fichier-par-fichier sha256-croisés, janitor
+habituel, warnings tmp_obj cosmétiques. Leçon neuve : Cucumber passé en
+séquentiel (voir état express).
