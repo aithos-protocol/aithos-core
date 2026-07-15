@@ -918,6 +918,8 @@ struct HubRuntimeTool {
     /// The effective grant decision (lot W): drives the exposed
     /// `tools/list`. Refusals still flow from the mandate itself.
     granted: bool,
+    /// Owner-approved argument bounds (lot P), from the sealed manifest.
+    bounds: Vec<crate::hub::ArgumentBound>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1010,6 +1012,7 @@ impl Runner {
                                 pin_sha256: approved.pin_sha256.clone(),
                                 access: reference.access,
                                 granted: approved.is_granted(),
+                                bounds: approved.bounds.clone(),
                             },
                         );
                     }
@@ -1141,6 +1144,39 @@ impl Runner {
                 server: hub.server.clone(),
                 reason: reason.clone(),
             })
+    }
+
+    /// The owner-approved argument bounds of one exposed tool (lot P):
+    /// checked by the router AFTER the mandate said yes and BEFORE the
+    /// act is logged. A violation refuses the whole call — the gateway
+    /// never rewrites arguments. Non-hub tools carry no bounds.
+    pub fn check_bounds(&self, tool: &str, args: &serde_json::Value) -> Result<()> {
+        let Some(hub) = self.hub_tools.get(tool) else {
+            return Ok(());
+        };
+        for bound in &hub.bounds {
+            // Shape first, from the PINNED schema: a bounded field the
+            // approved schema types as an array must arrive as one —
+            // never coerced, never guessed (the `action`-style scalar
+            // whitelists stay scalars because their schema says so).
+            let field = bound.field();
+            let pinned_type = hub
+                .input_schema
+                .pointer(&format!("/properties/{field}/type"))
+                .and_then(serde_json::Value::as_str);
+            if pinned_type == Some("array") {
+                if let Some(value) = args.get(field) {
+                    if !value.is_array() {
+                        return Err(GatewayError::BoundViolated(format!(
+                            "`{}.{field}` — must be an array of strings per the pinned schema",
+                            hub.raw_tool
+                        )));
+                    }
+                }
+            }
+            bound.check(&hub.raw_tool, args)?;
+        }
+        Ok(())
     }
 
     /// Pre-check on the resolved context: does its mandate cover the

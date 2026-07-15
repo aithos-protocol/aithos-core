@@ -27,7 +27,9 @@ use aithos_gateway::core_bridge::{
     owner_reenroll_server, Bridge, ContextRuntime, EntropySource, EntryView, EquipOutcome,
     MandateWindow, OnboardOutcome, RawStore, ReenrollOutcome, Runner, SeqEntropy, STATE_PATH,
 };
-use aithos_gateway::hub::{approve_manifest, discover_server, ApprovedManifest, ToolApproval};
+use aithos_gateway::hub::{
+    approve_manifest, discover_server, ApprovedManifest, ArgumentBound, ToolApproval,
+};
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
@@ -219,6 +221,9 @@ struct GatewayWorld {
     grants_store: Option<GatewayStore>,
     grants_label: Option<String>,
     grants_roots: Option<(std::path::PathBuf, std::path::PathBuf)>,
+    /// Bounds scenarios (lot P): the exact arguments of the last bounded
+    /// call, for the arguments-unmodified assertion.
+    last_args: Option<Value>,
 }
 
 impl GatewayWorld {
@@ -263,6 +268,7 @@ impl GatewayWorld {
             grants_store: None,
             grants_label: None,
             grants_roots: None,
+            last_args: None,
         }
     }
 
@@ -991,8 +997,15 @@ async fn new_mandate_covers_reenroll(w: &mut GatewayWorld) {
 #[then("the old mandate is politically revoked")]
 async fn old_mandate_revoked(w: &mut GatewayWorld) {
     let old = w.old_agent_mandate.as_ref().unwrap();
+    // The revocation lives in whichever context re-enrolled: the hub
+    // world's customer-support, or the bounds world's ventes.
+    let context = if w.ctx_stores.contains_key("customer-support") {
+        "customer-support"
+    } else {
+        BOUNDS_CONTEXT
+    };
     assert!(w
-        .ctx_gamma("customer-support")
+        .ctx_gamma(context)
         .iter()
         .any(|entry| entry.kind == "revoke" && entry.target.as_deref() == Some(old)));
 }
@@ -4024,12 +4037,779 @@ async fn grants_list_excludes(w: &mut GatewayWorld, tool: String) {
         .all(|entry| entry["name"].as_str() != Some(tool.as_str())));
 }
 
+// ------------------------------------------------ argument bounds (lot P)
+//
+// The bounds world rides the FULL governed stack on purpose: real
+// HttpUpstream, real VaultKv2Broker against the fake KV v2 vault, and a
+// header-recording wire MCP — so "a bound violation wakes neither the
+// vault nor the upstream" is a counted fact on live sockets.
+
+const BOUNDS_CONTEXT: &str = "ventes";
+const BOUNDS_APPROVED: [&str; 3] = [
+    "prospect-a@clients.example",
+    "prospect-b@clients.example",
+    "prospect-c@clients.example",
+];
+
+fn bounds_server_for(raw_tool: &str) -> &'static str {
+    match raw_tool {
+        "send_email" => "gmail",
+        "repo_admin" => "github",
+        "create_event" => "calendar",
+        other => panic!("unknown bounds tool `{other}`"),
+    }
+}
+
+fn bounds_fixture(raw_tool: &str) -> Value {
+    match raw_tool {
+        "send_email" => json!({
+            "name": "send_email",
+            "description": "Send an email",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "to": { "type": "array", "items": { "type": "string" } },
+                    "cc": { "type": "array", "items": { "type": "string" } },
+                    "bcc": { "type": "array", "items": { "type": "string" } },
+                    "subject": { "type": "string" },
+                    "body": { "type": "string" }
+                },
+                "required": ["to"],
+                "additionalProperties": false
+            }
+        }),
+        "repo_admin" => json!({
+            "name": "repo_admin",
+            "description": "Administer one repository item",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": { "type": "string" },
+                    "target": { "type": "string" }
+                },
+                "required": ["action"],
+                "additionalProperties": false
+            }
+        }),
+        "create_event" => json!({
+            "name": "create_event",
+            "description": "Create one calendar event",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "start": { "type": "string" },
+                    "title": { "type": "string" }
+                },
+                "required": ["start"],
+                "additionalProperties": false
+            }
+        }),
+        other => panic!("unknown bounds fixture `{other}`"),
+    }
+}
+
+/// One governed server, one granted write tool with bounds, the vault
+/// holding its bearer — the smallest world every bounds scenario needs.
+async fn provision_bounds_world(w: &mut GatewayWorld, raw_tool: &str, bounds: Vec<ArgumentBound>) {
+    use aithos_gateway::credentials::build_brokers;
+    use aithos_gateway::proxy_mcp::HttpUpstream;
+
+    if w.vault.is_some() {
+        return;
+    }
+    static BOUNDS_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let seq = BOUNDS_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let env_name = format!("AITHOS_CUCUMBER_BOUNDS_TOKEN_{seq}");
+    let vault_token = format!("vault-access-bounds-{seq}");
+    std::env::set_var(&env_name, &vault_token);
+    let server = bounds_server_for(raw_tool);
+
+    let dir = tempfile::tempdir().expect("bounds tempdir");
+    let context_root = dir.path().join(BOUNDS_CONTEXT);
+    let journal_root = dir.path().join("journal");
+    let store_cfg = |root: &std::path::Path| aithos_gateway::config::StoreConfig::Fs {
+        root: root.to_owned(),
+    };
+    let context_store =
+        GatewayStore::from_config(&store_cfg(&context_root)).expect("bounds context store");
+    let journal_store =
+        GatewayStore::from_config(&store_cfg(&journal_root)).expect("bounds journal store");
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let mut owner_ent = SeqEntropy::default();
+    owner_init_context(
+        &master,
+        BOUNDS_CONTEXT,
+        context_store.clone(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("bounds context created");
+    let discovery = FakeMcp::advertising(vec![bounds_fixture(raw_tool)]);
+    let proposed = discover_server(server, &discovery)
+        .await
+        .expect("bounds discovery");
+    let approved = approve_manifest(
+        &proposed,
+        &BTreeMap::from([(
+            raw_tool.to_owned(),
+            ToolApproval::granted(ToolAccess::Write).with_bounds(bounds),
+        )]),
+    )
+    .expect("bounds approval");
+    owner_enroll_server(
+        &master,
+        BOUNDS_CONTEXT,
+        &agent_pub,
+        &gateway_pub,
+        &approved,
+        context_store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("bounds enrollment");
+    owner_init_journal(
+        &master,
+        "leo",
+        &agent_pub,
+        &gateway_pub,
+        None,
+        journal_store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("bounds journal");
+
+    let fake_vault = FakeVault {
+        expected_token: vault_token.clone(),
+        ..FakeVault::default()
+    };
+    fake_vault
+        .secrets
+        .lock()
+        .unwrap()
+        .entry(format!("aithos/mcp/{server}"))
+        .or_default()
+        .insert("token".to_owned(), format!("wire-bearer-bounds-{seq}"));
+    let vault_port = spawn_fake_vault(fake_vault.clone()).await;
+    let wire = WireMcp::new("bound-ok");
+    let wire_port = spawn_wire_mcp(wire.clone()).await;
+
+    let quote =
+        |path: &std::path::Path| serde_json::to_string(&path.display().to_string()).unwrap();
+    let exposed = aithos_gateway::policy::hub_exposed_name(server, raw_tool);
+    let config_text = format!(
+        "listen: 127.0.0.1:4870\ncredential_brokers:\n  enterprise:\n    kind: vault-kv2\n    address: http://127.0.0.1:{vault_port}\n    mount: secret\n    auth:\n      kind: token-env\n      env: {env_name}\nservers:\n  - name: {server}\n    transport: http\n    url: http://127.0.0.1:{wire_port}/mcp\n    credential:\n      broker: enterprise\n      path: aithos/mcp/{server}\n      field: token\ncontexts:\n  - name: {BOUNDS_CONTEXT}\n    store: {{ kind: fs, root: {} }}\n    tools:\n      {exposed}: {{ server: {server}, tool: {raw_tool}, access: write, granted: true }}\njournal:\n  store: {{ kind: fs, root: {} }}\n",
+        quote(&context_root),
+        quote(&journal_root)
+    );
+    let config_path = dir.path().join("gateway.yaml");
+    std::fs::write(&config_path, &config_text).expect("bounds config written");
+    let cfg = GatewayConfig::from_yaml(&config_text).expect("bounds config parses");
+    let brokers = build_brokers(&cfg).expect("bounds brokers");
+    let upstreams: BTreeMap<String, HttpUpstream> = cfg
+        .servers
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|entry| {
+            (
+                entry.name.clone(),
+                HttpUpstream::for_server(entry, &brokers).expect("bounds upstream"),
+            )
+        })
+        .collect();
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32());
+    let runner = Runner::open(&cfg, keyholder, || Box::new(SeqEntropy::default()))
+        .expect("bounds governed runner");
+
+    w.ctx_stores
+        .insert(BOUNDS_CONTEXT.to_owned(), context_store.clone());
+    w.journal_store = Some(journal_store);
+    w.grants_store = Some(context_store);
+    w.approved_manifest = Some(approved);
+    w.vault = Some(VaultHarness {
+        router: Arc::new(McpRouter {
+            runner: Arc::new(Mutex::new(runner)),
+            upstreams,
+            clock: Arc::new(|| T0.to_owned()),
+        }),
+        vault: fake_vault,
+        wires: BTreeMap::from([(server.to_owned(), wire)]),
+        config_path,
+        config_text,
+        vault_token,
+        store_roots: vec![context_root, journal_root],
+        responses: Vec::new(),
+    });
+    w.scratch = Some(dir);
+}
+
+/// Reopen the bounds runtime after a re-enrollment: same config text,
+/// freshly loaded sealed manifest (the narrowed bounds), clean wires.
+fn reopen_bounds_runtime(w: &mut GatewayWorld) {
+    use aithos_gateway::credentials::build_brokers;
+    use aithos_gateway::proxy_mcp::HttpUpstream;
+
+    let harness = w.vault.as_mut().expect("bounds harness");
+    let cfg = GatewayConfig::from_yaml(&harness.config_text).expect("bounds config reparses");
+    let brokers = build_brokers(&cfg).expect("bounds brokers rebuild");
+    let upstreams: BTreeMap<String, HttpUpstream> = cfg
+        .servers
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|entry| {
+            (
+                entry.name.clone(),
+                HttpUpstream::for_server(entry, &brokers).expect("bounds upstream rebuild"),
+            )
+        })
+        .collect();
+    let mut kh_ent = SeqEntropy::default();
+    let keyholder = Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32());
+    let runner = Runner::open(&cfg, keyholder, || Box::new(SeqEntropy::default()))
+        .expect("bounds runner reopens on the new pin");
+    for wire in harness.wires.values() {
+        wire.requests.lock().unwrap().clear();
+        wire.auths.lock().unwrap().clear();
+    }
+    harness.router = Arc::new(McpRouter {
+        runner: Arc::new(Mutex::new(runner)),
+        upstreams,
+        clock: Arc::new(|| T0.to_owned()),
+    });
+}
+
+async fn bounds_call(w: &mut GatewayWorld, tool: &str, args: Value) {
+    w.last_args = Some(args.clone());
+    w.call(tool, json!({ "arguments": args })).await;
+}
+
+impl GatewayWorld {
+    /// The exposed name of the bounds world's single tool.
+    fn bounds_exposed(&self, raw_tool: &str) -> String {
+        aithos_gateway::policy::hub_exposed_name(bounds_server_for(raw_tool), raw_tool)
+    }
+}
+
+#[given(
+    expr = "tool {string} is granted write with a one_of bound on {string} allowing {string}, {string} and {string}"
+)]
+async fn bounds_one_of_three(
+    w: &mut GatewayWorld,
+    tool: String,
+    field: String,
+    first: String,
+    second: String,
+    third: String,
+) {
+    provision_bounds_world(
+        w,
+        &tool,
+        vec![ArgumentBound::OneOf {
+            field,
+            values: vec![first, second, third],
+        }],
+    )
+    .await;
+}
+
+#[given(expr = "tool {string} is granted write with a one_of bound on {string} allowing {string}")]
+#[given(
+    expr = "tool {string} is granted write with a one_of bound on field {string} allowing {string}"
+)]
+async fn bounds_one_of_single(w: &mut GatewayWorld, tool: String, field: String, value: String) {
+    provision_bounds_world(
+        w,
+        &tool,
+        vec![ArgumentBound::OneOf {
+            field,
+            values: vec![value],
+        }],
+    )
+    .await;
+}
+
+#[given(expr = "tool {string} is granted write with a one_of bound on {string}")]
+async fn bounds_one_of_default(w: &mut GatewayWorld, tool: String, field: String) {
+    provision_bounds_world(
+        w,
+        &tool,
+        vec![ArgumentBound::OneOf {
+            field,
+            values: BOUNDS_APPROVED
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+        }],
+    )
+    .await;
+}
+
+#[given(
+    expr = "tool {string} is granted write with a one_of bound on {string} allowing three prospects"
+)]
+async fn bounds_one_of_three_prospects(w: &mut GatewayWorld, tool: String, field: String) {
+    bounds_one_of_default(w, tool, field).await;
+}
+
+#[given(
+    expr = "tool {string} is granted write with time slots {string} and {string} from {string} to {string} on field {string}"
+)]
+async fn bounds_time_slots(
+    w: &mut GatewayWorld,
+    tool: String,
+    first_day: String,
+    second_day: String,
+    from: String,
+    to: String,
+    field: String,
+) {
+    provision_bounds_world(
+        w,
+        &tool,
+        vec![ArgumentBound::TimeSlots {
+            field,
+            days: vec![first_day, second_day],
+            from,
+            to,
+        }],
+    )
+    .await;
+}
+
+#[given(expr = "tool {string} is granted write with bound {string}")]
+async fn bounds_mini_spec(w: &mut GatewayWorld, tool: String, spec: String) {
+    let bound = match spec.as_str() {
+        "forbid bcc" => ArgumentBound::Forbid {
+            field: "bcc".into(),
+        },
+        "require subject" => ArgumentBound::Require {
+            field: "subject".into(),
+        },
+        "to max_items 3" => ArgumentBound::MaxItems {
+            field: "to".into(),
+            max: 3,
+        },
+        other => panic!("unknown bound spec `{other}`"),
+    };
+    provision_bounds_world(w, &tool, vec![bound]).await;
+}
+
+#[when(expr = "the agent calls {string} with recipients {string} and {string}")]
+async fn bounds_call_two_recipients(
+    w: &mut GatewayWorld,
+    tool: String,
+    first: String,
+    second: String,
+) {
+    bounds_call(
+        w,
+        &tool,
+        json!({ "to": [first, second], "subject": "Visite", "body": "Bonjour" }),
+    )
+    .await;
+}
+
+#[when(expr = "the agent calls {string} with recipients including {string} and {string}")]
+async fn bounds_call_including_intruders(
+    w: &mut GatewayWorld,
+    tool: String,
+    first_intruder: String,
+    second_intruder: String,
+) {
+    let mut recipients: Vec<String> = BOUNDS_APPROVED
+        .iter()
+        .map(|value| value.to_string())
+        .collect();
+    recipients.push(first_intruder);
+    recipients.push(second_intruder);
+    bounds_call(
+        w,
+        &tool,
+        json!({ "to": recipients, "subject": "Visite", "body": "Bonjour" }),
+    )
+    .await;
+}
+
+#[when(expr = "the agent calls {string} with action {string}")]
+async fn bounds_call_action(w: &mut GatewayWorld, tool: String, action: String) {
+    bounds_call(w, &tool, json!({ "action": action, "target": "pr-42" })).await;
+}
+
+#[when(expr = "the agent calls {string} starting {string}")]
+async fn bounds_call_starting(w: &mut GatewayWorld, tool: String, start: String) {
+    bounds_call(
+        w,
+        &tool,
+        json!({ "start": start, "title": "Visite du bien" }),
+    )
+    .await;
+}
+
+#[when(expr = "the agent calls {string} with arguments {string}")]
+async fn bounds_call_shaped(w: &mut GatewayWorld, tool: String, shape: String) {
+    let args = match shape.as_str() {
+        "a bcc field" => json!({
+            "to": ["someone@clients.example"],
+            "subject": "Visite",
+            "bcc": ["hidden@clients.example"]
+        }),
+        "no subject field" => json!({ "to": ["someone@clients.example"] }),
+        "four whitelisted recipients" => json!({
+            "to": ["r1@clients.example", "r2@clients.example",
+                    "r3@clients.example", "r4@clients.example"],
+            "subject": "Visite"
+        }),
+        other => panic!("unknown argument shape `{other}`"),
+    };
+    bounds_call(w, &tool, args).await;
+}
+
+#[when(expr = "the agent calls {string} with {string} as a single string instead of an array")]
+async fn bounds_call_mistyped(w: &mut GatewayWorld, tool: String, field: String) {
+    bounds_call(
+        w,
+        &tool,
+        json!({ field: "prospect-a@clients.example", "subject": "Visite" }),
+    )
+    .await;
+}
+
+#[when(expr = "the agent calls {string} without any {string} field")]
+async fn bounds_call_without_field(w: &mut GatewayWorld, tool: String, field: String) {
+    assert_eq!(field, "cc");
+    bounds_call(
+        w,
+        &tool,
+        json!({ "to": ["prospect-a@clients.example"], "subject": "Visite" }),
+    )
+    .await;
+}
+
+#[then("the call is refused as a bound violation")]
+async fn bounds_refused(w: &mut GatewayWorld) {
+    let response = w.last_response.as_ref().expect("a response");
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("bound violated")),
+        "the refusal carries the bound code: {response}"
+    );
+}
+
+#[then(expr = "the call is refused as a bound violation naming the expected shape of {string}")]
+async fn bounds_refused_shape(w: &mut GatewayWorld, field: String) {
+    let response = w.last_response.as_ref().expect("a response");
+    let message = response["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("bound violated")
+            && message.contains(&format!(".{field}`"))
+            && message.contains("must be an array of strings"),
+        "the refusal names the expected shape: {message}"
+    );
+}
+
+#[then(expr = "the refusal names field {string}, the offending values and the approved set")]
+async fn bounds_refusal_pedagogical(w: &mut GatewayWorld, field: String) {
+    let message = w.last_response.as_ref().expect("a response")["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    assert!(
+        message.contains(&format!(".{field}`")),
+        "names the field: {message}"
+    );
+    assert!(
+        message.contains("prospect-d@clients.example")
+            && message.contains("prospect-e@clients.example"),
+        "names every offender: {message}"
+    );
+    for approved in BOUNDS_APPROVED {
+        assert!(
+            message.contains(approved),
+            "teaches the approved set: {message}"
+        );
+    }
+}
+
+#[then(expr = "the refusal names field {string}, value {string} and the allowed actions")]
+async fn bounds_refusal_action(w: &mut GatewayWorld, field: String, value: String) {
+    let message = w.last_response.as_ref().expect("a response")["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    assert!(
+        message.contains(&format!(".{field}`"))
+            && message.contains(&value)
+            && message.contains("comment"),
+        "names field, value and allowed actions: {message}"
+    );
+}
+
+#[then(expr = "the refusal names field {string}, the offending instant and the approved slots")]
+async fn bounds_refusal_slots(w: &mut GatewayWorld, field: String) {
+    let message = w.last_response.as_ref().expect("a response")["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    let instant = w
+        .last_args
+        .as_ref()
+        .and_then(|args| args["start"].as_str())
+        .expect("the offending instant")
+        .to_owned();
+    assert!(
+        message.contains(&format!(".{field}`"))
+            && message.contains(&instant)
+            && message.contains("tuesday")
+            && message.contains("thursday")
+            && message.contains("14:00")
+            && message.contains("18:00"),
+        "names instant and slots: {message}"
+    );
+}
+
+#[then("the call reaches the upstream with its arguments unmodified")]
+async fn bounds_call_untouched(w: &mut GatewayWorld) {
+    let response = w.last_response.as_ref().expect("a response");
+    let hits = w.vault_harness().vault.hits.lock().unwrap().clone();
+    let tokens = w.vault_harness().vault.tokens.lock().unwrap().clone();
+    assert!(
+        response.get("error").is_none(),
+        "the bounded call passes: {response} (vault hits: {hits:?}, tokens: {tokens:?})"
+    );
+    let harness = w.vault_harness();
+    let sent = w.last_args.as_ref().expect("the sent arguments");
+    let wire = harness.wires.values().next().expect("one wire");
+    let last = wire
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .rfind(|body| body["method"] == "tools/call")
+        .cloned()
+        .expect("one relayed call");
+    assert_eq!(
+        last.pointer("/params/arguments"),
+        Some(sent),
+        "arguments relay byte-identical — the gateway never rewrites"
+    );
+}
+
+#[then("the act is logged in the granting context gamma")]
+async fn bounds_act_logged(w: &mut GatewayWorld) {
+    let server = w
+        .vault_harness()
+        .wires
+        .keys()
+        .next()
+        .expect("one wired server")
+        .clone();
+    let target = format!("x.{server}");
+    assert_eq!(
+        acts_on(&w.ctx_gamma(BOUNDS_CONTEXT), &target).len(),
+        1,
+        "exactly one act in the granting context"
+    );
+}
+
+#[then(expr = "the context gamma and the journal each gain one {string} refusal")]
+async fn bounds_refusal_logged(w: &mut GatewayWorld, reason: String) {
+    let context_refusals: Vec<EntryView> = acts_on(&w.ctx_gamma(BOUNDS_CONTEXT), "x.gateway")
+        .into_iter()
+        .filter(|entry| payload_str(entry, "reason") == Some(reason.as_str()))
+        .collect();
+    assert_eq!(context_refusals.len(), 1, "one context `{reason}` refusal");
+    let journal_refusals: Vec<EntryView> = acts_on(&w.journal_gamma(), "x.gateway")
+        .into_iter()
+        .filter(|entry| payload_str(entry, "reason") == Some(reason.as_str()))
+        .collect();
+    assert_eq!(journal_refusals.len(), 1, "one journal `{reason}` refusal");
+}
+
+#[then("the runtime config text declares no bound at all")]
+async fn bounds_config_is_boundless(w: &mut GatewayWorld) {
+    let config = &w.vault_harness().config_text;
+    assert!(
+        !config.contains("one_of") && !config.contains("bounds") && !config.contains("prospect-"),
+        "the YAML carries topology and references only"
+    );
+}
+
+#[then("the sealed manifest of the granting context records the bound")]
+async fn bounds_sealed_in_manifest(w: &mut GatewayWorld) {
+    let master = w.master();
+    let store = w.grants_store.clone().expect("bounds store");
+    let manifest = owner_read_hub_manifest(&master, BOUNDS_CONTEXT, "gmail", store)
+        .expect("sealed manifest opens owner-side");
+    let tool = &manifest.tools[0];
+    assert!(
+        matches!(tool.bounds.first(), Some(ArgumentBound::OneOf { field, .. }) if field == "to"),
+        "the bound is sealed with the manifest"
+    );
+}
+
+#[then("the upstream pin hash is unchanged by the bound")]
+async fn bounds_pin_unchanged(w: &mut GatewayWorld) {
+    let manifest = w.approved_manifest.as_ref().expect("approved manifest");
+    let tool = &manifest.tools[0];
+    let recomputed = aithos_gateway::core_bridge::manifest_tool_pin(
+        &tool.name,
+        tool.description.as_deref(),
+        &tool.input_schema,
+    )
+    .expect("pin recomputes");
+    assert_eq!(
+        tool.pin_sha256, recomputed,
+        "the pin covers the upstream's word only — bounds live outside it"
+    );
+}
+
+#[given(expr = "the agent has sent to {string} once")]
+async fn bounds_sent_once(w: &mut GatewayWorld, recipient: String) {
+    let exposed = w.bounds_exposed("send_email");
+    bounds_call(
+        w,
+        &exposed,
+        json!({ "to": [recipient], "subject": "Visite" }),
+    )
+    .await;
+    let response = w.last_response.as_ref().expect("a response");
+    assert!(response.get("error").is_none(), "the first send passes");
+}
+
+#[when(
+    expr = "the owner re-enrolls {string} narrowing the bound to {string} for the same agent key"
+)]
+async fn bounds_reenroll_narrowed(w: &mut GatewayWorld, server: String, survivor: String) {
+    assert_eq!(server, "gmail");
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let store = w.grants_store.clone().expect("bounds store");
+    let state: Value = serde_json::from_slice(
+        &store
+            .clone()
+            .get(STATE_PATH)
+            .expect("state readable")
+            .expect("state present"),
+    )
+    .expect("state JSON");
+    w.old_agent_mandate = Some(state["agent_mandate"].as_str().unwrap().to_owned());
+    let discovery = FakeMcp::advertising(vec![bounds_fixture("send_email")]);
+    let proposed = discover_server("gmail", &discovery)
+        .await
+        .expect("re-discovery");
+    let approved = approve_manifest(
+        &proposed,
+        &BTreeMap::from([(
+            "send_email".to_owned(),
+            ToolApproval::granted(ToolAccess::Write).with_bounds(vec![ArgumentBound::OneOf {
+                field: "to".into(),
+                values: vec![survivor],
+            }]),
+        )]),
+    )
+    .expect("narrowed approval");
+    let mut ent = SeqEntropy::default();
+    let outcome = owner_reenroll_server(
+        &master,
+        BOUNDS_CONTEXT,
+        &agent_pub,
+        &gateway_pub,
+        &approved,
+        store,
+        &GatewayWorld::window(),
+        T0,
+        &mut ent,
+    )
+    .expect("narrowing re-enrollment");
+    w.reenroll = Some(outcome);
+    w.approved_manifest = Some(approved);
+    reopen_bounds_runtime(w);
+}
+
+#[then(expr = "a call to {string} is now refused as a bound violation")]
+async fn bounds_call_now_refused(w: &mut GatewayWorld, recipient: String) {
+    let exposed = w.bounds_exposed("send_email");
+    bounds_call(
+        w,
+        &exposed,
+        json!({ "to": [recipient], "subject": "Visite" }),
+    )
+    .await;
+    bounds_refused(w).await;
+}
+
+#[then(expr = "a call to {string} still passes")]
+async fn bounds_call_still_passes(w: &mut GatewayWorld, recipient: String) {
+    let exposed = w.bounds_exposed("send_email");
+    bounds_call(
+        w,
+        &exposed,
+        json!({ "to": [recipient], "subject": "Visite" }),
+    )
+    .await;
+    let response = w.last_response.as_ref().expect("a response");
+    assert!(
+        response.get("error").is_none(),
+        "the surviving recipient passes: {response}"
+    );
+}
+
+#[when(expr = "the owner approves {string} as a denied write carrying a one_of bound")]
+async fn bounds_approve_ungranted(w: &mut GatewayWorld, tool: String) {
+    let discovery = FakeMcp::advertising(vec![json!({
+        "name": tool,
+        "description": "Delete an email",
+        "inputSchema": { "type": "object", "additionalProperties": false }
+    })]);
+    let proposed = discover_server("gmail", &discovery)
+        .await
+        .expect("discovery");
+    let verdict = approve_manifest(
+        &proposed,
+        &BTreeMap::from([(
+            tool,
+            ToolApproval::denied(ToolAccess::Write).with_bounds(vec![ArgumentBound::OneOf {
+                field: "id".into(),
+                values: vec!["x".into()],
+            }]),
+        )]),
+    );
+    w.config_error = Some(
+        verdict
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default(),
+    );
+}
+
+#[then("the approval is rejected naming the ungranted bound")]
+async fn bounds_ungranted_rejected(w: &mut GatewayWorld) {
+    let err = w.config_error.as_deref().expect("an approval verdict");
+    assert!(
+        err.contains("did not grant"),
+        "the rejection names the ungranted bound: {err}"
+    );
+}
+
 // ------------------------------------------------------------------ main
 
 #[tokio::main]
 async fn main() {
     let features = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/features");
+    // Serial on purpose: worlds spawn real socket servers and do
+    // blocking owner-side crypto inside steps; under concurrent
+    // scenarios the tokio workers starve and wire responses miss the
+    // brokered 5s budget (observed as flaky vault timeouts). One
+    // scenario at a time keeps every timing assertion deterministic.
     GatewayWorld::cucumber()
+        .max_concurrent_scenarios(Some(1))
         .filter_run(features, |_, _, scenario| {
             !scenario.tags.iter().any(|t| t == "wip")
         })

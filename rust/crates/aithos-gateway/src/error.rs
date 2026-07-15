@@ -33,6 +33,13 @@ pub enum GatewayError {
     #[error("credential unavailable: {0}")]
     CredentialUnavailable(String),
 
+    /// The call's arguments violate an owner-approved bound (lot P).
+    /// The message is deliberately pedagogical: it names the field, the
+    /// offending values and the approved rule — that rule IS the granted
+    /// perimeter, already sealed and logged owner-side, never a secret.
+    #[error("bound violated: {0}")]
+    BoundViolated(String),
+
     /// A governed server no longer advertises the owner-approved manifest.
     #[error("manifest drift for server `{server}`: {reason}")]
     ManifestDrift { server: String, reason: String },
@@ -64,6 +71,7 @@ impl GatewayError {
             GatewayError::ConfigRejected(_) => "config_rejected",
             GatewayError::UpstreamFailed(_) => "upstream_failed",
             GatewayError::CredentialUnavailable(_) => "credential_unavailable",
+            GatewayError::BoundViolated(_) => "bound_violated",
             GatewayError::ManifestDrift { .. } => "manifest_drift",
             GatewayError::RequestRejected(_) => "request_rejected",
             GatewayError::AuditDenied(_) => "audit_denied",

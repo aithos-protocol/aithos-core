@@ -128,6 +128,11 @@ enum Command {
             required = true
         )]
         approvals: Vec<String>,
+        /// Argument bound on a granted tool, repeatable:
+        /// TOOL:FIELD=one_of:v1,v2 | TOOL:FIELD=slots:tue,thu@14:00-18:00
+        /// | TOOL:FIELD=forbid | TOOL:FIELD=require | TOOL:FIELD=max:N
+        #[arg(long = "bound", value_name = "TOOL:FIELD=RULE")]
+        bounds: Vec<String>,
         #[arg(long)]
         store_root: String,
         #[arg(long, default_value_t = 30)]
@@ -313,6 +318,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             gateway_pub,
             proposal,
             approvals,
+            bounds,
             store_root,
             ttl_days,
             replace,
@@ -320,8 +326,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let master = decode_master(master_seed_hex)?;
             let proposed: aithos_gateway::hub::ProposedManifest =
                 serde_json::from_slice(&std::fs::read(proposal)?)?;
-            let approved =
-                aithos_gateway::hub::approve_manifest(&proposed, &parse_approvals(approvals)?)?;
+            let mut approvals = parse_approvals(approvals)?;
+            attach_bounds(&mut approvals, bounds)?;
+            let approved = aithos_gateway::hub::approve_manifest(&proposed, &approvals)?;
             let start = now_secs();
             let store = GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
                 root: store_root.into(),
@@ -565,6 +572,81 @@ fn parse_approvals(
         }
     }
     Ok(out)
+}
+
+/// Parse every --bound flag and attach it to its tool's approval.
+/// Syntax: TOOL:FIELD=one_of:v1,v2 | TOOL:FIELD=slots:tue,thu@14:00-18:00
+/// | TOOL:FIELD=forbid | TOOL:FIELD=require | TOOL:FIELD=max:N
+fn attach_bounds(
+    approvals: &mut BTreeMap<String, aithos_gateway::hub::ToolApproval>,
+    bounds: &[String],
+) -> Result<(), String> {
+    use aithos_gateway::hub::ArgumentBound;
+
+    for value in bounds {
+        let (target, rule) = value
+            .split_once('=')
+            .ok_or_else(|| format!("--bound `{value}`: want TOOL:FIELD=RULE"))?;
+        let (tool, field) = target
+            .split_once(':')
+            .ok_or_else(|| format!("--bound `{value}`: want TOOL:FIELD=RULE"))?;
+        if tool.trim().is_empty() || field.trim().is_empty() {
+            return Err(format!("--bound `{value}`: empty tool or field"));
+        }
+        let field = field.to_owned();
+        let bound = if rule == "forbid" {
+            ArgumentBound::Forbid { field }
+        } else if rule == "require" {
+            ArgumentBound::Require { field }
+        } else if let Some(values) = rule.strip_prefix("one_of:") {
+            ArgumentBound::OneOf {
+                field,
+                values: values.split(',').map(str::to_owned).collect(),
+            }
+        } else if let Some(max) = rule.strip_prefix("max:") {
+            ArgumentBound::MaxItems {
+                field,
+                max: max
+                    .parse()
+                    .map_err(|_| format!("--bound `{value}`: max wants an integer"))?,
+            }
+        } else if let Some(slots) = rule.strip_prefix("slots:") {
+            let (days, window) = slots
+                .split_once('@')
+                .ok_or_else(|| format!("--bound `{value}`: slots want DAYS@HH:MM-HH:MM"))?;
+            let (from, to) = window
+                .split_once('-')
+                .ok_or_else(|| format!("--bound `{value}`: slots want DAYS@HH:MM-HH:MM"))?;
+            let days = days
+                .split(',')
+                .map(|day| match day {
+                    "mon" | "monday" => Ok("monday".to_owned()),
+                    "tue" | "tuesday" => Ok("tuesday".to_owned()),
+                    "wed" | "wednesday" => Ok("wednesday".to_owned()),
+                    "thu" | "thursday" => Ok("thursday".to_owned()),
+                    "fri" | "friday" => Ok("friday".to_owned()),
+                    "sat" | "saturday" => Ok("saturday".to_owned()),
+                    "sun" | "sunday" => Ok("sunday".to_owned()),
+                    other => Err(format!("--bound `{value}`: unknown day `{other}`")),
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            ArgumentBound::TimeSlots {
+                field,
+                days,
+                from: from.to_owned(),
+                to: to.to_owned(),
+            }
+        } else {
+            return Err(format!(
+                "--bound `{value}`: rule must be one_of:, slots:, forbid, require or max:"
+            ));
+        };
+        let approval = approvals
+            .get_mut(tool)
+            .ok_or_else(|| format!("--bound `{value}`: tool `{tool}` has no --approve"))?;
+        approval.bounds.push(bound);
+    }
+    Ok(())
 }
 
 fn print_onboard(o: &OnboardOutcome) {

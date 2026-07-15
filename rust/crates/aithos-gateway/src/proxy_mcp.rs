@@ -448,6 +448,16 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Valu
         return error_response(id, &deny);
     }
 
+    // The owner-approved argument bounds (lot P): the mandate said WHAT
+    // the agent may do, the bounds say ON WHAT. A violation refuses the
+    // whole call before anything is logged as an act — no rewriting,
+    // no vault wake-up, no upstream contact; the pedagogical refusal
+    // (field, offending values, approved rule) is the teaching surface.
+    if let Err(deny) = runner.check_bounds(&tool, &args) {
+        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    }
+
     let relay = match runner.relay_target(&ctx, &tool) {
         Ok(relay) => relay,
         Err(deny) => {
