@@ -25,7 +25,6 @@ Feature: Streamable HTTP tolerance — real MCP clients on the hub endpoint
 
   Rule: A notification is never answered
 
-    @wip
     Scenario: notifications/initialized is acknowledged with 202 and an empty body
       Given a provisioned multi-context gateway
       When the agent posts the notification "notifications/initialized"
@@ -33,7 +32,6 @@ Feature: Streamable HTTP tolerance — real MCP clients on the hub endpoint
       And the HTTP body is empty
       And no request reaches any upstream
 
-    @wip
     Scenario: Every notifications/* method is acknowledged the same way
       Given a provisioned multi-context gateway
       When the agent posts the notification "notifications/cancelled"
@@ -41,7 +39,6 @@ Feature: Streamable HTTP tolerance — real MCP clients on the hub endpoint
       And the HTTP body is empty
       And no request reaches any upstream
 
-    @wip
     Scenario: An id-less tools/call is refused, never silently executed
       Given a provisioned multi-context gateway
       When the agent posts a "tools/call" for "brand.read" without an id
@@ -52,7 +49,6 @@ Feature: Streamable HTTP tolerance — real MCP clients on the hub endpoint
 
   Rule: ping answers promptly and touches nothing
 
-    @wip
     Scenario: ping answers an empty result
       Given a provisioned multi-context gateway
       When the agent calls "ping"
@@ -61,21 +57,18 @@ Feature: Streamable HTTP tolerance — real MCP clients on the hub endpoint
 
   Rule: Sessions are stateless — emitted, echoed, never required
 
-    @wip
     Scenario: initialize returns an opaque session id from injected entropy
       Given a provisioned multi-context gateway
       When the agent initializes over HTTP
       Then the response carries an Mcp-Session-Id header of visible ASCII
       And two initializations yield two different session ids
 
-    @wip
     Scenario: The session id the client presents is echoed back
       Given a provisioned multi-context gateway
       When the agent initializes over HTTP and calls "tools/list" presenting the returned session id
       Then the call is served
       And the response echoes the same Mcp-Session-Id header
 
-    @wip
     Scenario: A request with an unknown or absent session id is served all the same
       Given a provisioned multi-context gateway
       When the agent calls "tools/list" over HTTP presenting the session id "stale-or-foreign"
@@ -85,19 +78,16 @@ Feature: Streamable HTTP tolerance — real MCP clients on the hub endpoint
 
   Rule: What the endpoint does not offer, it refuses cleanly
 
-    @wip
     Scenario: GET /mcp answers 405 — no SSE stream is offered
       Given a provisioned multi-context gateway
       When the agent issues a GET to the MCP endpoint
       Then the HTTP status is 405
 
-    @wip
     Scenario: DELETE /mcp answers 405 — sessions are not client-terminable
       Given a provisioned multi-context gateway
       When the agent issues a DELETE to the MCP endpoint
       Then the HTTP status is 405
 
-    @wip
     Scenario: A batched body is refused with one clean invalid-request error
       Given a provisioned multi-context gateway
       When the agent posts a JSON array batching two requests
@@ -107,7 +97,6 @@ Feature: Streamable HTTP tolerance — real MCP clients on the hub endpoint
 
   Rule: Origin is validated fail-closed before any JSON-RPC
 
-    @wip
     Scenario: A non-local Origin is refused before processing
       Given a provisioned multi-context gateway
       When the agent posts "tools/list" with the Origin header "https://evil.example"
@@ -115,7 +104,6 @@ Feature: Streamable HTTP tolerance — real MCP clients on the hub endpoint
       And no request reaches any upstream
       And no act is recorded in any gamma
 
-    @wip
     Scenario: An absent or loopback Origin passes
       Given a provisioned multi-context gateway
       When the agent posts "tools/list" with the Origin header "http://127.0.0.1:4870"
@@ -124,7 +112,6 @@ Feature: Streamable HTTP tolerance — real MCP clients on the hub endpoint
 
   Rule: Undeclared capabilities stay closed
 
-    @wip
     Scenario: resources and prompts answer method-not-found and are never announced
       Given a provisioned multi-context gateway
       When the agent initializes and requests MCP resources through the hub

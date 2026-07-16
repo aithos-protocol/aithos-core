@@ -653,6 +653,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     runner: Arc::clone(&runner),
                     upstreams,
                     clock: Arc::new(|| ts(now_secs())),
+                    session_entropy: std::sync::Mutex::new(Box::new(OsEntropy)),
                 });
                 if cfg.is_hub() {
                     rt.block_on(verify_hub_upstreams(&routing))?;

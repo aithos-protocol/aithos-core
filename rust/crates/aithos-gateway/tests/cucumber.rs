@@ -36,8 +36,8 @@ use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
 use aithos_gateway::proxy_mcp::{
-    process, process_multi, refresh_server_manifest, McpProxy, McpRouter, Upstream, BRIEFING_READ,
-    JOURNAL_SEARCH, JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
+    process, process_multi, refresh_server_manifest, router_multi, McpProxy, McpRouter, Upstream,
+    BRIEFING_READ, JOURNAL_SEARCH, JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
 };
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::{GatewayError, Result};
@@ -251,6 +251,29 @@ struct GatewayWorld {
     /// dry-run verdict) and the tool it previewed.
     preview: Option<Value>,
     preview_tool: Option<String>,
+    /// Streamable transport scenarios (G2): the served base URL of the
+    /// REAL axum shell over a real socket, the wire exchanges in call
+    /// order, the last minted session id, and the per-store gamma
+    /// counts captured right after provisioning (the no-new-entry
+    /// assertions compare against them).
+    wire_base: Option<String>,
+    wire_responses: Vec<WireResponse>,
+    wire_session: Option<String>,
+    gamma_baseline: BTreeMap<String, usize>,
+}
+
+/// One raw Streamable HTTP exchange (G2): what the wire actually said.
+#[derive(Debug, Clone)]
+struct WireResponse {
+    status: u16,
+    session: Option<String>,
+    body: Vec<u8>,
+}
+
+impl WireResponse {
+    fn json(&self) -> Value {
+        serde_json::from_slice(&self.body).expect("a JSON body")
+    }
 }
 
 /// One row of the demo Background table.
@@ -320,6 +343,10 @@ impl GatewayWorld {
             demo_auditor_seed: None,
             preview: None,
             preview_tool: None,
+            wire_base: None,
+            wire_responses: Vec::new(),
+            wire_session: None,
+            gamma_baseline: BTreeMap::new(),
         }
     }
 
@@ -562,6 +589,7 @@ journal:
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
         clock: Arc::new(|| T0.to_owned()),
+        session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
     }));
     w.scratch = Some(dir);
 }
@@ -700,6 +728,7 @@ journal:
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
         clock: Arc::new(|| T0.to_owned()),
+        session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
     }));
     w.scratch = Some(dir);
 }
@@ -1010,6 +1039,7 @@ journal:
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([("github".to_owned(), w.upstream.clone())]),
         clock: Arc::new(|| T0.to_owned()),
+        session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
     }));
     w.reenroll = Some(result);
 }
@@ -1663,6 +1693,7 @@ async fn provision_runner(w: &mut GatewayWorld, a: String, b: String, strip_memo
         runner: Arc::new(Mutex::new(Runner::from_parts(contexts, journal))),
         upstreams: w.multi_upstreams.clone(),
         clock: Arc::new(|| T0.to_owned()),
+        session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
     }));
 }
 
@@ -3080,6 +3111,7 @@ async fn provision_vault_hub(w: &mut GatewayWorld, specs: Vec<VaultServerSpec>, 
             runner: Arc::new(Mutex::new(runner)),
             upstreams,
             clock: Arc::new(|| T0.to_owned()),
+            session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         }),
         vault: fake_vault,
         wires,
@@ -3677,6 +3709,7 @@ fn open_grants_runtime(
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([(GRANTS_SERVER.to_owned(), w.upstream.clone())]),
         clock: Arc::new(|| T0.to_owned()),
+        session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
     }));
 }
 
@@ -4225,6 +4258,7 @@ async fn provision_briefing_world(w: &mut GatewayWorld) {
         runner: Arc::new(Mutex::new(Runner::from_parts(contexts, journal))),
         upstreams: w.multi_upstreams.clone(),
         clock: Arc::new(|| T0.to_owned()),
+        session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
     }));
 }
 
@@ -4348,8 +4382,18 @@ async fn briefing_init_and_list(w: &mut GatewayWorld) {
 
 #[when(expr = "the agent calls {string}")]
 async fn briefing_agent_calls(w: &mut GatewayWorld, tool: String) {
-    assert_eq!(tool, BRIEFING_READ, "the bare call step serves briefing");
-    briefing_call(w, json!({})).await;
+    match tool.as_str() {
+        BRIEFING_READ => briefing_call(w, json!({})).await,
+        // The G2 liveness probe rides the same bare step: a direct
+        // JSON-RPC method, never a tools/call.
+        "ping" => {
+            let resp = w
+                .agent_request(json!({ "jsonrpc": "2.0", "id": 80, "method": "ping" }))
+                .await;
+            w.last_response = Some(resp);
+        }
+        other => panic!("the bare call step serves briefing.read or ping, not `{other}`"),
+    }
 }
 
 #[when(expr = "the agent calls {string} twice")]
@@ -4743,6 +4787,7 @@ async fn provision_bounds_world(w: &mut GatewayWorld, raw_tool: &str, bounds: Ve
             runner: Arc::new(Mutex::new(runner)),
             upstreams,
             clock: Arc::new(|| T0.to_owned()),
+            session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         }),
         vault: fake_vault,
         wires: BTreeMap::from([(server.to_owned(), wire)]),
@@ -4788,6 +4833,7 @@ fn reopen_bounds_runtime(w: &mut GatewayWorld) {
         runner: Arc::new(Mutex::new(runner)),
         upstreams,
         clock: Arc::new(|| T0.to_owned()),
+        session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
     });
 }
 
@@ -5734,6 +5780,7 @@ async fn provision_demo_world(w: &mut GatewayWorld) {
             runner: Arc::new(Mutex::new(runner)),
             upstreams,
             clock: Arc::new(|| T0.to_owned()),
+            session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         }),
         vault: fake_vault,
         wires,
@@ -6355,6 +6402,327 @@ async fn mandates_runtime_matches_preview(w: &mut GatewayWorld) {
 }
 
 // ------------------------------------------------------------------ main
+
+// ------------------------------------- streamable transport (lot G2)
+
+/// The G2 world: the standard two-context runner, its gamma counts
+/// captured as a baseline, and the REAL router served over a loopback
+/// socket — the axum shell (Origin, notifications, sessions, methods)
+/// IS the thing under test, so these scenarios speak actual HTTP.
+#[given("a provisioned multi-context gateway")]
+async fn streamable_world(w: &mut GatewayWorld) {
+    provision_runner(w, "company-brand".into(), "ui-designer".into(), false).await;
+    let mut baseline = BTreeMap::new();
+    for (name, store) in &w.ctx_stores {
+        baseline.insert(
+            name.clone(),
+            gamma_view(store.clone()).expect("gamma").len(),
+        );
+    }
+    baseline.insert(
+        "journal".to_owned(),
+        gamma_view(w.journal_store.clone().expect("journal store"))
+            .expect("gamma")
+            .len(),
+    );
+    w.gamma_baseline = baseline;
+    let app = router_multi(Arc::clone(w.router.as_ref().expect("a provisioned router")));
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("loopback listener");
+    let addr = listener.local_addr().expect("local addr");
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    w.wire_base = Some(format!("http://{addr}/mcp"));
+}
+
+/// POST one raw body to the served endpoint, extra headers included,
+/// and record exactly what the wire answered.
+async fn wire_post(w: &mut GatewayWorld, body: String, extra: &[(&str, &str)]) {
+    let url = w.wire_base.clone().expect("a served gateway");
+    let mut req = reqwest::Client::new()
+        .post(&url)
+        .header("content-type", "application/json")
+        .header("accept", "application/json, text/event-stream")
+        .body(body);
+    for (name, value) in extra {
+        req = req.header(*name, *value);
+    }
+    let resp = req.send().await.expect("the wire answers");
+    let status = resp.status().as_u16();
+    let session = resp
+        .headers()
+        .get("mcp-session-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    let body = resp.bytes().await.expect("a body").to_vec();
+    w.wire_responses.push(WireResponse {
+        status,
+        session,
+        body,
+    });
+}
+
+#[when(expr = "the agent posts the notification {string}")]
+async fn wire_posts_notification(w: &mut GatewayWorld, method: String) {
+    let body = json!({ "jsonrpc": "2.0", "method": method }).to_string();
+    wire_post(w, body, &[]).await;
+}
+
+#[when(expr = "the agent posts a {string} for {string} without an id")]
+async fn wire_posts_idless_call(w: &mut GatewayWorld, method: String, tool: String) {
+    let body = json!({
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": { "name": tool, "arguments": {} }
+    })
+    .to_string();
+    wire_post(w, body, &[]).await;
+}
+
+#[when("the agent initializes over HTTP")]
+async fn wire_initializes(w: &mut GatewayWorld) {
+    let body = json!({ "jsonrpc": "2.0", "id": 70, "method": "initialize" }).to_string();
+    wire_post(w, body, &[]).await;
+    w.wire_session = w.wire_responses.last().and_then(|r| r.session.clone());
+}
+
+#[when(
+    expr = "the agent initializes over HTTP and calls {string} presenting the returned session id"
+)]
+async fn wire_init_then_call(w: &mut GatewayWorld, method: String) {
+    wire_initializes(w).await;
+    let sid = w.wire_session.clone().expect("a minted session id");
+    let body = json!({ "jsonrpc": "2.0", "id": 71, "method": method }).to_string();
+    wire_post(w, body, &[("mcp-session-id", sid.as_str())]).await;
+}
+
+#[when(expr = "the agent calls {string} over HTTP presenting the session id {string}")]
+async fn wire_call_with_session(w: &mut GatewayWorld, method: String, sid: String) {
+    let body = json!({ "jsonrpc": "2.0", "id": 72, "method": method }).to_string();
+    wire_post(w, body, &[("mcp-session-id", sid.as_str())]).await;
+}
+
+#[when(expr = "the agent calls {string} over HTTP presenting no session id")]
+async fn wire_call_without_session(w: &mut GatewayWorld, method: String) {
+    let body = json!({ "jsonrpc": "2.0", "id": 73, "method": method }).to_string();
+    wire_post(w, body, &[]).await;
+}
+
+#[when("the agent issues a GET to the MCP endpoint")]
+async fn wire_get(w: &mut GatewayWorld) {
+    let url = w.wire_base.clone().expect("a served gateway");
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .send()
+        .await
+        .expect("the wire answers");
+    let status = resp.status().as_u16();
+    let body = resp.bytes().await.expect("a body").to_vec();
+    w.wire_responses.push(WireResponse {
+        status,
+        session: None,
+        body,
+    });
+}
+
+#[when("the agent issues a DELETE to the MCP endpoint")]
+async fn wire_delete(w: &mut GatewayWorld) {
+    let url = w.wire_base.clone().expect("a served gateway");
+    let resp = reqwest::Client::new()
+        .delete(&url)
+        .send()
+        .await
+        .expect("the wire answers");
+    let status = resp.status().as_u16();
+    let body = resp.bytes().await.expect("a body").to_vec();
+    w.wire_responses.push(WireResponse {
+        status,
+        session: None,
+        body,
+    });
+}
+
+#[when("the agent posts a JSON array batching two requests")]
+async fn wire_posts_batch(w: &mut GatewayWorld) {
+    let body = json!([
+        { "jsonrpc": "2.0", "id": 74, "method": "tools/list" },
+        { "jsonrpc": "2.0", "id": 75, "method": "ping" }
+    ])
+    .to_string();
+    wire_post(w, body, &[]).await;
+}
+
+#[when(expr = "the agent posts {string} with the Origin header {string}")]
+async fn wire_posts_with_origin(w: &mut GatewayWorld, method: String, origin: String) {
+    let body = json!({ "jsonrpc": "2.0", "id": 76, "method": method }).to_string();
+    wire_post(w, body, &[("origin", origin.as_str())]).await;
+}
+
+#[when(expr = "the agent posts {string} without an Origin header")]
+async fn wire_posts_without_origin(w: &mut GatewayWorld, method: String) {
+    let body = json!({ "jsonrpc": "2.0", "id": 77, "method": method }).to_string();
+    wire_post(w, body, &[]).await;
+}
+
+#[when("the agent initializes and requests MCP resources through the hub")]
+async fn wire_init_and_resources(w: &mut GatewayWorld) {
+    let init = w
+        .agent_request(json!({ "jsonrpc": "2.0", "id": 78, "method": "initialize" }))
+        .await;
+    w.last_init = Some(init);
+    let resp = w
+        .agent_request(json!({ "jsonrpc": "2.0", "id": 79, "method": "resources/list" }))
+        .await;
+    w.last_response = Some(resp);
+}
+
+#[then(expr = "the HTTP status is {int}")]
+async fn wire_status_is(w: &mut GatewayWorld, status: u16) {
+    let last = w.wire_responses.last().expect("a wire exchange");
+    assert_eq!(last.status, status, "the wire status");
+}
+
+#[then("the HTTP body is empty")]
+async fn wire_body_empty(w: &mut GatewayWorld) {
+    let last = w.wire_responses.last().expect("a wire exchange");
+    assert!(
+        last.body.is_empty(),
+        "an empty transport body, got: {}",
+        String::from_utf8_lossy(&last.body)
+    );
+}
+
+#[then("no request reaches any upstream")]
+async fn wire_upstreams_untouched(w: &mut GatewayWorld) {
+    for (name, fake) in &w.multi_upstreams {
+        assert!(
+            fake.seen.lock().unwrap().is_empty(),
+            "upstream `{name}` was never contacted"
+        );
+    }
+}
+
+#[then("no act is recorded in any gamma")]
+async fn wire_gammas_unmoved(w: &mut GatewayWorld) {
+    for (name, store) in &w.ctx_stores {
+        let count = gamma_view(store.clone()).expect("gamma").len();
+        assert_eq!(count, w.gamma_baseline[name], "gamma of `{name}` unmoved");
+    }
+    let journal = gamma_view(w.journal_store.clone().expect("journal store"))
+        .expect("gamma")
+        .len();
+    assert_eq!(journal, w.gamma_baseline["journal"], "journal unmoved");
+}
+
+#[then("the response is a JSON-RPC error with a null id naming the missing id")]
+async fn wire_idless_refused(w: &mut GatewayWorld) {
+    let msg = w.wire_responses.last().expect("a wire exchange").json();
+    assert!(msg["id"].is_null(), "a null id: {msg}");
+    let text = msg["error"]["message"].as_str().expect("an error message");
+    assert!(text.contains("id"), "the refusal names the id: {text}");
+}
+
+#[then("the answer is exactly the empty JSON-RPC result")]
+async fn ping_empty_result(w: &mut GatewayWorld) {
+    let resp = w.last_response.as_ref().expect("an answer");
+    assert!(resp.get("error").is_none(), "no error: {resp}");
+    assert_eq!(resp["result"], json!({}), "the empty result: {resp}");
+}
+
+#[then("the response carries an Mcp-Session-Id header of visible ASCII")]
+async fn wire_session_ascii(w: &mut GatewayWorld) {
+    let sid = w.wire_session.as_deref().expect("a minted session id");
+    assert!(
+        !sid.is_empty() && sid.bytes().all(|b| (0x21..=0x7e).contains(&b)),
+        "visible ASCII: {sid}"
+    );
+}
+
+#[then("two initializations yield two different session ids")]
+async fn wire_sessions_differ(w: &mut GatewayWorld) {
+    let first = w.wire_session.clone().expect("a first id");
+    wire_initializes(w).await;
+    let second = w.wire_session.clone().expect("a second id");
+    assert_ne!(first, second, "opaque ids never repeat");
+}
+
+#[then("the call is served")]
+async fn wire_call_served(w: &mut GatewayWorld) {
+    let last = w.wire_responses.last().expect("a wire exchange");
+    assert_eq!(last.status, 200, "a served call");
+    let msg = last.json();
+    assert!(
+        msg.get("error").is_none() && msg.get("result").is_some(),
+        "served: {msg}"
+    );
+}
+
+#[then("the response echoes the same Mcp-Session-Id header")]
+async fn wire_session_echoed(w: &mut GatewayWorld) {
+    let minted = w.wire_session.clone().expect("the minted id");
+    let last = w.wire_responses.last().expect("a wire exchange");
+    assert_eq!(
+        last.session.as_deref(),
+        Some(minted.as_str()),
+        "the id rides back"
+    );
+}
+
+#[then("both calls are served")]
+async fn wire_both_served(w: &mut GatewayWorld) {
+    let n = w.wire_responses.len();
+    assert!(n >= 2, "two wire exchanges");
+    for r in &w.wire_responses[n - 2..] {
+        assert_eq!(r.status, 200, "a served call");
+        let msg = r.json();
+        assert!(
+            msg.get("error").is_none() && msg.get("result").is_some(),
+            "served: {msg}"
+        );
+    }
+}
+
+#[then("neither response is an error")]
+async fn wire_neither_error(w: &mut GatewayWorld) {
+    let n = w.wire_responses.len();
+    for r in &w.wire_responses[n - 2..] {
+        assert!(r.json().get("error").is_none(), "no error rode the wire");
+    }
+}
+
+#[then(expr = "the response is a JSON-RPC error with a null id and code {int}")]
+async fn wire_error_code(w: &mut GatewayWorld, code: i64) {
+    let msg = w.wire_responses.last().expect("a wire exchange").json();
+    assert!(msg["id"].is_null(), "a null id: {msg}");
+    assert_eq!(msg["error"]["code"].as_i64(), Some(code), "the code: {msg}");
+}
+
+#[then("the error message names batching as unsupported")]
+async fn wire_batch_named(w: &mut GatewayWorld) {
+    let msg = w.wire_responses.last().expect("a wire exchange").json();
+    let text = msg["error"]["message"].as_str().expect("an error message");
+    assert!(text.contains("batching"), "names batching: {text}");
+}
+
+#[then("the initialize capabilities announce tools and nothing else")]
+async fn init_capabilities_tools_only(w: &mut GatewayWorld) {
+    let init = w.last_init.as_ref().expect("an initialize answer");
+    assert_eq!(
+        init.pointer("/result/capabilities"),
+        Some(&json!({ "tools": {} })),
+        "tools, nothing else"
+    );
+}
+
+#[then("the resources request is refused with method-not-found")]
+async fn resources_method_not_found(w: &mut GatewayWorld) {
+    let resp = w.last_response.as_ref().expect("an answer");
+    assert_eq!(
+        resp.pointer("/error/code").and_then(Value::as_i64),
+        Some(METHOD_NOT_FOUND_CODE),
+        "method-not-found: {resp}"
+    );
+}
 
 #[tokio::main]
 async fn main() {

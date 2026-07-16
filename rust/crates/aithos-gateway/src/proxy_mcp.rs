@@ -31,11 +31,14 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use axum::body::Bytes;
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::{extract::State, routing::post, Json, Router};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
-use crate::core_bridge::{Bridge, Runner};
+use crate::core_bridge::{Bridge, EntropySource, Runner};
 use crate::credentials::{CredentialBroker, CredentialRef};
 use crate::hub::discover_server;
 use crate::policy::Policy;
@@ -47,8 +50,25 @@ pub const POLICY_DENIED_CODE: i64 = -32001;
 
 /// JSON-RPC "method not found" — what the multi-context router answers
 /// for methods it does not serve (v1: everything but `initialize`,
-/// `tools/list` and `tools/call`).
+/// `tools/list`, `tools/call` and `ping`).
 pub const METHOD_NOT_FOUND_CODE: i64 = -32601;
+
+/// JSON-RPC "invalid request" — id-less non-notifications (an act whose
+/// result has no return channel must never happen) and batched bodies
+/// (removed from the protocol by the 2025-06-18 revision; refused here,
+/// decided 2026-07-16).
+pub const INVALID_REQUEST_CODE: i64 = -32600;
+
+/// JSON-RPC "parse error" — a POST body that is not JSON at all.
+pub const PARSE_ERROR_CODE: i64 = -32700;
+
+/// The Streamable HTTP session header (MCP 2025-03-26). Decided
+/// 2026-07-16: the gateway is STATELESS — it emits an opaque id on
+/// `initialize` (injected entropy, visible ASCII) and echoes whatever
+/// id the client presents on later calls, but never requires or stores
+/// one. Authority never rides this header: it stays with the mandate
+/// chain (per-session chains arrive with G5, through OAuth).
+pub const MCP_SESSION_HEADER: &str = "mcp-session-id";
 
 /// The native journal tools (lot C2): served by the gateway itself on
 /// `/mcp`, never relayed to any upstream. The `journal` prefix is
@@ -309,10 +329,22 @@ fn error_response(id: Value, err: &GatewayError) -> Value {
 /// journal) and one upstream per context, keyed by the same names. The
 /// runner is shared (`Arc`) so the LLM front (Phase C) meters into the
 /// SAME journal — one story, never a second bridge over one store.
+/// `session_entropy` mints the opaque `Mcp-Session-Id` values — the
+/// gateway only ever has the injected [`EntropySource`], no wild rand.
 pub struct McpRouter<U> {
     pub runner: Arc<Mutex<Runner>>,
     pub upstreams: BTreeMap<String, U>,
     pub clock: Clock,
+    pub session_entropy: std::sync::Mutex<Box<dyn EntropySource + Send>>,
+}
+
+impl<U> McpRouter<U> {
+    /// One opaque session id: hex of 16 injected-entropy bytes —
+    /// visible ASCII per spec, never a secret, never an authority.
+    fn mint_session_id(&self) -> String {
+        let mut ent = self.session_entropy.lock().expect("session entropy lock");
+        hex::encode(ent.e16())
+    }
 }
 
 /// Agent-facing router for the multi-context runtime: same single
@@ -323,11 +355,101 @@ pub fn router_multi<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
         .with_state(rt)
 }
 
+/// The Streamable HTTP shell around [`process_multi`] (lot G2): the
+/// transport rules a real MCP host exercises, applied in order and
+/// fail-closed — Origin first (spec security MUST, anti DNS-rebinding),
+/// then body shape (no batches), then the notification rule (a JSON-RPC
+/// message without an id is NEVER answered: HTTP 202, empty body — and
+/// an id-less non-notification is refused 400, never silently acted
+/// on), and last the session header: minted on `initialize`, echoed
+/// when presented, required never (stateless, decided 2026-07-16).
 async fn handle_multi<U: Upstream>(
     State(rt): State<Arc<McpRouter<U>>>,
-    Json(msg): Json<Value>,
-) -> Json<Value> {
-    Json(process_multi(&rt, msg).await)
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if !origin_is_local(&headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let Ok(msg) = serde_json::from_slice::<Value>(&body) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(rpc_error_null_id(
+                PARSE_ERROR_CODE,
+                "aithos gateway: request body is not valid JSON",
+            )),
+        )
+            .into_response();
+    };
+    if msg.is_array() {
+        return Json(rpc_error_null_id(
+            INVALID_REQUEST_CODE,
+            "aithos gateway: batching is not supported — one JSON-RPC message per POST",
+        ))
+        .into_response();
+    }
+    if msg.get("id").is_none_or(Value::is_null) {
+        let method = msg
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if method.starts_with("notifications/") {
+            return StatusCode::ACCEPTED.into_response();
+        }
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(rpc_error_null_id(
+                INVALID_REQUEST_CODE,
+                "aithos gateway: id-less request refused — only notifications/* may omit the id",
+            )),
+        )
+            .into_response();
+    }
+    let is_initialize = msg.get("method").and_then(Value::as_str) == Some("initialize");
+    let presented = headers.get(MCP_SESSION_HEADER).cloned();
+    let mut resp = Json(process_multi(&rt, msg).await).into_response();
+    if is_initialize {
+        if let Ok(v) = HeaderValue::from_str(&rt.mint_session_id()) {
+            resp.headers_mut().insert(MCP_SESSION_HEADER, v);
+        }
+    } else if let Some(v) = presented {
+        resp.headers_mut().insert(MCP_SESSION_HEADER, v);
+    }
+    resp
+}
+
+/// One well-formed JSON-RPC error with a null id — the transport-level
+/// refusals (parse, batch, id-less) that never reach the router.
+fn rpc_error_null_id(code: i64, message: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": Value::Null,
+        "error": { "code": code, "message": message }
+    })
+}
+
+/// Origin validation (MCP 2025-03-26 security MUST, decided 2026-07-16):
+/// absent = a non-browser client, pass; present and loopback-hosted =
+/// pass; anything else = refused before any JSON-RPC processing. The
+/// error never carries the offending value anywhere near a log.
+fn origin_is_local(headers: &HeaderMap) -> bool {
+    let Some(origin) = headers.get(header::ORIGIN) else {
+        return true;
+    };
+    let Ok(origin) = origin.to_str() else {
+        return false;
+    };
+    let rest = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"))
+        .unwrap_or("");
+    let host = rest.split('/').next().unwrap_or("");
+    let host = if let Some(v6) = host.strip_prefix('[') {
+        v6.split(']').next().unwrap_or("")
+    } else {
+        host.rsplit_once(':').map_or(host, |(h, _)| h)
+    };
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
 }
 
 /// Transport-free core of the multi-context router — acceptance tests
@@ -344,6 +466,9 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
 
     match method.as_str() {
         "tools/call" => tool_call_multi(rt, msg).await,
+        // The MCP liveness probe: an empty result, promptly, touching
+        // neither the runner nor any upstream (spec utilities/ping).
+        "ping" => json!({ "jsonrpc": "2.0", "id": id, "result": {} }),
         "initialize" => {
             // The static minimal result, plus the briefing instructions
             // WHEN a granted zone has directives (lot K, decision n°5).
