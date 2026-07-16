@@ -1,0 +1,1126 @@
+{
+  "vector": "E+",
+  "description": "Typed constraint attenuation per family at a delegation link (spec 05.3 rule 3; M0 decision (c) 2026-07-16: unknown keys fail closed, no copy-through). Matrix verdicts and the signed owner→agent→helper chain generated independently (Python sets/integers + blake3 + PyNaCl + base58). Drop semantics pinned: subtree/chain-conjoined counting families (max_actions, max_actions_per, rate_limit, max_children, budgets, heartbeat) may be dropped by a child — the consumption engine still conjoins every ancestor (F step); every other family dropped at a link is a rejection.",
+  "matrix": [
+    {
+      "family": "max_actions",
+      "case": "lower cap accepted",
+      "parent": {
+        "max_actions": 10
+      },
+      "child": {
+        "max_actions": 5
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "max_actions",
+      "case": "higher cap refused",
+      "parent": {
+        "max_actions": 10
+      },
+      "child": {
+        "max_actions": 20
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "max_actions_per",
+      "case": "lower rolling cap accepted",
+      "parent": {
+        "max_actions_per": {
+          "window": "24h",
+          "n": 5
+        }
+      },
+      "child": {
+        "max_actions_per": {
+          "window": "24h",
+          "n": 2
+        }
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "max_actions_per",
+      "case": "higher rolling cap refused",
+      "parent": {
+        "max_actions_per": {
+          "window": "24h",
+          "n": 5
+        }
+      },
+      "child": {
+        "max_actions_per": {
+          "window": "24h",
+          "n": 9
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "rate_limit",
+      "case": "lower per-action cap accepted",
+      "parent": {
+        "rate_limit": {
+          "action": "reply",
+          "window": "1h",
+          "n": 5
+        }
+      },
+      "child": {
+        "rate_limit": {
+          "action": "reply",
+          "window": "1h",
+          "n": 2
+        }
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "rate_limit",
+      "case": "higher per-action cap refused",
+      "parent": {
+        "rate_limit": {
+          "action": "reply",
+          "window": "1h",
+          "n": 5
+        }
+      },
+      "child": {
+        "rate_limit": {
+          "action": "reply",
+          "window": "1h",
+          "n": 8
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "max_children",
+      "case": "narrower width accepted",
+      "parent": {
+        "max_children": 4
+      },
+      "child": {
+        "max_children": 1
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "max_children",
+      "case": "wider width refused",
+      "parent": {
+        "max_children": 4
+      },
+      "child": {
+        "max_children": 6
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "max_sessions",
+      "case": "fewer sessions accepted",
+      "parent": {
+        "max_sessions": 2
+      },
+      "child": {
+        "max_sessions": 1
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "max_sessions",
+      "case": "more sessions refused",
+      "parent": {
+        "max_sessions": 2
+      },
+      "child": {
+        "max_sessions": 3
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "domains",
+      "case": "included allow-list accepted",
+      "parent": {
+        "domains": [
+          "a.example",
+          "b.example"
+        ]
+      },
+      "child": {
+        "domains": [
+          "a.example"
+        ]
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "domains",
+      "case": "extended allow-list refused",
+      "parent": {
+        "domains": [
+          "a.example"
+        ]
+      },
+      "child": {
+        "domains": [
+          "a.example",
+          "c.example"
+        ]
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "budgets",
+      "case": "lower token budget accepted",
+      "parent": {
+        "budgets": [
+          {
+            "id": "llm",
+            "token_budget": 10000
+          }
+        ]
+      },
+      "child": {
+        "budgets": [
+          {
+            "id": "llm",
+            "token_budget": 4000
+          }
+        ]
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "budgets",
+      "case": "higher token budget refused",
+      "parent": {
+        "budgets": [
+          {
+            "id": "llm",
+            "token_budget": 10000
+          }
+        ]
+      },
+      "child": {
+        "budgets": [
+          {
+            "id": "llm",
+            "token_budget": 40000
+          }
+        ]
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "heartbeat",
+      "case": "tighter beacon accepted",
+      "parent": {
+        "heartbeat": {
+          "every": "24h",
+          "grace": "6h"
+        }
+      },
+      "child": {
+        "heartbeat": {
+          "every": "12h",
+          "grace": "3h"
+        }
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "heartbeat",
+      "case": "looser beacon refused",
+      "parent": {
+        "heartbeat": {
+          "every": "24h",
+          "grace": "6h"
+        }
+      },
+      "child": {
+        "heartbeat": {
+          "every": "48h",
+          "grace": "6h"
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "freshness",
+      "case": "fresher bound accepted",
+      "parent": {
+        "freshness": "24h"
+      },
+      "child": {
+        "freshness": "1h"
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "freshness",
+      "case": "staler bound refused",
+      "parent": {
+        "freshness": "1h"
+      },
+      "child": {
+        "freshness": "24h"
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "spend_cap",
+      "case": "lower cap accepted",
+      "parent": {
+        "spend_cap": {
+          "unit": "eur",
+          "amount": 100
+        }
+      },
+      "child": {
+        "spend_cap": {
+          "unit": "eur",
+          "amount": 40
+        }
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "spend_cap",
+      "case": "higher cap refused",
+      "parent": {
+        "spend_cap": {
+          "unit": "eur",
+          "amount": 100
+        }
+      },
+      "child": {
+        "spend_cap": {
+          "unit": "eur",
+          "amount": 200
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "domains",
+      "case": "dropping the family refused",
+      "parent": {
+        "domains": [
+          "a.example"
+        ]
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "first_party_only",
+      "case": "dropping the duty refused",
+      "parent": {
+        "first_party_only": true
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "counter_sign",
+      "case": "growing the set accepted",
+      "parent": {
+        "counter_sign": [
+          "reply"
+        ]
+      },
+      "child": {
+        "counter_sign": [
+          "reply",
+          "send"
+        ]
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "counter_sign",
+      "case": "dropping an action refused",
+      "parent": {
+        "counter_sign": [
+          "reply"
+        ]
+      },
+      "child": {
+        "counter_sign": []
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "action_params",
+      "case": "narrowed recipients accepted",
+      "parent": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com",
+              "bob@example.com"
+            ]
+          }
+        }
+      },
+      "child": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com"
+            ]
+          }
+        }
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "action_params",
+      "case": "added recipient refused",
+      "parent": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com",
+              "bob@example.com"
+            ]
+          }
+        }
+      },
+      "child": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com",
+              "bob@example.com",
+              "mallory@evil.example"
+            ]
+          }
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "unknown",
+      "case": "copy-through of an unknown key refused",
+      "parent": {
+        "quantum_cap": 4
+      },
+      "child": {
+        "quantum_cap": 4
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "unknown",
+      "case": "child inventing an unknown key refused",
+      "parent": {},
+      "child": {
+        "quantum_cap": 4
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "max_actions",
+      "case": "drop tolerated — subtree-counted",
+      "parent": {
+        "max_actions": 10
+      },
+      "child": {},
+      "expected": "valid"
+    },
+    {
+      "family": "max_actions_per",
+      "case": "drop tolerated — subtree-counted",
+      "parent": {
+        "max_actions_per": {
+          "window": "24h",
+          "n": 5
+        }
+      },
+      "child": {},
+      "expected": "valid"
+    },
+    {
+      "family": "rate_limit",
+      "case": "drop tolerated — subtree-counted",
+      "parent": {
+        "rate_limit": {
+          "action": "reply",
+          "window": "1h",
+          "n": 5
+        }
+      },
+      "child": {},
+      "expected": "valid"
+    },
+    {
+      "family": "max_children",
+      "case": "drop tolerated — per-level width",
+      "parent": {
+        "max_children": 4
+      },
+      "child": {},
+      "expected": "valid"
+    },
+    {
+      "family": "budgets",
+      "case": "drop tolerated — chain-conjoined at append",
+      "parent": {
+        "budgets": [
+          {
+            "id": "llm",
+            "token_budget": 10000
+          }
+        ]
+      },
+      "child": {},
+      "expected": "valid"
+    },
+    {
+      "family": "heartbeat",
+      "case": "drop tolerated — chain-conjoined at append",
+      "parent": {
+        "heartbeat": {
+          "every": "24h",
+          "grace": "6h"
+        }
+      },
+      "child": {},
+      "expected": "valid"
+    },
+    {
+      "family": "max_sessions",
+      "case": "drop refused — per-grantee, never subtree",
+      "parent": {
+        "max_sessions": 2
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "freshness",
+      "case": "drop refused",
+      "parent": {
+        "freshness": "24h"
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "spend_cap",
+      "case": "drop refused",
+      "parent": {
+        "spend_cap": {
+          "unit": "eur",
+          "amount": 100
+        }
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "log_reads",
+      "case": "drop refused",
+      "parent": {
+        "log_reads": true
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "disclose_agency",
+      "case": "drop refused",
+      "parent": {
+        "disclose_agency": true
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "notify",
+      "case": "drop refused",
+      "parent": {
+        "notify": [
+          "refusal"
+        ]
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "purpose",
+      "case": "drop refused",
+      "parent": {
+        "purpose": "prospect emails"
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "session_bind",
+      "case": "drop refused",
+      "parent": {
+        "session_bind": "z6MkSession"
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "action_params",
+      "case": "drop refused",
+      "parent": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com"
+            ]
+          }
+        }
+      },
+      "child": {},
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "log_reads",
+      "case": "kept duty accepted",
+      "parent": {
+        "log_reads": true
+      },
+      "child": {
+        "log_reads": true
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "disclose_agency",
+      "case": "kept duty accepted",
+      "parent": {
+        "disclose_agency": true
+      },
+      "child": {
+        "disclose_agency": true
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "notify",
+      "case": "grown event set accepted",
+      "parent": {
+        "notify": [
+          "refusal"
+        ]
+      },
+      "child": {
+        "notify": [
+          "refusal",
+          "action"
+        ]
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "notify",
+      "case": "shrunk event set refused",
+      "parent": {
+        "notify": [
+          "refusal",
+          "action"
+        ]
+      },
+      "child": {
+        "notify": [
+          "refusal"
+        ]
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "purpose",
+      "case": "identical statement accepted",
+      "parent": {
+        "purpose": "prospect emails"
+      },
+      "child": {
+        "purpose": "prospect emails"
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "purpose",
+      "case": "reworded statement refused",
+      "parent": {
+        "purpose": "prospect emails"
+      },
+      "child": {
+        "purpose": "any emails"
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "session_bind",
+      "case": "identical key accepted",
+      "parent": {
+        "session_bind": "z6MkSession"
+      },
+      "child": {
+        "session_bind": "z6MkSession"
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "session_bind",
+      "case": "changed key refused",
+      "parent": {
+        "session_bind": "z6MkSession"
+      },
+      "child": {
+        "session_bind": "z6MkOther"
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "first_party_only",
+      "case": "kept duty accepted",
+      "parent": {
+        "first_party_only": true
+      },
+      "child": {
+        "first_party_only": true
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "max_actions_per",
+      "case": "longer window, same cap accepted",
+      "parent": {
+        "max_actions_per": {
+          "window": "24h",
+          "n": 5
+        }
+      },
+      "child": {
+        "max_actions_per": {
+          "window": "48h",
+          "n": 5
+        }
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "max_actions_per",
+      "case": "shorter window refused — more slots inside the parent's",
+      "parent": {
+        "max_actions_per": {
+          "window": "24h",
+          "n": 5
+        }
+      },
+      "child": {
+        "max_actions_per": {
+          "window": "12h",
+          "n": 5
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "rate_limit",
+      "case": "retargeted action refused — the parent's limit is dropped",
+      "parent": {
+        "rate_limit": {
+          "action": "reply",
+          "window": "1h",
+          "n": 5
+        }
+      },
+      "child": {
+        "rate_limit": {
+          "action": "send",
+          "window": "1h",
+          "n": 2
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "spend_cap",
+      "case": "changed unit refused — incomparable",
+      "parent": {
+        "spend_cap": {
+          "unit": "eur",
+          "amount": 100
+        }
+      },
+      "child": {
+        "spend_cap": {
+          "unit": "usd",
+          "amount": 40
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "budgets",
+      "case": "narrowed model list accepted",
+      "parent": {
+        "budgets": [
+          {
+            "id": "llm",
+            "models": [
+              "haiku",
+              "gemma"
+            ],
+            "token_budget": 10000
+          }
+        ]
+      },
+      "child": {
+        "budgets": [
+          {
+            "id": "llm",
+            "models": [
+              "haiku"
+            ],
+            "token_budget": 10000
+          }
+        ]
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "budgets",
+      "case": "widened model list refused",
+      "parent": {
+        "budgets": [
+          {
+            "id": "llm",
+            "models": [
+              "haiku"
+            ],
+            "token_budget": 10000
+          }
+        ]
+      },
+      "child": {
+        "budgets": [
+          {
+            "id": "llm",
+            "models": [
+              "haiku",
+              "gpt-oss"
+            ],
+            "token_budget": 10000
+          }
+        ]
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "budgets",
+      "case": "dropped profile-level cap refused",
+      "parent": {
+        "budgets": [
+          {
+            "id": "llm",
+            "token_budget": 10000
+          }
+        ]
+      },
+      "child": {
+        "budgets": [
+          {
+            "id": "llm"
+          }
+        ]
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "budgets",
+      "case": "unknown child profile id refused",
+      "parent": {
+        "budgets": [
+          {
+            "id": "llm",
+            "token_budget": 10000
+          }
+        ]
+      },
+      "child": {
+        "budgets": [
+          {
+            "id": "llm",
+            "token_budget": 100
+          },
+          {
+            "id": "shadow",
+            "token_budget": 100
+          }
+        ]
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "budgets",
+      "case": "profile subset accepted",
+      "parent": {
+        "budgets": [
+          {
+            "id": "llm",
+            "token_budget": 10000
+          },
+          {
+            "id": "haiku",
+            "token_budget": 500
+          }
+        ]
+      },
+      "child": {
+        "budgets": [
+          {
+            "id": "llm",
+            "token_budget": 4000
+          }
+        ]
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "budgets",
+      "case": "dropped attestation duty refused",
+      "parent": {
+        "budgets": [
+          {
+            "id": "llm",
+            "require_attestation": true,
+            "attestation_key": "z6MkProvider"
+          }
+        ]
+      },
+      "child": {
+        "budgets": [
+          {
+            "id": "llm"
+          }
+        ]
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "obligations",
+      "case": "inherited obligation kept plus one added accepted",
+      "parent": {
+        "obligations": [
+          {
+            "id": "guard",
+            "check": "pii.scan",
+            "attestor": [
+              "z6MkGuard"
+            ],
+            "applies_to": "act.x.gmail.reply",
+            "verdict": "pass"
+          }
+        ]
+      },
+      "child": {
+        "obligations": [
+          {
+            "id": "guard",
+            "check": "pii.scan",
+            "attestor": [
+              "z6MkGuard"
+            ],
+            "applies_to": "act.x.gmail.reply",
+            "verdict": "pass"
+          },
+          {
+            "id": "human",
+            "check": "human.approve",
+            "attestor": [
+              "z6MkBoss"
+            ],
+            "applies_to": "act.x.gmail.send",
+            "verdict": "approve"
+          }
+        ]
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "obligations",
+      "case": "altered inherited obligation refused",
+      "parent": {
+        "obligations": [
+          {
+            "id": "guard",
+            "check": "pii.scan",
+            "attestor": [
+              "z6MkGuard"
+            ],
+            "applies_to": "act.x.gmail.reply",
+            "verdict": "pass"
+          }
+        ]
+      },
+      "child": {
+        "obligations": [
+          {
+            "id": "guard",
+            "check": "pii.scan",
+            "attestor": [
+              "z6MkEvil"
+            ],
+            "applies_to": "act.x.gmail.reply",
+            "verdict": "pass"
+          }
+        ]
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "action_params",
+      "case": "added action predicates accepted",
+      "parent": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com"
+            ]
+          }
+        }
+      },
+      "child": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com"
+            ]
+          },
+          "send": {
+            "recipients_allow": [
+              "alice@example.com"
+            ]
+          }
+        }
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "action_params",
+      "case": "dropped no_attachments refused",
+      "parent": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com"
+            ],
+            "no_attachments": true
+          }
+        }
+      },
+      "child": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com"
+            ]
+          }
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "action_params",
+      "case": "unknown predicate refused",
+      "parent": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com"
+            ]
+          }
+        }
+      },
+      "child": {
+        "action_params": {
+          "reply": {
+            "recipients_allow": [
+              "alice@example.com"
+            ],
+            "quantum_filter": true
+          }
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "validation",
+      "case": "malformed known key refused",
+      "parent": {
+        "max_actions": 10
+      },
+      "child": {
+        "max_actions": "ten"
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "validation",
+      "case": "malformed parent key refused at the link",
+      "parent": {
+        "heartbeat": {
+          "every": "soon",
+          "grace": "6h"
+        }
+      },
+      "child": {
+        "heartbeat": {
+          "every": "12h",
+          "grace": "3h"
+        }
+      },
+      "expected": "InvalidMandate"
+    },
+    {
+      "family": "tightening",
+      "case": "child introducing a family the parent lacks accepted",
+      "parent": {},
+      "child": {
+        "domains": [
+          "a.example"
+        ]
+      },
+      "expected": "valid"
+    },
+    {
+      "family": "tightening",
+      "case": "empty to empty accepted",
+      "parent": {},
+      "child": {},
+      "expected": "valid"
+    }
+  ],
+  "signed_chain": {
+    "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "agent_sk_hex": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "helper_sk_hex": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "succession_entropy_hex": "0909090909090909090909090909090909090909090909090909090909090909",
+    "did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+    "at": "2026-07-03T00:00:00Z",
+    "parent_jcs": "{\"aithos-mandate-core\":\"1.0.0-draft.1\",\"constraints\":{\"domains\":[\"a.example\",\"b.example\"],\"max_actions\":10},\"grantee\":{\"id\":\"urn:aithos:agent:agent\",\"kex_pubkey\":\"z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn\",\"label\":\"agent\",\"pubkey\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\"},\"id\":\"mandate_000000000000000000000000EP\",\"issued_at\":\"2026-07-01T00:00:00Z\",\"issued_by\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root\",\"nonce\":\"000102030405060708090a0b0c0d0e0f\",\"not_after\":\"2026-07-31T00:00:00Z\",\"not_before\":\"2026-07-01T00:00:00Z\",\"parent\":null,\"perimeter\":[\"act.x.gmail.*\",\"issue#depth=1\"],\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"ef5220c7d9f6e2cce2de14ece541fafc6252dfac1dfdc99c26ec3c8d05a9a9e1b0e817e86c70f6aabf042c4814b53b73ee009334232a0e36946d401f6f72720e\"},\"subject\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"}",
+    "parent_signature_hex": "ef5220c7d9f6e2cce2de14ece541fafc6252dfac1dfdc99c26ec3c8d05a9a9e1b0e817e86c70f6aabf042c4814b53b73ee009334232a0e36946d401f6f72720e",
+    "child_ok_jcs": "{\"aithos-mandate-core\":\"1.0.0-draft.1\",\"constraints\":{\"domains\":[\"a.example\"],\"max_actions\":5},\"grantee\":{\"id\":\"urn:aithos:agent:helper\",\"kex_pubkey\":\"z6LSfyvnEKAwRRPKqSnKFiyFzT2ycbXUNqe5iUrfr9oPM8fe\",\"label\":\"helper\",\"pubkey\":\"z6MkkBPYdMyzcYZ82316KGBobVXJL619wybD692WpZaPQSBg\"},\"id\":\"mandate_00000000000000000000000EPA\",\"issued_at\":\"2026-07-02T00:00:00Z\",\"issued_by\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\",\"nonce\":\"101112131415161718191a1b1c1d1e1f\",\"not_after\":\"2026-07-08T00:00:00Z\",\"not_before\":\"2026-07-02T00:00:00Z\",\"parent\":\"mandate_000000000000000000000000EP\",\"perimeter\":[\"act.x.gmail.reply\"],\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\",\"value\":\"f6221c9ed5fb2c71f219a1bc507e0e5a8436417c5603b486bb193ec42bfe74e2120d2507fcff569841f10ee57be6f53af7b0353c523ca3da86e55c5f6d52440d\"},\"subject\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"}",
+    "child_ok_signature_hex": "f6221c9ed5fb2c71f219a1bc507e0e5a8436417c5603b486bb193ec42bfe74e2120d2507fcff569841f10ee57be6f53af7b0353c523ca3da86e55c5f6d52440d",
+    "child_bad_jcs": "{\"aithos-mandate-core\":\"1.0.0-draft.1\",\"constraints\":{\"domains\":[\"a.example\"],\"max_actions\":20},\"grantee\":{\"id\":\"urn:aithos:agent:helper\",\"kex_pubkey\":\"z6LSfyvnEKAwRRPKqSnKFiyFzT2ycbXUNqe5iUrfr9oPM8fe\",\"label\":\"helper\",\"pubkey\":\"z6MkkBPYdMyzcYZ82316KGBobVXJL619wybD692WpZaPQSBg\"},\"id\":\"mandate_00000000000000000000000EPB\",\"issued_at\":\"2026-07-02T00:00:00Z\",\"issued_by\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\",\"nonce\":\"202122232425262728292a2b2c2d2e2f\",\"not_after\":\"2026-07-08T00:00:00Z\",\"not_before\":\"2026-07-02T00:00:00Z\",\"parent\":\"mandate_000000000000000000000000EP\",\"perimeter\":[\"act.x.gmail.reply\"],\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\",\"value\":\"8c65b589005ef34aa2a0172e39679c76400b45dd9a9160124270686c942e208e0caf88fb977163bf748dd42406c28b9f0f12d280addadd458badd807f4979108\"},\"subject\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"}",
+    "child_bad_signature_hex": "8c65b589005ef34aa2a0172e39679c76400b45dd9a9160124270686c942e208e0caf88fb977163bf748dd42406c28b9f0f12d280addadd458badd807f4979108",
+    "expected": {
+      "parent_alone_at_T": "valid",
+      "chain_child_ok_at_T": "valid",
+      "chain_child_bad_at_T": "InvalidMandate"
+    }
+  }
+}
