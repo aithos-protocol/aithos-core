@@ -242,7 +242,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
     constraint keys in a sub-delegation link are a rejection —
     M0 decision (c), 2026-07-16: fail-closed, no copy-through.
 
-    @wip
     Scenario Outline: The attenuation matrix, family by family
       Given an agent granted gmail actions with constraint "<parent>" and issue depth 1
       When the agent delegates the perimeter with constraint "<child>"
@@ -271,39 +270,33 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
         | spend_cap 100 eur                       | spend_cap 40 eur                        | accepted |
         | spend_cap 100 eur                       | spend_cap 200 eur                       | rejected |
 
-    @wip
     Scenario: Dropping an inherited constraint is a widening — rejected
       Given an agent granted gmail actions with constraint "domains a.example" and issue depth 1
       When the agent delegates the perimeter with no domains constraint at all
       Then the helper's chain is rejected
 
-    @wip
     Scenario: first_party_only never weakens
       Given an agent granted gmail actions with constraint "first_party_only" and issue depth 1
       When the agent delegates the perimeter without first_party_only
       Then the helper's chain is rejected
 
-    @wip
     Scenario: counter_sign and binding only ever grow
       Given an agent granted gmail actions with counter_sign on "reply" and issue depth 1
       When the agent delegates the perimeter with counter_sign on "reply" and "send"
       Then the helper's chain verifies
       But a delegation dropping counter_sign on "reply" is rejected
 
-    @wip
     Scenario: action_params only ever narrow
       Given an agent granted gmail "reply" whose action_params allow recipients "alice@example.com" and "bob@example.com", with issue depth 1
       When the agent delegates the perimeter allowing replies only to "alice@example.com"
       Then the helper's chain verifies
       But a delegation adding recipient "mallory@evil.example" is rejected
 
-    @wip
     Scenario: An unknown constraint key in a sub-delegation fails closed
       Given an agent granted gmail actions with an unknown constraint key "quantum_cap" and issue depth 1
       When the agent delegates the perimeter copying "quantum_cap" verbatim
       Then the helper's chain is rejected
 
-    @wip
     Scenario: A child inventing an unknown constraint key fails closed too
       Given an agent granted gmail actions with issue depth 1
       When the agent delegates the perimeter adding constraint key "quantum_cap"

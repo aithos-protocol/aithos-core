@@ -2984,6 +2984,230 @@ fn delegate_windowed_outside(w: &mut ProtocolWorld) {
     w.chain_result = Some(w.verify_chain_at(&w.helper_chain.clone(), DAY1));
 }
 
+// --- F+ attenuation matrix (M5/E+): the typed per-family link gate ---
+// Contract committed at M1 (aa02353); verdicts pinned by the E+ vector
+// (vectors/eplus-attenuation.json) — the steps below only drive
+// `verify_chain` on a two-link chain, the gate does the judging.
+
+/// One-key JSON object (the `json!` macro wants literal keys).
+fn one_key(key: &str, value: serde_json::Value) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    map.insert(key.to_owned(), value);
+    serde_json::Value::Object(map)
+}
+
+/// The Examples-table constraint DSL → one constraints object.
+fn constraint_dsl(text: &str) -> serde_json::Value {
+    fn dur(n: &str, unit: &str) -> String {
+        let n: u64 = n.parse().expect("duration count");
+        let u = match unit.trim_end_matches('s') {
+            "day" => "d",
+            "hour" => "h",
+            "minute" => "m",
+            "second" => "s",
+            other => panic!("unknown duration unit `{other}`"),
+        };
+        format!("{n}{u}")
+    }
+    fn n64(n: &str) -> serde_json::Value {
+        serde_json::Value::from(n.parse::<u64>().expect("integer"))
+    }
+    let words: Vec<&str> = text.split_whitespace().collect();
+    match words.as_slice() {
+        [key @ ("max_actions" | "max_children" | "max_sessions"), n] => one_key(key, n64(n)),
+        ["max_actions_per", n, "per", d, unit] => one_key(
+            "max_actions_per",
+            serde_json::json!({"window": dur(d, unit), "n": n64(n)}),
+        ),
+        ["rate_limit", action, n, "per", d, unit] => one_key(
+            "rate_limit",
+            serde_json::json!({"action": action, "window": dur(d, unit), "n": n64(n)}),
+        ),
+        ["domains", list @ ..] => one_key(
+            "domains",
+            serde_json::Value::from(
+                list.iter()
+                    .filter(|w| **w != "and")
+                    .map(|w| (*w).to_owned())
+                    .collect::<Vec<_>>(),
+            ),
+        ),
+        ["token_budget", n, "on", "profile", id] => one_key(
+            "budgets",
+            serde_json::json!([{"id": id, "token_budget": n64(n)}]),
+        ),
+        ["heartbeat", "every", en, eu, "grace", gn, gu] => one_key(
+            "heartbeat",
+            serde_json::json!({"every": dur(en, eu), "grace": dur(gn, gu)}),
+        ),
+        ["freshness", n, unit] => one_key("freshness", dur(n, unit).into()),
+        ["spend_cap", n, unit] => one_key(
+            "spend_cap",
+            serde_json::json!({"unit": unit, "amount": n64(n)}),
+        ),
+        ["first_party_only"] => one_key("first_party_only", true.into()),
+        other => panic!("unknown constraint DSL: {other:?}"),
+    }
+}
+
+impl ProtocolWorld {
+    /// Delegate the act perimeter with the given constraints and judge the
+    /// two-link chain — the attenuation verdict is `verify_chain`'s alone.
+    fn delegate_and_judge(&mut self, constraints: serde_json::Value) {
+        let _ = self.delegate_act("act.x.gmail.*", constraints, false);
+        self.chain_result = Some(self.verify_chain_at(&self.helper_chain.clone(), DAY1));
+    }
+}
+
+#[given(expr = "an agent granted gmail actions with constraint {string} and issue depth 1")]
+fn grant_with_dsl_constraint(w: &mut ProtocolWorld, dsl: String) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        constraint_dsl(&dsl),
+        NA30,
+    );
+}
+
+#[given(
+    expr = "an agent granted gmail actions with an unknown constraint key {string} and issue depth 1"
+)]
+fn grant_with_unknown_key(w: &mut ProtocolWorld, key: String) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        one_key(&key, 4.into()),
+        NA30,
+    );
+}
+
+#[given("an agent granted gmail actions with issue depth 1")]
+fn grant_plain_with_issue(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        serde_json::json!({}),
+        NA30,
+    );
+}
+
+#[given(expr = "an agent granted gmail actions with counter_sign on {string} and issue depth 1")]
+fn grant_with_countersign(w: &mut ProtocolWorld, action: String) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        serde_json::json!({"counter_sign": [action]}),
+        NA30,
+    );
+}
+
+#[given(
+    expr = "an agent granted gmail {string} whose action_params allow recipients {string} and {string}, with issue depth 1"
+)]
+fn grant_with_action_params(w: &mut ProtocolWorld, action: String, first: String, second: String) {
+    w.init_bundle();
+    w.grant_act(
+        vec![aithos_core::mandate::PerimeterEntry::Issue { depth: 1 }],
+        one_key(
+            "action_params",
+            one_key(
+                &action,
+                serde_json::json!({"recipients_allow": [first, second]}),
+            ),
+        ),
+        NA30,
+    );
+}
+
+#[when(expr = "the agent delegates the perimeter with constraint {string}")]
+fn delegate_with_dsl_constraint(w: &mut ProtocolWorld, dsl: String) {
+    let constraints = constraint_dsl(&dsl);
+    w.delegate_and_judge(constraints);
+}
+
+#[when("the agent delegates the perimeter with no domains constraint at all")]
+#[when("the agent delegates the perimeter without first_party_only")]
+fn delegate_dropping_everything(w: &mut ProtocolWorld) {
+    w.delegate_and_judge(serde_json::json!({}));
+}
+
+#[when(expr = "the agent delegates the perimeter with counter_sign on {string} and {string}")]
+fn delegate_with_grown_countersign(w: &mut ProtocolWorld, first: String, second: String) {
+    w.delegate_and_judge(serde_json::json!({"counter_sign": [first, second]}));
+}
+
+#[when(expr = "the agent delegates the perimeter allowing replies only to {string}")]
+fn delegate_narrowing_recipients(w: &mut ProtocolWorld, addr: String) {
+    // The parent's single predicated action names the child's key.
+    let action = w.chain[0].constraints["action_params"]
+        .as_object()
+        .and_then(|actions| actions.keys().next().cloned())
+        .expect("parent action_params");
+    let constraints = one_key(
+        "action_params",
+        one_key(&action, serde_json::json!({"recipients_allow": [addr]})),
+    );
+    w.delegate_and_judge(constraints);
+}
+
+#[when(expr = "the agent delegates the perimeter copying {string} verbatim")]
+fn delegate_copying_verbatim(w: &mut ProtocolWorld, _key: String) {
+    let constraints = w.chain[0].constraints.clone();
+    w.delegate_and_judge(constraints);
+}
+
+#[when(expr = "the agent delegates the perimeter adding constraint key {string}")]
+fn delegate_inventing_key(w: &mut ProtocolWorld, key: String) {
+    w.delegate_and_judge(one_key(&key, 4.into()));
+}
+
+#[then("the helper's chain is accepted")]
+fn helper_chain_accepted(w: &mut ProtocolWorld) {
+    assert_eq!(w.chain_result.clone().unwrap(), Ok(()));
+}
+
+#[then(expr = "a delegation dropping counter_sign on {string} is rejected")]
+fn delegation_dropping_countersign_rejected(w: &mut ProtocolWorld, _action: String) {
+    let _ = w.delegate_act(
+        "act.x.gmail.*",
+        serde_json::json!({"counter_sign": []}),
+        false,
+    );
+    assert!(
+        w.verify_chain_at(&w.helper_chain.clone(), DAY1).is_err(),
+        "dropping an inherited counter_sign must reject the chain"
+    );
+}
+
+#[then(expr = "a delegation adding recipient {string} is rejected")]
+fn delegation_adding_recipient_rejected(w: &mut ProtocolWorld, extra: String) {
+    // The intruder joins the CHILD's own last allow-list — still outside
+    // the parent's, still a rejection.
+    let action = w.chain[0].constraints["action_params"]
+        .as_object()
+        .and_then(|actions| actions.keys().next().cloned())
+        .expect("parent action_params");
+    let mut allow: Vec<String> = w.helper_chain[1].constraints["action_params"][&action]
+        ["recipients_allow"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+    allow.push(extra);
+    let constraints = one_key(
+        "action_params",
+        one_key(&action, serde_json::json!({"recipients_allow": allow})),
+    );
+    let _ = w.delegate_act("act.x.gmail.*", constraints, false);
+    assert!(
+        w.verify_chain_at(&w.helper_chain.clone(), DAY1).is_err(),
+        "an added recipient must reject the chain"
+    );
+}
+
 #[when("the agent appends two actions inside the day 3 window")]
 fn two_in_window(w: &mut ProtocolWorld) {
     w.try_action(false, "reply", &day(3, "14:30:00")).unwrap();
