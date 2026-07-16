@@ -743,17 +743,17 @@ pub fn verify_chain_revocable(
         if m.not_before < parent.not_before || m.not_after > parent.not_after {
             return Err(err(format!("{}: window exceeds its parent's", m.id)));
         }
-        // Absolute windows only tighten (§04.10 attenuation).
-        crate::constraints::windows_attenuate(
-            crate::constraints::parse_windows(&parent.constraints)?.as_deref(),
-            crate::constraints::parse_windows(&m.constraints)?.as_deref(),
+        // Constraint monotonicity, the WHOLE §04.4 vocabulary (§05.3 rule 3,
+        // E+ vector): typed validation of both sides, per-family fail-closed
+        // containment, unknown keys rejected both ways (M0.c). Subsumes the
+        // historic windows (§04.10) and obligations (§04.12) gates.
+        crate::constraints::constraints_attenuate(
+            &parent.constraints,
+            &m.constraints,
             &m.not_before,
             &m.not_after,
         )
         .map_err(|e| err(format!("{}: {e}", m.id)))?;
-        // Obligations only ADD (§05.3, §04.12): inherited ones JCS-identical.
-        crate::constraints::obligations_attenuate(&parent.constraints, &m.constraints)
-            .map_err(|e| err(format!("{}: {e}", m.id)))?;
         // Issuing right and depth (§05.1, §05.3 rule 4).
         let parent_perimeter = parent.parsed_perimeter()?;
         let parent_depth = parent_perimeter

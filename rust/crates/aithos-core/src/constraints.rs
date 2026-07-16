@@ -786,6 +786,459 @@ pub fn obligations_attenuate(parent: &serde_json::Value, child: &serde_json::Val
     Ok(())
 }
 
+// ------------------------------------------------ attenuation (E+ / M5)
+//
+// The typed link gate (spec 05.3 rule 3): a sub-mandate only ever
+// tightens. One function, called by the offline verifier — and therefore
+// by the gateway, whose every authorize/append walks `verify_chain` —
+// covering the WHOLE §04.4 vocabulary, not just windows and obligations.
+//
+// Drop semantics (decision Mathieu, 2026-07-16, pinned by the E+ vector):
+// the families the consumption engine already conjoins over the whole
+// chain at append time (`check_action_append` subtree counts and per-link
+// checks) may be dropped by a child — absence in the child certificate
+// widens nothing, every ancestor still binds. Every OTHER family dropped
+// at a link is a rejection: nothing restates it for descendants.
+//
+// Unknown keys at a link fail closed BOTH ways (M0 decision (c),
+// 2026-07-16 — no copy-through). A root mandate alone stays §04.4-lenient:
+// this gate runs on delegation links only, never on a chain of one.
+
+// The known constraint vocabulary (§04.4) is the match in
+// `validate_link_constraints` — one registry, no shadow list.
+// `not_before`/`not_after` are top-level mandate fields, never keys here.
+
+/// Families a child may drop: subtree-counted or chain-conjoined at
+/// append, so every ancestor keeps binding the whole subtree (§04.4,
+/// §07.4 — "a delegate can never multiply its parent's budget").
+const DROPPABLE_CONSTRAINTS: [&str; 6] = [
+    "max_actions",
+    "max_actions_per",
+    "rate_limit",
+    "max_children",
+    "budgets",
+    "heartbeat",
+];
+
+/// The action_params predicate vocabulary (§04.4, `check_action_params`).
+const KNOWN_PREDICATES: [&str; 2] = ["recipients_allow", "no_attachments"];
+
+fn c_err(key: &str, what: &str) -> Error {
+    Error::InvalidMandate(format!("constraint `{key}`: {what}"))
+}
+
+fn want_u64(key: &str, v: &serde_json::Value, field: Option<&str>) -> Result<u64> {
+    let (shown, v) = match field {
+        Some(f) => (
+            format!("{key}.{f}"),
+            v.get(f)
+                .ok_or_else(|| c_err(key, &format!("missing {f}")))?,
+        ),
+        None => (key.to_owned(), v),
+    };
+    v.as_u64()
+        .ok_or_else(|| c_err(&shown, "must be an unsigned integer"))
+}
+
+fn want_duration(key: &str, v: &serde_json::Value, field: Option<&str>) -> Result<i64> {
+    let (shown, v) = match field {
+        Some(f) => (
+            format!("{key}.{f}"),
+            v.get(f)
+                .ok_or_else(|| c_err(key, &format!("missing {f}")))?,
+        ),
+        None => (key.to_owned(), v),
+    };
+    parse_duration(
+        v.as_str()
+            .ok_or_else(|| c_err(&shown, "must be a duration string"))?,
+    )
+    .map_err(|_| c_err(&shown, "must be a duration (<n>d|h|m|s)"))
+}
+
+fn want_str_list(key: &str, v: &serde_json::Value) -> Result<Vec<String>> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .map(|x| x.as_str().map(str::to_owned))
+                .collect::<Option<Vec<_>>>()
+        })
+        .and_then(|x| x)
+        .ok_or_else(|| c_err(key, "must be an array of strings"))
+}
+
+fn want_true(key: &str, v: &serde_json::Value) -> Result<()> {
+    if v.as_bool() == Some(true) {
+        Ok(())
+    } else {
+        Err(c_err(key, "must be true when present"))
+    }
+}
+
+fn want_string(key: &str, v: &serde_json::Value) -> Result<String> {
+    match v.as_str() {
+        Some(s) if !s.is_empty() => Ok(s.to_owned()),
+        _ => Err(c_err(key, "must be a non-empty string")),
+    }
+}
+
+fn constraints_object(
+    c: &serde_json::Value,
+) -> Result<&serde_json::Map<String, serde_json::Value>> {
+    c.as_object().ok_or_else(|| {
+        Error::InvalidMandate("constraints must be a JSON object at a delegation link".to_owned())
+    })
+}
+
+/// Typed validation of one constraints object at a delegation link:
+/// every key must be known (M0.c — unknown keys fail closed, no
+/// copy-through) and well-formed. Root mandates alone are never run
+/// through this — §04.4 keeps leaf-side unknown keys non-fatal.
+pub fn validate_link_constraints(c: &serde_json::Value) -> Result<()> {
+    let obj = constraints_object(c)?;
+    for (key, v) in obj {
+        match key.as_str() {
+            "max_actions" | "max_children" | "max_sessions" => {
+                want_u64(key, v, None)?;
+            }
+            "max_actions_per" => {
+                want_duration(key, v, Some("window"))?;
+                want_u64(key, v, Some("n"))?;
+            }
+            "rate_limit" => {
+                if v.get("action")
+                    .and_then(serde_json::Value::as_str)
+                    .is_none_or(str::is_empty)
+                {
+                    return Err(c_err(key, "missing action"));
+                }
+                want_duration(key, v, Some("window"))?;
+                want_u64(key, v, Some("n"))?;
+            }
+            "log_reads" | "disclose_agency" | "first_party_only" => want_true(key, v)?,
+            "domains" | "counter_sign" | "binding" | "notify" => {
+                want_str_list(key, v)?;
+            }
+            "purpose" | "session_bind" => {
+                want_string(key, v)?;
+            }
+            "heartbeat" => {
+                want_duration(key, v, Some("every"))?;
+                want_duration(key, v, Some("grace"))?;
+            }
+            "freshness" => {
+                want_duration(key, v, None)?;
+            }
+            "spend_cap" => {
+                if v.get("unit")
+                    .and_then(serde_json::Value::as_str)
+                    .is_none_or(str::is_empty)
+                {
+                    return Err(c_err(key, "missing unit"));
+                }
+                want_u64(key, v, Some("amount"))?;
+            }
+            "action_params" => {
+                let actions = v
+                    .as_object()
+                    .ok_or_else(|| c_err(key, "must be an object of actions"))?;
+                for (action, preds) in actions {
+                    let preds = preds.as_object().ok_or_else(|| {
+                        c_err(key, &format!("`{action}` must be an object of predicates"))
+                    })?;
+                    for (pk, pv) in preds {
+                        if !KNOWN_PREDICATES.contains(&pk.as_str()) {
+                            return Err(c_err(
+                                key,
+                                &format!("unknown predicate `{pk}` on `{action}`"),
+                            ));
+                        }
+                        match pk.as_str() {
+                            "recipients_allow" => {
+                                want_str_list(&format!("{key}.{action}.{pk}"), pv)?;
+                            }
+                            _ => want_true(&format!("{key}.{action}.{pk}"), pv)?,
+                        }
+                    }
+                }
+            }
+            "budgets" => {
+                let profiles = parse_budgets(c)?.expect("budgets key is present");
+                let mut ids = std::collections::BTreeSet::new();
+                for (profile, raw) in profiles
+                    .iter()
+                    .zip(v.as_array().ok_or_else(|| c_err(key, "must be an array"))?)
+                {
+                    if profile.id.is_empty() {
+                        return Err(c_err(key, "profile without id"));
+                    }
+                    if !ids.insert(profile.id.clone()) {
+                        return Err(c_err(key, &format!("duplicate profile `{}`", profile.id)));
+                    }
+                    // parse_budgets is lenient on these shapes; the link
+                    // gate is not.
+                    if raw.get("token_budget").is_some() && profile.token_budget.is_none() {
+                        return Err(c_err(key, "token_budget must be an unsigned integer"));
+                    }
+                    if raw.get("max_actions").is_some() && profile.max_actions.is_none() {
+                        return Err(c_err(key, "max_actions must be an unsigned integer"));
+                    }
+                }
+            }
+            "active_windows" => {
+                parse_windows(c)?;
+            }
+            "obligations" => {
+                // Shape-checked by obligations_attenuate / parse (§04.12);
+                // attestor keys are opaque strings here.
+                if !v.is_array() {
+                    return Err(c_err(key, "must be an array"));
+                }
+            }
+            other => {
+                return Err(Error::InvalidMandate(format!(
+                    "unknown constraint key `{other}` at a delegation link (fail-closed, no copy-through)"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn family_containment(key: &str, pv: &serde_json::Value, cv: &serde_json::Value) -> Result<()> {
+    let widened = |what: String| Err(c_err(key, &what));
+    match key {
+        "max_actions" | "max_children" | "max_sessions" => {
+            let (p, c) = (want_u64(key, pv, None)?, want_u64(key, cv, None)?);
+            if c > p {
+                return widened(format!("child cap {c} exceeds the parent's {p}"));
+            }
+        }
+        "max_actions_per" | "rate_limit" => {
+            if key == "rate_limit" {
+                let (pa, ca) = (
+                    pv.get("action").and_then(serde_json::Value::as_str),
+                    cv.get("action").and_then(serde_json::Value::as_str),
+                );
+                if pa != ca {
+                    return widened(
+                        "child retargets the action — the parent's limit is dropped".to_owned(),
+                    );
+                }
+            }
+            let (pn, cn) = (want_u64(key, pv, Some("n"))?, want_u64(key, cv, Some("n"))?);
+            let (pw, cw) = (
+                want_duration(key, pv, Some("window"))?,
+                want_duration(key, cv, Some("window"))?,
+            );
+            if cn > pn {
+                return widened(format!("child cap {cn} exceeds the parent's {pn}"));
+            }
+            if cw < pw {
+                return widened(
+                    "child window is shorter than the parent's — more slots fit inside".to_owned(),
+                );
+            }
+        }
+        "domains" => {
+            let (p, c) = (want_str_list(key, pv)?, want_str_list(key, cv)?);
+            if let Some(extra) = c.iter().find(|x| !p.contains(x)) {
+                return widened(format!("`{extra}` is outside the parent's allow-list"));
+            }
+        }
+        "notify" | "counter_sign" | "binding" => {
+            let (p, c) = (want_str_list(key, pv)?, want_str_list(key, cv)?);
+            if let Some(dropped) = p.iter().find(|x| !c.contains(x)) {
+                return widened(format!("`{dropped}` dropped by the sub-mandate"));
+            }
+        }
+        "log_reads" | "disclose_agency" | "first_party_only" => {
+            // Both sides validated `true`; presence is the whole rule.
+        }
+        "purpose" | "session_bind" => {
+            if pv != cv {
+                return widened("must be inherited verbatim".to_owned());
+            }
+        }
+        "heartbeat" => {
+            let (pe, ce) = (
+                want_duration(key, pv, Some("every"))?,
+                want_duration(key, cv, Some("every"))?,
+            );
+            let (pg, cg) = (
+                want_duration(key, pv, Some("grace"))?,
+                want_duration(key, cv, Some("grace"))?,
+            );
+            if ce > pe || cg > pg {
+                return widened("child beacon is looser than the parent's".to_owned());
+            }
+        }
+        "freshness" => {
+            if want_duration(key, cv, None)? > want_duration(key, pv, None)? {
+                return widened("child tolerates staler state than the parent".to_owned());
+            }
+        }
+        "spend_cap" => {
+            let (pu, cu) = (
+                pv.get("unit").and_then(serde_json::Value::as_str),
+                cv.get("unit").and_then(serde_json::Value::as_str),
+            );
+            if pu != cu {
+                return widened("child changes the unit — incomparable caps".to_owned());
+            }
+            let (pa, ca) = (
+                want_u64(key, pv, Some("amount"))?,
+                want_u64(key, cv, Some("amount"))?,
+            );
+            if ca > pa {
+                return widened(format!("child cap {ca} exceeds the parent's {pa}"));
+            }
+        }
+        "action_params" => {
+            let (p, c) = (
+                pv.as_object().ok_or_else(|| c_err(key, "not an object"))?,
+                cv.as_object().ok_or_else(|| c_err(key, "not an object"))?,
+            );
+            for (action, ppreds) in p {
+                let Some(cpreds) = c.get(action) else {
+                    return widened(format!("predicates on `{action}` dropped"));
+                };
+                for (pk, ppv) in ppreds.as_object().into_iter().flatten() {
+                    let cpv = cpreds.get(pk);
+                    match pk.as_str() {
+                        "recipients_allow" => {
+                            let pset = want_str_list(pk, ppv)?;
+                            let Some(cpv) = cpv else {
+                                return widened(format!("`{action}.recipients_allow` dropped"));
+                            };
+                            let cset = want_str_list(pk, cpv)?;
+                            if let Some(extra) = cset.iter().find(|x| !pset.contains(x)) {
+                                return widened(format!(
+                                    "`{action}` recipient `{extra}` is outside the parent's allow-list"
+                                ));
+                            }
+                        }
+                        _ => {
+                            if cpv.and_then(serde_json::Value::as_bool) != Some(true) {
+                                return widened(format!("`{action}.{pk}` dropped"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "budgets" => {
+            let parents = parse_budgets(&serde_json::json!({ "budgets": pv }))?
+                .expect("budgets key is present");
+            let children = parse_budgets(&serde_json::json!({ "budgets": cv }))?
+                .expect("budgets key is present");
+            for cp in &children {
+                let Some(pp) = parents.iter().find(|p| p.id == cp.id) else {
+                    return widened(format!("profile `{}` is unknown to the parent", cp.id));
+                };
+                if let Some(p) = pp.token_budget {
+                    match cp.token_budget {
+                        Some(c) if c <= p => {}
+                        Some(c) => {
+                            return widened(format!(
+                                "profile `{}` token budget {c} exceeds the parent's {p}",
+                                cp.id
+                            ))
+                        }
+                        None => {
+                            return widened(format!(
+                                "profile `{}` drops the parent's token budget",
+                                cp.id
+                            ))
+                        }
+                    }
+                }
+                if let Some(p) = pp.max_actions {
+                    match cp.max_actions {
+                        Some(c) if c <= p => {}
+                        _ => {
+                            return widened(format!(
+                                "profile `{}` widens or drops the parent's action cap",
+                                cp.id
+                            ))
+                        }
+                    }
+                }
+                if let Some(pm) = &pp.models {
+                    let Some(cm) = &cp.models else {
+                        return widened(format!(
+                            "profile `{}` drops the parent's model list",
+                            cp.id
+                        ));
+                    };
+                    if let Some(extra) = cm.iter().find(|m| !pm.contains(m)) {
+                        return widened(format!(
+                            "profile `{}` model `{extra}` is outside the parent's list",
+                            cp.id
+                        ));
+                    }
+                }
+                if pp.require_attestation
+                    && (!cp.require_attestation || cp.attestation_key != pp.attestation_key)
+                {
+                    return widened(format!(
+                        "profile `{}` weakens the parent's attestation duty",
+                        cp.id
+                    ));
+                }
+            }
+        }
+        // active_windows and obligations are delegated to their own
+        // gates by `constraints_attenuate` — never reached here.
+        _ => unreachable!("validated key with no containment rule: {key}"),
+    }
+    Ok(())
+}
+
+/// The one link gate (spec 05.3 rule 3 + M0.c, pinned by the E+ vector):
+/// typed validation of BOTH sides, then per-family fail-closed
+/// containment. Subsumes `windows_attenuate` and `obligations_attenuate`.
+/// Called by `verify_chain` on every delegation link — and therefore by
+/// the gateway, whose authorize/append paths walk the chain.
+pub fn constraints_attenuate(
+    parent: &serde_json::Value,
+    child: &serde_json::Value,
+    child_not_before: &str,
+    child_not_after: &str,
+) -> Result<()> {
+    validate_link_constraints(parent)?;
+    validate_link_constraints(child)?;
+    // The two historic gates keep their own drop/containment semantics.
+    windows_attenuate(
+        parse_windows(parent)?.as_deref(),
+        parse_windows(child)?.as_deref(),
+        child_not_before,
+        child_not_after,
+    )?;
+    obligations_attenuate(parent, child)?;
+    let child_obj = constraints_object(child)?;
+    for (key, pv) in constraints_object(parent)? {
+        if matches!(key.as_str(), "active_windows" | "obligations") {
+            continue; // handled above
+        }
+        match child_obj.get(key) {
+            Some(cv) => family_containment(key, pv, cv)?,
+            None if matches!(key.as_str(), "counter_sign" | "binding") => {
+                // obligations_attenuate already rejected any drop; an
+                // absent child list with an empty parent list is fine.
+            }
+            None if DROPPABLE_CONSTRAINTS.contains(&key.as_str()) => {}
+            None => {
+                return Err(c_err(
+                    key,
+                    "dropped by the sub-mandate — nothing restates it for descendants (fail-closed)",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
