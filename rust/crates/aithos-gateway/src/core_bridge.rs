@@ -33,8 +33,12 @@ use aithos_bundle::Store;
 use aithos_core::did::DidDocument;
 use aithos_core::header::{Header, Recipient};
 use aithos_core::keys::{ed2x, grantee_kex_secret, succession_from_entropy, MasterSeed, OwnerKeys};
-use aithos_core::mandate::{verify_chain, GammaQuery, Mandate, MandateSpec, PerimeterEntry, Verb};
+use aithos_core::mandate::{
+    covers_act, verify_chain, verify_chain_revocable, ActOp, GammaQuery, Mandate, MandateSpec,
+    PerimeterEntry, Verb,
+};
 use aithos_core::path::Zone;
+use aithos_core::revocation::{chain_revoked_at, revocations, Revocation};
 
 use crate::config::{ContextTools, GatewayConfig, ToolAccess};
 use crate::hub::{validate_approved, ApprovedManifest, ApprovedTool};
@@ -2504,6 +2508,255 @@ pub fn manifest_tool_pin(
         "description": description,
         "inputSchema": input_schema,
     }))
+}
+
+// ------------------------------------------------- effective policy (M2)
+//
+// The pure heart of the mandates product surface: ONE function computes
+// what the runtime would decide — the owner previews it, the UI renders
+// it, and (a later lot, after equivalence is proven on the whole suite)
+// the hot path plugs into it. In this lot the runtime is deliberately
+// NOT rebranched: `tests/policy_equivalence.rs` replays the verdicts of
+// the existing grants/bounds scenarios through these functions and
+// requires literal equality with `Runner::authorize` + `check_bounds`.
+
+/// Version tag of the effective-policy read-model JSON (stable for the UI).
+pub const EFFECTIVE_POLICY_VERSION: &str = "aithos-effective-policy-v1";
+
+/// The previewed tool universe: exposed name → (server, approved tool).
+type EffectiveTools = BTreeMap<String, (String, ApprovedTool)>;
+
+/// Everything the effective-policy functions need, loaded owner-side
+/// from the files alone. Loading is I/O; deciding is pure.
+struct PreviewInputs {
+    context_did: String,
+    chain: Vec<Mandate>,
+    doc: DidDocument,
+    revocations: Vec<Revocation>,
+    tools: EffectiveTools,
+}
+
+fn preview_load(
+    master: &[u8; 32],
+    label: &str,
+    servers: &[String],
+    store: GatewayStore,
+) -> Result<PreviewInputs> {
+    let bundle = Bundle::open(store.clone()).map_err(bridge_err)?;
+    let state: BridgeState = read_json(&bundle, STATE_PATH)?;
+    let mandate: Mandate = read_json(&bundle, &cert_path(&state.agent_mandate))?;
+    let doc: DidDocument = read_json(&bundle, "did.json")?;
+    let entries = bundle.gamma_entries().map_err(bridge_err)?;
+    let revocations = revocations(&entries);
+    let mut tools: EffectiveTools = BTreeMap::new();
+    for server in servers {
+        let manifest = owner_read_hub_manifest(master, label, server, store.clone())?;
+        for tool in manifest.tools {
+            let exposed = tool.exposed_name.clone();
+            if tools
+                .insert(exposed.clone(), (manifest.server.clone(), tool))
+                .is_some()
+            {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "exposed-name collision `{exposed}` across previewed servers"
+                )));
+            }
+        }
+    }
+    Ok(PreviewInputs {
+        context_did: bundle.did.clone(),
+        chain: vec![mandate],
+        doc,
+        revocations,
+        tools,
+    })
+}
+
+/// Lifecycle status of a chain at `now`, from the verifier's own
+/// primitives (string-ordered RFC 3339 Z instants, injected revocation
+/// facts). Returns the status and an optional detail (reason).
+fn preview_status(
+    chain: &[Mandate],
+    doc: &DidDocument,
+    revs: &[Revocation],
+    now: &str,
+) -> (&'static str, Option<String>) {
+    if let Err(e) = chain_revoked_at(chain, revs, now) {
+        return ("revoked", Some(e.to_string()));
+    }
+    let Some(leaf) = chain.last() else {
+        return ("invalid", Some("empty chain".to_owned()));
+    };
+    if now < leaf.not_before.as_str() {
+        return ("not_yet_valid", None);
+    }
+    if now > leaf.not_after.as_str() {
+        return ("expired", None);
+    }
+    match verify_chain_revocable(chain, doc, now, revs) {
+        Ok(()) => ("active", None),
+        Err(e) => ("invalid", Some(e.to_string())),
+    }
+}
+
+/// The pure per-call verdict: EXACTLY the runtime's pre-relay decision
+/// (resolve → mandate at T → owner bounds), computed from values alone.
+/// Drift is deliberately absent — it is a runtime observation of the
+/// upstream, never policy. Revocation facts are conjoined here (the
+/// runtime pre-check defers them to the append wall; no reachable
+/// runtime state diverges, and the equivalence tests prove it).
+fn effective_call_verdict(
+    inputs: &PreviewInputs,
+    tool: &str,
+    args: &serde_json::Value,
+    now: &str,
+) -> Result<()> {
+    let Some((server, approved)) = inputs.tools.get(tool) else {
+        return Err(GatewayError::ToolNotMapped(tool.to_owned()));
+    };
+    let op = hub_op_for_tool(server, &approved.name);
+    let denied = |reason: String| GatewayError::MandateDenied {
+        op: op.clone(),
+        reason: format!("exposed tool `{tool}`: {reason}"),
+    };
+    verify_chain_revocable(&inputs.chain, &inputs.doc, now, &inputs.revocations)
+        .map_err(|e| denied(e.to_string()))?;
+    let leaf = inputs.chain.last().expect("verified chain is non-empty");
+    let perimeter = leaf.parsed_perimeter().map_err(bridge_err)?;
+    let covered = covers_act(
+        &perimeter,
+        &ActOp {
+            connector: server.clone(),
+            action: crate::policy::action_name(&approved.name),
+        },
+    );
+    if !covered {
+        return Err(denied("outside the granted perimeter".to_owned()));
+    }
+    // The owner-approved bounds, applied exactly as `Runner::check_bounds`
+    // applies them: pinned-schema shape first, then each rule, fail-closed.
+    for bound in &approved.bounds {
+        let field = bound.field();
+        let pinned_type = approved
+            .input_schema
+            .pointer(&format!("/properties/{field}/type"))
+            .and_then(serde_json::Value::as_str);
+        if pinned_type == Some("array") {
+            if let Some(value) = args.get(field) {
+                if !value.is_array() {
+                    return Err(GatewayError::BoundViolated(format!(
+                        "`{}.{field}` — must be an array of strings per the pinned schema",
+                        approved.name
+                    )));
+                }
+            }
+        }
+        bound.check(&approved.name, args)?;
+    }
+    Ok(())
+}
+
+/// The read-model JSON: mandate lifecycle, then every previewed tool
+/// with its class, grant decision, mandate coverage at `now` and its
+/// inherited bounds. `served` is what `tools/list` would show.
+fn describe_effective_policy(inputs: &PreviewInputs, now: &str) -> Result<serde_json::Value> {
+    let (status, status_detail) =
+        preview_status(&inputs.chain, &inputs.doc, &inputs.revocations, now);
+    let leaf = inputs.chain.last();
+    let perimeter = leaf
+        .map(|m| m.parsed_perimeter().map_err(bridge_err))
+        .transpose()?
+        .unwrap_or_default();
+    let mandate = leaf.map(|m| {
+        let mut view = serde_json::json!({
+            "id": m.id,
+            "grantee_label": m.grantee.label,
+            "grantee_pub": m.grantee.pubkey,
+            "not_before": m.not_before,
+            "not_after": m.not_after,
+            "status": status,
+            "perimeter": m.perimeter,
+            "constraints": m.constraints,
+        });
+        if let Some(detail) = &status_detail {
+            view["status_detail"] = serde_json::Value::String(detail.clone());
+        }
+        view
+    });
+    let active = status == "active";
+    let mut tools = Vec::with_capacity(inputs.tools.len());
+    for (exposed, (server, approved)) in &inputs.tools {
+        let covered = covers_act(
+            &perimeter,
+            &ActOp {
+                connector: server.clone(),
+                action: crate::policy::action_name(&approved.name),
+            },
+        );
+        tools.push(serde_json::json!({
+            "tool": exposed,
+            "server": server,
+            "upstream_tool": approved.name,
+            "risk_class": approved.risk_class,
+            "granted": approved.is_granted(),
+            "covered": covered,
+            "served": approved.is_granted() && covered && active,
+            "bounds": approved.bounds,
+        }));
+    }
+    Ok(serde_json::json!({
+        "version": EFFECTIVE_POLICY_VERSION,
+        "at": now,
+        "context_did": inputs.context_did,
+        "mandate": mandate,
+        "tools": tools,
+    }))
+}
+
+/// Owner-side preview of one equipped context's effective policy: the
+/// stable, versioned JSON the UI renders (owner-preview-mandate). Reads
+/// state, certificate, DID document, revocation facts and the sealed
+/// manifests of the named servers — files alone, T injected.
+pub fn owner_preview_mandate(
+    master: &[u8; 32],
+    label: &str,
+    servers: &[String],
+    store: GatewayStore,
+    now: &str,
+) -> Result<serde_json::Value> {
+    let inputs = preview_load(master, label, servers, store)?;
+    describe_effective_policy(&inputs, now)
+}
+
+/// Owner-side dry-run of ONE hypothetical call: the verdict the gateway
+/// would give, out of the same decision logic — the preview IS the
+/// decision. Refusals carry the runtime's exact code and message.
+pub fn owner_preview_call(
+    master: &[u8; 32],
+    label: &str,
+    servers: &[String],
+    store: GatewayStore,
+    tool: &str,
+    args: &serde_json::Value,
+    now: &str,
+) -> Result<serde_json::Value> {
+    let inputs = preview_load(master, label, servers, store)?;
+    Ok(match effective_call_verdict(&inputs, tool, args, now) {
+        Ok(()) => serde_json::json!({
+            "version": EFFECTIVE_POLICY_VERSION,
+            "at": now,
+            "tool": tool,
+            "verdict": "allowed",
+        }),
+        Err(e) => serde_json::json!({
+            "version": EFFECTIVE_POLICY_VERSION,
+            "at": now,
+            "tool": tool,
+            "verdict": "refused",
+            "code": e.refusal_code(),
+            "detail": e.to_string(),
+        }),
+    })
 }
 
 // ---------------------------------------------------------------- helpers

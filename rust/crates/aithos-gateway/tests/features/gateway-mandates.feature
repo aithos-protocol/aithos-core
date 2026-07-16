@@ -119,14 +119,12 @@ Feature: Restricted mandates — the equipped Ethos becomes a ceiling of authori
 
   Rule: The preview is the decision — one function, two callers
 
-    @wip
     Scenario: owner-preview-mandate prints the effective policy as stable JSON
       Given server "gmail" is enrolled with "search_emails" as a granted read and "send_email" as a granted write with a one_of bound on "to"
       When the owner previews the agent mandate
       Then the preview JSON names exactly the granted tools, each with its inherited bounds
       And the preview names the validity window and the status "active"
 
-    @wip
     Scenario: The preview verdict and the runtime verdict are the same function's answer
       Given tool "send_email" is granted write with a one_of bound on "to" allowing "prospect-a@clients.example"
       When the owner previews a call of "gmail__send_email" to "mallory@evil.example"

@@ -23,10 +23,11 @@ use aithos_gateway::config::{GatewayConfig, ToolAccess, ToolMap};
 use aithos_gateway::core_bridge::{
     agent_pub_multibase, cert_constraints, cert_grantee_pub, cert_perimeter, gamma_view,
     gateway_pub_multibase, journal_notes_view, owner_enroll_server, owner_grant_briefing,
-    owner_grant_context, owner_init_context, owner_init_journal, owner_read_hub_manifest,
-    owner_read_journal_note, owner_reenroll_server, owner_set_briefing, Bridge, ContextRuntime,
-    EntropySource, EntryView, EquipOutcome, MandateWindow, OnboardOutcome, RawStore,
-    ReenrollOutcome, Runner, SeqEntropy, STATE_PATH,
+    owner_grant_context, owner_init_context, owner_init_journal, owner_preview_call,
+    owner_preview_mandate, owner_read_hub_manifest, owner_read_journal_note, owner_reenroll_server,
+    owner_set_briefing, Bridge, ContextRuntime, EntropySource, EntryView, EquipOutcome,
+    MandateWindow, OnboardOutcome, RawStore, ReenrollOutcome, Runner, SeqEntropy,
+    EFFECTIVE_POLICY_VERSION, STATE_PATH,
 };
 use aithos_gateway::hub::{
     approve_manifest, discover_server, ApprovedManifest, ArgumentBound, ToolApproval,
@@ -246,6 +247,10 @@ struct GatewayWorld {
     demo_note: Option<String>,
     demo_bearers: BTreeMap<String, String>,
     demo_auditor_seed: Option<String>,
+    /// Restricted mandates (M2): the last owner preview (read-model or
+    /// dry-run verdict) and the tool it previewed.
+    preview: Option<Value>,
+    preview_tool: Option<String>,
 }
 
 /// One row of the demo Background table.
@@ -313,6 +318,8 @@ impl GatewayWorld {
             demo_note: None,
             demo_bearers: BTreeMap::new(),
             demo_auditor_seed: None,
+            preview: None,
+            preview_tool: None,
         }
     }
 
@@ -6186,6 +6193,164 @@ async fn demo_config_references_only(w: &mut GatewayWorld) {
     assert!(
         !harness.config_text.contains(&harness.vault_token),
         "no vault access token in the config"
+    );
+}
+
+// ---------------------------------------------- restricted mandates (M2)
+
+#[given(
+    expr = "server {string} is enrolled with {string} as a granted read and {string} as a granted write with a one_of bound on {string}"
+)]
+async fn mandates_enrolled_read_write_bound(
+    w: &mut GatewayWorld,
+    server: String,
+    read_tool: String,
+    write_tool: String,
+    field: String,
+) {
+    assert_eq!(server, GRANTS_SERVER);
+    let approvals = BTreeMap::from([
+        (read_tool, ToolApproval::granted(ToolAccess::Read)),
+        (
+            write_tool,
+            ToolApproval::granted(ToolAccess::Write).with_bounds(vec![ArgumentBound::OneOf {
+                field,
+                values: BOUNDS_APPROVED
+                    .iter()
+                    .map(|value| value.to_string())
+                    .collect(),
+            }]),
+        ),
+    ]);
+    provision_grants_world(w, approvals, false).await;
+}
+
+#[when("the owner previews the agent mandate")]
+async fn mandates_owner_previews(w: &mut GatewayWorld) {
+    let master = w.master();
+    let store = w.grants_store.clone().expect("an enrolled grants context");
+    let preview = owner_preview_mandate(
+        &master,
+        GRANTS_CONTEXT,
+        &[GRANTS_SERVER.to_owned()],
+        store,
+        T0,
+    )
+    .expect("the preview computes from the files alone");
+    w.preview = Some(preview);
+}
+
+#[then("the preview JSON names exactly the granted tools, each with its inherited bounds")]
+async fn mandates_preview_lists_granted(w: &mut GatewayWorld) {
+    let preview = w.preview.as_ref().expect("a preview");
+    assert_eq!(preview["version"], EFFECTIVE_POLICY_VERSION);
+    let tools = preview["tools"].as_array().expect("a tools array");
+    let granted: Vec<&str> = tools
+        .iter()
+        .filter(|tool| tool["granted"] == json!(true))
+        .map(|tool| tool["tool"].as_str().expect("a tool name"))
+        .collect();
+    assert_eq!(
+        granted,
+        vec!["gmail__search_emails", "gmail__send_email"],
+        "exactly the granted tools: {preview}"
+    );
+    for tool in tools {
+        assert_eq!(tool["covered"], json!(true), "covered by the mandate");
+        assert_eq!(tool["served"], json!(true), "served by tools/list");
+        let bounds = tool["bounds"].as_array().expect("a bounds array");
+        if tool["tool"] == json!("gmail__send_email") {
+            assert_eq!(bounds.len(), 1, "the inherited bound rides along");
+            assert_eq!(bounds[0]["kind"], "one_of");
+            assert_eq!(bounds[0]["field"], "to");
+            let values: Vec<&str> = bounds[0]["values"]
+                .as_array()
+                .expect("bound values")
+                .iter()
+                .map(|value| value.as_str().expect("a string value"))
+                .collect();
+            assert_eq!(values, BOUNDS_APPROVED.to_vec());
+        } else {
+            assert!(bounds.is_empty(), "no bound was approved on {tool}");
+        }
+    }
+}
+
+#[then(expr = "the preview names the validity window and the status {string}")]
+async fn mandates_preview_window_status(w: &mut GatewayWorld, status: String) {
+    let preview = w.preview.as_ref().expect("a preview");
+    let mandate = &preview["mandate"];
+    assert_eq!(mandate["status"], json!(status), "status: {preview}");
+    assert_eq!(mandate["not_before"], json!(NOT_BEFORE));
+    assert_eq!(mandate["not_after"], json!(NOT_AFTER));
+}
+
+#[when(expr = "the owner previews a call of {string} to {string}")]
+async fn mandates_preview_call(w: &mut GatewayWorld, tool: String, recipient: String) {
+    let master = w.master();
+    let (server, _) = tool.split_once("__").expect("an exposed hub tool name");
+    let context_root = w
+        .vault
+        .as_ref()
+        .expect("a provisioned bounds harness")
+        .store_roots[0]
+        .clone();
+    let store =
+        GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs { root: context_root })
+            .expect("the bounds context store reopens owner-side");
+    let args = json!({ "to": [recipient] });
+    let verdict = owner_preview_call(
+        &master,
+        BOUNDS_CONTEXT,
+        &[server.to_owned()],
+        store,
+        &tool,
+        &args,
+        T0,
+    )
+    .expect("the dry-run verdict computes");
+    w.preview = Some(verdict);
+    w.preview_tool = Some(tool);
+    w.last_args = Some(args);
+}
+
+#[then(expr = "the preview verdict is a refusal naming field {string} and the approved set")]
+async fn mandates_preview_refusal(w: &mut GatewayWorld, field: String) {
+    let verdict = w.preview.as_ref().expect("a dry-run verdict");
+    assert_eq!(verdict["verdict"], "refused", "refused: {verdict}");
+    assert_eq!(verdict["code"], "bound_violated");
+    let detail = verdict["detail"].as_str().expect("a pedagogical detail");
+    assert!(
+        detail.contains(&format!(".{field}`")),
+        "the field is named: {detail}"
+    );
+    assert!(
+        detail.contains("mallory@evil.example"),
+        "the offending value is named: {detail}"
+    );
+    assert!(
+        detail.contains("prospect-a@clients.example"),
+        "the approved set is named: {detail}"
+    );
+}
+
+#[then("the running gateway refuses the same call with the same verdict")]
+async fn mandates_runtime_matches_preview(w: &mut GatewayWorld) {
+    let tool = w.preview_tool.clone().expect("a previewed tool");
+    let args = w.last_args.clone().expect("the previewed arguments");
+    let detail = w.preview.as_ref().expect("a dry-run verdict")["detail"]
+        .as_str()
+        .expect("a detail")
+        .to_owned();
+    bounds_call(w, &tool, args).await;
+    let response = w.last_response.as_ref().expect("a runtime response");
+    let message = response["error"]["message"]
+        .as_str()
+        .expect("a runtime refusal message");
+    assert_eq!(
+        message,
+        format!("aithos gateway: {detail}"),
+        "one function, two callers: {response}"
     );
 }
 

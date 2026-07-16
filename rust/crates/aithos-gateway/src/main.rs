@@ -182,6 +182,31 @@ enum Command {
         #[arg(long)]
         store_root: String,
     },
+    /// OWNER SIDE: preview the effective policy of an equipped context —
+    /// the stable read-model JSON the UI renders (mandate lifecycle,
+    /// tools, inherited bounds), or with --call the dry-run verdict of
+    /// one hypothetical call. Preview and runtime decide from the same
+    /// inputs: the preview IS the decision.
+    OwnerPreviewMandate {
+        #[arg(long)]
+        master_seed_hex: String,
+        #[arg(long)]
+        label: String,
+        /// Enrolled hub server to include (repeatable).
+        #[arg(long = "server")]
+        servers: Vec<String>,
+        #[arg(long)]
+        store_root: String,
+        /// Dry-run: the exposed tool name of one hypothetical call.
+        #[arg(long)]
+        call: Option<String>,
+        /// Dry-run arguments as a JSON object (needs --call; default {}).
+        #[arg(long)]
+        args: Option<String>,
+        /// Evaluation instant, RFC 3339 Z (defaults to the system clock).
+        #[arg(long)]
+        at: Option<String>,
+    },
     /// Initialise the ethos, mint identities, grant the read-only agent
     /// mandate, the gateway governance mandate and the scoped auditor
     /// mandate; print the endpoint to plug into the agent runtime.
@@ -511,6 +536,43 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
             return Ok(());
         }
+        Command::OwnerPreviewMandate {
+            master_seed_hex,
+            label,
+            servers,
+            store_root,
+            call,
+            args,
+            at,
+        } => {
+            let master = decode_master(master_seed_hex)?;
+            let store = GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                root: store_root.into(),
+            })?;
+            let now = at.clone().unwrap_or_else(|| ts(now_secs()));
+            let preview = match call {
+                Some(tool) => {
+                    let args: serde_json::Value = match args {
+                        Some(text) => serde_json::from_str(text)
+                            .map_err(|e| format!("--args is not a JSON value: {e}"))?,
+                        None => serde_json::json!({}),
+                    };
+                    aithos_gateway::core_bridge::owner_preview_call(
+                        &master, label, servers, store, tool, &args, &now,
+                    )?
+                }
+                None => {
+                    if args.is_some() {
+                        return Err("--args needs --call".into());
+                    }
+                    aithos_gateway::core_bridge::owner_preview_mandate(
+                        &master, label, servers, store, &now,
+                    )?
+                }
+            };
+            println!("{}", serde_json::to_string_pretty(&preview)?);
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -526,7 +588,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         | Command::OwnerGrantBriefing { .. }
         | Command::OwnerSetBriefing { .. }
         | Command::OwnerDiscoverServer { .. }
-        | Command::OwnerEnrollServer { .. } => unreachable!("handled above"),
+        | Command::OwnerEnrollServer { .. }
+        | Command::OwnerPreviewMandate { .. } => unreachable!("handled above"),
         Command::Onboard { ttl_days } => {
             let mut ent = OsEntropy;
             let keyholder = Keyholder::from_entropy(ent.e32(), ent.e32());

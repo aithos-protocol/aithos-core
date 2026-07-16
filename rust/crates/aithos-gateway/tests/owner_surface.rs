@@ -601,3 +601,261 @@ fn owner_commands_fail_closed_on_malformed_inputs() {
         .assert()
         .code(2);
 }
+
+/// One enrolled server, then `owner-preview-mandate`: the stable
+/// read-model JSON (version, lifecycle, tools with their inherited
+/// bounds) — and not one secret on the console.
+#[test]
+fn owner_preview_mandate_prints_the_stable_read_model() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (agent_pub, gateway_pub, id_path) = keygen(tmp.path());
+    let store = tmp.path().join("preview-context");
+    gateway()
+        .args([
+            "owner-init-context",
+            "--master-seed-hex",
+            MASTER,
+            "--label",
+            "engineering",
+            "--store-root",
+            store.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "title": { "type": "string" },
+            "body": { "type": "string" }
+        },
+        "additionalProperties": false
+    });
+    let list_schema = serde_json::json!({
+        "type": "object",
+        "properties": { "state": { "type": "string" } },
+        "additionalProperties": false
+    });
+    let proposal = ProposedManifest {
+        version: MANIFEST_VERSION.to_owned(),
+        server: "github".to_owned(),
+        tools: vec![
+            ProposedTool {
+                name: "issues.create".to_owned(),
+                description: Some("Open one issue".to_owned()),
+                input_schema: schema.clone(),
+                pin_sha256: manifest_tool_pin("issues.create", Some("Open one issue"), &schema)
+                    .unwrap(),
+            },
+            ProposedTool {
+                name: "issues.list".to_owned(),
+                description: Some("List repository issues".to_owned()),
+                input_schema: list_schema.clone(),
+                pin_sha256: manifest_tool_pin(
+                    "issues.list",
+                    Some("List repository issues"),
+                    &list_schema,
+                )
+                .unwrap(),
+            },
+        ],
+    };
+    let proposal_path = tmp.path().join("github.proposed.json");
+    std::fs::write(
+        &proposal_path,
+        serde_json::to_vec_pretty(&proposal).unwrap(),
+    )
+    .unwrap();
+    gateway()
+        .args([
+            "owner-enroll-server",
+            "--master-seed-hex",
+            MASTER,
+            "--label",
+            "engineering",
+            "--agent-pub",
+            &agent_pub,
+            "--gateway-pub",
+            &gateway_pub,
+            "--proposal",
+            proposal_path.to_str().unwrap(),
+            "--approve",
+            "issues.list=read",
+            "--approve",
+            "issues.create=write:granted",
+            "--bound",
+            "issues.create:title=require",
+            "--store-root",
+            store.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let out = gateway()
+        .args([
+            "owner-preview-mandate",
+            "--master-seed-hex",
+            MASTER,
+            "--label",
+            "engineering",
+            "--server",
+            "github",
+            "--store-root",
+            store.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let printed = console(&out);
+    assert_no_seed_leak(&printed, &id_path);
+    assert!(
+        !printed.contains(MASTER),
+        "the master seed is never echoed back"
+    );
+    let preview: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("the preview is one JSON document");
+    assert_eq!(preview["version"], "aithos-effective-policy-v1");
+    assert_eq!(preview["mandate"]["status"], "active");
+    assert_eq!(
+        preview["mandate"]["grantee_pub"],
+        serde_json::Value::String(agent_pub.clone()),
+        "the previewed mandate is the agent's"
+    );
+    let tools = preview["tools"].as_array().expect("a tools array");
+    assert_eq!(tools.len(), 2, "every approved tool is described");
+    let create = tools
+        .iter()
+        .find(|tool| tool["tool"] == "github__issues_create")
+        .expect("the granted write is described");
+    assert_eq!(create["granted"], serde_json::json!(true));
+    assert_eq!(create["served"], serde_json::json!(true));
+    assert_eq!(create["bounds"][0]["kind"], "require");
+    assert_eq!(create["bounds"][0]["field"], "title");
+}
+
+/// `owner-preview-mandate --call`: the dry-run verdict carries the
+/// runtime's exact code and pedagogical detail — allowed on a covered
+/// read, bound_violated on a rule the arguments break.
+#[test]
+fn owner_preview_call_dry_runs_the_runtime_verdict() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (agent_pub, gateway_pub, _id_path) = keygen(tmp.path());
+    let store = tmp.path().join("preview-call-context");
+    gateway()
+        .args([
+            "owner-init-context",
+            "--master-seed-hex",
+            MASTER,
+            "--label",
+            "engineering",
+            "--store-root",
+            store.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "title": { "type": "string" },
+            "body": { "type": "string" }
+        },
+        "additionalProperties": false
+    });
+    let proposal = ProposedManifest {
+        version: MANIFEST_VERSION.to_owned(),
+        server: "github".to_owned(),
+        tools: vec![ProposedTool {
+            name: "issues.create".to_owned(),
+            description: Some("Open one issue".to_owned()),
+            input_schema: schema.clone(),
+            pin_sha256: manifest_tool_pin("issues.create", Some("Open one issue"), &schema)
+                .unwrap(),
+        }],
+    };
+    let proposal_path = tmp.path().join("github.proposed.json");
+    std::fs::write(
+        &proposal_path,
+        serde_json::to_vec_pretty(&proposal).unwrap(),
+    )
+    .unwrap();
+    gateway()
+        .args([
+            "owner-enroll-server",
+            "--master-seed-hex",
+            MASTER,
+            "--label",
+            "engineering",
+            "--agent-pub",
+            &agent_pub,
+            "--gateway-pub",
+            &gateway_pub,
+            "--proposal",
+            proposal_path.to_str().unwrap(),
+            "--approve",
+            "issues.create=write:granted",
+            "--bound",
+            "issues.create:title=require",
+            "--store-root",
+            store.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let refused = gateway()
+        .args([
+            "owner-preview-mandate",
+            "--master-seed-hex",
+            MASTER,
+            "--label",
+            "engineering",
+            "--server",
+            "github",
+            "--store-root",
+            store.to_str().unwrap(),
+            "--call",
+            "github__issues_create",
+            "--args",
+            r#"{ "body": "no title" }"#,
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let verdict: serde_json::Value =
+        serde_json::from_slice(&refused.stdout).expect("one JSON verdict");
+    assert_eq!(verdict["verdict"], "refused");
+    assert_eq!(verdict["code"], "bound_violated");
+    let detail = verdict["detail"].as_str().expect("a detail");
+    assert!(
+        detail.contains("`issues.create.title`") && detail.contains("required"),
+        "the refusal teaches the rule: {detail}"
+    );
+
+    let allowed = gateway()
+        .args([
+            "owner-preview-mandate",
+            "--master-seed-hex",
+            MASTER,
+            "--label",
+            "engineering",
+            "--server",
+            "github",
+            "--store-root",
+            store.to_str().unwrap(),
+            "--call",
+            "github__issues_create",
+            "--args",
+            r#"{ "title": "Bug", "body": "steps" }"#,
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let verdict: serde_json::Value =
+        serde_json::from_slice(&allowed.stdout).expect("one JSON verdict");
+    assert_eq!(
+        verdict["verdict"], "allowed",
+        "inside every rule: {verdict}"
+    );
+}
