@@ -22,11 +22,12 @@ use tokio::sync::Mutex;
 use aithos_gateway::config::{GatewayConfig, ToolAccess, ToolMap};
 use aithos_gateway::core_bridge::{
     agent_pub_multibase, cert_constraints, cert_grantee_pub, cert_perimeter, gamma_view,
-    gateway_pub_multibase, journal_notes_view, owner_enroll_server, owner_grant_briefing,
-    owner_grant_context, owner_init_context, owner_init_journal, owner_preview_call,
-    owner_preview_mandate, owner_read_hub_manifest, owner_read_journal_note, owner_reenroll_server,
-    owner_set_briefing, Bridge, ContextRuntime, EntropySource, EntryView, EquipOutcome,
-    MandateWindow, OnboardOutcome, RawStore, ReenrollOutcome, Runner, SeqEntropy,
+    gateway_pub_multibase, journal_notes_view, owner_add_section, owner_enroll_server,
+    owner_grant_briefing, owner_grant_context, owner_grant_ethos_read, owner_init_context,
+    owner_init_journal, owner_issue_ethos_read_subchain, owner_preview_call, owner_preview_mandate,
+    owner_read_hub_manifest, owner_read_journal_note, owner_reenroll_server,
+    owner_revoke_mandate_id, owner_set_briefing, Bridge, ContextRuntime, EntropySource, EntryView,
+    EquipOutcome, MandateWindow, OnboardOutcome, RawStore, ReenrollOutcome, Runner, SeqEntropy,
     EFFECTIVE_POLICY_VERSION, STATE_PATH,
 };
 use aithos_gateway::hub::{
@@ -37,7 +38,8 @@ use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
 use aithos_gateway::proxy_mcp::{
     process, process_multi, refresh_server_manifest, router_multi, McpProxy, McpRouter, Upstream,
-    BRIEFING_READ, JOURNAL_SEARCH, JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
+    BRIEFING_READ, ETHOS_CONTEXT, ETHOS_LIST, ETHOS_READ, JOURNAL_SEARCH, JOURNAL_WRITE,
+    METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
 };
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::{GatewayError, Result};
@@ -260,6 +262,15 @@ struct GatewayWorld {
     wire_responses: Vec<WireResponse>,
     wire_session: Option<String>,
     gamma_baseline: BTreeMap<String, usize>,
+    /// Ethos reading scenarios (lot G6): sections declared before the
+    /// world opens — (context, zone, path, text) — the granted pen per
+    /// context, the delegate sub-chain ids, the last refused gesture
+    /// and the certificate count captured before it.
+    ethos_pending: Vec<(String, String, String, String)>,
+    ethos_mandates: BTreeMap<String, String>,
+    ethos_subchain: Option<(String, String)>,
+    ethos_gesture_error: Option<String>,
+    ethos_cert_baseline: Option<usize>,
 }
 
 /// One raw Streamable HTTP exchange (G2): what the wire actually said.
@@ -347,6 +358,11 @@ impl GatewayWorld {
             wire_responses: Vec::new(),
             wire_session: None,
             gamma_baseline: BTreeMap::new(),
+            ethos_pending: Vec::new(),
+            ethos_mandates: BTreeMap::new(),
+            ethos_subchain: None,
+            ethos_gesture_error: None,
+            ethos_cert_baseline: None,
         }
     }
 
@@ -4164,6 +4180,7 @@ async fn provision_briefing_world(w: &mut GatewayWorld) {
 
     let mut labels: std::collections::BTreeSet<String> =
         w.briefing_pending.iter().map(|d| d.0.clone()).collect();
+    labels.extend(w.ethos_pending.iter().map(|d| d.0.clone()));
     labels.insert("ventes".to_owned());
 
     let mut contexts = BTreeMap::new();
@@ -4208,6 +4225,21 @@ async fn provision_briefing_world(w: &mut GatewayWorld) {
                     &mut owner_ent,
                 )
                 .expect("directive written owner-side");
+            }
+        }
+        for (ctx, zone, path, text) in w.ethos_pending.clone() {
+            if ctx == label {
+                owner_add_section(
+                    &master,
+                    &label,
+                    &zone,
+                    &path,
+                    &text,
+                    store.clone(),
+                    T0,
+                    &mut owner_ent,
+                )
+                .expect("section written owner-side");
             }
         }
         let bridge = Bridge::open(
@@ -4392,7 +4424,13 @@ async fn briefing_agent_calls(w: &mut GatewayWorld, tool: String) {
                 .await;
             w.last_response = Some(resp);
         }
-        other => panic!("the bare call step serves briefing.read or ping, not `{other}`"),
+        ETHOS_LIST | ETHOS_CONTEXT => {
+            let tool = tool.clone();
+            ethos_call(w, &tool, json!({})).await;
+        }
+        other => panic!(
+            "the bare call step serves briefing.read, ping or the ethos tools, not `{other}`"
+        ),
     }
 }
 
@@ -4411,8 +4449,11 @@ async fn briefing_agent_calls_again(w: &mut GatewayWorld, tool: String) {
 
 #[when(expr = "the agent calls {string} with an unknown argument field")]
 async fn briefing_agent_calls_unknown_field(w: &mut GatewayWorld, tool: String) {
-    assert_eq!(tool, BRIEFING_READ);
-    briefing_call(w, json!({ "audience": "everyone" })).await;
+    match tool.as_str() {
+        BRIEFING_READ => briefing_call(w, json!({ "audience": "everyone" })).await,
+        ETHOS_READ => ethos_call(w, ETHOS_READ, json!({ "audience": "everyone" })).await,
+        other => panic!("the unknown-field step serves briefing.read or ethos.read, not `{other}`"),
+    }
 }
 
 #[when(expr = "the owner rewrites the directive to {string}")]
@@ -4596,7 +4637,7 @@ async fn briefing_refusal_journalized(w: &mut GatewayWorld) {
         .filter(|e| {
             e.kind == "action"
                 && e.target.as_deref() == Some("x.gateway")
-                && payload_str(e, "tool") == Some(BRIEFING_READ)
+                && payload_str(e, "tool") == Some(w.last_tool.as_str())
         })
         .collect();
     assert_eq!(refusals.len(), 1, "the journal records the refusal");
@@ -6402,6 +6443,556 @@ async fn mandates_runtime_matches_preview(w: &mut GatewayWorld) {
 }
 
 // ------------------------------------------------------------------ main
+
+// --------------------------------------------- ethos reading (lot G6)
+
+/// Snapshot every gamma length (contexts + journal): the no-new-entry
+/// and exactly-one-entry assertions diff against it — append-only makes
+/// the slice beyond the baseline THE new entries.
+fn snapshot_gammas(w: &mut GatewayWorld) {
+    let mut baseline = BTreeMap::new();
+    for (name, store) in &w.ctx_stores {
+        baseline.insert(
+            name.clone(),
+            gamma_view(store.clone()).expect("gamma").len(),
+        );
+    }
+    if let Some(journal) = &w.journal_store {
+        baseline.insert(
+            "journal".to_owned(),
+            gamma_view(journal.clone()).expect("gamma").len(),
+        );
+    }
+    w.gamma_baseline = baseline;
+}
+
+/// One native ethos call through the black-box door, gammas snapshotted
+/// right before it.
+async fn ethos_call(w: &mut GatewayWorld, tool: &str, args: Value) {
+    provision_pending_world(w).await;
+    snapshot_gammas(w);
+    w.last_tool = tool.to_owned();
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 63,
+        "method": "tools/call",
+        "params": { "name": tool, "arguments": args }
+    });
+    let response = w.agent_request(body).await;
+    w.last_response = Some(response);
+}
+
+/// Mint (or fail to mint) the v1 ethos-read pen on one context, the
+/// certificate count captured first for the nothing-written assertion.
+async fn grant_ethos_read(w: &mut GatewayWorld, zones: &str, context: &str) {
+    provision_pending_world(w).await;
+    let master = w.master();
+    let (agent_pub, _) = w.pubs();
+    let store = w.ctx_stores.get(context).expect("a context store").clone();
+    let window = GatewayWorld::window();
+    let zone_list: Vec<String> = zones
+        .split(',')
+        .map(str::trim)
+        .filter(|z| !z.is_empty())
+        .map(str::to_owned)
+        .collect();
+    w.ethos_cert_baseline = Some(store.list("certs/").map(|v| v.len()).unwrap_or(0));
+    let ent = w.briefing_owner_ent.as_mut().expect("owner entropy");
+    match owner_grant_ethos_read(
+        &master, context, &agent_pub, &zone_list, store, &window, T0, ent,
+    ) {
+        Ok(id) => {
+            w.ethos_mandates.insert(context.to_owned(), id);
+            w.ethos_gesture_error = None;
+        }
+        Err(e) => w.ethos_gesture_error = Some(e.to_string()),
+    }
+}
+
+/// The three ethos tool descriptions of the last list (empty when the
+/// surface is mute — the callers assert accordingly).
+fn ethos_descriptions(w: &GatewayWorld) -> Vec<String> {
+    w.listed_tools()
+        .iter()
+        .filter(|t| {
+            t["name"]
+                .as_str()
+                .is_some_and(|name| name.starts_with("ethos."))
+        })
+        .map(|t| t["description"].as_str().unwrap_or_default().to_owned())
+        .collect()
+}
+
+/// The parsed JSON payload of the last native answer.
+fn last_payload(w: &GatewayWorld) -> Value {
+    serde_json::from_str(&w.last_result_text()).expect("a JSON answer")
+}
+
+/// Every listed row across contexts of an ethos.list / pack index answer.
+fn tree_rows(payload: &Value) -> Vec<Value> {
+    payload["contexts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|ctx| {
+            ctx["entries"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[given(expr = "the {string} context {word} zone holds the section {string} with text {string}")]
+async fn ethos_zone_section(
+    w: &mut GatewayWorld,
+    context: String,
+    zone: String,
+    path: String,
+    text: String,
+) {
+    w.ethos_pending.push((context, zone, path, text));
+}
+
+#[given("no mandate covers any sealed zone")]
+async fn ethos_no_sealed_coverage(_w: &mut GatewayWorld) {
+    // Nothing granted — exactly the point of the scenario.
+}
+
+#[given("every zone of every context is empty")]
+async fn ethos_everything_empty(w: &mut GatewayWorld) {
+    assert!(
+        w.ethos_pending.is_empty() && w.briefing_pending.is_empty(),
+        "the mute-surface scenario starts with empty zones"
+    );
+}
+
+#[given("no mandate covers the circle zone")]
+async fn ethos_no_circle_coverage(_w: &mut GatewayWorld) {
+    // No ethos-read pen is minted — the briefing pen alone covers
+    // nothing outside its own shelves.
+}
+
+#[given(expr = "an equipped {string} context")]
+async fn ethos_equipped_context(_w: &mut GatewayWorld, _context: String) {
+    // The lazy briefing world always equips "ventes"; the gesture under
+    // test runs against it.
+}
+
+#[given(expr = "the owner granted ethos read on zones {string} for the {string} context")]
+async fn ethos_granted_given(w: &mut GatewayWorld, zones: String, context: String) {
+    grant_ethos_read(w, &zones, &context).await;
+    assert!(
+        w.ethos_gesture_error.is_none(),
+        "the grant lands: {:?}",
+        w.ethos_gesture_error
+    );
+}
+
+#[when(expr = "the owner grants ethos read on zones {string} for the {string} context")]
+async fn ethos_granted_when(w: &mut GatewayWorld, zones: String, context: String) {
+    grant_ethos_read(w, &zones, &context).await;
+}
+
+#[given("the agent lists the tools once")]
+async fn ethos_lists_once(w: &mut GatewayWorld) {
+    provision_pending_world(w).await;
+    ethos_list_tools(w).await;
+}
+
+#[when("the agent lists the tools again")]
+async fn ethos_lists_again(w: &mut GatewayWorld) {
+    ethos_list_tools(w).await;
+}
+
+async fn ethos_list_tools(w: &mut GatewayWorld) {
+    let list = w
+        .agent_request(json!({ "jsonrpc": "2.0", "id": 64, "method": "tools/list" }))
+        .await;
+    w.last_list = Some(list);
+}
+
+#[when(expr = "the owner revokes the ethos-read mandate of the {string} context")]
+async fn ethos_revokes(w: &mut GatewayWorld, context: String) {
+    let master = w.master();
+    let id = w
+        .ethos_mandates
+        .get(&context)
+        .expect("a granted ethos-read pen")
+        .clone();
+    let store = w.ctx_stores.get(&context).expect("a context store").clone();
+    let ent = w.briefing_owner_ent.as_mut().expect("owner entropy");
+    owner_revoke_mandate_id(&master, &context, &id, "gate check", store, T0, ent)
+        .expect("the revocation lands");
+}
+
+#[given("a delegate holding an issue mandate mints a read.circle sub-mandate to the agent key")]
+async fn ethos_delegate_subchain(w: &mut GatewayWorld) {
+    provision_pending_world(w).await;
+    let master = w.master();
+    let (agent_pub, _) = w.pubs();
+    let store = w.ctx_stores.get("ventes").expect("ventes store").clone();
+    let window = GatewayWorld::window();
+    let ent = w.briefing_owner_ent.as_mut().expect("owner entropy");
+    let (parent, leaf) =
+        owner_issue_ethos_read_subchain(&master, "ventes", &agent_pub, store, &window, T0, ent)
+            .expect("the sub-chain is minted");
+    w.ethos_subchain = Some((parent, leaf));
+}
+
+#[when(expr = "the agent calls {string} on zone {string} path {string} of context {string}")]
+async fn ethos_read_call(
+    w: &mut GatewayWorld,
+    tool: String,
+    zone: String,
+    path: String,
+    context: String,
+) {
+    assert_eq!(tool, ETHOS_READ, "the zoned call step serves ethos.read");
+    ethos_call(
+        w,
+        ETHOS_READ,
+        json!({ "context": context, "zone": zone, "path": path }),
+    )
+    .await;
+}
+
+#[then(expr = "the list includes {string} and {string} and {string}")]
+async fn list_includes_three(w: &mut GatewayWorld, a: String, b: String, c: String) {
+    let listed = w.listed_tools();
+    for tool in [a, b, c] {
+        assert!(
+            listed.iter().any(|t| t["name"] == tool.as_str()),
+            "the list includes `{tool}`"
+        );
+    }
+}
+
+#[then(expr = "the ethos tool descriptions name {word} access on {string}")]
+async fn ethos_descriptions_name_zone(w: &mut GatewayWorld, zone: String, context: String) {
+    let descriptions = ethos_descriptions(w);
+    assert_eq!(descriptions.len(), 3, "the three ethos tools are listed");
+    for description in &descriptions {
+        assert!(
+            description.contains(&context) && description.contains(&zone),
+            "the description names `{context}` and `{zone}`: {description}"
+        );
+    }
+}
+
+#[then("the ethos tool descriptions name no other zone")]
+async fn ethos_descriptions_no_other_zone(w: &mut GatewayWorld) {
+    for description in ethos_descriptions(w) {
+        assert!(
+            !description.contains("circle") && !description.contains("self"),
+            "no unserved zone is named: {description}"
+        );
+    }
+}
+
+#[then("the ethos tool descriptions no longer name circle")]
+async fn ethos_descriptions_dropped_circle(w: &mut GatewayWorld) {
+    for description in ethos_descriptions(w) {
+        assert!(
+            !description.contains("circle"),
+            "circle dropped from the surface: {description}"
+        );
+    }
+}
+
+#[then("no restart happened")]
+async fn ethos_no_restart(w: &mut GatewayWorld) {
+    assert!(
+        w.router.is_some(),
+        "the same router instance served every call of the scenario"
+    );
+}
+
+#[then("a subsequent circle read is refused naming the revoked chain")]
+async fn ethos_read_after_revocation(w: &mut GatewayWorld) {
+    ethos_call(
+        w,
+        ETHOS_READ,
+        json!({ "context": "ventes", "zone": "circle", "path": "memoire/prospects" }),
+    )
+    .await;
+    let response = w.last_response.as_ref().expect("a response");
+    let message = response["error"]["message"]
+        .as_str()
+        .expect("a refusal message");
+    assert!(
+        message.contains("revoked"),
+        "the refusal names the revocation: {message}"
+    );
+}
+
+#[then("a circle read under that chain names the full chain in its entry")]
+async fn ethos_subchain_read_names_chain(w: &mut GatewayWorld) {
+    ethos_call(
+        w,
+        ETHOS_READ,
+        json!({ "context": "ventes", "zone": "circle", "path": "memoire/prospects" }),
+    )
+    .await;
+    let response = w.last_response.as_ref().expect("a response");
+    assert!(
+        response.get("error").is_none(),
+        "the read under the sub-chain serves: {response}"
+    );
+    let (parent, leaf) = w.ethos_subchain.clone().expect("the minted sub-chain");
+    let gamma = w.ctx_gamma("ventes");
+    let entry = gamma
+        .iter()
+        .rev()
+        .find(|e| e.kind == "ethos.read")
+        .expect("a journalized read");
+    assert_eq!(
+        entry.authorized_via.clone().expect("authorized_via"),
+        vec![parent, leaf],
+        "the full chain, root first"
+    );
+}
+
+#[then(expr = "the tree names the public section {string}")]
+async fn ethos_tree_public(w: &mut GatewayWorld, path: String) {
+    let rows = tree_rows(&last_payload(w));
+    assert!(
+        rows.iter()
+            .any(|row| row["zone"] == "public" && row["path"] == path.as_str()),
+        "the public row is listed: {rows:?}"
+    );
+}
+
+#[then(expr = "the tree names the circle section {string} with its title and no body")]
+async fn ethos_tree_circle(w: &mut GatewayWorld, path: String) {
+    let rows = tree_rows(&last_payload(w));
+    let row = rows
+        .iter()
+        .find(|row| row["zone"] == "circle" && row["path"] == path.as_str())
+        .expect("the circle row is listed");
+    assert!(
+        row["title"].as_str().is_some_and(|t| !t.is_empty()),
+        "the clear title rides along: {row}"
+    );
+    assert!(
+        row.get("text").is_none() && row.get("body").is_none(),
+        "no body leaves with the skeleton: {row}"
+    );
+}
+
+#[then("no self row, sid or title appears in any agent-facing response")]
+async fn ethos_no_self_anywhere(w: &mut GatewayWorld) {
+    let swept: String = w
+        .agent_responses
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !swept.contains("\"zone\":\"self\""),
+        "no self row is ever listed"
+    );
+    for text in w.briefing_texts("self") {
+        assert!(!swept.contains(&text), "no self text leaks");
+    }
+}
+
+#[then("no gamma entry was written by the listing")]
+async fn ethos_listing_costless(w: &mut GatewayWorld) {
+    assert_gammas_unmoved(w);
+}
+
+#[then("no gamma entry was written by the read")]
+async fn ethos_public_read_costless(w: &mut GatewayWorld) {
+    assert_gammas_unmoved(w);
+}
+
+fn assert_gammas_unmoved(w: &GatewayWorld) {
+    for (name, baseline) in &w.gamma_baseline {
+        let count = if name == "journal" {
+            gamma_view(w.journal_store.clone().expect("journal store"))
+                .expect("gamma")
+                .len()
+        } else {
+            gamma_view(w.ctx_stores[name].clone()).expect("gamma").len()
+        };
+        assert_eq!(count, *baseline, "gamma of `{name}` unmoved");
+    }
+}
+
+#[then(expr = "the answer carries {string} verbatim")]
+async fn ethos_answer_verbatim(w: &mut GatewayWorld, text: String) {
+    let answer = w.last_result_text();
+    assert!(answer.contains(&text), "the exact text is served: {answer}");
+}
+
+#[then(expr = "the {string} context gamma gains exactly one ethos.read entry")]
+async fn ethos_one_read_entry(w: &mut GatewayWorld, context: String) {
+    let baseline = w.gamma_baseline[&context];
+    let gamma = w.ctx_gamma(&context);
+    let fresh: Vec<&EntryView> = gamma[baseline..].iter().collect();
+    assert_eq!(fresh.len(), 1, "exactly one new entry: {fresh:?}");
+    assert_eq!(fresh[0].kind, "ethos.read", "the read is the record");
+}
+
+#[then("that entry names the granting chain in authorized_via")]
+async fn ethos_entry_names_chain(w: &mut GatewayWorld) {
+    let pen = w.ethos_mandates.get("ventes").expect("the granted pen");
+    let gamma = w.ctx_gamma("ventes");
+    let entry = gamma
+        .iter()
+        .rev()
+        .find(|e| e.kind == "ethos.read")
+        .expect("a journalized read");
+    assert!(
+        entry
+            .authorized_via
+            .clone()
+            .expect("authorized_via")
+            .contains(pen),
+        "the granting chain is named"
+    );
+}
+
+#[then(expr = "the call is refused naming the missing {string} perimeter")]
+async fn ethos_refused_naming_perimeter(w: &mut GatewayWorld, perimeter: String) {
+    let response = w.last_response.as_ref().expect("a response");
+    assert_eq!(response["error"]["code"], POLICY_DENIED_CODE);
+    let message = response["error"]["message"]
+        .as_str()
+        .expect("a refusal message");
+    assert!(
+        message.contains(&perimeter),
+        "the refusal names `{perimeter}`: {message}"
+    );
+}
+
+#[then("no section text leaks in the refusal")]
+async fn ethos_refusal_leaks_nothing(w: &mut GatewayWorld) {
+    let response = w.last_response.as_ref().expect("a response").to_string();
+    for (_, _, _, text) in &w.ethos_pending {
+        assert!(!response.contains(text), "no body text rides a refusal");
+    }
+}
+
+#[then(expr = "the {string} context gamma records the refusal too")]
+async fn ethos_context_records_refusal(w: &mut GatewayWorld, context: String) {
+    let baseline = w.gamma_baseline[&context];
+    let gamma = w.ctx_gamma(&context);
+    let recorded = gamma[baseline..].iter().any(|e| {
+        e.kind == "action"
+            && e.target.as_deref() == Some("x.gateway")
+            && payload_str(e, "tool") == Some(w.last_tool.as_str())
+    });
+    assert!(recorded, "the context auditor sees the attempt");
+}
+
+#[then("the pack carries the directive verbatim")]
+async fn ethos_pack_carries_directive(w: &mut GatewayWorld) {
+    let answer = w.last_result_text();
+    for directive in w.briefing_texts("circle") {
+        assert!(
+            answer.contains(&directive),
+            "the directive rides the pack verbatim"
+        );
+    }
+}
+
+#[then(expr = "the pack names the circle section {string} without its body")]
+async fn ethos_pack_names_section(w: &mut GatewayWorld, path: String) {
+    let answer = w.last_result_text();
+    assert!(answer.contains(&path), "the covered index names the path");
+    for (_, zone, pending_path, text) in &w.ethos_pending {
+        if zone == "circle" && pending_path == &path {
+            assert!(!answer.contains(text), "the body stays sealed in the pack");
+        }
+    }
+}
+
+#[then("the only new gamma entries are the briefing directive reads")]
+async fn ethos_pack_costs_reads_only(w: &mut GatewayWorld) {
+    let mut fresh_total = 0;
+    for (name, baseline) in &w.gamma_baseline {
+        let gamma = if name == "journal" {
+            gamma_view(w.journal_store.clone().expect("journal store")).expect("gamma")
+        } else {
+            gamma_view(w.ctx_stores[name].clone()).expect("gamma")
+        };
+        for entry in &gamma[*baseline..] {
+            assert_eq!(
+                entry.kind, "ethos.read",
+                "only reads are on the new record: {entry:?}"
+            );
+            fresh_total += 1;
+        }
+    }
+    assert!(fresh_total >= 1, "the circle directive read is journalized");
+}
+
+#[then("the tree carries no circle row")]
+async fn ethos_tree_no_circle(w: &mut GatewayWorld) {
+    let rows = tree_rows(&last_payload(w));
+    assert!(
+        rows.iter().all(|row| row["zone"] != "circle"),
+        "no circle row is listed: {rows:?}"
+    );
+}
+
+#[then(expr = "the pack carries {string} verbatim")]
+async fn ethos_pack_carries_verbatim(w: &mut GatewayWorld, text: String) {
+    let answer = w.last_result_text();
+    assert!(
+        answer.contains(&text),
+        "the exact text rides the pack: {answer}"
+    );
+}
+
+#[then("the pack carries no circle row")]
+async fn ethos_pack_no_circle(w: &mut GatewayWorld) {
+    let payload = last_payload(w);
+    for ctx in payload["contexts"].as_array().into_iter().flatten() {
+        let index = ctx["pack"]["index"].as_array().expect("an index array");
+        assert!(index.is_empty(), "no covered circle row: {index:?}");
+    }
+}
+
+#[then("the circle section title appears in no agent-facing response")]
+async fn ethos_circle_title_nowhere(w: &mut GatewayWorld) {
+    let swept: String = w
+        .agent_responses
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    for (_, zone, path, text) in &w.ethos_pending {
+        if zone == "circle" {
+            assert!(!swept.contains(path), "the circle path never leaves");
+            assert!(!swept.contains(text), "the circle body never leaves");
+        }
+    }
+}
+
+#[then("the gesture is refused naming the pending delegated self resolution")]
+async fn ethos_gesture_refused_self(w: &mut GatewayWorld) {
+    let error = w
+        .ethos_gesture_error
+        .as_ref()
+        .expect("the gesture is refused");
+    assert!(
+        error.contains("self-resolution") || error.contains("read.self"),
+        "the refusal names the pending core lot: {error}"
+    );
+}
+
+#[then("no certificate is written")]
+async fn ethos_no_certificate_written(w: &mut GatewayWorld) {
+    let baseline = w.ethos_cert_baseline.expect("a certificate baseline");
+    let store = w.ctx_stores.get("ventes").expect("ventes store").clone();
+    let count = store.list("certs/").map(|v| v.len()).unwrap_or(0);
+    assert_eq!(count, baseline, "the cert shelf did not move");
+}
 
 // ------------------------------------- streamable transport (lot G2)
 

@@ -163,6 +163,47 @@ enum Command {
         #[arg(long, default_value_t = 30)]
         ttl_days: u32,
     },
+    /// OWNER SIDE: mint the ethos-read pen on an equipped context (lot
+    /// G6) — a plain read mandate on the asked zones plus the circle
+    /// line to the agent AND the context auditor. Never a toggle: the
+    /// runtime derives the surface by scanning certificates, so this
+    /// gesture, a delegate's sub-mandate or the future multi-mandate
+    /// surface all light it the same way. `self` is refused while the
+    /// delegated self resolution is its own core lot.
+    OwnerGrantEthosRead {
+        #[arg(long)]
+        master_seed_hex: String,
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        agent_pub: String,
+        /// Comma-separated zones (public, circle).
+        #[arg(long, default_value = "public,circle")]
+        zones: String,
+        #[arg(long)]
+        store_root: String,
+        #[arg(long, default_value_t = 30)]
+        ttl_days: u32,
+    },
+    /// OWNER SIDE: add one fresh section to a zone of an equipped
+    /// context (lot G6 owner tooling — GAPS beat 2, filling the zones).
+    /// Title = the last path segment; the ethos data tools serve it on
+    /// the very next call when the surface covers it.
+    OwnerAddSection {
+        #[arg(long)]
+        master_seed_hex: String,
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        zone: String,
+        /// Display path, folders included (e.g. memoire/prospects).
+        #[arg(long)]
+        path: String,
+        #[arg(long)]
+        text: String,
+        #[arg(long)]
+        store_root: String,
+    },
     /// OWNER SIDE: write or update one zone's directive (creation on
     /// first use, in-place rewrite afterwards — served on the very next
     /// briefing.read, no restart). `self` holds owner-only notes that
@@ -386,6 +427,65 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("briefing_mandate: {mandate}");
             return Ok(());
         }
+        Command::OwnerGrantEthosRead {
+            master_seed_hex,
+            label,
+            agent_pub,
+            zones,
+            store_root,
+            ttl_days,
+        } => {
+            let master = decode_master(master_seed_hex)?;
+            let start = now_secs();
+            let zone_list: Vec<String> = zones
+                .split(',')
+                .map(str::trim)
+                .filter(|z| !z.is_empty())
+                .map(str::to_owned)
+                .collect();
+            let mandate = aithos_gateway::core_bridge::owner_grant_ethos_read(
+                &master,
+                label,
+                agent_pub,
+                &zone_list,
+                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                    root: store_root.into(),
+                })?,
+                &MandateWindow {
+                    not_before: ts(start),
+                    not_after: ts(start + u64::from(*ttl_days) * 86_400),
+                },
+                &ts(start),
+                &mut OsEntropy,
+            )?;
+            println!("ethos_read_mandate: {mandate}");
+            return Ok(());
+        }
+        Command::OwnerAddSection {
+            master_seed_hex,
+            label,
+            zone,
+            path,
+            text,
+            store_root,
+        } => {
+            let master = decode_master(master_seed_hex)?;
+            let start = now_secs();
+            aithos_gateway::core_bridge::owner_add_section(
+                &master,
+                label,
+                zone,
+                path,
+                text,
+                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                    root: store_root.into(),
+                })?,
+                &ts(start),
+                &mut OsEntropy,
+            )?;
+            println!("section_added: {zone}:{path}");
+            return Ok(());
+        }
         Command::OwnerSetBriefing {
             master_seed_hex,
             label,
@@ -586,6 +686,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         | Command::OwnerInitContext { .. }
         | Command::OwnerGrantContext { .. }
         | Command::OwnerGrantBriefing { .. }
+        | Command::OwnerGrantEthosRead { .. }
+        | Command::OwnerAddSection { .. }
         | Command::OwnerSetBriefing { .. }
         | Command::OwnerDiscoverServer { .. }
         | Command::OwnerEnrollServer { .. }

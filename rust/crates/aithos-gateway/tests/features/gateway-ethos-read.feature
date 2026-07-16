@@ -38,7 +38,6 @@ Feature: Native Ethos reading — the mandate lights the surface
 
   Rule: The surface derives from mandates, lines and content — never from a toggle
 
-    @wip
     Scenario: Non-empty public content alone lights the surface for any connected session
       Given the "ventes" context public zone holds the section "presentation" with text "Innoestate, conseil immobilier."
       And no mandate covers any sealed zone
@@ -47,7 +46,6 @@ Feature: Native Ethos reading — the mandate lights the surface
       And the ethos tool descriptions name public access on "ventes"
       And the ethos tool descriptions name no other zone
 
-    @wip
     Scenario: An empty Ethos keeps the ethos surface mute
       Given no granted zone of any context holds a directive
       And every zone of every context is empty
@@ -57,7 +55,6 @@ Feature: Native Ethos reading — the mandate lights the surface
       And the list does not include "ethos.context"
       And the initialize result carries no instructions
 
-    @wip
     Scenario: A read.circle mandate lights circle on the very next call
       Given the "ventes" context circle zone holds the section "memoire/prospects" with text "Liste des prospects qualifiés."
       And the agent lists the tools once
@@ -66,7 +63,6 @@ Feature: Native Ethos reading — the mandate lights the surface
       Then the ethos tool descriptions name circle access on "ventes"
       And no restart happened
 
-    @wip
     Scenario: Revoking the read mandate drops the circle surface hot
       Given the "ventes" context circle zone holds the section "memoire/prospects" with text "Liste des prospects qualifiés."
       And the owner granted ethos read on zones "circle" for the "ventes" context
@@ -75,7 +71,6 @@ Feature: Native Ethos reading — the mandate lights the surface
       Then the ethos tool descriptions no longer name circle
       And a subsequent circle read is refused naming the revoked chain
 
-    @wip
     Scenario: A sub-mandate minted by a delegate lights the surface exactly the same
       Given the "ventes" context circle zone holds the section "memoire/prospects" with text "Liste des prospects qualifiés."
       And a delegate holding an issue mandate mints a read.circle sub-mandate to the agent key
@@ -85,7 +80,6 @@ Feature: Native Ethos reading — the mandate lights the surface
 
   Rule: ethos.list serves the covered skeleton only, and costs nothing
 
-    @wip
     Scenario: The listed tree carries public and covered circle rows, never self
       Given the "ventes" context public zone holds the section "presentation" with text "Innoestate, conseil immobilier."
       And the "ventes" context circle zone holds the section "memoire/prospects" with text "Liste des prospects qualifiés."
@@ -97,7 +91,6 @@ Feature: Native Ethos reading — the mandate lights the surface
       And no self row, sid or title appears in any agent-facing response
       And no gamma entry was written by the listing
 
-    @wip
     Scenario: Without read.circle the circle skeleton stays invisible
       Given the "ventes" context circle zone holds the section "memoire/prospects" with text "Liste des prospects qualifiés."
       And no mandate covers the circle zone
@@ -107,7 +100,6 @@ Feature: Native Ethos reading — the mandate lights the surface
 
   Rule: ethos.read opens covered bodies on the record
 
-    @wip
     Scenario: A covered circle read serves the exact text and journalizes one read
       Given the "ventes" context circle zone holds the section "memoire/prospects" with text "Liste des prospects qualifiés."
       And the owner granted ethos read on zones "circle" for the "ventes" context
@@ -116,14 +108,12 @@ Feature: Native Ethos reading — the mandate lights the surface
       And the "ventes" context gamma gains exactly one ethos.read entry
       And that entry names the granting chain in authorized_via
 
-    @wip
     Scenario: A public read is keyless and unjournalized — the readability frontier
       Given the "ventes" context public zone holds the section "presentation" with text "Innoestate, conseil immobilier."
       When the agent calls "ethos.read" on zone "public" path "presentation" of context "ventes"
       Then the answer carries "Innoestate, conseil immobilier." verbatim
       And no gamma entry was written by the read
 
-    @wip
     Scenario: An uncovered circle read is refused naming the missing perimeter
       Given the "ventes" context circle zone holds the section "memoire/prospects" with text "Liste des prospects qualifiés."
       And no mandate covers the circle zone
@@ -133,7 +123,6 @@ Feature: Native Ethos reading — the mandate lights the surface
       And the refusal is journalized
       And the "ventes" context gamma records the refusal too
 
-    @wip
     Scenario: A self read is refused by default even when self content exists
       Given the "ventes" context self zone holds the note "Marge de négociation max 8%."
       When the agent calls "ethos.read" on zone "self" path "notes/marge" of context "ventes"
@@ -148,7 +137,6 @@ Feature: Native Ethos reading — the mandate lights the surface
       Then the answer carries "Marge de négociation max 8%." verbatim
       And the "ventes" context gamma gains exactly one ethos.read entry
 
-    @wip
     Scenario: The v1 gesture refuses self while delegated self resolution is absent
       Given an equipped "ventes" context
       When the owner grants ethos read on zones "self" for the "ventes" context
@@ -157,7 +145,6 @@ Feature: Native Ethos reading — the mandate lights the surface
 
   Rule: ethos.context serves the map, not the vault
 
-    @wip
     Scenario: The starting pack composes briefing, public bodies and the sealed index
       Given the "ventes" context circle zone holds the directive "Tout mail mentionne le DPE du bien."
       And the "ventes" context public zone holds the section "presentation" with text "Innoestate, conseil immobilier."
@@ -169,7 +156,6 @@ Feature: Native Ethos reading — the mandate lights the surface
       And the pack names the circle section "memoire/prospects" without its body
       And the only new gamma entries are the briefing directive reads
 
-    @wip
     Scenario: The pack never exceeds the covered perimeter
       Given the "ventes" context circle zone holds the section "memoire/prospects" with text "Liste des prospects qualifiés."
       And no mandate covers the circle zone
@@ -179,12 +165,10 @@ Feature: Native Ethos reading — the mandate lights the surface
 
   Rule: The ethos name belongs to the platform
 
-    @wip
     Scenario: The ethos prefix is reserved in every tool map and server name
       When a hub config declares a server or a tool named under the "ethos" prefix
       Then the config is rejected naming the reserved prefix
 
-    @wip
     Scenario: Unknown ethos arguments fail closed
       Given the "ventes" context public zone holds the section "presentation" with text "Innoestate, conseil immobilier."
       When the agent calls "ethos.read" with an unknown argument field

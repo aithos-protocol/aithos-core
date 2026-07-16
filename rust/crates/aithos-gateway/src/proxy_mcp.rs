@@ -81,6 +81,15 @@ pub const JOURNAL_SEARCH: &str = "journal.search";
 /// recommends it — only while a granted zone has something to say. The
 /// `briefing` prefix is reserved at config time like `journal`.
 pub const BRIEFING_READ: &str = "briefing.read";
+/// The native Ethos data tools (lot G6): served by the hub itself,
+/// never relayed, their surface DERIVED from the mandates per call
+/// (decided 2026-07-16) — public content informs any connected
+/// session, sealed zones appear only under a covering chain whose
+/// lines open them. The `ethos` prefix is reserved at config time like
+/// `journal` and `briefing`.
+pub const ETHOS_READ: &str = "ethos.read";
+pub const ETHOS_LIST: &str = "ethos.list";
+pub const ETHOS_CONTEXT: &str = "ethos.context";
 /// `journal.search` result cap: the default page, and the hard ceiling
 /// a caller-supplied `limit` may not exceed (each opened hit is one
 /// journalized read — the cap bounds the gamma cost of one recall).
@@ -471,9 +480,11 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
         "ping" => json!({ "jsonrpc": "2.0", "id": id, "result": {} }),
         "initialize" => {
             // The static minimal result, plus the briefing instructions
-            // WHEN a granted zone has directives (lot K, decision n°5).
-            // Recomputed per call on purpose: an owner edit or a first
-            // directive flips the surface with no restart.
+            // WHEN a granted zone has directives (lot K, decision n°5)
+            // and the ethos-data sentence WHEN the derived surface is
+            // non-mute (lot G6). Recomputed per call on purpose: an
+            // owner edit, a fresh grant or a revocation flips the
+            // surface with no restart.
             let mut result = json!({
                 "protocolVersion": MCP_PROTOCOL_VERSION,
                 "capabilities": { "tools": {} },
@@ -482,12 +493,30 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
                     "version": env!("CARGO_PKG_VERSION"),
                 }
             });
-            if rt.runner.lock().await.briefing_available() {
-                result["instructions"] = Value::String(
+            let now = (rt.clock)();
+            let runner = rt.runner.lock().await;
+            let briefed = runner.briefing_available();
+            let surface = runner.ethos_surface(&now);
+            drop(runner);
+            let mut instructions = String::new();
+            if briefed {
+                instructions.push_str(
                     "The owner left directives for this agent: call `briefing.read` \
-                     FIRST, before any outbound action, and follow what it says."
-                        .to_owned(),
+                     FIRST, before any outbound action, and follow what it says.",
                 );
+            }
+            if !surface.is_empty() {
+                if !instructions.is_empty() {
+                    instructions.push(' ');
+                }
+                instructions.push_str(&format!(
+                    "Governed Ethos data is readable here — call `ethos.context` for \
+                     the map (zones by context: {}).",
+                    ethos_coverage(&surface)
+                ));
+            }
+            if !instructions.is_empty() {
+                result["instructions"] = Value::String(instructions);
             }
             json!({
                 "jsonrpc": "2.0",
@@ -504,11 +533,16 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
             // it governs (the hub decision, applied at home first). The
             // briefing tool joins them only while there is something to
             // brief (conditional surface, lot K).
+            let now = (rt.clock)();
             let runner = rt.runner.lock().await;
             let mut tools = runner.listed_tools();
             tools.extend(native_journal_tools());
             if runner.briefing_available() {
                 tools.push(briefing_tool());
+            }
+            let surface = runner.ethos_surface(&now);
+            if !surface.is_empty() {
+                tools.extend(ethos_tools(&surface));
             }
             drop(runner);
             json!({
@@ -598,6 +632,32 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Valu
             }),
             Err(deny) => {
                 runner.record_refusal(None, &tool, deny.refusal_code(), &now);
+                error_response(id, &deny)
+            }
+        };
+    }
+
+    // The native ethos tools (lot G6), served HERE, never relayed: the
+    // mandate-derived reading surface. Refusals follow §3bis.8 — the
+    // journal always, and the CONTEXT too when the call names one (an
+    // ethos call is the one native surface whose target context is
+    // identifiable).
+    if tool == ETHOS_READ || tool == ETHOS_LIST || tool == ETHOS_CONTEXT {
+        return match ethos_dispatch(&mut runner, &tool, &args, &now) {
+            Ok(text) => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "content": [{ "type": "text", "text": text }],
+                    "isError": false
+                }
+            }),
+            Err(deny) => {
+                let named = args
+                    .get("context")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                runner.record_refusal(named.as_deref(), &tool, deny.refusal_code(), &now);
                 error_response(id, &deny)
             }
         };
@@ -794,6 +854,107 @@ fn briefing_tool() -> Value {
             "additionalProperties": false
         }
     })
+}
+
+/// The one-line coverage summary the informed-access surface shows
+/// (decided 2026-07-16): deterministic, context by context, zones in
+/// serving order — e.g. `ventes: public, circle`.
+fn ethos_coverage(surface: &BTreeMap<String, Vec<String>>) -> String {
+    surface
+        .iter()
+        .map(|(context, zones)| format!("{context}: {}", zones.join(", ")))
+        .collect::<Vec<_>>()
+        .join(" ; ")
+}
+
+/// The native ethos tools' MCP descriptors (lot G6): REAL argument
+/// schemas, unknown fields pinned closed, and descriptions that NAME
+/// the zones served right now, context by context — recomputed on
+/// every list, so a grant or a revocation rewrites the surface hot.
+fn ethos_tools(surface: &BTreeMap<String, Vec<String>>) -> Vec<Value> {
+    let coverage = ethos_coverage(surface);
+    vec![
+        json!({
+            "name": ETHOS_READ,
+            "description": format!(
+                "Read one section body from the governed Ethos. Readable now — {coverage}. \
+                 Every sealed read is on the record."),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context": { "type": "string" },
+                    "zone": { "type": "string" },
+                    "path": { "type": "string" }
+                },
+                "required": ["zone", "path"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": ETHOS_LIST,
+            "description": format!(
+                "List the readable skeleton of the governed Ethos — titles, tags and \
+                 paths, never a body. Readable now — {coverage}."),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context": { "type": "string" }
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": ETHOS_CONTEXT,
+            "description": format!(
+                "The starting pack: the owner's directives, the readable open sections \
+                 and the covered sealed index. Call it FIRST to get the map. \
+                 Readable now — {coverage}."),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context": { "type": "string" }
+                },
+                "additionalProperties": false
+            }
+        }),
+    ]
+}
+
+/// Validate and run one native ethos call against the runner (lot G6).
+/// Argument parsing is fail-closed — unknown fields and wrong types
+/// refuse naming the field; the bridge then derives the authority from
+/// the scanned chains and journalizes every sealed open.
+fn ethos_dispatch(runner: &mut Runner, tool: &str, args: &Value, now: &str) -> Result<String> {
+    let obj = args
+        .as_object()
+        .ok_or_else(|| bad_args(tool, "arguments must be an object"))?;
+    let allowed: &[&str] = match tool {
+        ETHOS_READ => &["context", "zone", "path"],
+        _ => &["context"],
+    };
+    for key in obj.keys() {
+        if !allowed.contains(&key.as_str()) {
+            return Err(bad_args(tool, &format!("unknown field `{key}`")));
+        }
+    }
+    let text_field = |name: &str| match obj.get(name) {
+        None => Ok(None),
+        Some(Value::String(s)) if !s.trim().is_empty() => Ok(Some(s.clone())),
+        Some(Value::String(_)) => Err(bad_args(tool, &format!("`{name}` must not be empty"))),
+        Some(_) => Err(bad_args(tool, &format!("`{name}` must be a string"))),
+    };
+    let context = text_field("context")?;
+    let payload = match tool {
+        ETHOS_READ => {
+            let zone = text_field("zone")?.ok_or_else(|| bad_args(tool, "`zone` is required"))?;
+            let path = text_field("path")?.ok_or_else(|| bad_args(tool, "`path` is required"))?;
+            runner.ethos_read(context.as_deref(), &zone, &path, now)?
+        }
+        ETHOS_LIST => runner.ethos_list(context.as_deref(), now)?,
+        ETHOS_CONTEXT => runner.ethos_context_pack(context.as_deref(), now)?,
+        other => return Err(bad_args(other, "not a native ethos tool")),
+    };
+    serde_json::to_string(&payload).map_err(|e| GatewayError::BridgeFailed(e.to_string()))
 }
 
 /// Validate and run one `briefing.read` against the runner's contexts.

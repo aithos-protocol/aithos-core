@@ -596,7 +596,7 @@ fn validate_hub(
 }
 
 fn is_reserved_server(name: &str) -> bool {
-    matches!(name, "journal" | "gateway" | "briefing")
+    matches!(name, "journal" | "gateway" | "briefing" | "ethos")
 }
 
 /// The declared brokers: names follow the server-id charset, addresses
@@ -754,11 +754,11 @@ fn validate_store(store: &StoreConfig, at: &str) -> Result<()> {
 }
 
 /// The tool-name prefixes reserved for the gateway's own native tools
-/// (`journal` since lot C2, `briefing` since lot K; mirrors HUB-MCP §5):
-/// no tool map may name a tool `<prefix>`, `<prefix>.*` or
-/// `<prefix>__*` — the names belong to the platform, in the mono shape
-/// too.
-const RESERVED_PREFIXES: [&str; 2] = ["journal", "briefing"];
+/// (`journal` since lot C2, `briefing` since lot K, `ethos` since lot
+/// G6; mirrors HUB-MCP §5): no tool map may name a tool `<prefix>`,
+/// `<prefix>.*` or `<prefix>__*` — the names belong to the platform,
+/// in the mono shape too.
+const RESERVED_PREFIXES: [&str; 3] = ["journal", "briefing", "ethos"];
 
 /// Register a tool map into the shared flattened-action namespace.
 /// Mandate actions flatten dots to underscores; two tools that flatten
@@ -1036,6 +1036,33 @@ journal:
     }
 
     #[test]
+    fn reserved_ethos_prefix_is_rejected_in_every_tool_map() {
+        // Lot G6: `ethos` joins `journal` and `briefing` in the
+        // platform namespace — the data-reading tools belong to the hub.
+        for reserved in ["ethos.read: read", "ethos: read", "ethos__x: read"] {
+            let text = MULTI.replace("figma.read: read", reserved);
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&text),
+                    Err(GatewayError::ConfigRejected(m)) if m.contains("reserved")
+                ),
+                "must reserve: {reserved}"
+            );
+        }
+        let mono = format!(
+            "{GOOD}  ethos.read: read
+"
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&mono),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("reserved")
+        ));
+        // `ethoses.read` shares letters, not the reserved namespace.
+        let neighbour = MULTI.replace("figma.read: read", "ethoses.read: read");
+        assert!(GatewayConfig::from_yaml(&neighbour).is_ok());
+    }
+
+    #[test]
     fn duplicate_context_names_are_rejected() {
         let text = MULTI.replace("name: ui-designer", "name: company-brand");
         assert!(matches!(
@@ -1184,7 +1211,7 @@ journal:
 
     #[test]
     fn reserved_and_duplicate_server_names_are_rejected() {
-        for name in ["journal", "gateway", "briefing"] {
+        for name in ["journal", "gateway", "briefing", "ethos"] {
             let text = HUB.replace("name: github", &format!("name: {name}"));
             assert!(matches!(
                 GatewayConfig::from_yaml(&text),

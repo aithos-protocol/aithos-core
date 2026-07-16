@@ -32,10 +32,11 @@ use aithos_bundle::log::{ActionSpec, InferenceSpec, LogFilter};
 use aithos_bundle::Store;
 use aithos_core::did::DidDocument;
 use aithos_core::header::{Header, Recipient};
+use aithos_core::ids::Sid;
 use aithos_core::keys::{ed2x, grantee_kex_secret, succession_from_entropy, MasterSeed, OwnerKeys};
 use aithos_core::mandate::{
-    covers_act, verify_chain, verify_chain_revocable, ActOp, GammaQuery, Mandate, MandateSpec,
-    PerimeterEntry, Verb,
+    covers_act, verify_chain, verify_chain_revocable, verify_op, ActOp, GammaQuery, Mandate,
+    MandateSpec, Op, PerimeterEntry, Verb,
 };
 use aithos_core::path::Zone;
 use aithos_core::revocation::{chain_revoked_at, revocations, Revocation};
@@ -967,6 +968,319 @@ impl Bridge {
         Ok(items)
     }
 
+    // ---------------------------------------------------- ethos read (lot G6)
+
+    /// Every valid chain to the agent key carrying at least one ethos
+    /// perimeter entry, reconstructed from the certificates the store
+    /// holds — whatever gesture minted them (owner CLI today, a
+    /// delegate's sub-mandate, the G8.c emission surface tomorrow).
+    /// Recomputed per call, never cached, never a state field (decided
+    /// 2026-07-16: the surface DERIVES from the mandates) — a fresh
+    /// grant appears on the very next call and a revocation drops out
+    /// the same way. Deterministic order (leaf mandate id); malformed,
+    /// dangling, expired or revoked chains drop out silently here (the
+    /// read path errors loudly).
+    fn agent_read_chains(&self, now: &str) -> Vec<Vec<Mandate>> {
+        let Ok(doc) = self.did_doc() else {
+            return Vec::new();
+        };
+        let Ok(entries) = self.bundle.gamma_entries() else {
+            return Vec::new();
+        };
+        let revs = revocations(&entries);
+        let agent_pub = agent_pub_multibase(&self.keyholder);
+        let mut chains: Vec<Vec<Mandate>> = self
+            .walk_agent_cert_chains(&agent_pub)
+            .into_iter()
+            .filter(|chain| verify_chain_revocable(chain, &doc, now, &revs).is_ok())
+            .collect();
+        chains.sort_by_key(|chain| chain.last().map(|m| m.id.clone()));
+        chains
+    }
+
+    /// The raw certificate walk under [`agent_read_chains`]: every
+    /// reconstructable chain to the agent key carrying an ethos entry,
+    /// UNVERIFIED — the callers apply the verification tier they need
+    /// (full revocable for serving; signature-only for the pedagogical
+    /// "your chain was revoked" refusal).
+    fn walk_agent_cert_chains(&self, agent_pub: &str) -> Vec<Vec<Mandate>> {
+        let Ok(paths) = self.bundle.store.list("certs/") else {
+            return Vec::new();
+        };
+        let mut by_id: BTreeMap<String, Mandate> = BTreeMap::new();
+        for path in paths {
+            let Ok(Some(bytes)) = self.bundle.store.get(&path) else {
+                continue;
+            };
+            let Ok(mandate) = serde_json::from_slice::<Mandate>(&bytes) else {
+                continue;
+            };
+            by_id.insert(mandate.id.clone(), mandate);
+        }
+        let mut chains: Vec<Vec<Mandate>> = Vec::new();
+        for leaf in by_id.values() {
+            if leaf.grantee.pubkey != agent_pub {
+                continue;
+            }
+            let has_ethos_entry = leaf
+                .parsed_perimeter()
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .any(|entry| matches!(entry, PerimeterEntry::Ethos { .. }))
+                })
+                .unwrap_or(false);
+            if !has_ethos_entry {
+                continue;
+            }
+            let mut chain = vec![leaf.clone()];
+            let mut cursor = leaf;
+            let mut resolvable = true;
+            while let Some(parent_id) = &cursor.parent {
+                match by_id.get(parent_id) {
+                    Some(parent) => {
+                        chain.insert(0, parent.clone());
+                        cursor = parent;
+                    }
+                    None => {
+                        resolvable = false;
+                        break;
+                    }
+                }
+            }
+            if resolvable {
+                chains.push(chain);
+            }
+        }
+        chains
+    }
+
+    /// The pedagogical revocation probe (cold path, refusals only): a
+    /// chain that still SIGNS as valid and covers a circle read of this
+    /// path, but fails the revocable verification — the refusal then
+    /// names the revoked mandate instead of a generic coverage gap.
+    fn revoked_covering_read(&self, path: &str, now: &str) -> Option<String> {
+        let doc = self.did_doc().ok()?;
+        let entries = self.bundle.gamma_entries().ok()?;
+        let revs = revocations(&entries);
+        let agent_pub = agent_pub_multibase(&self.keyholder);
+        let row = zone_all_rows(&self.bundle, Zone::Circle)
+            .into_iter()
+            .find(|row| row.path == path)?;
+        for chain in self.walk_agent_cert_chains(&agent_pub) {
+            if verify_chain(&chain, &doc, now).is_err() {
+                continue;
+            }
+            let op = Op {
+                verb: Verb::Read,
+                zone: Zone::Circle,
+                folders: &row.folders,
+                tags: &row.tags,
+            };
+            if verify_op(&chain, &doc, now, &op).is_err() {
+                continue;
+            }
+            if let Err(refusal) = verify_chain_revocable(&chain, &doc, now, &revs) {
+                return Some(refusal.to_string());
+            }
+        }
+        None
+    }
+
+    /// The zones this context serves right now (lot G6): public appears
+    /// when it holds content — the readability frontier (§02.1), clear
+    /// by design, no coverage needed (decided 2026-07-16: any connected
+    /// session is informed); circle appears when at least one scanned
+    /// chain covers at least one existing row. `self` never appears in
+    /// v1 (sealed structure — the delegated resolution is its own core
+    /// lot). Index-only: nothing opens, nothing is journalized.
+    pub fn ethos_surface(&self, now: &str) -> Vec<String> {
+        let mut zones = Vec::new();
+        if !zone_all_rows(&self.bundle, Zone::Public).is_empty() {
+            zones.push("public".to_owned());
+        }
+        if !self.covered_circle_rows(now).is_empty() {
+            zones.push("circle".to_owned());
+        }
+        zones
+    }
+
+    /// The circle rows at least one valid chain covers, each paired
+    /// with the first covering chain (deterministic order — the chain
+    /// an actual read would cite).
+    fn covered_circle_rows(&self, now: &str) -> Vec<(EthosRow, Vec<Mandate>)> {
+        let chains = self.agent_read_chains(now);
+        if chains.is_empty() {
+            return Vec::new();
+        }
+        let Ok(doc) = self.did_doc() else {
+            return Vec::new();
+        };
+        let mut covered = Vec::new();
+        for row in zone_all_rows(&self.bundle, Zone::Circle) {
+            let op = Op {
+                verb: Verb::Read,
+                zone: Zone::Circle,
+                folders: &row.folders,
+                tags: &row.tags,
+            };
+            if let Some(chain) = chains
+                .iter()
+                .find(|chain| verify_op(chain, &doc, now, &op).is_ok())
+            {
+                covered.push((row, chain.clone()));
+            }
+        }
+        covered
+    }
+
+    /// The covered skeleton (ethos.list): public rows plus covered
+    /// circle rows — paths, titles and tags, never a body, never a
+    /// gamma entry.
+    pub fn ethos_list(&self, now: &str) -> Vec<serde_json::Value> {
+        let mut out = Vec::new();
+        for row in zone_all_rows(&self.bundle, Zone::Public) {
+            out.push(serde_json::json!({
+                "zone": "public", "path": row.path, "title": row.title, "tags": row.tags,
+            }));
+        }
+        for (row, _) in self.covered_circle_rows(now) {
+            out.push(serde_json::json!({
+                "zone": "circle", "path": row.path, "title": row.title, "tags": row.tags,
+            }));
+        }
+        out
+    }
+
+    /// One section body (ethos.read). public: keyless and unjournalized
+    /// — the readability frontier (§02.1, decided 2026-07-16). circle:
+    /// under the first covering chain whose lines open the body; every
+    /// open is ONE `ethos.read` entry under the chain that read, and an
+    /// unjournalizable read fails the whole call (the C2 precedent).
+    /// self: refused in v1 — never served by default (GAPS §4.2), and
+    /// the delegated self resolution is its own core lot.
+    pub fn ethos_read_section(&mut self, zone: &str, path: &str, now: &str) -> Result<String> {
+        match zone {
+            "public" => Bundle::public_read(&self.bundle.store, path).map_err(|_| {
+                GatewayError::RequestRejected(format!("ethos.read: no public section at `{path}`"))
+            }),
+            "circle" => {
+                let chains = self.agent_read_chains(now);
+                if chains.is_empty() {
+                    if let Some(revoked) = self.revoked_covering_read(path, now) {
+                        return Err(GatewayError::MandateDenied {
+                            op: "ethos.read".to_owned(),
+                            reason: format!(
+                                "the chain that covered this read is no longer valid: {revoked}"
+                            ),
+                        });
+                    }
+                    return Err(GatewayError::MandateDenied {
+                        op: "ethos.read".to_owned(),
+                        reason: "no valid chain covers the `read.circle` perimeter of this context — ask the owner for an ethos-read grant"
+                            .to_owned(),
+                    });
+                }
+                let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+                let mut denial: Option<GatewayError> = None;
+                let mut opened: Option<(String, Vec<Mandate>)> = None;
+                for chain in &chains {
+                    match self.bundle.read_section_as_agent(
+                        chain,
+                        &agent_sk,
+                        Zone::Circle,
+                        path,
+                        now,
+                    ) {
+                        Ok(text) => {
+                            opened = Some((text, chain.clone()));
+                            break;
+                        }
+                        Err(e) => denial = Some(read_denied_op("ethos.read")(e)),
+                    }
+                }
+                let Some((text, chain)) = opened else {
+                    if let Some(revoked) = self.revoked_covering_read(path, now) {
+                        return Err(GatewayError::MandateDenied {
+                            op: "ethos.read".to_owned(),
+                            reason: format!(
+                                "the chain that covered this read is no longer valid: {revoked}"
+                            ),
+                        });
+                    }
+                    return Err(match denial {
+                        Some(GatewayError::MandateDenied { op, reason }) => {
+                            GatewayError::MandateDenied {
+                                op,
+                                reason: format!(
+                                    "the `read.circle` perimeter does not cover this call: {reason}"
+                                ),
+                            }
+                        }
+                        Some(other) => other,
+                        None => GatewayError::BridgeFailed(
+                            "no chain answered the circle read".to_owned(),
+                        ),
+                    });
+                };
+                self.bundle
+                    .log_read_as_agent(
+                        &chain,
+                        &agent_sk,
+                        Zone::Circle,
+                        path,
+                        now,
+                        self.entropy.as_mut(),
+                    )
+                    .map_err(|e| GatewayError::LogAppendRefused(e.to_string()))?;
+                Ok(text)
+            }
+            "self" => Err(GatewayError::MandateDenied {
+                op: "ethos.read".to_owned(),
+                reason: "the `read.self` perimeter is never served by default — an explicit self grant awaits the delegated self-resolution core lot"
+                    .to_owned(),
+            }),
+            other => Err(GatewayError::RequestRejected(format!(
+                "ethos.read: zone must be public, circle or self, not `{other}`"
+            ))),
+        }
+    }
+
+    /// The starting pack (ethos.context, decided 2026-07-16): the
+    /// briefing directives (their lot-K record preserved — circle
+    /// directives read on the record), the public bodies (clear,
+    /// costless), and the covered sealed index (titles and paths, no
+    /// body, no entry). The map, not the vault.
+    pub fn ethos_context_pack(&mut self, now: &str) -> Result<serde_json::Value> {
+        let directives = if self.briefing_available() {
+            Some(self.briefing_read(now)?)
+        } else {
+            None
+        };
+        let mut public = Vec::new();
+        for row in zone_all_rows(&self.bundle, Zone::Public) {
+            let text = Bundle::public_read(&self.bundle.store, &row.path)
+                .map_err(read_denied_op("ethos.context"))?;
+            public.push(serde_json::json!({
+                "path": row.path, "title": row.title, "text": text,
+            }));
+        }
+        let index: Vec<serde_json::Value> = self
+            .covered_circle_rows(now)
+            .into_iter()
+            .map(|(row, _)| {
+                serde_json::json!({
+                    "zone": "circle", "path": row.path, "title": row.title, "tags": row.tags,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "directives": directives,
+            "public": public,
+            "index": index,
+        }))
+    }
+
     // ------------------------------------------------------------- audit
 
     /// Run the auditor's scoped query with the auditor's own key and
@@ -1469,6 +1783,114 @@ impl Runner {
             ));
         }
         Ok(serde_json::json!({ "contexts": served }))
+    }
+
+    /// The ethos surface per context (lot G6): context name → served
+    /// zones; an empty map is a mute surface. Recomputed on every
+    /// initialize and tools/list — a fresh grant lights it and a
+    /// revocation drops it, hot, no restart.
+    pub fn ethos_surface(&self, now: &str) -> BTreeMap<String, Vec<String>> {
+        let mut out = BTreeMap::new();
+        for (name, context) in &self.contexts {
+            let zones = context.bridge.ethos_surface(now);
+            if !zones.is_empty() {
+                out.insert(name.clone(), zones);
+            }
+        }
+        out
+    }
+
+    /// The covered skeleton across contexts (`context: None` = all).
+    /// See [`Bridge::ethos_list`]. Mute contexts simply do not appear.
+    pub fn ethos_list(&self, context: Option<&str>, now: &str) -> Result<serde_json::Value> {
+        let names = self.ethos_target_contexts(context)?;
+        let mut served = Vec::new();
+        for name in names {
+            let entries = self.context(&name)?.bridge.ethos_list(now);
+            if !entries.is_empty() {
+                served.push(serde_json::json!({ "context": name, "entries": entries }));
+            }
+        }
+        Ok(serde_json::json!({ "contexts": served }))
+    }
+
+    /// One section body under the covering chain of ITS context. See
+    /// [`Bridge::ethos_read_section`].
+    pub fn ethos_read(
+        &mut self,
+        context: Option<&str>,
+        zone: &str,
+        path: &str,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let name = self.ethos_single_context(context)?;
+        let text = self
+            .context_mut(&name)?
+            .bridge
+            .ethos_read_section(zone, path, now)?;
+        Ok(serde_json::json!({
+            "context": name, "zone": zone, "path": path, "text": text,
+        }))
+    }
+
+    /// The starting pack across contexts (`context: None` = all). See
+    /// [`Bridge::ethos_context_pack`].
+    pub fn ethos_context_pack(
+        &mut self,
+        context: Option<&str>,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let names = self.ethos_target_contexts(context)?;
+        let mut served = Vec::new();
+        for name in names {
+            let pack = self.context_mut(&name)?.bridge.ethos_context_pack(now)?;
+            served.push(serde_json::json!({ "context": name, "pack": pack }));
+        }
+        Ok(serde_json::json!({ "contexts": served }))
+    }
+
+    fn ethos_target_contexts(&self, context: Option<&str>) -> Result<Vec<String>> {
+        match context {
+            Some(name) => {
+                if !self.contexts.contains_key(name) {
+                    return Err(GatewayError::RequestRejected(format!(
+                        "unknown context `{name}`"
+                    )));
+                }
+                Ok(vec![name.to_owned()])
+            }
+            None => Ok(self.contexts.keys().cloned().collect()),
+        }
+    }
+
+    /// ethos.read targets exactly one context: the named one, or the
+    /// only one configured — an ambiguous call is refused naming the
+    /// candidates (pedagogical, never a guess).
+    fn ethos_single_context(&self, context: Option<&str>) -> Result<String> {
+        match context {
+            Some(name) => {
+                if !self.contexts.contains_key(name) {
+                    return Err(GatewayError::RequestRejected(format!(
+                        "unknown context `{name}`"
+                    )));
+                }
+                Ok(name.to_owned())
+            }
+            None => {
+                if self.contexts.len() == 1 {
+                    Ok(self.contexts.keys().next().expect("one context").clone())
+                } else {
+                    Err(GatewayError::RequestRejected(format!(
+                        "ethos.read: name the context — one of {}",
+                        self.contexts
+                            .keys()
+                            .map(|n| format!("`{n}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )))
+                }
+            }
+        }
     }
 
     /// Refusal routing, decided §3bis.8: the journal gets EVERY refusal
@@ -2432,6 +2854,265 @@ fn decode_pub(multibase: &str) -> Result<ed25519_dalek::VerifyingKey> {
         .map_err(|e| GatewayError::BridgeFailed(format!("bad agent public key: {e}")))
 }
 
+/// Mint the v1 ethos-read pen (lot G6, decided 2026-07-16): a plain
+/// owner mandate covering `read.<zone>` for the asked zones, the circle
+/// line delivered to the agent AND to the context auditor (the lot-K
+/// implication, assumed: the auditor mandated on `kind=ethos.read` can
+/// replay what it audits), the grant journalized. NEVER a toggle and
+/// NEVER a state field: the runtime discovers the pen — like any other
+/// chain to the agent key — by scanning the certificates, so any other
+/// emission path (G8.c, a delegate) lights the same surface. `self` is
+/// refused while the delegated self resolution is its own core lot.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_ethos_read(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    zones: &[String],
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<String> {
+    if zones.is_empty() {
+        return Err(GatewayError::ConfigRejected(
+            "owner-grant-ethos-read needs at least one zone (public, circle)".into(),
+        ));
+    }
+    let mut perimeter = Vec::new();
+    let mut wants_circle = false;
+    for zone in zones {
+        match zone.as_str() {
+            "public" => perimeter.push(PerimeterEntry::Ethos {
+                verb: Verb::Read,
+                zone: Zone::Public,
+                dir: Vec::new(),
+                tag: None,
+            }),
+            "circle" => {
+                wants_circle = true;
+                perimeter.push(PerimeterEntry::Ethos {
+                    verb: Verb::Read,
+                    zone: Zone::Circle,
+                    dir: Vec::new(),
+                    tag: None,
+                });
+            }
+            "self" => {
+                return Err(GatewayError::ConfigRejected(
+                    "zone `self` is refused: read.self is never granted by default, and \
+                     serving it awaits the delegated self-resolution core lot (vectors-first)"
+                        .into(),
+                ))
+            }
+            other => {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "unknown zone `{other}` (public, circle)"
+                )))
+            }
+        }
+    }
+    let owner = derived_owner(master, "context", label);
+    let agent_pub = decode_pub(agent_pub_mb)?;
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    let state: BridgeState = read_json(&bundle, STATE_PATH)?;
+    let agent_cert: Mandate = read_json(&bundle, &cert_path(&state.agent_mandate))?;
+    if agent_cert.grantee_pub().map_err(bridge_err)? != agent_pub {
+        return Err(GatewayError::ConfigRejected(
+            "the ethos-read pen must go to the equipped agent public key".into(),
+        ));
+    }
+    if wants_circle {
+        bundle
+            .deliver_zone_line(&owner, &agent_pub, Zone::Circle, "", None, ent)
+            .map_err(bridge_err)?;
+        if let Some(auditor_id) = &state.auditor_mandate {
+            let auditor_cert: Mandate = read_json(&bundle, &cert_path(auditor_id))?;
+            let auditor_pub = auditor_cert.grantee_pub().map_err(bridge_err)?;
+            bundle
+                .deliver_zone_line(&owner, &auditor_pub, Zone::Circle, "", None, ent)
+                .map_err(bridge_err)?;
+        }
+    }
+    let mandate = mint_entries(
+        &owner,
+        &bundle,
+        ent,
+        "ethos-read",
+        &agent_pub,
+        perimeter,
+        no_constraints(),
+        window,
+        now,
+    )?;
+    bundle
+        .store
+        .put(
+            &cert_path(&mandate.id),
+            &serde_json::to_vec_pretty(&mandate).map_err(bridge_err)?,
+        )
+        .map_err(bridge_err)?;
+    bundle
+        .log_owner_grant(&owner, &mandate.id, now, ent)
+        .map_err(bridge_err)?;
+    Ok(mandate.id)
+}
+
+/// Owner revocation of one mandate on a context store (lot G6 scenario
+/// surface; the M3 product surface `owner-revoke-mandate` subsumes it
+/// later). One `revoke` entry — the runtime scan sees it on the very
+/// next call, no restart.
+pub fn owner_revoke_mandate_id(
+    master: &[u8; 32],
+    label: &str,
+    mandate_id: &str,
+    reason: &str,
+    store: GatewayStore,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<()> {
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    bundle
+        .log_revoke_owner(&owner, mandate_id, reason, now, ent)
+        .map_err(bridge_err)?;
+    Ok(())
+}
+
+/// Owner-side section write (lot G6 provisioning surface, the generic
+/// sibling of `owner_set_briefing`): ensure the folder chain, add ONE
+/// fresh section — title = the last path segment, the human label the
+/// clear index shows. Demos and harnesses fill zones with it.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_add_section(
+    master: &[u8; 32],
+    label: &str,
+    zone: &str,
+    path: &str,
+    text: &str,
+    store: GatewayStore,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<()> {
+    let zone = match zone {
+        "public" => Zone::Public,
+        "circle" => Zone::Circle,
+        "self" => Zone::Self_,
+        other => {
+            return Err(GatewayError::ConfigRejected(format!(
+                "zone must be public, circle or self, not `{other}`"
+            )))
+        }
+    };
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    let (folder_path, name) = match path.rsplit_once('/') {
+        Some((dir, name)) => (dir, name),
+        None => ("", path),
+    };
+    if !folder_path.is_empty() {
+        bundle
+            .ensure_folder(zone, folder_path, &owner, ent)
+            .map_err(bridge_err)?;
+        bundle.publish(&owner, now).map_err(bridge_err)?;
+    }
+    bundle
+        .section_add(
+            &aithos_bundle::bundle::SectionSpec {
+                zone,
+                folder_path,
+                name,
+                title: name,
+                tags: &[],
+                body: text,
+                now,
+            },
+            &owner,
+            ent,
+        )
+        .map_err(bridge_err)
+}
+
+/// Dev/harness emission path pending the G8.c product surface: the
+/// owner mints a `read.circle` + `issue#depth=1` mandate to a FRESH
+/// delegate key (born from the injected entropy), the delegate
+/// immediately sub-mints `read.circle` to the agent key, both
+/// certificates land in the store, the agent's circle line is
+/// delivered (§04.3 — issuance appends the needed lines) and both
+/// grants are journalized. Exercises the REAL sub-mandate path: the
+/// runtime scan must light the surface from this chain exactly as from
+/// an owner-minted pen.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_issue_ethos_read_subchain(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<(String, String)> {
+    let owner = derived_owner(master, "context", label);
+    let agent_pub = decode_pub(agent_pub_mb)?;
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    let delegate_sk = SigningKey::from_bytes(&ent.e32());
+    let circle_read = || PerimeterEntry::Ethos {
+        verb: Verb::Read,
+        zone: Zone::Circle,
+        dir: Vec::new(),
+        tag: None,
+    };
+    let issue = PerimeterEntry::parse("issue#depth=1").map_err(bridge_err)?;
+    let parent = mint_entries(
+        &owner,
+        &bundle,
+        ent,
+        "ethos-delegate",
+        &delegate_sk.verifying_key(),
+        vec![circle_read(), issue],
+        no_constraints(),
+        window,
+        now,
+    )?;
+    let sub = Mandate::build_sub(
+        &parent,
+        &delegate_sk,
+        &MandateSpec {
+            id: format!(
+                "mandate_{}",
+                aithos_core::ids::Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
+            ),
+            subject: bundle.did.clone(),
+            grantee_id: "urn:aithos:agent:ethos-read-sub".to_owned(),
+            grantee_label: "ethos-read-sub".to_owned(),
+            grantee_pub: &agent_pub,
+            perimeter: vec![circle_read()],
+            constraints: no_constraints(),
+            not_before: window.not_before.clone(),
+            not_after: window.not_after.clone(),
+            issued_at: now.to_owned(),
+            nonce: hex::encode(ent.e16()),
+        },
+    )
+    .map_err(bridge_err)?;
+    for mandate in [&parent, &sub] {
+        bundle
+            .store
+            .put(
+                &cert_path(&mandate.id),
+                &serde_json::to_vec_pretty(mandate).map_err(bridge_err)?,
+            )
+            .map_err(bridge_err)?;
+        bundle
+            .log_owner_grant(&owner, &mandate.id, now, ent)
+            .map_err(bridge_err)?;
+    }
+    bundle
+        .deliver_zone_line(&owner, &agent_pub, Zone::Circle, "", None, ent)
+        .map_err(bridge_err)?;
+    Ok((parent.id.clone(), sub.id.clone()))
+}
+
 /// Owner/test-side view of any ethos gamma (opens the store read-only).
 pub fn gamma_view(store: GatewayStore) -> Result<Vec<EntryView>> {
     let bundle = Bundle::open(store).map_err(bridge_err)?;
@@ -2935,6 +3616,77 @@ fn zone_rows(
         rows.push(MemoryRow { name, title, tags });
     }
     Ok(rows)
+}
+
+/// One agent-facing row of a zone index (lot G6): display path, clear
+/// title and tags, and the folder sid-path (what `covers()` walks).
+#[derive(Debug, Clone)]
+struct EthosRow {
+    path: String,
+    title: String,
+    tags: Vec<String>,
+    folders: Vec<Sid>,
+}
+
+/// The whole CLEAR index of one zone, display paths resolved — the
+/// readability frontier (§02.1: the gateway holds the files); AUTHORITY
+/// is checked per row by the callers. A zone with no index yields no
+/// rows. `self` never goes through here in v1: its structure is sealed
+/// and the delegated resolution is its own core lot. The `briefing/`
+/// shelves are EXCLUDED: the owner's directives keep their own
+/// dedicated surface (`briefing.read`, lot K) — the data tools serve
+/// the rest of the Ethos, and the demo hot path stays byte-identical.
+fn zone_all_rows(bundle: &Bundle<GatewayStore>, zone: Zone) -> Vec<EthosRow> {
+    let Ok(index) =
+        read_json::<serde_json::Value>(bundle, &format!("e/{}/index.json", zone.as_str()))
+    else {
+        return Vec::new();
+    };
+    let mut parents: BTreeMap<String, (String, Option<String>)> = BTreeMap::new();
+    for folder in index["folders"].as_array().into_iter().flatten() {
+        let sid = folder["sid"].as_str().unwrap_or_default().to_owned();
+        let name = folder["name"].as_str().unwrap_or_default().to_owned();
+        let parent = folder["parent_sid"].as_str().map(str::to_owned);
+        parents.insert(sid, (name, parent));
+    }
+    let resolve = |folder_sid: Option<&str>| -> Option<(Vec<String>, Vec<Sid>)> {
+        let mut names = Vec::new();
+        let mut sids = Vec::new();
+        let mut cursor = folder_sid.map(str::to_owned);
+        while let Some(sid) = cursor {
+            let (name, parent) = parents.get(&sid)?.clone();
+            sids.insert(0, Sid::parse(&sid).ok()?);
+            names.insert(0, name);
+            cursor = parent;
+        }
+        Some((names, sids))
+    };
+    let mut rows = Vec::new();
+    for row in index["sections"].as_array().into_iter().flatten() {
+        let name = row["name"].as_str().unwrap_or_default().to_owned();
+        let Some((mut names, sids)) = resolve(row["folder_sid"].as_str()) else {
+            continue;
+        };
+        names.push(name);
+        if names.first().map(String::as_str) == Some(BRIEFING_FOLDER) {
+            continue;
+        }
+        let tags: Vec<String> = row["tags"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|t| t.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        rows.push(EthosRow {
+            path: names.join("/"),
+            title: row["title"].as_str().unwrap_or_default().to_owned(),
+            tags,
+            folders: sids,
+        });
+    }
+    rows
 }
 
 /// Map a refused delegated read to the caller-facing verdict: a mandate

@@ -608,7 +608,8 @@ fn validate_proposed(manifest: &ProposedManifest) -> Result<()> {
 }
 
 fn validate_server(server: &str) -> Result<()> {
-    if !valid_server_name(server) || matches!(server, "journal" | "gateway" | "briefing") {
+    if !valid_server_name(server) || matches!(server, "journal" | "gateway" | "briefing" | "ethos")
+    {
         return Err(GatewayError::ConfigRejected(format!(
             "invalid or reserved hub server name `{server}`"
         )));
