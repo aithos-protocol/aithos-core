@@ -4,6 +4,53 @@
 Complète `GATEWAY-BOOTSTRAP.md` (le pourquoi/quoi) avec l'état exact du code et
 les leçons d'environnement. Session initiale : 2026-07-10.
 
+> **ÉTAT EXPRESS (2026-07-16 nuit, 12ᵉ session gw — G2 + G6 CLOS, gates réels passés).**
+> Profil VM hybride confirmé (egress 000, unlink DENIED sur montage, pas de
+> toolchain VM), protocole cloud+janitor §5 à la lettre, HEAD d'entrée
+> `6fdfe3c`, baseline revalidée À L'IDENTIQUE avant tout travail. **Contrats
+> d'abord** (`3b451ae`, seuls) : `gateway-streamable.feature` (13 scénarios) +
+> `gateway-ethos-read.feature` (17), sonde de parse détag/re-tag des deux
+> côtés. Décisions Mathieu consignées (AskUserQuestion, 2026-07-16) : session
+> id STATELESS (émis à l'initialize depuis l'EntropySource injecté, écho,
+> jamais exigé — l'autorité reste à la chaîne, G5 apportera les chaînes de
+> session), GET/DELETE → 405, batch refusé -32600 (aligné 2025-06-18), Origin
+> validé fail-closed MAINTENANT (MUST anti DNS-rebinding) ; G6 = surface
+> DÉRIVÉE des mandats, jamais un toggle — recalculée par appel (couvert ∩
+> lignes ∩ contenu), public = frontière de lisibilité servie SANS grant à
+> toute session connectée, self jamais par défaut (le grant explicite est
+> gravé au contrat mais reste @wip : la résolution self déléguée est un lot
+> core séparé, vectors-first), `ethos.context` = briefing + corps public +
+> index scellé sans corps. **G2 clos** (`d17d77b`) : coquille transport axum —
+> notification → 202 corps vide (le bug -32601 sur `notifications/initialized`
+> est mort), id-less non-notification → 400 fail-closed (jamais d'acte
+> silencieux), `ping` → `result:{}`, `Mcp-Session-Id` opaque émis/écho, 405
+> GET/DELETE, batch → -32600, Origin non-local → 403 avant tout JSON-RPC ;
+> gate RÉEL : MCP Inspector ET Claude Code se connectent, listent, appellent —
+> zéro erreur de protocole des deux côtés, audit-export montre les 2 actes.
+> **G6 clos** (`1350e20`) : outils natifs `ethos.read/list/context` servis par
+> le hub (jamais relayés), surface dérivée du SCAN des certificats — toute
+> chaîne valide vers la clé agent, quel que soit le geste émetteur (owner CLI,
+> sous-mandat de délégué, G8.c demain) — grant à chaud allume, révocation à
+> chaud éteint (refus nommant le mandat révoqué), chaque corps circle ouvert =
+> une entrée `ethos.read` sous la chaîne qui a lu (lecture injournalisable =
+> appel refusé, précédent C2), étagères `briefing/` EXCLUES des outils de
+> données (leur surface dédiée reste briefing.read — chemin chaud démo Léa
+> byte-identique), préfixe `ethos` réservé partout (RESERVED_PREFIXES 2→3,
+> is_reserved_server, hub validate_server), gestes `owner-grant-ethos-read`
+> (self refusé pédagogiquement, ligne circle à l'agent ET à l'auditeur — le
+> précédent K) et `owner-add-section` (GAPS beat 2), surfaces harnais
+> `owner_revoke_mandate_id` / `owner_issue_ethos_read_subchain` (pré-M3/G8.c) ;
+> gate RÉEL : zones remplies par CLI, session sans `read.circle` AVEUGLE
+> (liste sans ligne circle, refus nommant le périmètre), grant à chaud puis
+> Claude Code lit la mémoire scellée et s'en sert (« 550 000 € »), lectures au
+> gamma, zéro contenu dans les logs. Suite : gateway **63 unit / 4 CLI /
+> 119 scénarios-627 steps / 6 e2e (e2e_demo_lea compris) / 7 owner /
+> 5 équivalence** ; core+bundle+cli inchangés (**100** + **229/906**) ; clippy
+> `-D warnings` + fmt clean. Restent `@wip` : 1 ethos-read (self-serves, lot
+> core), 14 gateway-mandates (M3/M4/M6), 8 e-mandate-sections (M4). Prochain :
+> G7 (surface de preuve) / G8.a-c-d (sessions dédiées) / G3 (OAuth, chemin
+> critique) → `docs/HANDOFF-GATEWAY-G2-G6-DONE-2026-07-16.md`.
+
 > **ÉTAT EXPRESS (2026-07-16, 10ᵉ session gw — surface mandats M0+M1+M2)** :
 > **GATE M0 TRANCHÉ** (AskUserQuestion, les six recos confirmées par
 > Mathieu) : (a) mandats restreints = **roots owner multiples**,
@@ -664,3 +711,25 @@ jamais de `git status`, scories intactes. Les nouvelles surfaces M2
 sont 100 % additives : aucun fichier du chemin chaud démo modifié hors
 `core_bridge.rs` (ajouts purs), `main.rs` (commande nouvelle) et
 `cucumber.rs` (steps + 2 champs de monde).
+
+Session du 2026-07-16 nuit (12ᵉ gw, lots G2+G6, profil cloud+janitor) :
+arrivée sur `6fdfe3c`, sondes refaites (egress 000, unlink DENIED sur le
+montage — débris `_to_delete/probe-unlink-20260716-s12.txt`), tar du working
+tree → `_transfer/aithos-core-src-20260716-g2g6.tgz` (sha256 croisé
+`75531ad7…`), baseline revalidée À L'IDENTIQUE en cloud avant tout travail.
+Commits sélectifs sha256-croisés fichier par fichier : `3b451ae` (les 2
+contrats SEULS), `d17d77b` (G2, 4 fichiers), `1350e20` (G6, 7 fichiers),
+puis le commit docs (ce paragraphe + l'état express). Gates réels exécutés
+dans le conteneur cloud : MCP Inspector + Claude Code contre le vrai binaire
+en loopback (G2), remplissage des zones par CLI + grant à chaud + lecture
+Claude (G6). Janitor habituel (HEAD.lock janitorisé), warnings tmp_obj
+cosmétiques, jamais de `git status`, scories intactes (+ le tar de cette
+session). Le pont desktop a flappé deux fois en cours de session (précédent
+3ᵉ/9ᵉ gw) — le travail cloud a continué, les questions ont été reposées à la
+reconnexion. Constat d'arbre : `vectors/README.md` porte une modification
+non commitée de la piste P (annexes P0, session AWS parallèle) — non
+touchée, décision Mathieu. Docs untracked mis à jour sur le disque sans les
+committer (statut inchangé, décision Mathieu) : `HANDOFF-GATEWAY-HUB.md`
+(état express 12ᵉ) et `HANDOFF-GATEWAY-G2-G6-DONE-2026-07-16.md` (le handoff
+de cette session).
+
