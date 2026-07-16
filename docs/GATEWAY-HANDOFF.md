@@ -4,6 +4,44 @@
 Complète `GATEWAY-BOOTSTRAP.md` (le pourquoi/quoi) avec l'état exact du code et
 les leçons d'environnement. Session initiale : 2026-07-10.
 
+> **ÉTAT EXPRESS (2026-07-16, 10ᵉ session gw — surface mandats M0+M1+M2)** :
+> **GATE M0 TRANCHÉ** (AskUserQuestion, les six recos confirmées par
+> Mathieu) : (a) mandats restreints = **roots owner multiples**,
+> containment vérifié à l'ÉMISSION contre politique Ethos ∩ manifeste ;
+> (b) **un seul mandat actif par (Ethos, keypair)** ; (c) clés de
+> contraintes inconnues en sous-délégation = **refus fail-closed** ;
+> (d) N mandats émis mais **UN runner actif par contexte** jusqu'au
+> RemoteStore (limite documentée) ; (e) chantier APRÈS le gate
+> répétition démo Léa ; (f) nommage `owner-issue-mandate` /
+> `owner-revoke-mandate` / `owner-preview-mandate`. **Lot M1 clos**
+> (`aa02353`, contrats SEULS) : `tests/features/gateway-mandates.feature`
+> (16 scénarios @wip — émission restreinte ⊆ manifeste, bornes héritées
+> jamais éditées, cardinalité (b), deux délégués/attribution/révocation
+> ciblée, invariant « jamais de ligne vault pour un act.* »,
+> preview=décision, read-model), `features/e-mandate-sections.feature`
+> (8 scénarios id=, reco M4 : id= couvert par id= identique ou zone
+> entière, jamais par dir=), matrice d'atténuation PAR FAMILLE ajoutée à
+> `features/f-plus-constraints.feature` (26 scénarios @wip, décision (c)
+> gravée) ; sondes de parse validées des DEUX côtés (89ᵉ/204ᵉ scénario
+> apparaît au détag). **Lot M2 clos** (`f8cbc88`) : moteur de politique
+> effective **PUR** dans `core_bridge` (`owner_preview_mandate` /
+> `owner_preview_call`, chargeur owner-side état+cert+DID+révocations+
+> manifestes scellés, JSON versionné `aithos-effective-policy-v1` :
+> statut actif/expiré/révoqué/not_yet_valid/invalide + outils
+> granted/covered/served + bornes héritées + contraintes), CLI
+> `owner-preview-mandate` (`--server`×N, `--call`/`--args` dry-run,
+> `--at` T injecté), **5 tests d'équivalence** `tests/policy_equivalence.rs`
+> rejouant la matrice grants/bounds (grants/denies/défauts de classe,
+> toutes les familles de bornes, inconnu, fenêtre expirée) avec égalité
+> **LITTÉRALE** (code + message) contre `Runner::authorize` +
+> `check_bounds`, 2 scénarios preview détaggés, 2 tests owner_surface
+> neufs. **Le chemin chaud n'est PAS rebranché** (l'équivalence est la
+> preuve ; rebranchement = lot ultérieur). Suite : **90 scénarios /
+> 481 steps**, 62 unit, 4 CLI, **6 e2e**, **7 owner**, **5 équivalence** ;
+> core+bundle+cli inchangés (97 + 203/826) ; clippy `-D warnings` et fmt
+> clean. Restent `@wip` : 14 gateway-mandates (M3/M4/M6), 8 sections
+> (M4), 26 atténuation (M5) → `docs/HANDOFF-MANDATES-M3-2026-07-16.md`.
+
 > **ÉTAT EXPRESS (2026-07-15 nuit, 9ᵉ session gw — démo Léa K+D)** :
 > **RÉPÉTITION GÉNÉRALE VERTE, zéro `@wip` sur les quatre contrats
 > démo.** **Lot K clos** (`b2f5b69`) : `briefing.read` natif servi des
@@ -607,3 +645,22 @@ tmp_obj cosmétiques, scories intactes. Leçon d'environnement : le pont
 desktop s'est déconnecté en cours de session (précédent de la 3ᵉ gw) —
 les tranches K et D étaient déjà committées ; la tranche docs a attendu
 la reconnexion, le travail cloud a continué entre-temps.
+
+Session du 2026-07-16 (10ᵉ gw, surface mandats M0→M2, profil
+cloud+janitor) : arrivée sur `fc86ed1`, gate M0 recueilli par
+AskUserQuestion AVANT tout contrat (les six recos confirmées), sondes
+refaites (egress 000, unlink DENIED sur le montage — débris laissé dans
+`_to_delete/` —, pas de toolchain locale sur la VM), transfert
+`git archive HEAD` → `_transfer/head-fc86ed1.tar` (sha256 croisé
+`7ba1a41f…`), build/test cloud rustc 1.95.0, **baseline revalidée À
+L'IDENTIQUE avant toute modif** (62/4/88-473/6e2e/5 owner gw ; 97 +
+203/826 core). Retours device_commit_files fichier-par-fichier
+sha256-croisés par tranche : `aa02353` (M1 — les 3 contrats SEULS,
+sonde de parse détag/re-tag exécutée dans le cloud des deux côtés),
+`f8cbc88` (M2 — 6 fichiers gateway), puis le commit docs (état express,
+ce paragraphe, le handoff M3). Janitor habituel (un `HEAD.lock`
+janitorisé avant le commit M2), warnings tmp_obj cosmétiques confirmés,
+jamais de `git status`, scories intactes. Les nouvelles surfaces M2
+sont 100 % additives : aucun fichier du chemin chaud démo modifié hors
+`core_bridge.rs` (ajouts purs), `main.rs` (commande nouvelle) et
+`cucumber.rs` (steps + 2 champs de monde).
