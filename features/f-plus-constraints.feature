@@ -233,3 +233,78 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
       And a logged reply whose sealed args name "alice@example.com"
       When the owner audits the log against the mandate predicates
       Then the audit reports every logged action compliant
+
+  Rule: Attenuation is typed per family — a child tightens or dies
+    verify_chain today attenuates absolute windows and obligations;
+    the norm (spec 05.3) is wider. Every family below gets the same
+    treatment: typed validation, then fail-closed containment, one
+    gate shared by offline verification and the gateway. Unknown
+    constraint keys in a sub-delegation link are a rejection —
+    M0 decision (c), 2026-07-16: fail-closed, no copy-through.
+
+    @wip
+    Scenario Outline: The attenuation matrix, family by family
+      Given an agent granted gmail actions with constraint "<parent>" and issue depth 1
+      When the agent delegates the perimeter with constraint "<child>"
+      Then the helper's chain is <verdict>
+
+      Examples:
+        | parent                                  | child                                   | verdict  |
+        | max_actions 10                          | max_actions 5                           | accepted |
+        | max_actions 10                          | max_actions 20                          | rejected |
+        | max_actions_per 5 per 24 hours          | max_actions_per 2 per 24 hours          | accepted |
+        | max_actions_per 5 per 24 hours          | max_actions_per 9 per 24 hours          | rejected |
+        | rate_limit reply 5 per 1 hour           | rate_limit reply 2 per 1 hour           | accepted |
+        | rate_limit reply 5 per 1 hour           | rate_limit reply 8 per 1 hour           | rejected |
+        | max_children 4                          | max_children 1                          | accepted |
+        | max_children 4                          | max_children 6                          | rejected |
+        | max_sessions 2                          | max_sessions 1                          | accepted |
+        | max_sessions 2                          | max_sessions 3                          | rejected |
+        | domains a.example and b.example         | domains a.example                       | accepted |
+        | domains a.example                       | domains a.example and c.example         | rejected |
+        | token_budget 10000 on profile llm       | token_budget 4000 on profile llm        | accepted |
+        | token_budget 10000 on profile llm       | token_budget 40000 on profile llm       | rejected |
+        | heartbeat every 24 hours grace 6 hours  | heartbeat every 12 hours grace 3 hours  | accepted |
+        | heartbeat every 24 hours grace 6 hours  | heartbeat every 48 hours grace 6 hours  | rejected |
+        | freshness 24 hours                      | freshness 1 hour                        | accepted |
+        | freshness 1 hour                        | freshness 24 hours                      | rejected |
+        | spend_cap 100 eur                       | spend_cap 40 eur                        | accepted |
+        | spend_cap 100 eur                       | spend_cap 200 eur                       | rejected |
+
+    @wip
+    Scenario: Dropping an inherited constraint is a widening — rejected
+      Given an agent granted gmail actions with constraint "domains a.example" and issue depth 1
+      When the agent delegates the perimeter with no domains constraint at all
+      Then the helper's chain is rejected
+
+    @wip
+    Scenario: first_party_only never weakens
+      Given an agent granted gmail actions with constraint "first_party_only" and issue depth 1
+      When the agent delegates the perimeter without first_party_only
+      Then the helper's chain is rejected
+
+    @wip
+    Scenario: counter_sign and binding only ever grow
+      Given an agent granted gmail actions with counter_sign on "reply" and issue depth 1
+      When the agent delegates the perimeter with counter_sign on "reply" and "send"
+      Then the helper's chain verifies
+      But a delegation dropping counter_sign on "reply" is rejected
+
+    @wip
+    Scenario: action_params only ever narrow
+      Given an agent granted gmail "reply" whose action_params allow recipients "alice@example.com" and "bob@example.com", with issue depth 1
+      When the agent delegates the perimeter allowing replies only to "alice@example.com"
+      Then the helper's chain verifies
+      But a delegation adding recipient "mallory@evil.example" is rejected
+
+    @wip
+    Scenario: An unknown constraint key in a sub-delegation fails closed
+      Given an agent granted gmail actions with an unknown constraint key "quantum_cap" and issue depth 1
+      When the agent delegates the perimeter copying "quantum_cap" verbatim
+      Then the helper's chain is rejected
+
+    @wip
+    Scenario: A child inventing an unknown constraint key fails closed too
+      Given an agent granted gmail actions with issue depth 1
+      When the agent delegates the perimeter adding constraint key "quantum_cap"
+      Then the helper's chain is rejected
