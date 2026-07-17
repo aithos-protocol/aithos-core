@@ -742,11 +742,13 @@ impl<S: Store> Bundle<S> {
 
     // ---------------------------------------------------------- reading
 
-    pub(crate) fn resolve_clear(
-        &self,
-        zone: Zone,
-        display_path: &str,
-    ) -> Result<(SectionRow, Vec<Sid>)> {
+    /// Resolve one display section path through a clear zone index without
+    /// opening its header or ciphertext.
+    ///
+    /// The returned row and folder sid chain are the canonical inputs for an
+    /// authorization decision. `self` is intentionally unsupported because
+    /// resolving that zone requires owner decryption.
+    pub fn resolve_clear(&self, zone: Zone, display_path: &str) -> Result<(SectionRow, Vec<Sid>)> {
         let index: ZoneIndex = self.get_json(&format!("e/{}/index.json", zone.as_str()))?;
         let mut segs: Vec<&str> = display_path.split('/').filter(|s| !s.is_empty()).collect();
         let name = segs
