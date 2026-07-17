@@ -733,3 +733,30 @@ committer (statut inchangé, décision Mathieu) : `HANDOFF-GATEWAY-HUB.md`
 (état express 12ᵉ) et `HANDOFF-GATEWAY-G2-G6-DONE-2026-07-16.md` (le handoff
 de cette session).
 
+Session du 2026-07-17 (13ᵉ gw, lot G3 — l'AS OAuth `gateway_as`, profil
+cloud+janitor) : arrivée sur `22a67c4`, sondes refaites (egress 000, unlink
+DENIED sur le montage, pas de toolchain VM), tar du working tree →
+`_transfer/aithos-core-src-20260716-g3.tgz` (sha256 croisé `8dad1625…`),
+baseline revalidée À L'IDENTIQUE en cloud avant tout travail (82 unit après
+la tranche config, 63 à l'entrée). Commits sélectifs sha256-croisés fichier
+par fichier : `4eb1b39` (le contrat `gateway-oauth.feature` @wip SEUL, sonde
+de parse détag/re-tag exécutée cloud), `9610fe1` (impl G3, 9 fichiers
+gateway, 33 scénarios détaggés), puis ce commit docs. **Gate réel exécuté
+dans le conteneur cloud** : vrai binaire `run` avec `as:` en loopback, client
+OAuth générique scripté (python/requests, 20 checks verts) obtient un token
+et appelle `tools/list` ; MCP Inspector CLI liste à travers l'endpoint
+OAuth-protégé avec le bearer, refusé sans ; clé d'adapter 0600 née au 1er
+run, absente des stores/logs ; émission journalisée (`act.x.gateway.oauth_issue`,
+nomme le client, zéro octet de token). Janitor habituel (HEAD.lock
+janitorisé), warnings tmp_obj cosmétiques, jamais de `git status`, staging
+sélectif (les 9 fichiers gateway nommés un à un — P jamais stagé). Le pont
+desktop a flappé plusieurs fois (précédent 3ᵉ/9ᵉ/12ᵉ) — travail cloud
+continué, transferts passés entre deux flaps, AskUserQuestion reposé UNE fois
+à la reconnexion. Constat d'arbre : la piste P laisse `rust/Cargo.toml`,
+`rust/Cargo.lock`, `vectors/README.md` sales — non touchés, disjoints,
+jamais stagés. Trois scripts du test navigateur déposés dans
+`_transfer/g3-browser/` (untracked, aide Mathieu). Docs untracked mis à jour
+sur le disque (décision Mathieu) : `HANDOFF-GATEWAY-HUB.md` (état express
+13ᵉ) et `HANDOFF-GATEWAY-G3-DONE-2026-07-17.md` (le handoff de cette
+session).
+
