@@ -19,6 +19,7 @@ use aithos_core::seal::{blob_aad, blob_open, blob_seal};
 use ed25519_dalek::Signer;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use x25519_dalek::StaticSecret;
 
 pub(crate) const KV: u64 = 1; // single key version until step G (revocation rotates)
 
@@ -60,6 +61,20 @@ pub struct SelfIndex {
 pub struct SelfRow {
     pub sid: String,
     pub key_version: u64,
+}
+
+/// Display-tree classification returned without exposing index rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TreeEntryKind {
+    Folder,
+    Section,
+}
+
+/// One display-tree entry resolved by the bundle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreeEntry {
+    pub path: String,
+    pub kind: TreeEntryKind,
 }
 
 /// Sealed `self` folder descriptor (§02.8).
@@ -305,9 +320,17 @@ impl<S: Store> Bundle<S> {
     }
 
     pub fn zone_dk(&self, zone: Zone, owner: &OwnerKeys) -> Result<[u8; 32]> {
+        self.zone_dk_with_owner_kex(zone, &owner.owner_kex)
+    }
+
+    /// Read-side zone key opening with the owner's KEX capability only.
+    ///
+    /// Routine reads never need root or content signing material. Keeping this
+    /// seam separate lets higher-level keyholders discard those capabilities.
+    pub fn zone_dk_with_owner_kex(&self, zone: Zone, owner_kex: &StaticSecret) -> Result<[u8; 32]> {
         let header: Header = self.get_json(&format!("e/{}/header.json", zone.as_str()))?;
         header.validate()?;
-        header.open(&self.did, KV, "owner-kex", &owner.owner_kex)
+        header.open(&self.did, KV, "owner-kex", owner_kex)
     }
 
     /// Vault root DK (§08.2) — parent of the per-connector audit keys.
@@ -329,6 +352,16 @@ impl<S: Store> Bundle<S> {
         folders: &[Sid],
         sid: Sid,
     ) -> Result<(u64, [u8; 32])> {
+        self.owner_current_section_key_with_kex(&owner.owner_kex, folders, sid)
+    }
+
+    /// Read/write key lookup using only the owner's KEX capability.
+    pub fn owner_current_section_key_with_kex(
+        &self,
+        owner_kex: &StaticSecret,
+        folders: &[Sid],
+        sid: Sid,
+    ) -> Result<(u64, [u8; 32])> {
         let zone = Zone::Circle;
         for depth in (0..=folders.len()).rev() {
             let ancestor = NodePath::folder(zone, folders[..depth].to_vec());
@@ -339,7 +372,7 @@ impl<S: Store> Bundle<S> {
             let Ok(header) = serde_json::from_slice::<Header>(&bytes) else {
                 continue;
             };
-            let (v, base) = header.open_latest(&self.did, "owner-kex", &owner.owner_kex)?;
+            let (v, base) = header.open_latest(&self.did, "owner-kex", owner_kex)?;
             let rest = NodePath {
                 zone,
                 folders: folders[depth..].to_vec(),
@@ -350,7 +383,7 @@ impl<S: Store> Bundle<S> {
         Ok((
             KV,
             node_key(
-                &self.zone_dk(zone, owner)?,
+                &self.zone_dk_with_owner_kex(zone, owner_kex)?,
                 &NodePath::section(zone, folders.to_vec(), sid),
             ),
         ))
@@ -613,10 +646,10 @@ impl<S: Store> Bundle<S> {
 
     // ------------------------------------------------------ self plumbing
 
-    fn self_root_key(&self, owner: &OwnerKeys) -> Result<[u8; 32]> {
+    fn self_root_key(&self, owner_kex: &StaticSecret) -> Result<[u8; 32]> {
         Ok(aithos_core::derive::derive_key(
             "aithos-core/v1/self-root",
-            &self.zone_dk(Zone::Self_, owner)?,
+            &self.zone_dk_with_owner_kex(Zone::Self_, owner_kex)?,
         ))
     }
 
@@ -647,7 +680,8 @@ impl<S: Store> Bundle<S> {
         let self_dk = self.zone_dk(Zone::Self_, owner)?;
         let mut chain: Vec<Sid> = Vec::new();
         for seg in display_path.split('/').filter(|s| !s.is_empty()) {
-            let (desc_file, desc_key, desc_node) = self.self_desc_location(&chain, owner)?;
+            let (desc_file, desc_key, desc_node) =
+                self.self_desc_location(&chain, &owner.owner_kex)?;
             let mut desc = self.read_desc(&desc_file, &desc_key, &desc_node)?;
             let mut found = None;
             for child in desc.children.iter().filter(|c| c.kind == "d") {
@@ -707,17 +741,17 @@ impl<S: Store> Bundle<S> {
     fn self_desc_location(
         &self,
         chain: &[Sid],
-        owner: &OwnerKeys,
+        owner_kex: &StaticSecret,
     ) -> Result<(String, [u8; 32], NodePath)> {
         if chain.is_empty() {
             Ok((
                 "e/self/root.enc".to_owned(),
-                self.self_root_key(owner)?,
+                self.self_root_key(owner_kex)?,
                 NodePath::zone_root(Zone::Self_),
             ))
         } else {
             let node = NodePath::folder(Zone::Self_, chain.to_vec());
-            let key = node_key(&self.zone_dk(Zone::Self_, owner)?, &node);
+            let key = node_key(&self.zone_dk_with_owner_kex(Zone::Self_, owner_kex)?, &node);
             let sid = chain.last().expect("non-empty");
             Ok((format!("e/self/blobs/{sid}.enc"), key, node))
         }
@@ -731,7 +765,7 @@ impl<S: Store> Bundle<S> {
         owner: &OwnerKeys,
         ent: &mut dyn EntropySource,
     ) -> Result<()> {
-        let (file, key, node) = self.self_desc_location(folders, owner)?;
+        let (file, key, node) = self.self_desc_location(folders, &owner.owner_kex)?;
         let mut desc = self.read_desc(&file, &key, &node)?;
         desc.children.push(ChildRef {
             kind: kind.to_owned(),
@@ -780,22 +814,34 @@ impl<S: Store> Bundle<S> {
         display_path: &str,
         owner: &OwnerKeys,
     ) -> Result<String> {
+        self.read_section_with_owner_kex(zone, display_path, &owner.owner_kex)
+    }
+
+    /// Owner read using only the session's KEX capability.
+    pub fn read_section_with_owner_kex(
+        &self,
+        zone: Zone,
+        display_path: &str,
+        owner_kex: &StaticSecret,
+    ) -> Result<String> {
         match zone {
             Zone::Public => Self::public_read(&self.store, display_path),
             Zone::Circle => {
                 let (row, chain) = self.resolve_clear(zone, display_path)?;
                 let sid = Sid::parse(&row.sid)?;
                 let node = NodePath::section(zone, chain, sid);
-                let key = node_key(&self.zone_dk(zone, owner)?, &node);
-                let pt = self.open_blob(&format!("e/circle/blobs/{sid}.enc"), &key, &node)?;
+                let (version, key) =
+                    self.owner_current_section_key_with_kex(owner_kex, &node.folders, sid)?;
+                let pt =
+                    self.open_blob_v(&format!("e/circle/blobs/{sid}.enc"), &key, &node, version)?;
                 let v: serde_json::Value = serde_json::from_slice(&pt)
                     .map_err(|e| Error::SealRejected(format!("blob json: {e}")))?;
                 Ok(v["md"].as_str().unwrap_or_default().to_owned())
             }
             Zone::Self_ => {
-                let (chain, sid) = self.self_resolve(display_path, owner)?;
+                let (chain, sid) = self.self_resolve(display_path, owner_kex)?;
                 let node = NodePath::section(zone, chain, sid);
-                let key = node_key(&self.zone_dk(zone, owner)?, &node);
+                let key = node_key(&self.zone_dk_with_owner_kex(zone, owner_kex)?, &node);
                 let pt = self.open_blob(&format!("e/self/blobs/{sid}.enc"), &key, &node)?;
                 let s: SelfSection = serde_json::from_slice(&pt)
                     .map_err(|e| Error::SealRejected(format!("self blob: {e}")))?;
@@ -832,15 +878,19 @@ impl<S: Store> Bundle<S> {
         String::from_utf8(body).map_err(|_| Error::SealRejected("not utf-8".to_owned()))
     }
 
-    fn self_resolve(&self, display_path: &str, owner: &OwnerKeys) -> Result<(Vec<Sid>, Sid)> {
-        let self_dk = self.zone_dk(Zone::Self_, owner)?;
+    fn self_resolve(
+        &self,
+        display_path: &str,
+        owner_kex: &StaticSecret,
+    ) -> Result<(Vec<Sid>, Sid)> {
+        let self_dk = self.zone_dk_with_owner_kex(Zone::Self_, owner_kex)?;
         let mut segs: Vec<&str> = display_path.split('/').filter(|s| !s.is_empty()).collect();
         let name = segs
             .pop()
             .ok_or_else(|| Error::InvalidPath(display_path.to_owned()))?;
         let mut chain: Vec<Sid> = Vec::new();
         for seg in segs {
-            let (file, key, node) = self.self_desc_location(&chain, owner)?;
+            let (file, key, node) = self.self_desc_location(&chain, owner_kex)?;
             let desc = self.read_desc(&file, &key, &node)?;
             let mut next = None;
             for child in desc.children.iter().filter(|c| c.kind == "d") {
@@ -860,7 +910,7 @@ impl<S: Store> Bundle<S> {
             }
             chain.push(next.ok_or_else(|| Error::InvalidPath(format!("no self folder {seg}")))?);
         }
-        let (file, key, node) = self.self_desc_location(&chain, owner)?;
+        let (file, key, node) = self.self_desc_location(&chain, owner_kex)?;
         let desc = self.read_desc(&file, &key, &node)?;
         for child in desc.children.iter().filter(|c| c.kind == "s") {
             let child_sid = Sid::parse(&child.sid)?;
@@ -878,49 +928,92 @@ impl<S: Store> Bundle<S> {
 
     /// Reconstruct the display tree of a zone (owner-side).
     pub fn zone_tree(&self, zone: Zone, owner: &OwnerKeys) -> Result<Vec<String>> {
+        self.zone_tree_with_owner_kex(zone, &owner.owner_kex)
+    }
+
+    /// Reconstruct a zone tree with read-only owner KEX material.
+    pub fn zone_tree_with_owner_kex(
+        &self,
+        zone: Zone,
+        owner_kex: &StaticSecret,
+    ) -> Result<Vec<String>> {
+        Ok(self
+            .zone_entries_with_owner_kex(zone, owner_kex)?
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect())
+    }
+
+    /// Reconstruct typed display entries with read-only owner KEX material.
+    pub fn zone_entries_with_owner_kex(
+        &self,
+        zone: Zone,
+        owner_kex: &StaticSecret,
+    ) -> Result<Vec<TreeEntry>> {
         match zone {
             Zone::Self_ => {
                 let mut out = Vec::new();
-                self.self_walk(&[], "", owner, &mut out)?;
+                self.self_walk(&[], "", owner_kex, &mut out)?;
                 Ok(out)
             }
-            _ => {
-                let index: ZoneIndex = self.get_json(&format!("e/{}/index.json", zone.as_str()))?;
-                let mut paths: BTreeMap<Option<String>, String> = BTreeMap::new();
-                paths.insert(None, String::new());
-                let mut out = Vec::new();
-                // folders are appended parents-first by construction
-                let mut known: BTreeMap<String, String> = BTreeMap::new();
-                for f in &index.folders {
-                    let prefix = match &f.parent_sid {
-                        None => String::new(),
-                        Some(p) => format!("{}/", known.get(p).cloned().unwrap_or_default()),
-                    };
-                    let path = format!("{prefix}{}", f.name);
-                    known.insert(f.sid.clone(), path.clone());
-                    out.push(path);
-                }
-                for s in &index.sections {
-                    let prefix = match &s.folder_sid {
-                        None => String::new(),
-                        Some(p) => format!("{}/", known.get(p).cloned().unwrap_or_default()),
-                    };
-                    out.push(format!("{prefix}{}", s.name));
-                }
-                Ok(out)
-            }
+            _ => self.clear_zone_entries(zone),
         }
+    }
+
+    /// Reconstruct a public/circle display tree without any content key.
+    pub fn clear_zone_tree(&self, zone: Zone) -> Result<Vec<String>> {
+        Ok(self
+            .clear_zone_entries(zone)?
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect())
+    }
+
+    /// Reconstruct typed public/circle display entries without a content key.
+    pub fn clear_zone_entries(&self, zone: Zone) -> Result<Vec<TreeEntry>> {
+        if zone == Zone::Self_ {
+            return Err(Error::InvalidPath(
+                "self tree requires owner decryption".to_owned(),
+            ));
+        }
+        let index: ZoneIndex = self.get_json(&format!("e/{}/index.json", zone.as_str()))?;
+        let mut out = Vec::new();
+        // Folders are appended parents-first by construction.
+        let mut known: BTreeMap<String, String> = BTreeMap::new();
+        for f in &index.folders {
+            let prefix = match &f.parent_sid {
+                None => String::new(),
+                Some(p) => format!("{}/", known.get(p).cloned().unwrap_or_default()),
+            };
+            let path = format!("{prefix}{}", f.name);
+            known.insert(f.sid.clone(), path.clone());
+            out.push(TreeEntry {
+                path,
+                kind: TreeEntryKind::Folder,
+            });
+        }
+        for s in &index.sections {
+            let prefix = match &s.folder_sid {
+                None => String::new(),
+                Some(p) => format!("{}/", known.get(p).cloned().unwrap_or_default()),
+            };
+            out.push(TreeEntry {
+                path: format!("{prefix}{}", s.name),
+                kind: TreeEntryKind::Section,
+            });
+        }
+        Ok(out)
     }
 
     fn self_walk(
         &self,
         chain: &[Sid],
         prefix: &str,
-        owner: &OwnerKeys,
-        out: &mut Vec<String>,
+        owner_kex: &StaticSecret,
+        out: &mut Vec<TreeEntry>,
     ) -> Result<()> {
-        let self_dk = self.zone_dk(Zone::Self_, owner)?;
-        let (file, key, node) = self.self_desc_location(chain, owner)?;
+        let self_dk = self.zone_dk_with_owner_kex(Zone::Self_, owner_kex)?;
+        let (file, key, node) = self.self_desc_location(chain, owner_kex)?;
         let desc = self.read_desc(&file, &key, &node)?;
         for child in &desc.children {
             let child_sid = Sid::parse(&child.sid)?;
@@ -931,15 +1024,21 @@ impl<S: Store> Bundle<S> {
                 let ck = node_key(&self_dk, &cn);
                 let d = self.read_desc(&format!("e/self/blobs/{child_sid}.enc"), &ck, &cn)?;
                 let path = format!("{prefix}{}", d.name);
-                out.push(path.clone());
-                self.self_walk(&cc, &format!("{path}/"), owner, out)?;
+                out.push(TreeEntry {
+                    path: path.clone(),
+                    kind: TreeEntryKind::Folder,
+                });
+                self.self_walk(&cc, &format!("{path}/"), owner_kex, out)?;
             } else {
                 let sn = NodePath::section(Zone::Self_, chain.to_vec(), child_sid);
                 let sk = node_key(&self_dk, &sn);
                 let pt = self.open_blob(&format!("e/self/blobs/{child_sid}.enc"), &sk, &sn)?;
                 let s: SelfSection = serde_json::from_slice(&pt)
                     .map_err(|e| Error::SealRejected(format!("self blob: {e}")))?;
-                out.push(format!("{prefix}{}", s.name));
+                out.push(TreeEntry {
+                    path: format!("{prefix}{}", s.name),
+                    kind: TreeEntryKind::Section,
+                });
             }
         }
         Ok(())
@@ -957,7 +1056,7 @@ impl<S: Store> Bundle<S> {
         match zone {
             Zone::Self_ => {
                 let chain = self.ensure_self_folder(display_path, owner, ent)?;
-                let (file, key, node) = self.self_desc_location(&chain, owner)?;
+                let (file, key, node) = self.self_desc_location(&chain, &owner.owner_kex)?;
                 let mut desc = self.read_desc(&file, &key, &node)?;
                 desc.name = new_name.to_owned();
                 self.write_desc(&file, &key, &node, &desc, ent)
@@ -1166,24 +1265,24 @@ impl<S: Store> Bundle<S> {
     /// Every `self` section node, owner-side (descriptor walk, §02.8).
     pub(crate) fn self_section_nodes(&self, owner: &OwnerKeys) -> Result<Vec<NodePath>> {
         let mut out = Vec::new();
-        self.self_collect_sections(&[], owner, &mut out)?;
+        self.self_collect_sections(&[], &owner.owner_kex, &mut out)?;
         Ok(out)
     }
 
     fn self_collect_sections(
         &self,
         chain: &[Sid],
-        owner: &OwnerKeys,
+        owner_kex: &StaticSecret,
         out: &mut Vec<NodePath>,
     ) -> Result<()> {
-        let (file, key, node) = self.self_desc_location(chain, owner)?;
+        let (file, key, node) = self.self_desc_location(chain, owner_kex)?;
         let desc = self.read_desc(&file, &key, &node)?;
         for child in &desc.children {
             let child_sid = Sid::parse(&child.sid)?;
             if child.kind == "d" {
                 let mut cc = chain.to_vec();
                 cc.push(child_sid);
-                self.self_collect_sections(&cc, owner, out)?;
+                self.self_collect_sections(&cc, owner_kex, out)?;
             } else {
                 out.push(NodePath::section(Zone::Self_, chain.to_vec(), child_sid));
             }
