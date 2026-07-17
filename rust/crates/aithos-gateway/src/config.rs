@@ -272,6 +272,51 @@ fn default_provider() -> String {
     "openai-compat".to_owned()
 }
 
+/// The embedded OAuth authorization server (lot G3, chantier C1) —
+/// OPT-IN: absent, the gateway behaves byte-identically (loopback open,
+/// the demo path untouched). Present, /mcp requires a bearer token and
+/// the AS endpoints ride the same listener. The signing key (the
+/// "adapter key") is an ordinary gateway secret born at the first run
+/// — NEVER a protocol object, never in this file.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AsConfig {
+    /// The URL clients use to reach this AS (RFC 8414 issuer). Explicit
+    /// on purpose (decided 2026-07-17): behind the G1 tunnel it is the
+    /// public hostname, never guessable from `listen`. Plaintext http
+    /// is bounded to loopback, like the vault brokers.
+    pub issuer: String,
+    /// Where the adapter key lives (0600, beside the identity). Born
+    /// from injected entropy at the first `run` with `as:` active.
+    #[serde(default = "default_as_key_file")]
+    pub key_file: PathBuf,
+    /// Access token lifetime, seconds (default 3600 — decided
+    /// 2026-07-17). Structurally capped by the bound chain's not_after.
+    #[serde(default = "default_access_ttl")]
+    pub access_ttl_secs: u64,
+    /// Refresh token lifetime, seconds (default 7 days — decided
+    /// 2026-07-17). A refresh never survives the chain's not_after.
+    #[serde(default = "default_refresh_ttl")]
+    pub refresh_ttl_secs: u64,
+    /// EXTRA redirect_uris accepted at registration, beyond the
+    /// built-in allowlist (the exact Claude callback + loopback on any
+    /// port). Each entry is https, or http bounded to loopback.
+    #[serde(default)]
+    pub redirect_allowlist: Vec<String>,
+}
+
+fn default_as_key_file() -> PathBuf {
+    PathBuf::from("as.key")
+}
+
+fn default_access_ttl() -> u64 {
+    3_600
+}
+
+fn default_refresh_ttl() -> u64 {
+    7 * 86_400
+}
+
 /// The whole gateway configuration file.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -308,6 +353,11 @@ pub struct GatewayConfig {
     /// The LLM front (Phase C) — only valid with the multi shape.
     #[serde(default)]
     pub llm: Option<LlmConfig>,
+    /// The embedded OAuth authorization server (lot G3) — opt-in,
+    /// multi-context shape only. `as` is a Rust keyword; the field
+    /// rides under its YAML name.
+    #[serde(default, rename = "as")]
+    pub oauth_as: Option<AsConfig>,
 }
 
 impl GatewayConfig {
@@ -384,6 +434,9 @@ impl GatewayConfig {
                 if let Some(llm) = &self.llm {
                     validate_llm(llm)?;
                 }
+                if let Some(oauth_as) = &self.oauth_as {
+                    validate_as(oauth_as)?;
+                }
                 Ok(())
             }
             (Some(_), None) => Err(GatewayError::ConfigRejected(
@@ -412,6 +465,14 @@ impl GatewayConfig {
                     return Err(GatewayError::ConfigRejected(
                         "`llm` needs the multi-context shape (v1): the inference log \
                          lives in the agent's journal"
+                            .into(),
+                    ));
+                }
+                if self.oauth_as.is_some() {
+                    return Err(GatewayError::ConfigRejected(
+                        "`as:` needs the multi-context shape (`contexts` + `journal`): \
+                         the OAuth session rides the runner's mandate chains and its \
+                         issuance record lives in the journal"
                             .into(),
                     ));
                 }
@@ -720,6 +781,46 @@ fn mono_only() -> GatewayError {
     GatewayError::ConfigRejected(
         "this path needs the mono config shape (`upstream_mcp`/`store`), not `contexts`".into(),
     )
+}
+
+/// The `as:` stanza, fail-closed (lot G3): an explicit http(s) issuer
+/// with plaintext bounded to loopback (the vault-broker rule), strictly
+/// positive lifetimes, a non-empty key-file path, and allowlist
+/// extensions held to the same transport bar as the issuer.
+fn validate_as(oauth_as: &AsConfig) -> Result<()> {
+    validate_upstream(&oauth_as.issuer, "as.issuer")?;
+    if oauth_as.issuer.starts_with("http://") && !is_loopback_http(&oauth_as.issuer) {
+        return Err(GatewayError::ConfigRejected(
+            "`as.issuer` uses plaintext http off loopback — a public authorization \
+             server requires TLS"
+                .into(),
+        ));
+    }
+    if oauth_as.key_file.as_os_str().is_empty() {
+        return Err(GatewayError::ConfigRejected(
+            "`as.key_file` is empty".into(),
+        ));
+    }
+    if oauth_as.access_ttl_secs == 0 {
+        return Err(GatewayError::ConfigRejected(
+            "`as.access_ttl_secs` must be strictly positive".into(),
+        ));
+    }
+    if oauth_as.refresh_ttl_secs == 0 {
+        return Err(GatewayError::ConfigRejected(
+            "`as.refresh_ttl_secs` must be strictly positive".into(),
+        ));
+    }
+    for entry in &oauth_as.redirect_allowlist {
+        validate_upstream(entry, "as.redirect_allowlist[]")?;
+        if entry.starts_with("http://") && !is_loopback_http(entry) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`as.redirect_allowlist` entry `{entry}` uses plaintext http off \
+                 loopback — a remote callback requires TLS (loopback stays open for CLIs)"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn validate_llm(llm: &LlmConfig) -> Result<()> {
@@ -1609,6 +1710,87 @@ journal:
                 "must reject: {broken}"
             );
         }
+    }
+
+    // ------------------------------------------------- oauth as (lot G3)
+
+    const AS_STANZA: &str = "as:\n  issuer: http://127.0.0.1:4870\n";
+
+    #[test]
+    fn as_parses_with_defaults_on_the_multi_shape() {
+        let text = format!("{MULTI}{AS_STANZA}");
+        let cfg = GatewayConfig::from_yaml(&text).unwrap();
+        let oauth_as = cfg.oauth_as.as_ref().unwrap();
+        assert_eq!(oauth_as.issuer, "http://127.0.0.1:4870");
+        assert_eq!(oauth_as.key_file, PathBuf::from("as.key"));
+        assert_eq!(oauth_as.access_ttl_secs, 3_600, "decided 2026-07-17");
+        assert_eq!(oauth_as.refresh_ttl_secs, 7 * 86_400, "decided 2026-07-17");
+        assert!(oauth_as.redirect_allowlist.is_empty());
+    }
+
+    #[test]
+    fn as_on_the_mono_shape_is_rejected_pedagogically() {
+        let text = format!("{GOOD}{AS_STANZA}");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("multi-context shape")
+        ));
+    }
+
+    #[test]
+    fn as_issuer_off_loopback_requires_tls() {
+        let text = format!("{MULTI}as:\n  issuer: http://as.example.com\n");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("requires TLS")
+        ));
+        for allowed in [
+            "http://127.0.0.1:4870",
+            "http://localhost:4870",
+            "http://[::1]:4870",
+            "https://acme.mcp.aithos.fr",
+        ] {
+            let text = format!("{MULTI}as:\n  issuer: {allowed}\n");
+            assert!(
+                GatewayConfig::from_yaml(&text).is_ok(),
+                "must accept issuer: {allowed}"
+            );
+        }
+    }
+
+    #[test]
+    fn as_unknown_fields_and_zero_ttls_are_rejected() {
+        for broken in [
+            "as:\n  issuer: http://127.0.0.1:4870\n  surprise: true\n",
+            "as:\n  issuer: http://127.0.0.1:4870\n  access_ttl_secs: 0\n",
+            "as:\n  issuer: http://127.0.0.1:4870\n  refresh_ttl_secs: 0\n",
+            "as:\n  issuer: http://127.0.0.1:4870\n  key_file: ''\n",
+            "as:\n  issuer: ftp://x\n",
+        ] {
+            let text = format!("{MULTI}{broken}");
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&text),
+                    Err(GatewayError::ConfigRejected(_))
+                ),
+                "must reject: {broken}"
+            );
+        }
+    }
+
+    #[test]
+    fn as_allowlist_extensions_hold_the_transport_bar() {
+        let ok = format!(
+            "{MULTI}as:\n  issuer: http://127.0.0.1:4870\n  redirect_allowlist:\n    - https://ci.example/cb\n    - http://127.0.0.1:9999/cb\n"
+        );
+        assert!(GatewayConfig::from_yaml(&ok).is_ok());
+        let off_loopback = format!(
+            "{MULTI}as:\n  issuer: http://127.0.0.1:4870\n  redirect_allowlist:\n    - http://ci.example/cb\n"
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&off_loopback),
+            Err(GatewayError::ConfigRejected(m)) if m.contains("requires TLS")
+        ));
     }
 
     #[test]

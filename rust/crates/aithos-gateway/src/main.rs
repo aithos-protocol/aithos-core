@@ -751,16 +751,44 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         })
                         .collect::<aithos_gateway::Result<_>>()?
                 };
+                // The OAuth authorization server (lot G3), when `as:` is
+                // active: the adapter key is born (or loaded) here — a
+                // 0600 secret beside the identity, NEVER in the
+                // keyholder, from OS entropy on first use.
+                let oauth = if let Some(as_cfg) = &cfg.oauth_as {
+                    let adapter = aithos_gateway::oauth::AdapterKey::load_or_create(
+                        &as_cfg.key_file,
+                        &mut OsEntropy,
+                    )?;
+                    Some(Arc::new(aithos_gateway::oauth::AuthServer::new(
+                        adapter,
+                        &as_cfg.issuer,
+                        as_cfg.access_ttl_secs as i64,
+                        as_cfg.refresh_ttl_secs as i64,
+                        as_cfg.redirect_allowlist.clone(),
+                        Box::new(OsEntropy),
+                    )))
+                } else {
+                    None
+                };
                 let routing = Arc::new(McpRouter {
                     runner: Arc::clone(&runner),
                     upstreams,
                     clock: Arc::new(|| ts(now_secs())),
                     session_entropy: std::sync::Mutex::new(Box::new(OsEntropy)),
+                    oauth: oauth.clone(),
                 });
                 if cfg.is_hub() {
                     rt.block_on(verify_hub_upstreams(&routing))?;
                 }
-                let mut app = router_multi(routing);
+                let mut app = router_multi(Arc::clone(&routing));
+                // The AS endpoints ride the SAME listener (G2 shell
+                // precedent): discovery, registration, authorize, token.
+                if oauth.is_some() {
+                    app = app.merge(aithos_gateway::proxy_mcp::router_oauth(Arc::clone(
+                        &routing,
+                    )));
+                }
                 // The LLM front (Phase C): same runner, same journal —
                 // the completions endpoint rides the same listener.
                 if let Some(llm) = &cfg.llm {

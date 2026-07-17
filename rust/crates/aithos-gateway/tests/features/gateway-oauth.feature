@@ -48,7 +48,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
 
   Rule: The as: stanza is opt-in — absent, the gateway is byte-identical
 
-    @wip
     Scenario: Without as:, the AS endpoints do not exist and /mcp stays open
       Given a provisioned multi-context gateway
       When the agent issues a GET to "/.well-known/oauth-authorization-server"
@@ -58,24 +57,20 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       When the agent calls "tools/list" over HTTP presenting no session id
       Then the call is served
 
-    @wip
     Scenario: The as: stanza needs the multi-context shape
       When a gateway config declares an as: stanza on the mono shape
       Then the config is rejected naming the multi-context requirement
 
-    @wip
     Scenario: An as: issuer off loopback requires TLS
       When a gateway config declares the as: issuer "http://as.example.com"
       Then the config is rejected naming the TLS requirement
 
-    @wip
     Scenario: Unknown fields in the as: stanza are rejected
       When a gateway config declares an as: stanza with an unknown field
       Then the config is rejected naming the unknown field
 
   Rule: Discovery — the 401 teaches, the metadata documents answer
 
-    @wip
     Scenario: An unauthenticated /mcp answers 401 pointing the resource metadata
       Given a gateway served with an active authorization server
       When the agent posts "tools/list" without a bearer token
@@ -84,13 +79,11 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       And no request reaches any upstream
       And no act is recorded in any gamma
 
-    @wip
     Scenario: A non-local Origin outranks the missing token
       Given a gateway served with an active authorization server
       When the agent posts "tools/list" with the Origin header "https://evil.example" and no bearer token
       Then the HTTP status is 403
 
-    @wip
     Scenario: The protected resource metadata names the resource and its AS
       Given a gateway served with an active authorization server
       When the agent issues a GET to "/.well-known/oauth-protected-resource"
@@ -98,7 +91,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       And the metadata names the /mcp endpoint as the resource
       And the metadata lists the issuer as the only authorization server
 
-    @wip
     Scenario: The AS metadata pins its endpoints, S256 and public clients
       Given a gateway served with an active authorization server
       When the agent issues a GET to "/.well-known/oauth-authorization-server"
@@ -110,20 +102,17 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
 
   Rule: Dynamic registration — public PKCE clients, bounded by the allowlist
 
-    @wip
     Scenario: The Claude callback registers as a public client
       Given a gateway served with an active authorization server
       When a client registers with the redirect uri "https://claude.ai/api/mcp/auth_callback"
       Then the registration answers 201 with a client_id and no client_secret
 
-    @wip
     Scenario: A loopback redirect registers whatever its port
       Given a gateway served with an active authorization server
       When a client registers with the redirect uri "http://localhost:43217/callback"
       And a client registers with the redirect uri "http://127.0.0.1:8976/cb"
       Then both registrations answer 201
 
-    @wip
     Scenario: A redirect off the allowlist is refused naming the accepted forms
       Given a gateway served with an active authorization server
       When a client registers with the redirect uri "https://attacker.example/cb"
@@ -131,14 +120,12 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       And the refusal names the built-in allowlist
       And no client is registered
 
-    @wip
     Scenario: A confidential registration is refused — public PKCE clients only
       Given a gateway served with an active authorization server
       When a client registers asking for the token endpoint auth method "client_secret_basic"
       Then the registration is refused with the error "invalid_client_metadata"
       And the refusal names public PKCE clients
 
-    @wip
     Scenario: The stanza extends the allowlist for a custom callback
       Given a gateway served with an authorization server also allowing "https://ci.example/cb"
       When a client registers with the redirect uri "https://ci.example/cb"
@@ -146,7 +133,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
 
   Rule: /authorize — PKCE S256 under the DEV consent
 
-    @wip
     Scenario: The consent page is honest about being DEV and names the request
       Given a gateway served with an active authorization server
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -155,7 +141,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       And the page is marked DEV and names the client_id and the resource
       And no authorization code is issued yet
 
-    @wip
     Scenario: Approving the DEV consent issues a one-shot code and echoes the state
       Given a gateway served with an active authorization server
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -163,7 +148,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       And the user approves the consent
       Then the redirect goes to the registered redirect uri with a code and the presented state
 
-    @wip
     Scenario: The plain PKCE method is refused naming S256
       Given a gateway served with an active authorization server
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -171,7 +155,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       Then the redirect carries the error "invalid_request" naming S256
       And no authorization code is issued
 
-    @wip
     Scenario: A missing code challenge is refused naming PKCE
       Given a gateway served with an active authorization server
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -179,7 +162,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       Then the redirect carries the error "invalid_request" naming PKCE
       And no authorization code is issued
 
-    @wip
     Scenario: A missing resource is refused naming RFC 8707
       Given a gateway served with an active authorization server
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -187,7 +169,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       Then the redirect carries the error "invalid_target" naming the resource requirement
       And no authorization code is issued
 
-    @wip
     Scenario: An unknown client never gets a redirect
       Given a gateway served with an active authorization server
       When the authorize page is opened for the unregistered client "https://cimd.example/client.json"
@@ -195,7 +176,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       And the answer names dynamic registration as the supported path
       And no authorization code is issued
 
-    @wip
     Scenario: A redirect uri differing from the registration never redirects
       Given a gateway served with an active authorization server
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -205,7 +185,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
 
   Rule: /token — the proof, the audience, the rotation, the authority ceiling
 
-    @wip
     Scenario: The exchange mints the audience-bound pair and goes on the record
       Given a gateway served with an active authorization server
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -216,7 +195,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       And the issuance is journalized as a governance act naming the client
       And no token byte appears in any gamma payload
 
-    @wip
     Scenario: A wrong verifier kills the code
       Given a gateway served with an active authorization server
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -226,7 +204,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       When the client exchanges the code with its verifier and the resource
       Then the exchange is refused with the error "invalid_grant"
 
-    @wip
     Scenario: A replayed code is refused
       Given a gateway served with an active authorization server
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -235,7 +212,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       And the client exchanges the code with its verifier and the resource
       Then the exchange is refused with the error "invalid_grant"
 
-    @wip
     Scenario: A resource mismatch at the token endpoint is refused
       Given a gateway served with an active authorization server
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -243,7 +219,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       When the client exchanges the code naming the resource "https://elsewhere.example/mcp"
       Then the exchange is refused with the error "invalid_target"
 
-    @wip
     Scenario: The refresh rotates one-shot and a reuse cuts the family
       Given a gateway served with an active authorization server
       And a minted token pair
@@ -253,7 +228,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       Then the exchange is refused with the error "invalid_grant"
       And the successor refresh token is dead too
 
-    @wip
     Scenario: A refresh never survives its authority
       Given a gateway served with an active authorization server
       And a minted token pair
@@ -261,7 +235,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       And the client refreshes with the refresh token
       Then the exchange is refused naming the expired authority
 
-    @wip
     Scenario: Token lifetimes are capped by the chain's not_after
       Given a gateway served with an active authorization server whose clock sits 30 minutes before the chain expiry
       And a registered public client with the redirect uri "http://127.0.0.1:9410/cb"
@@ -271,7 +244,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
 
   Rule: The token on /mcp is a pointer, never an authority
 
-    @wip
     Scenario: A valid bearer rides the untouched pipeline — act logged then relayed
       Given a gateway served with an active authorization server
       And a minted token pair
@@ -279,7 +251,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       Then the call is served
       And the act is recorded in the "company-brand" gamma
 
-    @wip
     Scenario: A forged token is refused before anything moves
       Given a gateway served with an active authorization server
       When the agent posts "tools/list" with the bearer token "forged.token.value"
@@ -288,7 +259,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       And no request reaches any upstream
       And no act is recorded in any gamma
 
-    @wip
     Scenario: An expired token is refused
       Given a gateway served with an active authorization server
       And a minted token pair
@@ -297,14 +267,12 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       Then the HTTP status is 401
       And the WWW-Authenticate header names an invalid token
 
-    @wip
     Scenario: A right-signature wrong-audience token is refused
       Given a gateway served with an active authorization server
       When the agent posts "tools/list" with a token signed by the adapter key for another audience
       Then the HTTP status is 401
       And no request reaches any upstream
 
-    @wip
     Scenario: A revocation cuts a live token at the very next call
       Given a gateway served with an active authorization server
       And a minted token pair
@@ -313,7 +281,6 @@ Feature: OAuth authorization server on the hub — gateway_as (lot G3)
       Then the call is refused naming the revoked authority
       And the refusal is journalized
 
-    @wip
     Scenario: No token or code ever lands in a log or an error
       Given a gateway served with an active authorization server
       And a full authorization flow has run

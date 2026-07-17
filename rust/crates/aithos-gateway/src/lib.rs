@@ -17,6 +17,7 @@ pub mod core_bridge;
 pub mod credentials;
 pub mod hub;
 pub mod keyholder;
+pub mod oauth;
 pub mod policy;
 pub mod proxy_llm;
 pub mod proxy_mcp;

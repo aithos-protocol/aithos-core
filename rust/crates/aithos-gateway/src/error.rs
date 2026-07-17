@@ -48,6 +48,13 @@ pub enum GatewayError {
     #[error("request rejected: {0}")]
     RequestRejected(String),
 
+    /// An OAuth authorization-server refusal (lot G3): the `error` is the
+    /// RFC 6749/8414 code (`invalid_grant`, `invalid_token`,
+    /// `invalid_redirect_uri`…), the `detail` a fixed, leak-free
+    /// explanation. NEITHER field ever carries a token, code or secret.
+    #[error("oauth {error}: {detail}")]
+    OauthDenied { error: String, detail: String },
+
     /// Audit export was refused (auditor mandate does not cover the query).
     #[error("audit read denied: {0}")]
     AuditDenied(String),
@@ -74,6 +81,7 @@ impl GatewayError {
             GatewayError::BoundViolated(_) => "bound_violated",
             GatewayError::ManifestDrift { .. } => "manifest_drift",
             GatewayError::RequestRejected(_) => "request_rejected",
+            GatewayError::OauthDenied { .. } => "oauth_denied",
             GatewayError::AuditDenied(_) => "audit_denied",
             GatewayError::IdentityUnavailable(_) => "identity_unavailable",
             GatewayError::BridgeFailed(_) => "bridge_failed",

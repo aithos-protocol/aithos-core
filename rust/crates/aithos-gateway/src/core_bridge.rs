@@ -595,6 +595,35 @@ impl Bridge {
         Ok(entry.id)
     }
 
+    /// Append one OAuth-issuance governance entry (lot G3): a gateway
+    /// act under its own mandate (`act.x.gateway.oauth_issue`), naming
+    /// the client in the clear payload — NEVER the token, code or any
+    /// secret. This is how "an issuance is an act, not a silent event"
+    /// (I5) is kept: the auditor sees that a session was granted, to
+    /// which client, when, without ever seeing what was handed over.
+    pub fn record_oauth_issue(&mut self, client_id: &str, now: &str) -> Result<String> {
+        let gateway_sk = SigningKey::from_bytes(self.keyholder.gateway_seed());
+        let detail = serde_json::json!({ "client_id": client_id, "event": "oauth.issue" });
+        let args_hash = hash_of(&detail)?;
+        let entry = self
+            .bundle
+            .log_action(
+                &self.gateway_chain,
+                &gateway_sk,
+                &ActionSpec {
+                    connector: "gateway",
+                    action: "oauth_issue",
+                    args_hash: &args_hash,
+                    now,
+                    budget: Some(detail),
+                    sealed_args: None,
+                },
+                self.entropy.as_mut(),
+            )
+            .map_err(|e| GatewayError::LogAppendRefused(e.to_string()))?;
+        Ok(entry.id)
+    }
+
     /// Append one cross-reference to THIS ethos (the agent's journal),
     /// mirroring an act recorded in a context gamma (§3bis.5/.7): the
     /// journal is the per-agent index, the context entry stays the only
@@ -1354,6 +1383,18 @@ impl Bridge {
         &self.gateway_chain[0].id
     }
 
+    /// The `not_after` of the agent chain IF it verifies at `now` (lot
+    /// G3): the ceiling an OAuth token bound to this context's agent
+    /// authority must not outlive. `None` when the chain is expired or
+    /// otherwise invalid — the pre-G4 stand-in for "the bound authority
+    /// is gone, redo the ceremony". Read-only; G4/G5 replace the binding
+    /// with the session sub-mandate's `not_after` through the same seam.
+    pub fn agent_authority_ceiling(&self, now: &str) -> Option<String> {
+        let doc = self.did_doc().ok()?;
+        verify_chain(&self.agent_chain, &doc, now).ok()?;
+        self.agent_chain.last().map(|m| m.not_after.clone())
+    }
+
     fn did_doc(&self) -> Result<DidDocument> {
         read_json(&self.bundle, "did.json")
     }
@@ -1496,6 +1537,20 @@ impl Runner {
             hub_server_pins,
             hub_drift: BTreeMap::new(),
         })
+    }
+
+    /// The OAuth authority ceiling (lot G3): the latest `not_after`
+    /// among the runner's valid agent chains at `now`, or `None` when no
+    /// context grants the agent a live authority. This is the injectable
+    /// binding the AS caps tokens by pre-G4 — a session lives while some
+    /// authority backs it; each ACT stays gated per context by the
+    /// existing pipeline. G4/G5 swap this for the session sub-mandate's
+    /// `not_after` without touching the AS.
+    pub fn agent_authority_ceiling(&self, now: &str) -> Option<String> {
+        self.contexts
+            .values()
+            .filter_map(|c| c.bridge.agent_authority_ceiling(now))
+            .max()
     }
 
     /// The context whose tool map names this tool (read or write).
@@ -1925,6 +1980,16 @@ impl Runner {
         if let Some(c) = ctx.and_then(|name| self.contexts.get_mut(name)) {
             let _ = c.bridge.record_refusal_detailed(tool, code, &detail, now);
         }
+    }
+
+    /// Journalize one OAuth token issuance (lot G3): a governance act of
+    /// the gateway's own identity in the agent's journal — issuance is
+    /// never silent (I5), and the entry names the client but carries NO
+    /// token, code or secret. Best-effort like the refusal log: a failed
+    /// append never un-mints a token already returned, but the store
+    /// almost never refuses a governance act the gateway mandate covers.
+    pub fn record_oauth_issue(&mut self, client_id: &str, now: &str) {
+        let _ = self.journal.record_oauth_issue(client_id, now);
     }
 
     fn context(&self, name: &str) -> Result<&ContextRuntime> {

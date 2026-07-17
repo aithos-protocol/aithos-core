@@ -345,6 +345,12 @@ pub struct McpRouter<U> {
     pub upstreams: BTreeMap<String, U>,
     pub clock: Clock,
     pub session_entropy: std::sync::Mutex<Box<dyn EntropySource + Send>>,
+    /// The embedded OAuth authorization server (lot G3), when the `as:`
+    /// stanza is active. `None` = byte-identical legacy behaviour: `/mcp`
+    /// stays open on loopback, the AS endpoints do not exist. `Some` =
+    /// `/mcp` requires a valid bearer (401 + `WWW-Authenticate` pointing
+    /// the resource metadata otherwise) and the AS rides this listener.
+    pub oauth: Option<Arc<crate::oauth::AuthServer>>,
 }
 
 impl<U> McpRouter<U> {
@@ -379,6 +385,25 @@ async fn handle_multi<U: Upstream>(
 ) -> Response {
     if !origin_is_local(&headers) {
         return StatusCode::FORBIDDEN.into_response();
+    }
+    // The bearer gate (lot G3): only when the `as:` stanza is active.
+    // Absent, this whole block vanishes and `/mcp` stays byte-identical.
+    // Order is deliberate — Origin (above) outranks a missing token, and
+    // a valid token only grants ENTRY: the mandate chain still decides
+    // every act behind it (a token is never an authority).
+    if let Some(oauth) = &rt.oauth {
+        let now = (rt.clock)();
+        let presented = bearer_token(&headers);
+        let ok = presented
+            .as_deref()
+            .is_some_and(|token| oauth.validate_bearer(token, &now).is_ok());
+        if !ok {
+            let mut resp = StatusCode::UNAUTHORIZED.into_response();
+            if let Ok(v) = HeaderValue::from_str(&oauth.www_authenticate(presented.is_some())) {
+                resp.headers_mut().insert(header::WWW_AUTHENTICATE, v);
+            }
+            return resp;
+        }
     }
     let Ok(msg) = serde_json::from_slice::<Value>(&body) else {
         return (
@@ -459,6 +484,200 @@ fn origin_is_local(headers: &HeaderMap) -> bool {
         host.rsplit_once(':').map_or(host, |(h, _)| h)
     };
     matches!(host, "127.0.0.1" | "localhost" | "::1")
+}
+
+/// The bearer token presented on `/mcp` (`Authorization: Bearer <t>`),
+/// if any. The value is never logged.
+fn bearer_token(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::to_owned)
+}
+
+// ------------------------------------------------- OAuth AS (lot G3)
+
+/// The authorization-server routes (lot G3): discovery metadata,
+/// dynamic registration, the authorize page + consent, and the token
+/// endpoint. They ride the SAME listener as `/mcp` (the G2 shell
+/// precedent) and share the router state so the token endpoint can read
+/// the runner's live authority ceiling. Merged only when `as:` is
+/// active — absent, none of these paths exist (404), and the gateway is
+/// byte-identical.
+pub fn router_oauth<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
+    Router::new()
+        .route(
+            "/.well-known/oauth-protected-resource",
+            axum::routing::get(oauth_protected_resource::<U>),
+        )
+        .route(
+            "/.well-known/oauth-authorization-server",
+            axum::routing::get(oauth_as_metadata::<U>),
+        )
+        .route("/register", post(oauth_register::<U>))
+        .route(
+            "/authorize",
+            axum::routing::get(oauth_authorize_get::<U>).post(oauth_authorize_post::<U>),
+        )
+        .route("/token", post(oauth_token::<U>))
+        .with_state(rt)
+}
+
+/// One OAuth error as an HTTP response: `{error, error_description}` with
+/// the status the code implies (RFC 6749 §5.2). The detail is a fixed,
+/// leak-free string built by the AS — never a token or a secret.
+fn oauth_error_response(err: &GatewayError) -> Response {
+    let (error, detail) = match err {
+        GatewayError::OauthDenied { error, detail } => (error.clone(), detail.clone()),
+        other => ("server_error".to_owned(), other.to_string()),
+    };
+    let status = match error.as_str() {
+        "invalid_client_metadata" | "invalid_redirect_uri" => StatusCode::BAD_REQUEST,
+        "invalid_token" => StatusCode::UNAUTHORIZED,
+        _ => StatusCode::BAD_REQUEST,
+    };
+    (
+        status,
+        Json(json!({ "error": error, "error_description": detail })),
+    )
+        .into_response()
+}
+
+async fn oauth_protected_resource<U: Upstream>(State(rt): State<Arc<McpRouter<U>>>) -> Response {
+    match &rt.oauth {
+        Some(oauth) => Json(oauth.protected_resource_metadata()).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn oauth_as_metadata<U: Upstream>(State(rt): State<Arc<McpRouter<U>>>) -> Response {
+    match &rt.oauth {
+        Some(oauth) => Json(oauth.authorization_server_metadata()).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn oauth_register<U: Upstream>(
+    State(rt): State<Arc<McpRouter<U>>>,
+    Json(body): Json<Value>,
+) -> Response {
+    let Some(oauth) = &rt.oauth else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match oauth.register(&body) {
+        Ok(doc) => (StatusCode::CREATED, Json(doc)).into_response(),
+        Err(e) => oauth_error_response(&e),
+    }
+}
+
+/// Assemble an [`crate::oauth::AuthorizeRequest`] from a flat parameter
+/// map (query string or form body).
+fn authorize_request(params: &BTreeMap<String, String>) -> crate::oauth::AuthorizeRequest {
+    let get = |k: &str| params.get(k).cloned();
+    crate::oauth::AuthorizeRequest {
+        client_id: get("client_id").unwrap_or_default(),
+        redirect_uri: get("redirect_uri").unwrap_or_default(),
+        response_type: get("response_type").unwrap_or_default(),
+        code_challenge: get("code_challenge"),
+        code_challenge_method: get("code_challenge_method"),
+        resource: get("resource"),
+        scope: get("scope"),
+        state: get("state"),
+    }
+}
+
+async fn oauth_authorize_get<U: Upstream>(
+    State(rt): State<Arc<McpRouter<U>>>,
+    axum::extract::Query(params): axum::extract::Query<BTreeMap<String, String>>,
+) -> Response {
+    let Some(oauth) = &rt.oauth else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match oauth.authorize(&authorize_request(&params)) {
+        crate::oauth::AuthorizeOutcome::Consent { html } => {
+            axum::response::Html(html).into_response()
+        }
+        crate::oauth::AuthorizeOutcome::Redirect { location } => redirect_to(&location),
+        crate::oauth::AuthorizeOutcome::HardError { detail } => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "invalid_request", "error_description": detail })),
+        )
+            .into_response(),
+    }
+}
+
+async fn oauth_authorize_post<U: Upstream>(
+    State(rt): State<Arc<McpRouter<U>>>,
+    axum::extract::Form(params): axum::extract::Form<BTreeMap<String, String>>,
+) -> Response {
+    let Some(oauth) = &rt.oauth else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let now = (rt.clock)();
+    match oauth.approve(&authorize_request(&params), &now) {
+        Ok(location) => redirect_to(&location),
+        Err(e) => oauth_error_response(&e),
+    }
+}
+
+async fn oauth_token<U: Upstream>(
+    State(rt): State<Arc<McpRouter<U>>>,
+    axum::extract::Form(params): axum::extract::Form<BTreeMap<String, String>>,
+) -> Response {
+    let Some(oauth) = &rt.oauth else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let now = (rt.clock)();
+    let get = |k: &str| params.get(k).cloned().unwrap_or_default();
+    // The bound authority's ceiling (injectable pre-G4): the runner's
+    // live agent-chain `not_after`, read fresh. G4/G5 swap in the
+    // session sub-mandate's not_after through this same call.
+    let ceiling = rt.runner.lock().await.agent_authority_ceiling(&now);
+    let grant = match get("grant_type").as_str() {
+        "authorization_code" => oauth.exchange_code(
+            &get("code"),
+            &get("code_verifier"),
+            &get("resource"),
+            &get("redirect_uri"),
+            ceiling.as_deref(),
+            &now,
+        ),
+        "refresh_token" => oauth.refresh(&get("refresh_token"), ceiling.as_deref(), &now),
+        other => {
+            return oauth_error_response(&GatewayError::OauthDenied {
+                error: "unsupported_grant_type".into(),
+                detail: format!("grant_type `{other}` is not served"),
+            })
+        }
+    };
+    match grant {
+        Ok((tokens, client_id)) => {
+            // Issuance is an act, never silent (I5): one governance entry
+            // in the journal, naming the client — no token byte in it.
+            rt.runner.lock().await.record_oauth_issue(&client_id, &now);
+            Json(json!({
+                "access_token": tokens.access_token,
+                "token_type": "Bearer",
+                "expires_in": tokens.access_expires_secs,
+                "refresh_token": tokens.refresh_token,
+            }))
+            .into_response()
+        }
+        Err(e) => oauth_error_response(&e),
+    }
+}
+
+/// A 302 redirect to an absolute location (the AS's authorize replies).
+fn redirect_to(location: &str) -> Response {
+    match HeaderValue::from_str(location) {
+        Ok(v) => {
+            let mut resp = StatusCode::FOUND.into_response();
+            resp.headers_mut().insert(header::LOCATION, v);
+            resp
+        }
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
 }
 
 /// Transport-free core of the multi-context router — acceptance tests

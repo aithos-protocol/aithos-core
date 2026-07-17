@@ -27,19 +27,20 @@ use aithos_gateway::core_bridge::{
     owner_init_journal, owner_issue_ethos_read_subchain, owner_preview_call, owner_preview_mandate,
     owner_read_hub_manifest, owner_read_journal_note, owner_reenroll_server,
     owner_revoke_mandate_id, owner_set_briefing, Bridge, ContextRuntime, EntropySource, EntryView,
-    EquipOutcome, MandateWindow, OnboardOutcome, RawStore, ReenrollOutcome, Runner, SeqEntropy,
-    EFFECTIVE_POLICY_VERSION, STATE_PATH,
+    EquipOutcome, MandateWindow, OnboardOutcome, OsEntropy, RawStore, ReenrollOutcome, Runner,
+    SeqEntropy, EFFECTIVE_POLICY_VERSION, STATE_PATH,
 };
 use aithos_gateway::hub::{
     approve_manifest, discover_server, ApprovedManifest, ArgumentBound, ToolApproval,
 };
 use aithos_gateway::keyholder::Keyholder;
+use aithos_gateway::oauth::{b64url_decode, s256_challenge, AdapterKey, AuthServer};
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
 use aithos_gateway::proxy_mcp::{
-    process, process_multi, refresh_server_manifest, router_multi, McpProxy, McpRouter, Upstream,
-    BRIEFING_READ, ETHOS_CONTEXT, ETHOS_LIST, ETHOS_READ, JOURNAL_SEARCH, JOURNAL_WRITE,
-    METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
+    process, process_multi, refresh_server_manifest, router_multi, router_oauth, McpProxy,
+    McpRouter, Upstream, BRIEFING_READ, ETHOS_CONTEXT, ETHOS_LIST, ETHOS_READ, JOURNAL_SEARCH,
+    JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
 };
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::{GatewayError, Result};
@@ -271,6 +272,24 @@ struct GatewayWorld {
     ethos_subchain: Option<(String, String)>,
     ethos_gesture_error: Option<String>,
     ethos_cert_baseline: Option<usize>,
+    /// OAuth AS scenarios (lot G3): the served issuer base, the adapter
+    /// seed (to forge right-key/wrong-audience tokens), a mutable clock
+    /// cell (advanced by the expiry scenarios), the live flow state
+    /// (client, redirect, PKCE, code, token pair), and every captured
+    /// HTTP exchange in order.
+    oauth_base: Option<String>,
+    oauth_adapter_seed: Option<[u8; 32]>,
+    oauth_clock: Option<Arc<StdMutex<String>>>,
+    oauth_client_id: Option<String>,
+    oauth_redirect: Option<String>,
+    oauth_verifier: Option<String>,
+    oauth_challenge: Option<String>,
+    oauth_state: Option<String>,
+    oauth_code: Option<String>,
+    oauth_access: Option<String>,
+    oauth_refresh: Option<String>,
+    oauth_http: Vec<HttpCapture>,
+    ctx_agent_mandates: BTreeMap<String, String>,
 }
 
 /// One raw Streamable HTTP exchange (G2): what the wire actually said.
@@ -363,6 +382,19 @@ impl GatewayWorld {
             ethos_subchain: None,
             ethos_gesture_error: None,
             ethos_cert_baseline: None,
+            oauth_base: None,
+            oauth_adapter_seed: None,
+            oauth_clock: None,
+            oauth_client_id: None,
+            oauth_redirect: None,
+            oauth_verifier: None,
+            oauth_challenge: None,
+            oauth_state: None,
+            oauth_code: None,
+            oauth_access: None,
+            oauth_refresh: None,
+            oauth_http: Vec::new(),
+            ctx_agent_mandates: BTreeMap::new(),
         }
     }
 
@@ -606,6 +638,7 @@ journal:
         upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        oauth: None,
     }));
     w.scratch = Some(dir);
 }
@@ -745,6 +778,7 @@ journal:
         upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        oauth: None,
     }));
     w.scratch = Some(dir);
 }
@@ -1056,6 +1090,7 @@ journal:
         upstreams: BTreeMap::from([("github".to_owned(), w.upstream.clone())]),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        oauth: None,
     }));
     w.reenroll = Some(result);
 }
@@ -1655,6 +1690,9 @@ async fn provision_runner(w: &mut GatewayWorld, a: String, b: String, strip_memo
         tools.insert(write, ToolAccess::Write);
         w.ctx_stores.insert(label.clone(), store);
         w.ctx_dids.insert(label.clone(), outcome.ethos_did.clone());
+        // The agent mandate id per context (lot G3 revocation scenario).
+        w.ctx_agent_mandates
+            .insert(label.clone(), outcome.agent_mandate.clone());
         w.multi_upstreams.insert(
             label.clone(),
             FakeMcp::with_text(&format!("{label}-answer")),
@@ -1710,6 +1748,7 @@ async fn provision_runner(w: &mut GatewayWorld, a: String, b: String, strip_memo
         upstreams: w.multi_upstreams.clone(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        oauth: None,
     }));
 }
 
@@ -3128,6 +3167,7 @@ async fn provision_vault_hub(w: &mut GatewayWorld, specs: Vec<VaultServerSpec>, 
             upstreams,
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+            oauth: None,
         }),
         vault: fake_vault,
         wires,
@@ -3726,6 +3766,7 @@ fn open_grants_runtime(
         upstreams: BTreeMap::from([(GRANTS_SERVER.to_owned(), w.upstream.clone())]),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        oauth: None,
     }));
 }
 
@@ -4291,6 +4332,7 @@ async fn provision_briefing_world(w: &mut GatewayWorld) {
         upstreams: w.multi_upstreams.clone(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        oauth: None,
     }));
 }
 
@@ -4829,6 +4871,7 @@ async fn provision_bounds_world(w: &mut GatewayWorld, raw_tool: &str, bounds: Ve
             upstreams,
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+            oauth: None,
         }),
         vault: fake_vault,
         wires: BTreeMap::from([(server.to_owned(), wire)]),
@@ -4875,6 +4918,7 @@ fn reopen_bounds_runtime(w: &mut GatewayWorld) {
         upstreams,
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        oauth: None,
     });
 }
 
@@ -5822,6 +5866,7 @@ async fn provision_demo_world(w: &mut GatewayWorld) {
             upstreams,
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+            oauth: None,
         }),
         vault: fake_vault,
         wires,
@@ -7024,6 +7069,9 @@ async fn streamable_world(w: &mut GatewayWorld) {
     let addr = listener.local_addr().expect("local addr");
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     w.wire_base = Some(format!("http://{addr}/mcp"));
+    // The host base (no /mcp) — the AS well-known paths hang off it, and
+    // without `as:` they must 404 (this world serves oauth: None).
+    w.oauth_base = Some(format!("http://{addr}"));
 }
 
 /// POST one raw body to the served endpoint, extra headers included,
@@ -7313,6 +7361,1035 @@ async fn resources_method_not_found(w: &mut GatewayWorld) {
         Some(METHOD_NOT_FOUND_CODE),
         "method-not-found: {resp}"
     );
+}
+
+// ============================================ OAuth AS (lot G3)
+
+/// One captured HTTP exchange from the OAuth flow — status, headers
+/// (lowercased names), body. The wire IS the thing under test.
+#[derive(Clone, Default)]
+struct HttpCapture {
+    status: u16,
+    headers: BTreeMap<String, String>,
+    body: Vec<u8>,
+}
+
+impl HttpCapture {
+    fn json(&self) -> Value {
+        serde_json::from_slice(&self.body).unwrap_or(Value::Null)
+    }
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.body).into_owned()
+    }
+    fn header(&self, name: &str) -> Option<&str> {
+        self.headers.get(name).map(String::as_str)
+    }
+}
+
+fn no_redirect_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("client builds")
+}
+
+/// Turn a reqwest response into a capture and record it (both in the
+/// OAuth log and the shared wire log, so `the HTTP status is` works).
+async fn record_http(w: &mut GatewayWorld, resp: reqwest::Response) -> HttpCapture {
+    let status = resp.status().as_u16();
+    let mut headers = BTreeMap::new();
+    for (name, value) in resp.headers() {
+        if let Ok(v) = value.to_str() {
+            headers.insert(name.as_str().to_lowercase(), v.to_owned());
+        }
+    }
+    let body = resp.bytes().await.expect("a body").to_vec();
+    let cap = HttpCapture {
+        status,
+        headers,
+        body,
+    };
+    w.oauth_http.push(cap.clone());
+    w.wire_responses.push(WireResponse {
+        status,
+        session: None,
+        body: cap.body.clone(),
+    });
+    cap
+}
+
+fn oauth_base(w: &GatewayWorld) -> String {
+    w.oauth_base.clone().expect("a served gateway base")
+}
+
+fn oauth_resource(w: &GatewayWorld) -> String {
+    format!("{}/mcp", oauth_base(w))
+}
+
+fn capture_gamma_baseline(w: &mut GatewayWorld) {
+    let mut baseline = BTreeMap::new();
+    for (name, store) in &w.ctx_stores {
+        baseline.insert(
+            name.clone(),
+            gamma_view(store.clone()).expect("gamma").len(),
+        );
+    }
+    baseline.insert(
+        "journal".to_owned(),
+        gamma_view(w.journal_store.clone().expect("journal store"))
+            .expect("gamma")
+            .len(),
+    );
+    w.gamma_baseline = baseline;
+}
+
+/// Serve the standard two-context runner WITH an active authorization
+/// server over a real loopback socket. The issuer is the served base, so
+/// `resource = {issuer}/mcp` matches what clients send. The clock is a
+/// mutable cell (the expiry scenarios advance it).
+async fn serve_with_as(w: &mut GatewayWorld, extra_allow: Vec<String>, clock0: &str) {
+    provision_runner(w, "company-brand".into(), "ui-designer".into(), false).await;
+    let runner = Arc::clone(&w.router.as_ref().expect("a provisioned router").runner);
+
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("loopback listener");
+    let addr = listener.local_addr().expect("local addr");
+    let issuer = format!("http://{addr}");
+
+    // The adapter key from a known seed (the harness keeps the seed to
+    // forge "right key, wrong audience" tokens later).
+    let mut ent = SeqEntropy::default();
+    let seed = ent.e32();
+    let adapter = AdapterKey::from_seed(seed);
+    w.oauth_adapter_seed = Some(seed);
+
+    let auth = Arc::new(AuthServer::new(
+        adapter,
+        &issuer,
+        3_600,
+        7 * 86_400,
+        extra_allow,
+        Box::new(SeqEntropy::default()),
+    ));
+    let clock_cell = Arc::new(StdMutex::new(clock0.to_owned()));
+    let cc = Arc::clone(&clock_cell);
+    let routing = Arc::new(McpRouter {
+        runner,
+        upstreams: w.multi_upstreams.clone(),
+        clock: Arc::new(move || cc.lock().unwrap().clone()),
+        session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        oauth: Some(Arc::clone(&auth)),
+    });
+    let app = router_multi(Arc::clone(&routing)).merge(router_oauth(Arc::clone(&routing)));
+    let listener = listener;
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    w.oauth_base = Some(issuer);
+    w.oauth_clock = Some(clock_cell);
+    w.router = Some(routing);
+    capture_gamma_baseline(w);
+}
+
+#[given("a gateway served with an active authorization server")]
+async fn given_as(w: &mut GatewayWorld) {
+    serve_with_as(w, Vec::new(), T0).await;
+}
+
+#[given(expr = "a gateway served with an authorization server also allowing {string}")]
+async fn given_as_extra(w: &mut GatewayWorld, uri: String) {
+    serve_with_as(w, vec![uri], T0).await;
+}
+
+#[given(
+    expr = "a gateway served with an active authorization server whose clock sits 30 minutes before the chain expiry"
+)]
+async fn given_as_near_expiry(w: &mut GatewayWorld) {
+    // NOT_AFTER is 2026-08-09T00:00:00Z; 30 minutes earlier:
+    serve_with_as(w, Vec::new(), "2026-08-08T23:30:00Z").await;
+}
+
+async fn do_register(w: &mut GatewayWorld, body: Value) -> HttpCapture {
+    let url = format!("{}/register", oauth_base(w));
+    let resp = no_redirect_client()
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .expect("register answers");
+    record_http(w, resp).await
+}
+
+#[given(expr = "a registered public client with the redirect uri {string}")]
+async fn given_registered_client(w: &mut GatewayWorld, uri: String) {
+    let cap = do_register(w, json!({ "redirect_uris": [uri] })).await;
+    assert_eq!(cap.status, 201, "registration: {}", cap.text());
+    w.oauth_client_id = cap.json()["client_id"].as_str().map(str::to_owned);
+    w.oauth_redirect = Some(uri);
+}
+
+#[when(expr = "a client registers with the redirect uri {string}")]
+async fn when_register(w: &mut GatewayWorld, uri: String) {
+    let cap = do_register(w, json!({ "redirect_uris": [uri] })).await;
+    if cap.status == 201 {
+        w.oauth_client_id = cap.json()["client_id"].as_str().map(str::to_owned);
+    }
+}
+
+#[when(expr = "a client registers asking for the token endpoint auth method {string}")]
+async fn when_register_method(w: &mut GatewayWorld, method: String) {
+    do_register(
+        w,
+        json!({ "redirect_uris": [CLAUDE_CALLBACK_HARNESS], "token_endpoint_auth_method": method }),
+    )
+    .await;
+}
+
+const CLAUDE_CALLBACK_HARNESS: &str = "https://claude.ai/api/mcp/auth_callback";
+
+fn pkce_pair() -> (String, String) {
+    let verifier = "harness-pkce-verifier-aaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned();
+    let challenge = s256_challenge(&verifier);
+    (verifier, challenge)
+}
+
+fn authorize_query(
+    client_id: &str,
+    redirect: &str,
+    challenge: Option<&str>,
+    method: Option<&str>,
+    resource: Option<&str>,
+    state: &str,
+) -> Vec<(String, String)> {
+    let mut q = vec![
+        ("client_id".to_owned(), client_id.to_owned()),
+        ("redirect_uri".to_owned(), redirect.to_owned()),
+        ("response_type".to_owned(), "code".to_owned()),
+        ("state".to_owned(), state.to_owned()),
+    ];
+    if let Some(c) = challenge {
+        q.push(("code_challenge".to_owned(), c.to_owned()));
+    }
+    if let Some(m) = method {
+        q.push(("code_challenge_method".to_owned(), m.to_owned()));
+    }
+    if let Some(r) = resource {
+        q.push(("resource".to_owned(), r.to_owned()));
+    }
+    q
+}
+
+async fn open_authorize(w: &mut GatewayWorld, query: Vec<(String, String)>) -> HttpCapture {
+    let url = format!("{}/authorize", oauth_base(w));
+    let resp = no_redirect_client()
+        .get(&url)
+        .query(&query)
+        .send()
+        .await
+        .expect("authorize answers");
+    record_http(w, resp).await
+}
+
+#[when("the client opens the authorize page with an S256 challenge and the resource")]
+async fn when_authorize_ok(w: &mut GatewayWorld) {
+    let (verifier, challenge) = pkce_pair();
+    w.oauth_verifier = Some(verifier);
+    w.oauth_challenge = Some(challenge.clone());
+    w.oauth_state = Some("harness-state".to_owned());
+    let client = w.oauth_client_id.clone().expect("a client");
+    let redirect = w.oauth_redirect.clone().expect("a redirect");
+    let resource = oauth_resource(w);
+    let q = authorize_query(
+        &client,
+        &redirect,
+        Some(&challenge),
+        Some("S256"),
+        Some(&resource),
+        "harness-state",
+    );
+    open_authorize(w, q).await;
+}
+
+#[when(expr = "the client opens the authorize page with a {string} challenge")]
+async fn when_authorize_method(w: &mut GatewayWorld, method: String) {
+    let client = w.oauth_client_id.clone().expect("a client");
+    let redirect = w.oauth_redirect.clone().expect("a redirect");
+    let resource = oauth_resource(w);
+    let q = authorize_query(
+        &client,
+        &redirect,
+        Some("some-challenge"),
+        Some(&method),
+        Some(&resource),
+        "harness-state",
+    );
+    open_authorize(w, q).await;
+}
+
+#[when("the client opens the authorize page without a code challenge")]
+async fn when_authorize_no_challenge(w: &mut GatewayWorld) {
+    let client = w.oauth_client_id.clone().expect("a client");
+    let redirect = w.oauth_redirect.clone().expect("a redirect");
+    let resource = oauth_resource(w);
+    let q = authorize_query(
+        &client,
+        &redirect,
+        None,
+        None,
+        Some(&resource),
+        "harness-state",
+    );
+    open_authorize(w, q).await;
+}
+
+#[when("the client opens the authorize page without a resource")]
+async fn when_authorize_no_resource(w: &mut GatewayWorld) {
+    let (_v, challenge) = pkce_pair();
+    let client = w.oauth_client_id.clone().expect("a client");
+    let redirect = w.oauth_redirect.clone().expect("a redirect");
+    let q = authorize_query(
+        &client,
+        &redirect,
+        Some(&challenge),
+        Some("S256"),
+        None,
+        "harness-state",
+    );
+    open_authorize(w, q).await;
+}
+
+#[when(expr = "the authorize page is opened for the unregistered client {string}")]
+async fn when_authorize_unknown(w: &mut GatewayWorld, client: String) {
+    let resource = oauth_resource(w);
+    let (_v, challenge) = pkce_pair();
+    let q = authorize_query(
+        &client,
+        "http://127.0.0.1:9410/cb",
+        Some(&challenge),
+        Some("S256"),
+        Some(&resource),
+        "harness-state",
+    );
+    open_authorize(w, q).await;
+}
+
+#[when(expr = "the client opens the authorize page with the redirect uri {string}")]
+async fn when_authorize_bad_redirect(w: &mut GatewayWorld, redirect: String) {
+    let client = w.oauth_client_id.clone().expect("a client");
+    let resource = oauth_resource(w);
+    let (_v, challenge) = pkce_pair();
+    let q = authorize_query(
+        &client,
+        &redirect,
+        Some(&challenge),
+        Some("S256"),
+        Some(&resource),
+        "harness-state",
+    );
+    open_authorize(w, q).await;
+}
+
+#[when("the user approves the consent")]
+async fn when_approve(w: &mut GatewayWorld) {
+    let client = w.oauth_client_id.clone().expect("a client");
+    let redirect = w.oauth_redirect.clone().expect("a redirect");
+    let challenge = w.oauth_challenge.clone().expect("a challenge");
+    let resource = oauth_resource(w);
+    let state = w
+        .oauth_state
+        .clone()
+        .unwrap_or_else(|| "harness-state".to_owned());
+    let form = [
+        ("client_id", client.as_str()),
+        ("redirect_uri", redirect.as_str()),
+        ("response_type", "code"),
+        ("code_challenge", challenge.as_str()),
+        ("code_challenge_method", "S256"),
+        ("resource", resource.as_str()),
+        ("state", state.as_str()),
+    ];
+    let url = format!("{}/authorize", oauth_base(w));
+    let resp = no_redirect_client()
+        .post(&url)
+        .form(&form)
+        .send()
+        .await
+        .expect("approve answers");
+    let cap = record_http(w, resp).await;
+    if let Some(loc) = cap.header("location") {
+        w.oauth_code = code_from_location(loc);
+    }
+}
+
+fn code_from_location(location: &str) -> Option<String> {
+    location
+        .split(['?', '&'])
+        .find_map(|kv| kv.strip_prefix("code="))
+        .map(|c| c.split('&').next().unwrap_or(c).to_owned())
+}
+
+/// Register + PKCE + consent + approve → a fresh code stored in the world.
+async fn mint_code(w: &mut GatewayWorld) {
+    if w.oauth_client_id.is_none() {
+        given_registered_client(w, "http://127.0.0.1:9410/cb".to_owned()).await;
+    }
+    let (verifier, challenge) = pkce_pair();
+    w.oauth_verifier = Some(verifier);
+    w.oauth_challenge = Some(challenge);
+    w.oauth_state = Some("harness-state".to_owned());
+    when_approve(w).await;
+}
+
+#[given("an approved authorization code")]
+async fn given_code(w: &mut GatewayWorld) {
+    mint_code(w).await;
+    assert!(w.oauth_code.is_some(), "a code was issued");
+}
+
+async fn do_token(w: &mut GatewayWorld, form: Vec<(String, String)>) -> HttpCapture {
+    let url = format!("{}/token", oauth_base(w));
+    let resp = no_redirect_client()
+        .post(&url)
+        .form(&form)
+        .send()
+        .await
+        .expect("token answers");
+    record_http(w, resp).await
+}
+
+async fn exchange(w: &mut GatewayWorld, verifier: &str, resource: &str) -> HttpCapture {
+    let code = w.oauth_code.clone().expect("a code");
+    let redirect = w.oauth_redirect.clone().expect("a redirect");
+    let form = vec![
+        ("grant_type".to_owned(), "authorization_code".to_owned()),
+        ("code".to_owned(), code),
+        ("code_verifier".to_owned(), verifier.to_owned()),
+        ("resource".to_owned(), resource.to_owned()),
+        ("redirect_uri".to_owned(), redirect),
+    ];
+    let cap = do_token(w, form).await;
+    if cap.status == 200 {
+        let body = cap.json();
+        w.oauth_access = body["access_token"].as_str().map(str::to_owned);
+        w.oauth_refresh = body["refresh_token"].as_str().map(str::to_owned);
+    }
+    cap
+}
+
+#[when("the client exchanges the code with its verifier and the resource")]
+async fn when_exchange_ok(w: &mut GatewayWorld) {
+    let verifier = w.oauth_verifier.clone().expect("a verifier");
+    let resource = oauth_resource(w);
+    exchange(w, &verifier, &resource).await;
+}
+
+#[when("the client exchanges the code with a wrong verifier")]
+async fn when_exchange_wrong(w: &mut GatewayWorld) {
+    let resource = oauth_resource(w);
+    exchange(w, "the-wrong-verifier-000000000000000000000000", &resource).await;
+}
+
+#[when(expr = "the client exchanges the code naming the resource {string}")]
+async fn when_exchange_bad_resource(w: &mut GatewayWorld, resource: String) {
+    let verifier = w.oauth_verifier.clone().expect("a verifier");
+    exchange(w, &verifier, &resource).await;
+}
+
+/// Full flow → a live token pair in the world.
+async fn mint_pair(w: &mut GatewayWorld) {
+    given_code(w).await;
+    when_exchange_ok(w).await;
+    assert!(
+        w.oauth_access.is_some() && w.oauth_refresh.is_some(),
+        "a pair was minted"
+    );
+}
+
+#[given("a minted token pair")]
+async fn given_pair(w: &mut GatewayWorld) {
+    mint_pair(w).await;
+}
+
+#[given("a full authorization flow has run")]
+async fn given_full_flow(w: &mut GatewayWorld) {
+    mint_pair(w).await;
+}
+
+async fn do_refresh(w: &mut GatewayWorld, token: &str) -> HttpCapture {
+    let form = vec![
+        ("grant_type".to_owned(), "refresh_token".to_owned()),
+        ("refresh_token".to_owned(), token.to_owned()),
+    ];
+    do_token(w, form).await
+}
+
+#[when("the client refreshes with the refresh token")]
+async fn when_refresh(w: &mut GatewayWorld) {
+    let token = w.oauth_refresh.clone().expect("a refresh token");
+    let cap = do_refresh(w, &token).await;
+    if cap.status == 200 {
+        let body = cap.json();
+        // Keep the OLD token around for the reuse assertion; store the new.
+        w.oauth_access = body["access_token"].as_str().map(str::to_owned);
+        w.oauth_state = Some(token); // stash the consumed token
+        w.oauth_refresh = body["refresh_token"].as_str().map(str::to_owned);
+    }
+}
+
+#[when("the client refreshes again with the consumed refresh token")]
+async fn when_refresh_reuse(w: &mut GatewayWorld) {
+    let consumed = w.oauth_state.clone().expect("the consumed token");
+    do_refresh(w, &consumed).await;
+}
+
+#[when("the clock advances past the agent chain's not_after")]
+async fn when_clock_past_chain(w: &mut GatewayWorld) {
+    *w.oauth_clock.as_ref().expect("a clock").lock().unwrap() = "2026-08-10T00:00:00Z".to_owned();
+}
+
+#[when("the clock advances past the access token lifetime")]
+async fn when_clock_past_access(w: &mut GatewayWorld) {
+    // Access ttl is 3600s from T0 (2026-07-10T12:00:00Z).
+    *w.oauth_clock.as_ref().expect("a clock").lock().unwrap() = "2026-07-10T14:00:00Z".to_owned();
+}
+
+async fn post_mcp(
+    w: &mut GatewayWorld,
+    body: Value,
+    bearer: Option<&str>,
+    origin: Option<&str>,
+) -> HttpCapture {
+    let url = format!("{}/mcp", oauth_base(w));
+    let mut req = no_redirect_client()
+        .post(&url)
+        .header("content-type", "application/json")
+        .body(body.to_string());
+    if let Some(b) = bearer {
+        req = req.header("authorization", format!("Bearer {b}"));
+    }
+    if let Some(o) = origin {
+        req = req.header("origin", o);
+    }
+    let resp = req.send().await.expect("mcp answers");
+    record_http(w, resp).await
+}
+
+#[when(expr = "the agent posts {string} without a bearer token")]
+async fn when_post_no_bearer(w: &mut GatewayWorld, method: String) {
+    let body = json!({ "jsonrpc": "2.0", "id": 90, "method": method });
+    post_mcp(w, body, None, None).await;
+}
+
+#[when(expr = "the agent posts {string} with the Origin header {string} and no bearer token")]
+async fn when_post_origin_no_bearer(w: &mut GatewayWorld, method: String, origin: String) {
+    let body = json!({ "jsonrpc": "2.0", "id": 91, "method": method });
+    post_mcp(w, body, None, Some(&origin)).await;
+}
+
+#[when(expr = "the agent issues a GET to {string}")]
+async fn when_get_path(w: &mut GatewayWorld, path: String) {
+    let url = format!("{}{}", oauth_base(w), path);
+    let resp = no_redirect_client()
+        .get(&url)
+        .send()
+        .await
+        .expect("GET answers");
+    record_http(w, resp).await;
+}
+
+#[when(expr = "the agent posts a tools call for {string} with the access token")]
+async fn when_tools_call_bearer(w: &mut GatewayWorld, tool: String) {
+    let access = w.oauth_access.clone().expect("an access token");
+    w.last_tool = tool.clone();
+    let body = json!({
+        "jsonrpc": "2.0", "id": 92, "method": "tools/call",
+        "params": { "name": tool, "arguments": {} }
+    });
+    post_mcp(w, body, Some(&access), None).await;
+}
+
+#[when(expr = "the agent posts {string} with the bearer token {string}")]
+async fn when_post_bad_bearer(w: &mut GatewayWorld, method: String, token: String) {
+    let body = json!({ "jsonrpc": "2.0", "id": 93, "method": method });
+    post_mcp(w, body, Some(&token), None).await;
+}
+
+#[when(expr = "the agent posts {string} with the access token")]
+async fn when_post_access(w: &mut GatewayWorld, method: String) {
+    let access = w.oauth_access.clone().expect("an access token");
+    let body = json!({ "jsonrpc": "2.0", "id": 95, "method": method });
+    post_mcp(w, body, Some(&access), None).await;
+}
+
+#[when(
+    expr = "the agent posts {string} with a token signed by the adapter key for another audience"
+)]
+async fn when_post_wrong_aud(w: &mut GatewayWorld, method: String) {
+    let seed = w.oauth_adapter_seed.expect("the adapter seed");
+    let adapter = AdapterKey::from_seed(seed);
+    let token = adapter.sign_access_token(&json!({
+        "iss": oauth_base(w),
+        "aud": "https://elsewhere.example/mcp",
+        "exp": 9_999_999_999i64,
+    }));
+    let body = json!({ "jsonrpc": "2.0", "id": 94, "method": method });
+    post_mcp(w, body, Some(&token), None).await;
+}
+
+#[given("the agent's covering mandate is revoked")]
+async fn given_revoked(w: &mut GatewayWorld) {
+    let master = w.master();
+    let mandate = w
+        .ctx_agent_mandates
+        .get("company-brand")
+        .expect("the company-brand agent mandate")
+        .clone();
+    let store = w.ctx_stores.get("company-brand").expect("store").clone();
+    owner_revoke_mandate_id(
+        &master,
+        "company-brand",
+        &mandate,
+        "revoked in the G3 scenario",
+        store,
+        T0,
+        &mut OsEntropy,
+    )
+    .expect("revocation lands");
+}
+
+// -------------------------------------------------- G3 config parse
+
+const AS_MULTI_BASE: &str = "\
+listen: 127.0.0.1:4870
+contexts:
+  - name: company-brand
+    upstream_mcp: http://127.0.0.1:5001/mcp
+    store:
+      kind: fs
+      root: /var/lib/aithos/brand
+    tools:
+      brand.read: read
+journal:
+  store:
+    kind: fs
+    root: /var/lib/aithos/journal
+";
+
+const AS_MONO_BASE: &str = "\
+listen: 127.0.0.1:4870
+upstream_mcp: http://127.0.0.1:4124/mcp
+store:
+  kind: fs
+  root: /var/lib/aithos
+tools:
+  user.read: read
+";
+
+fn record_config_error(w: &mut GatewayWorld, text: &str) {
+    w.config_error = match GatewayConfig::from_yaml(text) {
+        Ok(_) => None,
+        Err(e) => Some(e.to_string()),
+    };
+}
+
+#[when("a gateway config declares an as: stanza on the mono shape")]
+async fn cfg_as_mono(w: &mut GatewayWorld) {
+    let text = format!("{AS_MONO_BASE}as:\n  issuer: http://127.0.0.1:4870\n");
+    record_config_error(w, &text);
+}
+
+#[when(expr = "a gateway config declares the as: issuer {string}")]
+async fn cfg_as_issuer(w: &mut GatewayWorld, issuer: String) {
+    let text = format!("{AS_MULTI_BASE}as:\n  issuer: {issuer}\n");
+    record_config_error(w, &text);
+}
+
+#[when("a gateway config declares an as: stanza with an unknown field")]
+async fn cfg_as_unknown(w: &mut GatewayWorld) {
+    let text = format!("{AS_MULTI_BASE}as:\n  issuer: http://127.0.0.1:4870\n  surprise: true\n");
+    record_config_error(w, &text);
+}
+
+#[then("the config is rejected naming the multi-context requirement")]
+async fn cfg_rejected_multi(w: &mut GatewayWorld) {
+    let err = w.config_error.as_ref().expect("a rejection");
+    assert!(err.contains("multi-context"), "names multi-context: {err}");
+}
+
+#[then("the config is rejected naming the TLS requirement")]
+async fn cfg_rejected_tls(w: &mut GatewayWorld) {
+    let err = w.config_error.as_ref().expect("a rejection");
+    assert!(err.contains("TLS"), "names TLS: {err}");
+}
+
+#[then("the config is rejected naming the unknown field")]
+async fn cfg_rejected_unknown(w: &mut GatewayWorld) {
+    let err = w.config_error.as_ref().expect("a rejection");
+    assert!(
+        err.contains("unknown field") || err.contains("surprise"),
+        "names the unknown field: {err}"
+    );
+}
+
+// -------------------------------------------------- G3 then-steps
+
+#[then("the WWW-Authenticate header points the protected resource metadata")]
+async fn then_www_points_metadata(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    let header = cap.header("www-authenticate").expect("a challenge header");
+    assert!(
+        header.contains("resource_metadata") && header.contains("oauth-protected-resource"),
+        "points the metadata: {header}"
+    );
+}
+
+#[then("the WWW-Authenticate header names an invalid token")]
+async fn then_www_invalid(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    let header = cap.header("www-authenticate").expect("a challenge header");
+    assert!(
+        header.contains("invalid_token"),
+        "names invalid_token: {header}"
+    );
+}
+
+#[then("the metadata names the /mcp endpoint as the resource")]
+async fn then_meta_resource(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(cap.json()["resource"], oauth_resource(w));
+}
+
+#[then("the metadata lists the issuer as the only authorization server")]
+async fn then_meta_issuer(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(cap.json()["authorization_servers"], json!([oauth_base(w)]));
+}
+
+#[then("the metadata names the issuer and the authorize, token and registration endpoints")]
+async fn then_meta_endpoints(w: &mut GatewayWorld) {
+    let base = oauth_base(w);
+    let cap = w.oauth_http.last().expect("an exchange");
+    let m = cap.json();
+    assert_eq!(m["issuer"], base);
+    assert_eq!(m["authorization_endpoint"], format!("{base}/authorize"));
+    assert_eq!(m["token_endpoint"], format!("{base}/token"));
+    assert_eq!(m["registration_endpoint"], format!("{base}/register"));
+}
+
+#[then(expr = "the only code challenge method is {string}")]
+async fn then_only_challenge_method(w: &mut GatewayWorld, method: String) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(
+        cap.json()["code_challenge_methods_supported"],
+        json!([method])
+    );
+}
+
+#[then(expr = "the only token endpoint auth method is {string}")]
+async fn then_only_auth_method(w: &mut GatewayWorld, method: String) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(
+        cap.json()["token_endpoint_auth_methods_supported"],
+        json!([method])
+    );
+}
+
+#[then("the grant types are exactly authorization code and refresh token")]
+async fn then_grant_types(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(
+        cap.json()["grant_types_supported"],
+        json!(["authorization_code", "refresh_token"])
+    );
+}
+
+#[then("the registration answers 201 with a client_id and no client_secret")]
+async fn then_registered_public(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(cap.status, 201, "created: {}", cap.text());
+    let body = cap.json();
+    assert!(body["client_id"].is_string(), "a client_id");
+    assert!(
+        body.get("client_secret").is_none(),
+        "no secret for a public client"
+    );
+}
+
+#[then("both registrations answer 201")]
+async fn then_both_registered(w: &mut GatewayWorld) {
+    let n = w.oauth_http.len();
+    assert!(n >= 2, "two registrations");
+    for cap in &w.oauth_http[n - 2..] {
+        assert_eq!(cap.status, 201, "created: {}", cap.text());
+    }
+}
+
+#[then(expr = "the registration is refused with the error {string}")]
+async fn then_registration_refused(w: &mut GatewayWorld, error: String) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(cap.status, 400, "a 400: {}", cap.text());
+    assert_eq!(cap.json()["error"], error);
+}
+
+#[then("the refusal names the built-in allowlist")]
+async fn then_names_allowlist(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    let desc = cap.json()["error_description"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase();
+    assert!(desc.contains("allowlist"), "names the allowlist: {desc}");
+}
+
+#[then("no client is registered")]
+async fn then_no_client(w: &mut GatewayWorld) {
+    assert!(w.oauth_client_id.is_none(), "no client_id was captured");
+}
+
+#[then("the refusal names public PKCE clients")]
+async fn then_names_public(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    let desc = cap.json()["error_description"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase();
+    assert!(desc.contains("public"), "names public clients: {desc}");
+}
+
+#[then("the page is marked DEV and names the client_id and the resource")]
+async fn then_consent_page(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(cap.status, 200, "a page");
+    let html = cap.text();
+    let client = w.oauth_client_id.clone().expect("a client");
+    assert!(html.contains("DEV consent"), "marked DEV");
+    assert!(html.contains(&client), "names the client");
+    assert!(html.contains(&oauth_resource(w)), "names the resource");
+}
+
+#[then("no authorization code is issued yet")]
+async fn then_no_code_yet(w: &mut GatewayWorld) {
+    assert!(w.oauth_code.is_none(), "no code before approval");
+}
+
+#[then("no authorization code is issued")]
+async fn then_no_code(w: &mut GatewayWorld) {
+    assert!(w.oauth_code.is_none(), "no code issued");
+}
+
+#[then("the redirect goes to the registered redirect uri with a code and the presented state")]
+async fn then_redirect_code(w: &mut GatewayWorld) {
+    let redirect = w.oauth_redirect.clone().expect("a redirect");
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(cap.status, 302, "a redirect");
+    let loc = cap.header("location").expect("a location");
+    assert!(loc.starts_with(&redirect), "to the registered uri: {loc}");
+    assert!(loc.contains("code="), "carries a code");
+    assert!(
+        loc.contains("state=harness-state"),
+        "echoes the state: {loc}"
+    );
+}
+
+#[then(expr = "the redirect carries the error {string} naming S256")]
+async fn then_redirect_err_s256(w: &mut GatewayWorld, error: String) {
+    then_redirect_error_naming(w, &error, "s256").await;
+}
+
+#[then(expr = "the redirect carries the error {string} naming PKCE")]
+async fn then_redirect_err_pkce(w: &mut GatewayWorld, error: String) {
+    then_redirect_error_naming(w, &error, "pkce").await;
+}
+
+#[then(expr = "the redirect carries the error {string} naming the resource requirement")]
+async fn then_redirect_err_resource(w: &mut GatewayWorld, error: String) {
+    then_redirect_error_naming(w, &error, "resource").await;
+}
+
+async fn then_redirect_error_naming(w: &mut GatewayWorld, error: &str, needle: &str) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(cap.status, 302, "a redirect");
+    let loc = cap.header("location").expect("a location").to_lowercase();
+    assert!(
+        loc.contains(&format!("error={error}")),
+        "carries {error}: {loc}"
+    );
+    assert!(loc.contains(needle), "names {needle}: {loc}");
+}
+
+#[then("the answer names dynamic registration as the supported path")]
+async fn then_names_dcr(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(cap.status, 400, "a 400");
+    let desc = cap.json()["error_description"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase();
+    assert!(desc.contains("regist"), "names registration: {desc}");
+}
+
+#[then("the answer carries an access token, a refresh token and the default lifetimes")]
+async fn then_token_answer(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(cap.status, 200, "a token: {}", cap.text());
+    let body = cap.json();
+    assert!(body["access_token"].is_string(), "an access token");
+    assert!(body["refresh_token"].is_string(), "a refresh token");
+    assert_eq!(body["token_type"], "Bearer");
+    assert_eq!(body["expires_in"], 3600, "the default access lifetime");
+}
+
+fn jwt_payload(token: &str) -> Value {
+    let part = token.split('.').nth(1).expect("a payload segment");
+    let bytes = b64url_decode(part).expect("payload decodes");
+    serde_json::from_slice(&bytes).expect("payload is JSON")
+}
+
+#[then("the access token audience is the /mcp resource")]
+async fn then_token_aud(w: &mut GatewayWorld) {
+    let access = w.oauth_access.clone().expect("an access token");
+    assert_eq!(jwt_payload(&access)["aud"], oauth_resource(w));
+}
+
+#[then("the issuance is journalized as a governance act naming the client")]
+async fn then_issuance_journalized(w: &mut GatewayWorld) {
+    let journal = gamma_view(w.journal_store.clone().expect("journal")).expect("gamma");
+    let client = w.oauth_client_id.clone().expect("a client");
+    let hit = journal.iter().any(|e| {
+        e.kind == "action"
+            && e.target.as_deref() == Some("x.gateway")
+            && payload_str(e, "event") == Some("oauth.issue")
+            && payload_str(e, "client_id") == Some(client.as_str())
+    });
+    assert!(hit, "an oauth.issue governance act names the client");
+}
+
+#[then("no token byte appears in any gamma payload")]
+async fn then_no_token_in_gamma(w: &mut GatewayWorld) {
+    assert_no_secret_in_gamma(w);
+}
+
+#[then(expr = "the exchange is refused with the error {string}")]
+async fn then_exchange_refused(w: &mut GatewayWorld, error: String) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_ne!(cap.status, 200, "not a success: {}", cap.text());
+    assert_eq!(cap.json()["error"], error, "the error code: {}", cap.text());
+}
+
+#[then("a fresh access token and a fresh refresh token come back")]
+async fn then_fresh_pair(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_eq!(cap.status, 200, "a rotation: {}", cap.text());
+    let body = cap.json();
+    assert!(body["access_token"].is_string(), "a fresh access token");
+    let fresh = body["refresh_token"]
+        .as_str()
+        .expect("a fresh refresh token");
+    let consumed = w.oauth_state.clone().expect("the consumed token");
+    assert_ne!(fresh, consumed, "the refresh token rotated");
+}
+
+#[then("the successor refresh token is dead too")]
+async fn then_successor_dead(w: &mut GatewayWorld) {
+    let successor = w.oauth_refresh.clone().expect("the successor token");
+    let cap = do_refresh(w, &successor).await;
+    assert_ne!(cap.status, 200, "the family is cut: {}", cap.text());
+    assert_eq!(cap.json()["error"], "invalid_grant");
+}
+
+#[then("the exchange is refused naming the expired authority")]
+async fn then_refused_expired_authority(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    assert_ne!(cap.status, 200, "refused: {}", cap.text());
+    let desc = cap.json()["error_description"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase();
+    assert!(
+        desc.contains("authority") || desc.contains("expired"),
+        "names the expired authority: {desc}"
+    );
+}
+
+#[then("the access token expires with the chain, not after it")]
+async fn then_token_capped(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    let body = cap.json();
+    // 30 minutes to the chain end, not the full 60-minute access ttl.
+    assert_eq!(body["expires_in"], 1800, "capped at the chain expiry");
+}
+
+#[then(expr = "the act is recorded in the {string} gamma")]
+async fn then_act_in_gamma(w: &mut GatewayWorld, ctx: String) {
+    let store = w.ctx_stores.get(&ctx).expect("a context store").clone();
+    let acts = acts_on(&gamma_view(store).expect("gamma"), "x.mcp");
+    assert!(!acts.is_empty(), "an act landed in the `{ctx}` gamma");
+}
+
+#[then("the call is refused naming the revoked authority")]
+async fn then_call_refused_revoked(w: &mut GatewayWorld) {
+    let cap = w.oauth_http.last().expect("an exchange");
+    let msg = cap.json();
+    let text = msg["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase();
+    assert!(
+        text.contains("revok") || text.contains("append"),
+        "the refusal names the revoked authority: {text}"
+    );
+}
+
+#[then("no gamma payload anywhere carries a token or code byte")]
+async fn then_no_secret_anywhere(w: &mut GatewayWorld) {
+    assert_no_secret_in_gamma(w);
+}
+
+fn assert_no_secret_in_gamma(w: &GatewayWorld) {
+    let mut needles = Vec::new();
+    for v in [&w.oauth_access, &w.oauth_refresh, &w.oauth_code]
+        .into_iter()
+        .flatten()
+    {
+        needles.push(v.clone());
+    }
+    let mut stores: Vec<GatewayStore> = w.ctx_stores.values().cloned().collect();
+    if let Some(j) = &w.journal_store {
+        stores.push(j.clone());
+    }
+    for store in stores {
+        for entry in gamma_view(store).expect("gamma") {
+            let blob = serde_json::to_string(&entry).unwrap_or_default();
+            for needle in &needles {
+                assert!(
+                    needle.len() < 8 || !blob.contains(needle.as_str()),
+                    "a token/code leaked into a gamma payload"
+                );
+            }
+        }
+    }
+}
+
+#[then("no error body of the flow echoed a token or code")]
+async fn then_no_secret_in_errors(w: &mut GatewayWorld) {
+    let mut needles = Vec::new();
+    for v in [&w.oauth_access, &w.oauth_refresh, &w.oauth_code]
+        .into_iter()
+        .flatten()
+    {
+        needles.push(v.clone());
+    }
+    for cap in &w.oauth_http {
+        if cap.status >= 400 {
+            let body = cap.text();
+            for needle in &needles {
+                assert!(
+                    needle.len() < 8 || !body.contains(needle.as_str()),
+                    "an error body echoed a token or code"
+                );
+            }
+        }
+    }
 }
 
 #[tokio::main]
