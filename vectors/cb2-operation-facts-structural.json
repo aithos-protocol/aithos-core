@@ -1,0 +1,3339 @@
+{
+  "commitment_domains": {
+    "changeset": "aithos-core/v1/changeset",
+    "operation_facts": "aithos-core/v1/operation-facts",
+    "state_bytes": "aithos-core/v1/state-bytes",
+    "state_fact": "aithos-core/v1/state-fact",
+    "state_key": "aithos-core/v1/state-key"
+  },
+  "description": "Independent Python stdlib oracle for K1.2-GRRP-B grant, revoke, standalone rotate and publication facts. The changeset document is a syntactic digest fixture only.",
+  "fixtures": {
+    "certificate": {
+      "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+      "document": {
+        "aithos-mandate-core": "1.0.0-draft.1",
+        "constraints": {},
+        "grantee": {
+          "id": "urn:aithos:agent:agent",
+          "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+          "label": "agent",
+          "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+        },
+        "id": "mandate_0000000000000000000000001A",
+        "issued_at": "2026-07-01T00:00:00Z",
+        "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+        "nonce": "000102030405060708090a0b0c0d0e0f",
+        "not_after": "2026-07-08T00:00:00Z",
+        "not_before": "2026-07-01T00:00:00Z",
+        "parent": null,
+        "perimeter": [
+          "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+          "issue#depth=1"
+        ],
+        "signature": {
+          "alg": "ed25519",
+          "key": "#root",
+          "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+        },
+        "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+      },
+      "document_jcs": "{\"aithos-mandate-core\":\"1.0.0-draft.1\",\"constraints\":{},\"grantee\":{\"id\":\"urn:aithos:agent:agent\",\"kex_pubkey\":\"z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn\",\"label\":\"agent\",\"pubkey\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\"},\"id\":\"mandate_0000000000000000000000001A\",\"issued_at\":\"2026-07-01T00:00:00Z\",\"issued_by\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root\",\"nonce\":\"000102030405060708090a0b0c0d0e0f\",\"not_after\":\"2026-07-08T00:00:00Z\",\"not_before\":\"2026-07-01T00:00:00Z\",\"parent\":null,\"perimeter\":[\"read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto\",\"issue#depth=1\"],\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009\"},\"subject\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"}",
+      "mandate_id": "mandate_0000000000000000000000001A"
+    },
+    "changeset": {
+      "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c",
+      "document": {
+        "aithos-changeset-core": "1.0.0-draft.1",
+        "fixture_consequences": [
+          "sha256:3dfa45ffdac3c9428d6b82af0e16a1735cfb5cc1588816c814c4cd1fd68aee85",
+          "sha256:11ae6b564d8b40731325239738deddca986d6dd92c29813a3cb79ef8bdebf5c7"
+        ],
+        "fixture_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "fixture_parents": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+          "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+        ]
+      },
+      "document_jcs": "{\"aithos-changeset-core\":\"1.0.0-draft.1\",\"fixture_consequences\":[\"sha256:3dfa45ffdac3c9428d6b82af0e16a1735cfb5cc1588816c814c4cd1fd68aee85\",\"sha256:11ae6b564d8b40731325239738deddca986d6dd92c29813a3cb79ef8bdebf5c7\"],\"fixture_operations\":[{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa\",\"occurrence\":\"op_01K00000000000000000000001\"},{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31\",\"occurrence\":\"op_01K00000000000000000000002\"}],\"fixture_parents\":[\"sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3\",\"sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754\"]}",
+      "ref": {
+        "aithos-changeset-core": "1.0.0-draft.1",
+        "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+      },
+      "syntactic_document_only": true
+    },
+    "connector": "mail",
+    "contained_operations": [
+      {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+        "occurrence": "op_01K00000000000000000000001"
+      },
+      {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+        "occurrence": "op_01K00000000000000000000002"
+      }
+    ],
+    "identity_after": {
+      "digest": "sha256:77ead51dcb1a8036d4678807d38d755931262a7fd3f761fcef8a546930634a7a",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:a898ec91f0f8c557846fd98df62caf92244c7cde8d774a47c46cbac04af01ea4",
+            "key_commitment": "sha256:631a357a4a21aa7ecbe192974bd9c6f7869484b9eb5ff6108b5bf9097c6d490c"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:a898ec91f0f8c557846fd98df62caf92244c7cde8d774a47c46cbac04af01ea4\",\"key_commitment\":\"sha256:631a357a4a21aa7ecbe192974bd9c6f7869484b9eb5ff6108b5bf9097c6d490c\"}]}",
+      "state": {
+        "state": "present",
+        "state_ref": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "digest": "sha256:77ead51dcb1a8036d4678807d38d755931262a7fd3f761fcef8a546930634a7a"
+        }
+      }
+    },
+    "identity_before": {
+      "digest": "sha256:29adb507a801545538e1365c071996a2bc63f85c50c3aee1b9ff8401d848ac09",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:1f75b18997fea40e09aeb7bd6ec54eec5bdf973fd6cb13a944596d81bd89ab69",
+            "key_commitment": "sha256:631a357a4a21aa7ecbe192974bd9c6f7869484b9eb5ff6108b5bf9097c6d490c"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:1f75b18997fea40e09aeb7bd6ec54eec5bdf973fd6cb13a944596d81bd89ab69\",\"key_commitment\":\"sha256:631a357a4a21aa7ecbe192974bd9c6f7869484b9eb5ff6108b5bf9097c6d490c\"}]}",
+      "state": {
+        "state": "present",
+        "state_ref": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "digest": "sha256:29adb507a801545538e1365c071996a2bc63f85c50c3aee1b9ff8401d848ac09"
+        }
+      }
+    },
+    "identity_transition": {
+      "digest": "sha256:5fa69b04381691aad92559f212367b759db673d74cb4948bbf58d1ce8ae15eb2",
+      "document": {
+        "aithos-epoch-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:00:00Z",
+        "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+        "prev_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+        "signature": {
+          "alg": "ed25519",
+          "key": "#succession",
+          "value": "33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "document_jcs": "{\"aithos-epoch-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-18T12:00:00Z\",\"next_did\":\"did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc\",\"prev_did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#succession\",\"value\":\"33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333\"}}"
+    },
+    "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+    "parents": [
+      "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+      "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+    ],
+    "previous_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+    "reason": "device_lost",
+    "sid": "01J00000000000000000000501",
+    "state_after": {
+      "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:02b4b8e8a3e1205926a3cd2d95cdee02467df934a09e9836f88e0b60617e2e25",
+            "key_commitment": "sha256:380a4590b57917f6a2cf00d65db2d7d2c0ad82bcbf20a167ed53aebe5c83b2a7"
+          },
+          {
+            "byte_commitment": "sha256:10068f52476691b15f3be642b88a5a5f5a31a9d586fc2914a573f54b12c3c9fb",
+            "key_commitment": "sha256:510370c8a053185f882c4100fdc4e171b48b22b7678cb15505700ea4f6a94ce9"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:02b4b8e8a3e1205926a3cd2d95cdee02467df934a09e9836f88e0b60617e2e25\",\"key_commitment\":\"sha256:380a4590b57917f6a2cf00d65db2d7d2c0ad82bcbf20a167ed53aebe5c83b2a7\"},{\"byte_commitment\":\"sha256:10068f52476691b15f3be642b88a5a5f5a31a9d586fc2914a573f54b12c3c9fb\",\"key_commitment\":\"sha256:510370c8a053185f882c4100fdc4e171b48b22b7678cb15505700ea4f6a94ce9\"}]}",
+      "state": {
+        "state": "present",
+        "state_ref": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+        }
+      }
+    },
+    "state_before": {
+      "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:f1f49879d8aab812313f07f907e0a09b67bd7bcc458e3d96ab33f9fe48193975",
+            "key_commitment": "sha256:380a4590b57917f6a2cf00d65db2d7d2c0ad82bcbf20a167ed53aebe5c83b2a7"
+          },
+          {
+            "byte_commitment": "sha256:60b4daae29f6dc68d86fbe4a0d4fa4655b316314af107b484884be4a7efe7776",
+            "key_commitment": "sha256:510370c8a053185f882c4100fdc4e171b48b22b7678cb15505700ea4f6a94ce9"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:f1f49879d8aab812313f07f907e0a09b67bd7bcc458e3d96ab33f9fe48193975\",\"key_commitment\":\"sha256:380a4590b57917f6a2cf00d65db2d7d2c0ad82bcbf20a167ed53aebe5c83b2a7\"},{\"byte_commitment\":\"sha256:60b4daae29f6dc68d86fbe4a0d4fa4655b316314af107b484884be4a7efe7776\",\"key_commitment\":\"sha256:510370c8a053185f882c4100fdc4e171b48b22b7678cb15505700ea4f6a94ce9\"}]}",
+      "state": {
+        "state": "present",
+        "state_ref": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+        }
+      }
+    },
+    "zone": "circle"
+  },
+  "historical_vector_sha256": {
+    "e1-mandate.json": "e243e2348f3778c8e9ec9a3bbc350d480aeb779c4cadac0f8d00f9007264d45e",
+    "f1-gamma-chain.json": "38d466f934f17e99acbbdb76fb236efafb36f7b1c4070e9729d6edca17768ca3",
+    "f2-gamma-counting.json": "d593d204144ffa81c2ba51393d8190081d80f29246f41fdfa3fed96db77d230f",
+    "g1-revocation.json": "a568cc943b38c8b2fd146163244269d58f7d85f54247adda5dff948310ec8a00"
+  },
+  "inventory": {
+    "changeset_document_is_syntactic_only": true,
+    "derived_rotation_is_not_an_occurrence": true,
+    "negative_case_ids": [
+      "missing-envelope-profile",
+      "extra-envelope-member",
+      "kind-family-mismatch",
+      "missing-grant-member",
+      "extra-grant-member",
+      "malformed-mandate-id",
+      "mismatched-mandate-id",
+      "malformed-certificate-digest",
+      "mismatched-certificate-digest",
+      "missing-reason",
+      "null-reason",
+      "empty-reason-text",
+      "reason-view-mismatch",
+      "volunteered-reason",
+      "unknown-rotate-domain",
+      "missing-rotate-member",
+      "extra-rotate-member",
+      "unknown-rotate-mode",
+      "noncanonical-rotate-sid",
+      "mismatched-vault-connector",
+      "absent-rotate-before",
+      "equal-rotate-states",
+      "derived-rotate-double-occurrence",
+      "identity-same-did",
+      "identity-transition-mismatch",
+      "unknown-publication-mode",
+      "missing-publication-member",
+      "extra-publication-member",
+      "height-zero",
+      "genesis-has-predecessor",
+      "normal-missing-predecessor",
+      "merge-one-predecessor",
+      "merge-unsorted-predecessors",
+      "merge-duplicate-predecessor",
+      "resolution-winner-outside",
+      "malformed-changeset-ref",
+      "unknown-changeset-profile",
+      "omitted-contained-operation",
+      "reordered-contained-operations",
+      "duplicate-contained-operation",
+      "malformed-contained-occurrence",
+      "publication-self-reference",
+      "facts-ref-digest-mismatch"
+    ],
+    "positive_case_ids": [
+      "grant",
+      "revoke-no-reason",
+      "revoke-with-reason",
+      "rotate-ethos-zone",
+      "rotate-ethos-node",
+      "rotate-vault",
+      "rotate-identity",
+      "publication-genesis",
+      "publication-normal",
+      "publication-merge",
+      "publication-resolution"
+    ],
+    "required_error_variant": "InvalidOperationFacts"
+  },
+  "negative_cases": [
+    {
+      "base_case": "grant",
+      "candidate": {
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A"
+        },
+        "kind": "grant"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        }
+      },
+      "defect": "missing operation-facts profile",
+      "facts_ref": null,
+      "id": "missing-envelope-profile",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "grant",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "extra": true,
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A"
+        },
+        "kind": "grant"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        }
+      },
+      "defect": "extra operation-facts envelope member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:d5b58a982d2d4c701e3ac531674ed1664ad110fc270ce6f9e079bae7bb1fb538"
+      },
+      "id": "extra-envelope-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "grant",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A"
+        },
+        "kind": "revoke"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        }
+      },
+      "defect": "grant facts selected as revoke",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:a317c59623ac10f7abcb0be41fa051519d0fd9f3188c020c726312dc4a0b526f"
+      },
+      "id": "kind-family-mismatch",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "grant",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "mandate_id": "mandate_0000000000000000000000001A"
+        },
+        "kind": "grant"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        }
+      },
+      "defect": "grant is missing certificate_digest",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:1b3949c92c5d49cb2290ae18941655b9e4865016fb0468f1a7c718fc5f62ff4a"
+      },
+      "id": "missing-grant-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "grant",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A",
+          "parent": null
+        },
+        "kind": "grant"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        }
+      },
+      "defect": "grant has an extra member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:700bcb826c67aa71bc71494a5dd090338dbde63f7f70790baee959ea36a8a760"
+      },
+      "id": "extra-grant-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "grant",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_bad"
+        },
+        "kind": "grant"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        }
+      },
+      "defect": "grant mandate id is malformed",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:589f550d322c439b8318bd9b42fd9c47da78527923672c7910a4fee73621b503"
+      },
+      "id": "malformed-mandate-id",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "grant",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000002B"
+        },
+        "kind": "grant"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        }
+      },
+      "defect": "grant mandate id differs from certificate",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:24ef4d1d6a8207be4699de4f5a6e28c919b5288d5a2c15eec8d9f69b26416060"
+      },
+      "id": "mismatched-mandate-id",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "grant",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:ABC",
+          "mandate_id": "mandate_0000000000000000000000001A"
+        },
+        "kind": "grant"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        }
+      },
+      "defect": "certificate digest is malformed",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:67e20e15caad42eddd5d67cfde60715ce1602e08a73313959cbd71545086b559"
+      },
+      "id": "malformed-certificate-digest",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "grant",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:7faed0f799ea92895e3781b26a3c6e7ca7a3b2735d944abaf91835257b790460",
+          "mandate_id": "mandate_0000000000000000000000001A"
+        },
+        "kind": "grant"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        }
+      },
+      "defect": "certificate digest does not select complete signed bytes",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:154daceb862775078185e5c6682e0bc9965d5ba71ec3f8880f167533905519c4"
+      },
+      "id": "mismatched-certificate-digest",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "revoke-no-reason",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A"
+        },
+        "kind": "revoke"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        },
+        "native_reason": null
+      },
+      "defect": "revoke reason variant is missing",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:a317c59623ac10f7abcb0be41fa051519d0fd9f3188c020c726312dc4a0b526f"
+      },
+      "id": "missing-reason",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "revoke-no-reason",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A",
+          "reason": null
+        },
+        "kind": "revoke"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        },
+        "native_reason": null
+      },
+      "defect": "revoke reason is null",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:dcea36e7d7ac843f2616eeb7d2129f2db45af73666e9b4be62d697ed57400124"
+      },
+      "id": "null-reason",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "revoke-with-reason",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A",
+          "reason": {
+            "state": "present",
+            "text": ""
+          }
+        },
+        "kind": "revoke"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        },
+        "native_reason": "device_lost"
+      },
+      "defect": "present revoke reason text is empty",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:37f1e12631b49c461c5e499f41b6418cae1331dfefff0b0df13f40e131f222ca"
+      },
+      "id": "empty-reason-text",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "revoke-with-reason",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A",
+          "reason": {
+            "state": "present",
+            "text": "device_lost"
+          }
+        },
+        "kind": "revoke"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        },
+        "native_reason": "other_reason"
+      },
+      "defect": "native revoke reason differs",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:cc8e7eda18b969f13616d182191b2e3bda88dcab6828158a70163860478c5e2d"
+      },
+      "id": "reason-view-mismatch",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "revoke-no-reason",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A",
+          "reason": {
+            "state": "present",
+            "text": "device_lost"
+          }
+        },
+        "kind": "revoke"
+      },
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        },
+        "native_reason": null
+      },
+      "defect": "reason appears only in operation facts",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:cc8e7eda18b969f13616d182191b2e3bda88dcab6828158a70163860478c5e2d"
+      },
+      "id": "volunteered-reason",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-ethos-zone",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "domain": "unknown",
+          "mode": "rotate",
+          "zone": "circle"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "derived": false,
+        "mode": "rotate",
+        "zone": "circle"
+      },
+      "defect": "unknown standalone rotation domain",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:23dc8d39ff7a6b373497bfa5aaafbfa023fc93fb32cba280ef3554540221e780"
+      },
+      "id": "unknown-rotate-domain",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-ethos-node",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "domain": "ethos-node",
+          "mode": "reencrypt",
+          "zone": "circle"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "derived": false,
+        "mode": "reencrypt",
+        "sid": "01J00000000000000000000501",
+        "zone": "circle"
+      },
+      "defect": "rotate target is incomplete",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:1bd943778145cc0160cd31644e6b9da4de10f49b5b13346e8e2ae3a7f8cadc9a"
+      },
+      "id": "missing-rotate-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-ethos-zone",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "domain": "ethos-zone",
+          "mode": "rotate",
+          "sid": "01J00000000000000000000999",
+          "zone": "circle"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "derived": false,
+        "mode": "rotate",
+        "zone": "circle"
+      },
+      "defect": "rotate target has an extra member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:5e1fcf18854e899c378c520b77436dfbce53c13b20aa0ba9c416470b4c08371f"
+      },
+      "id": "extra-rotate-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-ethos-zone",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "domain": "ethos-zone",
+          "mode": "rewrap",
+          "zone": "circle"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "derived": false,
+        "mode": "rotate",
+        "zone": "circle"
+      },
+      "defect": "unknown standalone rotation mode",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:eeb8c94799c34b208500033dcf97a54d6d5c4cf3c38c5a6c94c88ba802fbc938"
+      },
+      "id": "unknown-rotate-mode",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-ethos-node",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "domain": "ethos-node",
+          "mode": "reencrypt",
+          "sid": "not-a-sid",
+          "zone": "circle"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "derived": false,
+        "mode": "reencrypt",
+        "sid": "01J00000000000000000000501",
+        "zone": "circle"
+      },
+      "defect": "rotate SID is not canonical",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:098b57e8fd1554528247d1c24be67917ce3181a269c777432d67abcf1ba4d44f"
+      },
+      "id": "noncanonical-rotate-sid",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-vault",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "connector": "other",
+          "domain": "vault",
+          "mode": "rotate"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "connector": "mail",
+        "derived": false,
+        "mode": "rotate"
+      },
+      "defect": "rotate vault connector differs",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:1a7fc6dee78de99d58ef150775bc3584a04e7fd0012b10bb5f03064ea1ae1808"
+      },
+      "id": "mismatched-vault-connector",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-ethos-zone",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "absent"
+          },
+          "domain": "ethos-zone",
+          "mode": "rotate",
+          "zone": "circle"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "derived": false,
+        "mode": "rotate",
+        "zone": "circle"
+      },
+      "defect": "rotate before state is absent",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:4a0974e51849d6c25b6d1b25f57941f1f54225a16fb5e39ebd65b4fa7c502a82"
+      },
+      "id": "absent-rotate-before",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-ethos-zone",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "domain": "ethos-zone",
+          "mode": "rotate",
+          "zone": "circle"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "derived": false,
+        "mode": "rotate",
+        "zone": "circle"
+      },
+      "defect": "rotate before and after state digests are equal",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:ec6090dd8e0622ee03fb0409efc65628ef42b78ff93a0ec3707c6cfa7fae5e6e"
+      },
+      "id": "equal-rotate-states",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-ethos-zone",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "domain": "ethos-zone",
+          "mode": "rotate",
+          "zone": "circle"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "derived": true,
+        "mode": "rotate",
+        "zone": "circle"
+      },
+      "defect": "derived rotation is represented as standalone",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:4f0021d99a5613a7217477f1cbaed3ca009add0f1e30a482601bdbfe89ce5ff3"
+      },
+      "id": "derived-rotate-double-occurrence",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-identity",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:77ead51dcb1a8036d4678807d38d755931262a7fd3f761fcef8a546930634a7a"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:29adb507a801545538e1365c071996a2bc63f85c50c3aee1b9ff8401d848ac09"
+            }
+          },
+          "domain": "identity",
+          "next_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+          "previous_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+          "transition_digest": "sha256:5fa69b04381691aad92559f212367b759db673d74cb4948bbf58d1ce8ae15eb2"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:77ead51dcb1a8036d4678807d38d755931262a7fd3f761fcef8a546930634a7a"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:29adb507a801545538e1365c071996a2bc63f85c50c3aee1b9ff8401d848ac09"
+          }
+        },
+        "derived": false,
+        "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+        "previous_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+        "transition": {
+          "aithos-epoch-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:00:00Z",
+          "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+          "prev_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#succession",
+            "value": "33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333"
+          }
+        }
+      },
+      "defect": "identity rotation keeps the same DID",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:602f697b703485dd8b6142ab66d141f761f6bb17cf861d49cf485fbd644ae300"
+      },
+      "id": "identity-same-did",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "rotate-identity",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:77ead51dcb1a8036d4678807d38d755931262a7fd3f761fcef8a546930634a7a"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:29adb507a801545538e1365c071996a2bc63f85c50c3aee1b9ff8401d848ac09"
+            }
+          },
+          "domain": "identity",
+          "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+          "previous_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+          "transition_digest": "sha256:c19fc7632fffaf656e1ab29d7102681a68c7a195f4c2b533e3d761dbdbf6b882"
+        },
+        "kind": "rotate"
+      },
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:77ead51dcb1a8036d4678807d38d755931262a7fd3f761fcef8a546930634a7a"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:29adb507a801545538e1365c071996a2bc63f85c50c3aee1b9ff8401d848ac09"
+          }
+        },
+        "derived": false,
+        "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+        "previous_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+        "transition": {
+          "aithos-epoch-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:00:00Z",
+          "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+          "prev_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#succession",
+            "value": "33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333"
+          }
+        }
+      },
+      "defect": "identity transition digest mismatches signed transition",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:d5eebe166d74ce18f333ec829b4edad08599084cc5f655b4d52f39d5dd913b64"
+      },
+      "id": "identity-transition-mismatch",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 2,
+          "mode": "fork",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "unknown publication mode",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:040a76a7a2cd4817c4a56857604fd783d291d5b9fc80268c5636b088460c97a4"
+      },
+      "id": "unknown-publication-mode",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "publication is missing changeset_ref",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:8025603855ffe681ce562d3474cb5356399542542549b974429888a177d05ff3"
+      },
+      "id": "missing-publication-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ],
+          "winner": "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "normal publication carries winner",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:e34f33794e6d3050e6c75d5824ff8cf650cb47a94bc3e01059c7b86917605317"
+      },
+      "id": "extra-publication-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-genesis",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [],
+          "height": 0,
+          "mode": "normal",
+          "predecessors": []
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [],
+        "height": 1,
+        "predecessors": []
+      },
+      "defect": "publication height is zero",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:8fd37e56c8c67a9d5c7fa0325a9b76a21a2c0a6c7f75cfa6b263041878feb7ee"
+      },
+      "id": "height-zero",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-genesis",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [],
+          "height": 1,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:ee0070e224aefe8134e1057a716a910c67cac6986608e8a3eb8cd321f7cacc8a"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [],
+        "height": 1,
+        "predecessors": []
+      },
+      "defect": "genesis has a predecessor",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:4e032f573fed692481b32dbe955b614ec6ca22e06cc2349bf9107d74862807e4"
+      },
+      "id": "genesis-has-predecessor",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": []
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "non-genesis normal publication has no predecessor",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:c94c216f00578a1ef2a718791e6c3db54ad2551870c6a3db49f752aab0d457ac"
+      },
+      "id": "normal-missing-predecessor",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-merge",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 3,
+          "mode": "merge",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 3,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+          "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+        ]
+      },
+      "defect": "merge has only one predecessor",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:79671b91749358d67e99bebf61e918de1e2d1ab379ce6f811bf01ff97c930828"
+      },
+      "id": "merge-one-predecessor",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-merge",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 3,
+          "mode": "merge",
+          "predecessors": [
+            "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754",
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 3,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+          "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+        ]
+      },
+      "defect": "merge predecessors are not sorted",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:0b35b820b82d5ddea38443461b6e7ce2056f013e8b7a11410dd78af60bfd5281"
+      },
+      "id": "merge-unsorted-predecessors",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-merge",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 3,
+          "mode": "merge",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 3,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+          "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+        ]
+      },
+      "defect": "merge predecessor is duplicated",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:6bc0061288cfec6e2b4ee554c481ba9d1ca03fb419d152ff138a2ad1d68f25ce"
+      },
+      "id": "merge-duplicate-predecessor",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-resolution",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 3,
+          "mode": "resolution",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+            "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+          ],
+          "winner": "sha256:8977913fcc5dcbc16c9d59dbc2917137ce3ea02d0505e569777b3bd65ff39583"
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 3,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+          "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+        ],
+        "winner": "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+      },
+      "defect": "resolution winner is outside predecessor set",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:f5488ee8a531395aacbf8a25cc90fabd0a695f9c05a9684341ea9aa80d2dd2b2"
+      },
+      "id": "resolution-winner-outside",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:ABC"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "changeset reference digest is malformed",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:1eef50ea733ba0099038cde0275210fb6946af2a7edd93e0fc19ba8ee035fde6"
+      },
+      "id": "malformed-changeset-ref",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "2.0.0",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "changeset reference profile is unknown",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:39aa9f25ccc70f0190ecd24883933a4ead1ef0c2b2c8c043c590e1bfccc30454"
+      },
+      "id": "unknown-changeset-profile",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "derived contained operation is omitted",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:abb3e787a3a0f228ec63f12471479c82fabb11c3d43caf5c811670e81ae3484b"
+      },
+      "id": "omitted-contained-operation",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "contained operations are not in derived causal order",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:8e6b9ec8f7b5874ac0019ee598c59a051794961bf0c3a3025b506c1c50c13ab1"
+      },
+      "id": "reordered-contained-operations",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "contained operation occurrence is duplicated",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:4931af4064b9eada176e372907ffc111f2a330a59d866488a8c267303cb6db82"
+      },
+      "id": "duplicate-contained-operation",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_bad"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "contained operation occurrence is malformed",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:1b5e5437aa80f7e445f046ff8f635cbbf5a31bb4138d63d2d1ceca877afae33e"
+      },
+      "id": "malformed-contained-occurrence",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:1db2f3d9b2ad12747c13152016f2eaf8450335860e69c04753b241d5901513e1",
+              "occurrence": "op_01K00000000000000000000009"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1db2f3d9b2ad12747c13152016f2eaf8450335860e69c04753b241d5901513e1",
+            "occurrence": "op_01K00000000000000000000009"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ],
+        "publication_occurrence": "op_01K00000000000000000000009"
+      },
+      "defect": "publication occurrence is included in contained operations",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:5f85d19f4a273dbdbb5cdf0d4e380b6fef626d6d6d065f94473b90f8ad10545c"
+      },
+      "id": "publication-self-reference",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "publication-normal",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "defect": "facts_ref does not select the candidate facts",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:a00568b9b318f3be213d23305c21a1dca127113c93a961b923337c7282944850"
+      },
+      "id": "facts-ref-digest-mismatch",
+      "must_fail": "InvalidOperationFacts"
+    }
+  ],
+  "positive_cases": [
+    {
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        }
+      },
+      "digest": "sha256:4b8b16f3829800e0798c2186b912c34a303f89e4c38f3f55b1f539ebd209ba14",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A"
+        },
+        "kind": "grant"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"certificate_digest\":\"sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055\",\"mandate_id\":\"mandate_0000000000000000000000001A\"},\"kind\":\"grant\"}",
+      "facts": {
+        "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+        "mandate_id": "mandate_0000000000000000000000001A"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:4b8b16f3829800e0798c2186b912c34a303f89e4c38f3f55b1f539ebd209ba14"
+      },
+      "id": "grant",
+      "kind": "grant"
+    },
+    {
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        },
+        "native_reason": null
+      },
+      "digest": "sha256:f360139e8fc15871f70a6454a669826a3838391c42c151afb4c22d1247992dda",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A",
+          "reason": {
+            "state": "absent"
+          }
+        },
+        "kind": "revoke"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"certificate_digest\":\"sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055\",\"mandate_id\":\"mandate_0000000000000000000000001A\",\"reason\":{\"state\":\"absent\"}},\"kind\":\"revoke\"}",
+      "facts": {
+        "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+        "mandate_id": "mandate_0000000000000000000000001A",
+        "reason": {
+          "state": "absent"
+        }
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:f360139e8fc15871f70a6454a669826a3838391c42c151afb4c22d1247992dda"
+      },
+      "id": "revoke-no-reason",
+      "kind": "revoke"
+    },
+    {
+      "context": {
+        "certificate": {
+          "aithos-mandate-core": "1.0.0-draft.1",
+          "constraints": {},
+          "grantee": {
+            "id": "urn:aithos:agent:agent",
+            "kex_pubkey": "z6LSq6Lq8NiaD7kQ9YxVHn3cT77QioifSAEyq7LrvmzbHRKn",
+            "label": "agent",
+            "pubkey": "z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC"
+          },
+          "id": "mandate_0000000000000000000000001A",
+          "issued_at": "2026-07-01T00:00:00Z",
+          "issued_by": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr#root",
+          "nonce": "000102030405060708090a0b0c0d0e0f",
+          "not_after": "2026-07-08T00:00:00Z",
+          "not_before": "2026-07-01T00:00:00Z",
+          "parent": null,
+          "perimeter": [
+            "read.circle#dir=00000000000000000000000001/00000000000000000000000002&tag=toto",
+            "issue#depth=1"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "72f5c84e67d690ab6a02247bb58a7d4bfbf0e5b54173de8e30b84f4f4a61415befc37ed40bf5bcde38a05719598918f0b61915cd0603699f323d362197420009"
+          },
+          "subject": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        },
+        "native_reason": "device_lost"
+      },
+      "digest": "sha256:cc8e7eda18b969f13616d182191b2e3bda88dcab6828158a70163860478c5e2d",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+          "mandate_id": "mandate_0000000000000000000000001A",
+          "reason": {
+            "state": "present",
+            "text": "device_lost"
+          }
+        },
+        "kind": "revoke"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"certificate_digest\":\"sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055\",\"mandate_id\":\"mandate_0000000000000000000000001A\",\"reason\":{\"state\":\"present\",\"text\":\"device_lost\"}},\"kind\":\"revoke\"}",
+      "facts": {
+        "certificate_digest": "sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055",
+        "mandate_id": "mandate_0000000000000000000000001A",
+        "reason": {
+          "state": "present",
+          "text": "device_lost"
+        }
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:cc8e7eda18b969f13616d182191b2e3bda88dcab6828158a70163860478c5e2d"
+      },
+      "id": "revoke-with-reason",
+      "kind": "revoke"
+    },
+    {
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "derived": false,
+        "mode": "rotate",
+        "zone": "circle"
+      },
+      "digest": "sha256:4f0021d99a5613a7217477f1cbaed3ca009add0f1e30a482601bdbfe89ce5ff3",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "domain": "ethos-zone",
+          "mode": "rotate",
+          "zone": "circle"
+        },
+        "kind": "rotate"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0\"}},\"domain\":\"ethos-zone\",\"mode\":\"rotate\",\"zone\":\"circle\"},\"kind\":\"rotate\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "domain": "ethos-zone",
+        "mode": "rotate",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:4f0021d99a5613a7217477f1cbaed3ca009add0f1e30a482601bdbfe89ce5ff3"
+      },
+      "id": "rotate-ethos-zone",
+      "kind": "rotate"
+    },
+    {
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "derived": false,
+        "mode": "reencrypt",
+        "sid": "01J00000000000000000000501",
+        "zone": "circle"
+      },
+      "digest": "sha256:5cb40c616608e3fbee6656565497b3e7aeab3e3ca9a48399c2a487f452e07ed9",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "domain": "ethos-node",
+          "mode": "reencrypt",
+          "sid": "01J00000000000000000000501",
+          "zone": "circle"
+        },
+        "kind": "rotate"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0\"}},\"domain\":\"ethos-node\",\"mode\":\"reencrypt\",\"sid\":\"01J00000000000000000000501\",\"zone\":\"circle\"},\"kind\":\"rotate\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "domain": "ethos-node",
+        "mode": "reencrypt",
+        "sid": "01J00000000000000000000501",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:5cb40c616608e3fbee6656565497b3e7aeab3e3ca9a48399c2a487f452e07ed9"
+      },
+      "id": "rotate-ethos-node",
+      "kind": "rotate"
+    },
+    {
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "connector": "mail",
+        "derived": false,
+        "mode": "rotate"
+      },
+      "digest": "sha256:63f51d48fc688976a6a921ca469a90f0402d2c3c1d49072ce0bb641c471536f5",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+            }
+          },
+          "connector": "mail",
+          "domain": "vault",
+          "mode": "rotate"
+        },
+        "kind": "rotate"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0\"}},\"connector\":\"mail\",\"domain\":\"vault\",\"mode\":\"rotate\"},\"kind\":\"rotate\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:c59ee60df0ac35b89a8081bea80fb15d811305459e261e90d38c3eb3e3d4e4db"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:0e5427722898c15e62fb0afea4aaf3c990948109ef0a6d8414088fa03a2af9c0"
+          }
+        },
+        "connector": "mail",
+        "domain": "vault",
+        "mode": "rotate"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:63f51d48fc688976a6a921ca469a90f0402d2c3c1d49072ce0bb641c471536f5"
+      },
+      "id": "rotate-vault",
+      "kind": "rotate"
+    },
+    {
+      "context": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:77ead51dcb1a8036d4678807d38d755931262a7fd3f761fcef8a546930634a7a"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:29adb507a801545538e1365c071996a2bc63f85c50c3aee1b9ff8401d848ac09"
+          }
+        },
+        "derived": false,
+        "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+        "previous_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+        "transition": {
+          "aithos-epoch-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:00:00Z",
+          "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+          "prev_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#succession",
+            "value": "33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333"
+          }
+        }
+      },
+      "digest": "sha256:78ae0646d12412e1868b72cedd2386c76823ac68a0d1354ea833a1de3e794828",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:77ead51dcb1a8036d4678807d38d755931262a7fd3f761fcef8a546930634a7a"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:29adb507a801545538e1365c071996a2bc63f85c50c3aee1b9ff8401d848ac09"
+            }
+          },
+          "domain": "identity",
+          "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+          "previous_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+          "transition_digest": "sha256:5fa69b04381691aad92559f212367b759db673d74cb4948bbf58d1ce8ae15eb2"
+        },
+        "kind": "rotate"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:77ead51dcb1a8036d4678807d38d755931262a7fd3f761fcef8a546930634a7a\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:29adb507a801545538e1365c071996a2bc63f85c50c3aee1b9ff8401d848ac09\"}},\"domain\":\"identity\",\"next_did\":\"did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc\",\"previous_did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"transition_digest\":\"sha256:5fa69b04381691aad92559f212367b759db673d74cb4948bbf58d1ce8ae15eb2\"},\"kind\":\"rotate\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:77ead51dcb1a8036d4678807d38d755931262a7fd3f761fcef8a546930634a7a"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:29adb507a801545538e1365c071996a2bc63f85c50c3aee1b9ff8401d848ac09"
+          }
+        },
+        "domain": "identity",
+        "next_did": "did:aithos:z6Mkr7dKpR4rhcMqPz6yKQMN8fwcM9gA7D8Xw8P9YwP7nabc",
+        "previous_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+        "transition_digest": "sha256:5fa69b04381691aad92559f212367b759db673d74cb4948bbf58d1ce8ae15eb2"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:78ae0646d12412e1868b72cedd2386c76823ac68a0d1354ea833a1de3e794828"
+      },
+      "id": "rotate-identity",
+      "kind": "rotate"
+    },
+    {
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [],
+        "height": 1,
+        "predecessors": []
+      },
+      "digest": "sha256:663350bb3e577064ec0df5abc9e7cbd37dac5ee5af71a06393057996bb730027",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [],
+          "height": 1,
+          "mode": "normal",
+          "predecessors": []
+        },
+        "kind": "publication"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"changeset_ref\":{\"aithos-changeset-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c\"},\"contained_operations\":[],\"height\":1,\"mode\":\"normal\",\"predecessors\":[]},\"kind\":\"publication\"}",
+      "facts": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [],
+        "height": 1,
+        "mode": "normal",
+        "predecessors": []
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:663350bb3e577064ec0df5abc9e7cbd37dac5ee5af71a06393057996bb730027"
+      },
+      "id": "publication-genesis",
+      "kind": "publication"
+    },
+    {
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "digest": "sha256:708ce0d2055cf8bbf899a28aade3e1bbbdbae86dd67f488c7fd71b758d2c74cb",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 2,
+          "mode": "normal",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+          ]
+        },
+        "kind": "publication"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"changeset_ref\":{\"aithos-changeset-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c\"},\"contained_operations\":[{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa\",\"occurrence\":\"op_01K00000000000000000000001\"},{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31\",\"occurrence\":\"op_01K00000000000000000000002\"}],\"height\":2,\"mode\":\"normal\",\"predecessors\":[\"sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3\"]},\"kind\":\"publication\"}",
+      "facts": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 2,
+        "mode": "normal",
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3"
+        ]
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:708ce0d2055cf8bbf899a28aade3e1bbbdbae86dd67f488c7fd71b758d2c74cb"
+      },
+      "id": "publication-normal",
+      "kind": "publication"
+    },
+    {
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 3,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+          "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+        ]
+      },
+      "digest": "sha256:8a9693dcedbe9b8bd19cd6022a322b3e5e95e3cac524dcdccbbb58c44256e130",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 3,
+          "mode": "merge",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+            "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+          ]
+        },
+        "kind": "publication"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"changeset_ref\":{\"aithos-changeset-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c\"},\"contained_operations\":[{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa\",\"occurrence\":\"op_01K00000000000000000000001\"},{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31\",\"occurrence\":\"op_01K00000000000000000000002\"}],\"height\":3,\"mode\":\"merge\",\"predecessors\":[\"sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3\",\"sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754\"]},\"kind\":\"publication\"}",
+      "facts": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 3,
+        "mode": "merge",
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+          "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+        ]
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:8a9693dcedbe9b8bd19cd6022a322b3e5e95e3cac524dcdccbbb58c44256e130"
+      },
+      "id": "publication-merge",
+      "kind": "publication"
+    },
+    {
+      "context": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 3,
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+          "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+        ],
+        "winner": "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+      },
+      "digest": "sha256:cabb78f1f18ed88f907beadc710a25bef122f2391049c52d4b122bf323576df4",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "changeset_ref": {
+            "aithos-changeset-core": "1.0.0-draft.1",
+            "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+          },
+          "contained_operations": [
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+              "occurrence": "op_01K00000000000000000000001"
+            },
+            {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+              "occurrence": "op_01K00000000000000000000002"
+            }
+          ],
+          "height": 3,
+          "mode": "resolution",
+          "predecessors": [
+            "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+            "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+          ],
+          "winner": "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+        },
+        "kind": "publication"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"changeset_ref\":{\"aithos-changeset-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c\"},\"contained_operations\":[{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa\",\"occurrence\":\"op_01K00000000000000000000001\"},{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31\",\"occurrence\":\"op_01K00000000000000000000002\"}],\"height\":3,\"mode\":\"resolution\",\"predecessors\":[\"sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3\",\"sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754\"],\"winner\":\"sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754\"},\"kind\":\"publication\"}",
+      "facts": {
+        "changeset_ref": {
+          "aithos-changeset-core": "1.0.0-draft.1",
+          "digest": "sha256:38c7ad3da1475f85393f431762973894d4946452e7442f16ad3833c140216a3c"
+        },
+        "contained_operations": [
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:196ce99f7fe6698b44753680945cab1680dc72f0df0461fbbd8d4b527e20b8fa",
+            "occurrence": "op_01K00000000000000000000001"
+          },
+          {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:3abda733f5da68b3694b081a8ae34ee2b79f8457ac4a448e5d2dfea8e5479c31",
+            "occurrence": "op_01K00000000000000000000002"
+          }
+        ],
+        "height": 3,
+        "mode": "resolution",
+        "predecessors": [
+          "sha256:189793de2b346e3bb8869d0b80e5cb6f2743291c4aec0b329f4f57f08e87e9f3",
+          "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+        ],
+        "winner": "sha256:2fbf067e9c68d7aa61a5891ba0cfe87619f81b8540a1450bff5a5f0481218754"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:cabb78f1f18ed88f907beadc710a25bef122f2391049c52d4b122bf323576df4"
+      },
+      "id": "publication-resolution",
+      "kind": "publication"
+    }
+  ],
+  "profiles": {
+    "changeset": "1.0.0-draft.1",
+    "operation_facts": "1.0.0-draft.1",
+    "operation_ref": "1.0.0-draft.1",
+    "state_fact": "1.0.0-draft.1"
+  },
+  "vector": "CB2-K1-OPERATION-FACTS-STRUCTURAL-1"
+}

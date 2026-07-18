@@ -102,3 +102,16 @@ vectors yet. Their classified results are recorded one behavior per entry in
   Rust consumer:
   `aithos-core/tests/cb2_operation_facts_action_inference.rs`
   (`aab91fdc7cf66efe8e84bd0c6913dc58e599cc4d6799e7b55dde55655abb745e`).
+- `CB2-K1-OPERATION-FACTS-STRUCTURAL-1`: K1.2-GRRP-B grant, revoke,
+  standalone rotate, and normal/merge/resolution publication facts; complete
+  signed-certificate and succession-transition content addresses, closed
+  revocation reason variants, protected before/after state references,
+  derived-rotation non-duplication, changeset-reference domain, causal
+  operation references, 11 positive cases, and 43 fail-closed
+  `InvalidOperationFacts` candidates. The changeset document is explicitly a
+  syntactic fixture only. Generator: `gen-cb2-operation-facts-structural.py`
+  (`244395a552b59116b77a75636ea20d0c2fc55847a97a7e9a735f157deb91f2f0`);
+  vector: `cb2-operation-facts-structural.json`
+  (`1be1d239055e5a66f0c64d3ca2c2b00cd102bac44a7cd8c2147d16dce8d275e3`);
+  Rust consumer: `aithos-core/tests/cb2_operation_facts_structural.rs`
+  (`c6ec4a78b33571f4b6ea58e73f0b1417f0dcf3fe9f674cfc1279148039077967`).
