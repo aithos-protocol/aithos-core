@@ -216,3 +216,15 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`73149da64fbdc73bcfd81f8a3d11c83e9421e43f2053ad649bf0db0f585ee187`);
   Rust consumer: `aithos-bundle/tests/cb2_bundle_boundaries.rs`
   (`9ef5ae1c521b6902e799cbf00d1a6d9e2837db5d6a9f777e4ac0d4af8cd84666`).
+- `CB2-BUNDLE-AUTHORITY-FLOWS-1`: pure-data CB8/CB9 oracle covering fifteen
+  owner operations, eighteen zone-specific grantee decisions, nine exact grant
+  delivery rows, four independent authority/decryption fences, public grantee
+  authorship, three opaque self state relations, current-authority rechecks,
+  six atomic refusals and three Gamma-read decisions. It preserves eight
+  historical vector hashes and adds no signed wire. Generator:
+  `gen-cb2-bundle-authority-flows.py`
+  (`037f01cb6cd348f4afc52122105e90403eb71fdfb7de5290fd1513feae4ce392`);
+  vector: `cb2-bundle-authority-flows.json`
+  (`30545958c170fda12e53817d3c5b7adb295432a4352e1abcbc7749fdd5c7eca0`);
+  Rust consumer: `aithos-bundle/tests/cb2_bundle_authority_flows.rs`
+  (`cc48562545ef028b8042860de4fdb842f3dfe1e1f9a5658862c9e41a12344cdb`).

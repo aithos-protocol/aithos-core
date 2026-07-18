@@ -1,0 +1,681 @@
+{
+  "vector": "CB2-BUNDLE-AUTHORITY-FLOWS-1",
+  "description": "Independent pure-data CB8/CB9 oracle for owner parity, grantee zone/verb/selector decisions, exact key delivery, independent authority/decryption fences, delegated authorship/self evidence, current-authority rechecks, refusal atomicity and Gamma reads. No signed wire is introduced.",
+  "historical_vector_sha256": {
+    "cb2-mandate-contracts.json": "771eef3b92314a5cc6a37882a35cc81cbbb2b4e0d4976c4d555a10ba05cf1e3e",
+    "cb2-operation-projection.json": "99bc175e0b4f07dece0afa828fff22be9be75d4b66f8b00fee3e7d427021e14c",
+    "cb2-operation-facts-mutation.json": "dc3a57de91ff50895b680111da4da981e1518ad2dcd638d862e63be9eb29b83d",
+    "cb2-operation-facts-read.json": "b8b4014b390fc3ebc65897f8b59d084da78c97137e9ad7f7703dbe5b0e0194db",
+    "cb2-delegated-counts.json": "c1edd459b00ff72f2693e54370a60d2c8b981c18ee10d213a4b26897ed2618f1",
+    "cb2-session-proof.json": "17553dd95f515e8045e17e8e46816b1d7e2007d4985eec0048fcac34197bef74",
+    "cb2-draft2-carriers.json": "2e75e9af30ba0207bd01a6f347cac1a263f816a7ae0fb3d583f75beabef2badc",
+    "cb2-bundle-boundaries.json": "73149da64fbdc73bcfd81f8a3d11c83e9421e43f2053ad649bf0db0f585ee187"
+  },
+  "initial_state": {
+    "manifest": "sha256:owner-grantee-before",
+    "gamma_head": "sha256:gamma-before",
+    "public": [
+      "note"
+    ],
+    "circle": [
+      "note"
+    ],
+    "self": [
+      "opaque-note"
+    ]
+  },
+  "initial_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50",
+  "owner_cases": [
+    {
+      "id": "owner-public-list",
+      "zone": "public",
+      "operation": "list",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": false,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-public-read",
+      "zone": "public",
+      "operation": "read",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": false,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-public-create",
+      "zone": "public",
+      "operation": "create",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": true,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-public-edit",
+      "zone": "public",
+      "operation": "edit",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": true,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-public-delete",
+      "zone": "public",
+      "operation": "delete",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": true,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-circle-list",
+      "zone": "circle",
+      "operation": "list",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": false,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-circle-read",
+      "zone": "circle",
+      "operation": "read",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": false,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-circle-create",
+      "zone": "circle",
+      "operation": "create",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": true,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-circle-edit",
+      "zone": "circle",
+      "operation": "edit",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": true,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-circle-delete",
+      "zone": "circle",
+      "operation": "delete",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": true,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-self-list",
+      "zone": "self",
+      "operation": "list",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": false,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-self-read",
+      "zone": "self",
+      "operation": "read",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": false,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-self-create",
+      "zone": "self",
+      "operation": "create",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": true,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-self-edit",
+      "zone": "self",
+      "operation": "edit",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": true,
+      "fresh_store_reopen": true
+    },
+    {
+      "id": "owner-self-delete",
+      "zone": "self",
+      "operation": "delete",
+      "expected": "accepted",
+      "mandate_required": false,
+      "mandate_counter_delta": 0,
+      "journalized": true,
+      "fresh_store_reopen": true
+    }
+  ],
+  "grantee_cases": [
+    {
+      "id": "grantee-01",
+      "zone": "public",
+      "operation": "list",
+      "authority": "read.public#dir=projects",
+      "target_sid": "note",
+      "target_dir": "projects",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-02",
+      "zone": "public",
+      "operation": "read",
+      "authority": "read.public#id=note",
+      "target_sid": "note",
+      "target_dir": "projects",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-03",
+      "zone": "public",
+      "operation": "create",
+      "authority": "append.public#dir=projects",
+      "target_sid": "fresh-note",
+      "target_dir": "projects",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-04",
+      "zone": "public",
+      "operation": "edit",
+      "authority": "edit.public#id=note",
+      "target_sid": "note",
+      "target_dir": "projects",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-05",
+      "zone": "public",
+      "operation": "delete",
+      "authority": "delete.public#id=note",
+      "target_sid": "note",
+      "target_dir": "projects",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-06",
+      "zone": "circle",
+      "operation": "list",
+      "authority": "read.circle#dir=projects",
+      "target_sid": "note",
+      "target_dir": "projects",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-07",
+      "zone": "circle",
+      "operation": "read",
+      "authority": "read.circle#id=note",
+      "target_sid": "note",
+      "target_dir": "projects",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-08",
+      "zone": "circle",
+      "operation": "create",
+      "authority": "append.circle#dir=projects",
+      "target_sid": "fresh-note",
+      "target_dir": "projects",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-09",
+      "zone": "circle",
+      "operation": "edit",
+      "authority": "edit.circle#id=note",
+      "target_sid": "note",
+      "target_dir": "projects",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-10",
+      "zone": "circle",
+      "operation": "delete",
+      "authority": "delete.circle#id=note",
+      "target_sid": "note",
+      "target_dir": "projects",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-11",
+      "zone": "self",
+      "operation": "list",
+      "authority": "read.self#dir=sealed",
+      "target_sid": "opaque-note",
+      "target_dir": "sealed",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-12",
+      "zone": "self",
+      "operation": "read",
+      "authority": "read.self#id=opaque-note",
+      "target_sid": "opaque-note",
+      "target_dir": "sealed",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-13",
+      "zone": "self",
+      "operation": "create",
+      "authority": "append.self",
+      "target_sid": "fresh-opaque",
+      "target_dir": "sealed",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-14",
+      "zone": "self",
+      "operation": "create",
+      "authority": "append.self#id=preallocated",
+      "target_sid": "preallocated",
+      "target_dir": "sealed",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-15",
+      "zone": "self",
+      "operation": "edit",
+      "authority": "edit.self#id=opaque-note",
+      "target_sid": "opaque-note",
+      "target_dir": "sealed",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-16",
+      "zone": "self",
+      "operation": "delete",
+      "authority": "delete.self#id=opaque-note",
+      "target_sid": "opaque-note",
+      "target_dir": "sealed",
+      "target_tags": [],
+      "expected": "accepted",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-17",
+      "zone": "self",
+      "operation": "edit",
+      "authority": "edit.self#dir=sealed",
+      "target_sid": "opaque-note",
+      "target_dir": "sealed",
+      "target_tags": [],
+      "expected": "refused",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    },
+    {
+      "id": "grantee-18",
+      "zone": "self",
+      "operation": "delete",
+      "authority": "delete.self#tag=private",
+      "target_sid": "opaque-note",
+      "target_dir": "sealed",
+      "target_tags": [
+        "private"
+      ],
+      "expected": "refused",
+      "accepted_actor": "grantee",
+      "accepted_single_chain": true,
+      "accepted_journalized": true,
+      "accepted_fresh_store_reopen": true,
+      "refused_visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50"
+    }
+  ],
+  "grant_delivery_cases": [
+    {
+      "authority": "read.public#id=note",
+      "required_line": "none",
+      "delivered_node": null
+    },
+    {
+      "authority": "read.circle",
+      "required_line": "zone-root",
+      "delivered_node": "/e/circle"
+    },
+    {
+      "authority": "read.self",
+      "required_line": "zone-root",
+      "delivered_node": "/e/self"
+    },
+    {
+      "authority": "edit.circle#dir=projects",
+      "required_line": "folder",
+      "delivered_node": "/e/circle/d/projects"
+    },
+    {
+      "authority": "read.circle#tag=toto",
+      "required_line": "zone-tag-view",
+      "delivered_node": "/e/circle/t/toto"
+    },
+    {
+      "authority": "read.circle#dir=projects&tag=toto",
+      "required_line": "folder-tag-view",
+      "delivered_node": "/e/circle/d/projects/t/toto"
+    },
+    {
+      "authority": "edit.self#id=opaque-note",
+      "required_line": "section",
+      "delivered_node": "/e/self/s/opaque-note"
+    },
+    {
+      "authority": "act.x.mail.send",
+      "required_line": "none",
+      "delivered_node": null
+    },
+    {
+      "authority": "act.x.mail.config",
+      "required_line": "connector-vault",
+      "delivered_node": "/x/mail"
+    }
+  ],
+  "content_fence_cases": [
+    {
+      "key_material": "exact valid section line",
+      "authority": "valid covering chain",
+      "expected": "readable and authorized"
+    },
+    {
+      "key_material": "exact valid section line",
+      "authority": "no mandate chain",
+      "expected": "refused as unauthorized"
+    },
+    {
+      "key_material": "no section line",
+      "authority": "valid covering chain",
+      "expected": "authorized but unreadable"
+    },
+    {
+      "key_material": "sibling section line",
+      "authority": "valid covering chain",
+      "expected": "unreadable"
+    }
+  ],
+  "delegated_evidence": {
+    "public_authorship_required_members": [
+      "subject",
+      "zone",
+      "sid",
+      "content_hash",
+      "operation_ref",
+      "edition",
+      "authorized_via",
+      "key",
+      "sig"
+    ],
+    "owner_signature_substitution": "refused",
+    "self_state_cases": [
+      {
+        "operation": "create",
+        "relation": "prior absence and new inclusion",
+        "disclosed": [
+          "sid",
+          "before_commitment",
+          "after_commitment"
+        ],
+        "forbidden": [
+          "name",
+          "path",
+          "title",
+          "tags",
+          "body",
+          "folder_relation",
+          "key"
+        ]
+      },
+      {
+        "operation": "edit",
+        "relation": "same-SID replacement",
+        "disclosed": [
+          "sid",
+          "before_commitment",
+          "after_commitment"
+        ],
+        "forbidden": [
+          "name",
+          "path",
+          "title",
+          "tags",
+          "body",
+          "folder_relation",
+          "key"
+        ]
+      },
+      {
+        "operation": "delete",
+        "relation": "prior inclusion and new absence",
+        "disclosed": [
+          "sid",
+          "before_commitment",
+          "after_commitment"
+        ],
+        "forbidden": [
+          "name",
+          "path",
+          "title",
+          "tags",
+          "body",
+          "folder_relation",
+          "key"
+        ]
+      }
+    ]
+  },
+  "current_authority_cases": [
+    {
+      "authority_change": "expired",
+      "expected": "refused",
+      "visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50",
+      "gamma_delta": 0,
+      "counter_delta": 0
+    },
+    {
+      "authority_change": "revoked",
+      "expected": "refused",
+      "visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50",
+      "gamma_delta": 0,
+      "counter_delta": 0
+    }
+  ],
+  "atomic_refusal_cases": [
+    {
+      "defect": "missing mandate chain",
+      "expected": "refused",
+      "visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50",
+      "reachable_candidate_artifacts": []
+    },
+    {
+      "defect": "missing exact content line",
+      "expected": "refused",
+      "visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50",
+      "reachable_candidate_artifacts": []
+    },
+    {
+      "defect": "outside perimeter",
+      "expected": "refused",
+      "visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50",
+      "reachable_candidate_artifacts": []
+    },
+    {
+      "defect": "applicable constraint fails",
+      "expected": "refused",
+      "visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50",
+      "reachable_candidate_artifacts": []
+    },
+    {
+      "defect": "authority expired before effect",
+      "expected": "refused",
+      "visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50",
+      "reachable_candidate_artifacts": []
+    },
+    {
+      "defect": "authority revoked before effect",
+      "expected": "refused",
+      "visible_state_digest": "sha256:a21537394fb29f07c126e248baf3e4bbdc8677d29baeb8b03d11b0d48c9ffc50",
+      "reachable_candidate_artifacts": []
+    }
+  ],
+  "gamma_read_cases": [
+    {
+      "actor": "owner",
+      "authority": "owner local capability",
+      "expected": "accepted",
+      "mandate_required": false
+    },
+    {
+      "actor": "grantee",
+      "authority": "read.gamma with covered content lines",
+      "expected": "accepted within mandate dimensions",
+      "mandate_required": true
+    },
+    {
+      "actor": "grantee",
+      "authority": "content lines without read.gamma",
+      "expected": "refused as unauthorized",
+      "mandate_required": true
+    }
+  ],
+  "inventory": {
+    "owner_case_count": 15,
+    "grantee_case_count": 18,
+    "grant_delivery_case_count": 9,
+    "content_fence_case_count": 4,
+    "self_state_case_count": 3,
+    "current_authority_case_count": 2,
+    "atomic_refusal_case_count": 6,
+    "gamma_read_case_count": 3,
+    "future_owners": {
+      "owner_parity_and_grants": "CB8",
+      "delegated_content_and_gamma_reads": "CB9"
+    }
+  }
+}
