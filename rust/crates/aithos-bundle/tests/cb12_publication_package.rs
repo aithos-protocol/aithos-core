@@ -2,8 +2,8 @@ use aithos_bundle::bundle::{Bundle, SectionSpec};
 use aithos_bundle::entropy::SeqEntropy;
 use aithos_bundle::grants::{GenericGrantRequest, GrantSelector};
 use aithos_bundle::publication::{
-    assemble_draft2_candidate, cold_verify, export_keyless, import_keyless, package_with_objects,
-    verify_draft2_candidate_value,
+    assemble_draft2_candidate, cold_verify, cold_verify_for_cas, export_keyless, import_keyless,
+    package_with_objects, verify_draft2_candidate_value, PublicationMode,
 };
 use aithos_bundle::session::LocalSession;
 use aithos_bundle::{FsStore, MemStore};
@@ -465,6 +465,22 @@ fn cb12_owner_package_survives_fresh_mem_and_fs_cold_verification() {
     let package = export_keyless(candidate, context, extra).expect("keyless export");
     let digest = package.digest().expect("package digest");
     assert_eq!(digest, package.digest().expect("stable package digest"));
+    let producer_verdict = package.verify_for_cas().expect("producer CAS verdict");
+    assert_eq!(producer_verdict.cas.subject, package.context().subject);
+    assert_eq!(producer_verdict.cas.manifest_profile, "1.0.0-draft.2");
+    assert_eq!(producer_verdict.cas.mode, PublicationMode::Normal);
+    assert_eq!(producer_verdict.cas.new_height, 2);
+    assert_eq!(producer_verdict.cas.expected_predecessors.len(), 1);
+    assert!(producer_verdict
+        .cas
+        .new_manifest_head
+        .starts_with("sha256:"));
+    assert_eq!(producer_verdict.cas.package_digest, digest);
+    assert_eq!(
+        producer_verdict.cas.reachable_objects,
+        package.objects().keys().cloned().collect::<Vec<_>>()
+    );
+    assert_eq!(producer_verdict.carriers.height(), 2);
 
     // Destroy every producer-side capability and private key holder before
     // either keyless verification phase.
@@ -475,6 +491,10 @@ fn cb12_owner_package_survives_fresh_mem_and_fs_cold_verification() {
     let mut memory = MemStore::default();
     import_keyless(&mut memory, &package).expect("MemStore import");
     cold_verify(&memory, &package).expect("MemStore cold verification");
+    assert_eq!(
+        cold_verify_for_cas(&memory, &package).expect("MemStore CAS verdict"),
+        producer_verdict
+    );
 
     let fs_root = std::env::temp_dir().join(format!("aithos-cb12-cold-{}", std::process::id()));
     if fs_root.exists() {
@@ -486,6 +506,10 @@ fn cb12_owner_package_survives_fresh_mem_and_fs_cold_verification() {
     drop(fs);
     let reopened = FsStore::new(&fs_root);
     cold_verify(&reopened, &package).expect("fresh FsStore cold verification");
+    assert_eq!(
+        cold_verify_for_cas(&reopened, &package).expect("fresh FsStore CAS verdict"),
+        producer_verdict
+    );
 
     for defect in [
         "missing-certificate",

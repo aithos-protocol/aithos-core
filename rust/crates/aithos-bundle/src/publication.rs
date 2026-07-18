@@ -3,7 +3,9 @@
 //! Bundle owns layout, hashes and atomic Store installation. It delegates the
 //! only semantic verdict to [`aithos_core::carriers::verify_k1c_carriers`].
 
-use crate::manifest::{sha256_hex, Manifest, ManifestSigner, ManifestSpec, CORE_DRAFT2_VERSION};
+use crate::manifest::{
+    sha256_hex, GammaSegmentRoot, Manifest, ManifestSigner, ManifestSpec, CORE_DRAFT2_VERSION,
+};
 use crate::{validate_store_key, Store};
 use aithos_core::carriers::{
     derive_changeset, verify_k1c_carriers, K1cActor, K1cCarrierEnvelope, K1cVerificationContext,
@@ -191,6 +193,47 @@ pub struct Draft2Candidate {
     pub changeset: Value,
     pub evidence: Value,
     pub sidecars: BTreeMap<String, Vec<u8>>,
+}
+
+/// Closed publication topology returned to an opaque-store/CAS consumer.
+///
+/// This is a local Rust API, not a new serialized protocol profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PublicationMode {
+    Normal,
+    Merge,
+    Resolution,
+}
+
+/// Exact, already-verified facts needed by a future Provider transaction.
+///
+/// The Provider may persist `reachable_objects` and atomically compare the
+/// expected heads before exposing `new_manifest_head`; it must not derive an
+/// authority or semantic verdict from these fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicationCasFacts {
+    pub subject: String,
+    pub manifest_profile: String,
+    pub mode: PublicationMode,
+    pub new_height: u64,
+    pub expected_predecessors: Vec<String>,
+    pub resolution_winner: Option<String>,
+    pub source_gamma_head: String,
+    pub new_manifest_head: String,
+    pub new_gamma_head: String,
+    pub roots: BTreeMap<String, String>,
+    pub gamma_roots: BTreeMap<String, GammaSegmentRoot>,
+    pub gamma_counts_root: String,
+    pub reachable_objects: Vec<String>,
+    pub package_digest: String,
+}
+
+/// One positive keyless verdict and the CAS facts derived from the same
+/// verified package. Rejections remain the closed [`Error`] variants.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedPublication {
+    pub carriers: VerifiedK1cCarriers,
+    pub cas: PublicationCasFacts,
 }
 
 impl Draft2Candidate {
@@ -428,6 +471,62 @@ impl KeylessPublicationPackage {
             })?,
         )?;
         verify_draft2_candidate(&self.candidate, &self.context)
+    }
+
+    fn verified_cas_facts(&self) -> Result<PublicationCasFacts> {
+        let mode = match self
+            .context
+            .publication_facts
+            .pointer("/facts/mode")
+            .and_then(Value::as_str)
+        {
+            Some("normal") => PublicationMode::Normal,
+            Some("merge") => PublicationMode::Merge,
+            Some("resolution") => PublicationMode::Resolution,
+            _ => return Err(invalid("verified publication mode is unavailable")),
+        };
+        let resolution_winner = self
+            .context
+            .publication_facts
+            .pointer("/facts/winner")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let expected_predecessors = self
+            .context
+            .predecessors
+            .iter()
+            .map(|predecessor| {
+                predecessor
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| invalid("verified predecessor is unavailable"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(PublicationCasFacts {
+            subject: self.context.subject.clone(),
+            manifest_profile: self.candidate.manifest.version.clone(),
+            mode,
+            new_height: self.candidate.manifest.edition.height,
+            expected_predecessors,
+            resolution_winner,
+            source_gamma_head: self.context.gamma_source_head.clone(),
+            new_manifest_head: format!("sha256:{}", self.candidate.manifest.chain_hash()?),
+            new_gamma_head: self.candidate.manifest.gamma_head.clone(),
+            roots: self.candidate.manifest.roots.clone(),
+            gamma_roots: self.candidate.manifest.gamma_roots.clone(),
+            gamma_counts_root: self.candidate.manifest.gamma_counts_root.clone(),
+            reachable_objects: self.objects.keys().cloned().collect(),
+            package_digest: self.digest()?,
+        })
+    }
+
+    /// Verify a producer-side package and return only typed public/CAS facts.
+    pub fn verify_for_cas(&self) -> Result<VerifiedPublication> {
+        let carriers = self.verify_public_only()?;
+        Ok(VerifiedPublication {
+            carriers,
+            cas: self.verified_cas_facts()?,
+        })
     }
 }
 
@@ -712,6 +811,18 @@ pub fn cold_verify<S: Store>(
         }
     }
     verify_draft2_candidate(&candidate, package.context())
+}
+
+/// Cold-verify one complete Store and return the matching typed CAS facts.
+pub fn cold_verify_for_cas<S: Store>(
+    store: &S,
+    package: &KeylessPublicationPackage,
+) -> Result<VerifiedPublication> {
+    let carriers = cold_verify(store, package)?;
+    Ok(VerifiedPublication {
+        carriers,
+        cas: package.verified_cas_facts()?,
+    })
 }
 
 /// Test/support seam for proving fail-closed package mutations without

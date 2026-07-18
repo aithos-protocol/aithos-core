@@ -5,7 +5,10 @@ use aithos_bundle::merge::{
     cold_merge_from_keyless_store, merge_draft2_package, resolve_draft2_package,
     verify_insertion_order_independence, Draft2MergePlan, Draft2ResolutionPlan,
 };
-use aithos_bundle::publication::{import_keyless, KeylessPublicationPackage};
+use aithos_bundle::publication::{
+    cold_verify_for_cas, import_keyless, KeylessPublicationPackage, PublicationMode,
+    VerifiedPublication,
+};
 use aithos_bundle::{FsStore, MemStore, Store};
 use aithos_core::carriers::{
     derive_changeset, K1cActor, K1cVerificationContext, CHANGESET_PROFILE,
@@ -373,16 +376,21 @@ fn fresh_root(label: &str) -> PathBuf {
     ))
 }
 
-fn verify_all_orders(package: &KeylessPublicationPackage) {
+fn verify_all_orders(package: &KeylessPublicationPackage) -> VerifiedPublication {
     let forward = package.objects().keys().cloned().collect::<Vec<_>>();
     let mut reverse = forward.clone();
     reverse.reverse();
     verify_insertion_order_independence(package.objects(), &[forward.clone(), reverse.clone()])
         .expect("object-map order independence");
+    let expected = package.verify_for_cas().expect("producer CAS verdict");
 
     let mut memory = MemStore::default();
     import_keyless(&mut memory, package).expect("fresh MemStore import");
     cold_merge_from_keyless_store(&memory, package).expect("MemStore cold merge");
+    assert_eq!(
+        cold_verify_for_cas(&memory, package).expect("MemStore CAS verdict"),
+        expected
+    );
 
     let root = fresh_root("orders");
     std::fs::create_dir_all(&root).expect("create FsStore root");
@@ -395,8 +403,14 @@ fn verify_all_orders(package: &KeylessPublicationPackage) {
     }
     store.commit_transaction().expect("commit reverse import");
     drop(store);
-    cold_merge_from_keyless_store(&FsStore::new(&root), package).expect("FsStore cold merge");
+    let reopened = FsStore::new(&root);
+    cold_merge_from_keyless_store(&reopened, package).expect("FsStore cold merge");
+    assert_eq!(
+        cold_verify_for_cas(&reopened, package).expect("FsStore CAS verdict"),
+        expected
+    );
     std::fs::remove_dir_all(root).expect("remove FsStore root");
+    expected
 }
 
 #[test]
@@ -421,7 +435,11 @@ fn cb13_signed_draft2_merge_is_cold_and_insertion_order_independent() {
     .expect("draft2 merge package");
     assert_eq!(package.candidate().manifest.merges.len(), 2);
     assert!(package.candidate().manifest.resolves_fork.is_empty());
-    verify_all_orders(&package);
+    let verdict = verify_all_orders(&package);
+    assert_eq!(verdict.cas.mode, PublicationMode::Merge);
+    assert_eq!(verdict.cas.expected_predecessors, plan.parents);
+    assert_eq!(verdict.cas.resolution_winner, None);
+    assert_eq!(verdict.cas.new_height, 3);
 }
 
 #[test]
@@ -448,7 +466,10 @@ fn cb13_resolution_authority_is_effect_free_and_cold_verifiable() {
         package.candidate().manifest.resolves_fork,
         fixture.parents[0].trim_start_matches("sha256:")
     );
-    verify_all_orders(&package);
+    let verdict = verify_all_orders(&package);
+    assert_eq!(verdict.cas.mode, PublicationMode::Resolution);
+    assert_eq!(verdict.cas.expected_predecessors, plan.parents);
+    assert_eq!(verdict.cas.resolution_winner, Some(plan.winner.clone()));
 
     let outside = Draft2ResolutionPlan {
         parents: fixture.parents,
