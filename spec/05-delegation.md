@@ -27,6 +27,11 @@ in every request and gamma entry.
 
 ## 5.3 Attenuation invariants (verifier, per link child→parent)
 
+Before applying the invariants below, the verifier requires exact equality of the
+parent and child `aithos-mandate-core` discriminators. A mixed-version link is
+invalid and invalidates its descendants; no constraint rule from either version is
+projected onto the other.
+
 1. **Perimeter containment.** Every child entry is covered by a parent entry under
    the verb lattice and selector algebra (§04.2). A parent zone with no selector
    covers any child selector in that zone. `id=x` covers only `id=x`; `dir=` and
@@ -44,17 +49,24 @@ in every request and gamma entry.
    JCS-identical to the parent's, decided 2026-07-10; tightening is expressed by
    *adding* a stricter obligation, the conjunction is the tightening), `heartbeat`
    at least as tight, `freshness` ≤ parent, `first_party_only` not weakened.
-   `max_children` is specifically non-droppable: if the parent carries it, every
-   child repeats a value ≤ the parent's; it counts that child's direct children
-   only, not the ancestor's whole subtree. Every known constraint is type-valid on
-   both documents. An unknown constraint may be carried only by a directly
-   owner-issued chain leaf; it can neither cross nor parent a delegation link
-   because no attenuation law is known (§04.4).
+   Under `draft.2`, `max_children` is specifically non-droppable: if the parent
+   carries it, every child repeats a value ≤ the parent's, including a chain leaf;
+   it counts that child's direct children only, not the ancestor's whole subtree.
+   Under historical `draft.1`, the E+ attenuation matrix remains authoritative:
+   dropping `max_children` is valid and leaves the child without its own width cap.
+   Every known constraint is type-valid on both documents. An unknown constraint
+   may be carried only by a directly owner-issued chain leaf; it can neither cross
+   nor parent a delegation link because no attenuation law is known (§04.4).
 4. **Depth.** child `issue#depth=m` ⇒ `m ≤ n−1`; chain length in links ≤ root depth.
 5. **Signature & identity.** child.signature verifies under parent.grantee.pubkey;
    `child.issued_by == parent.grantee.pubkey`; `child.grantee.pubkey ≠ child.issued_by`.
 
 Any failure invalidates the child and its descendants.
+
+Changing versions is not an attenuation link. To migrate, the authorities reissue
+the complete chain under `draft.2` in issuer order and log the new grants. They do
+not edit a certificate, substitute its discriminator before verification, or mix
+old and new certificates in one chain (§04.1.1).
 
 ## 5.4 Cryptographic attenuation (the second fence)
 

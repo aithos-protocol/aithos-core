@@ -8,7 +8,7 @@
 ## 4.1 Document
 
 ```jsonc
-{ "aithos-mandate-core": "1.0.0-draft.1",
+{ "aithos-mandate-core": "1.0.0-draft.2",
   "id": "mandate_01JZ…",                     // mandate_<ULID>
   "subject": "did:aithos:z6Mkr…",            // whose ethos; constant along a chain
   "parent": null,                            // non-null ⇒ sub-mandate (§05)
@@ -29,8 +29,30 @@
   "signature": { "alg": "ed25519", "key": "…", "value": "…" } }
 ```
 
+### 4.1.1 Version profiles and migration
+
+> **T1 protocol decision — human-validated on 2026-07-18.**
+
+`"1.0.0-draft.1"` remains a supported historical verification profile. A verifier
+MUST preserve its signed bytes and apply the attenuation semantics frozen by the
+historical vectors; in particular, the E+ case in which a child omits its parent's
+`max_children` remains valid under `draft.1`.
+
+`"1.0.0-draft.2"` is the current issuance profile. It changes only the versioned
+rule identified in T1: a parent's `max_children` is non-droppable, including when
+the child is a chain leaf. It does not reinterpret any `draft.1` certificate.
+
+A delegation chain is version-homogeneous: every certificate from root through
+leaf carries the same `aithos-mandate-core` value. A `draft.1`→`draft.2` or
+`draft.2`→`draft.1` link is invalid before attenuation is evaluated. Migration is
+not an in-place edit: the authorities reissue the complete chain in issuer order
+under `draft.2`, producing fresh certificates and the normal `grant` Gamma
+records. Existing `draft.1` certificates, signatures, and historical vectors
+remain byte-identical and continue to verify under `draft.1` until their ordinary
+expiry or revocation.
+
 **Form is verified before signature trust (T3).** A verifier first validates the
-supported `aithos-mandate-core` version; mandate, subject, parent, issuer, and
+supported `aithos-mandate-core` profile; mandate, subject, parent, issuer, and
 grantee identifier forms; both public-key encodings and their conversion; a nonce
 that is a non-empty string; parseable RFC 3339 Zulu timestamps and a non-inverted
 validity window; and the complete perimeter grammar. `signature.alg` is exactly
@@ -220,10 +242,12 @@ mandate and against every ancestor named in its `authorized_via` chain (§07.4).
 delegate can therefore never multiply its parent's budget by issuing children.
 Corollary: minting a sub-mandate is itself a `grant` gamma entry (§07) — issuance is
 never a silent action (I5) — and that entry is what `max_children` counts.
-`max_children` bounds only children whose `parent` is that exact mandate. If present
-on a parent it is non-droppable: every child repeats it with a value less than or
-equal to the parent's; omission is a widening. It is not a subtree-descendant
-counter.
+`max_children` bounds only children whose `parent` is that exact mandate. Under
+`draft.2`, if present on a parent it is non-droppable: every child repeats it with
+a value less than or equal to the parent's, and omission is a widening even for a
+chain leaf. Under historical `draft.1`, omission retains the valid per-level-width
+meaning frozen by E+; the parent still counts its own direct children, while the
+child has no width cap of its own. It is not a subtree-descendant counter.
 
 `max_actions` and its rate derivatives remain connector-action meters; content
 mutation never consumes them. D7 additionally requires one explicit Ethos-mutation

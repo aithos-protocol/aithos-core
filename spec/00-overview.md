@@ -61,9 +61,25 @@ key_version` for `header-line`. Purposes never overlap.
 ## 0.4 Version discriminators
 
 `aithos-core` in the manifest; `aithos-mandate-core` in certificates; `aithos-gamma-core`
-in log files. All `"1.0.0-draft.1"` in this series. Nothing is inherited from
-`Aithos-protocol` unless restated here; identity (DID document format) is restated in
-§01 with minimal carry.
+in log files. The manifest and Gamma discriminators remain `"1.0.0-draft.1"` in
+this series. The mandate plane supports two explicit semantic profiles:
+
+- `"1.0.0-draft.1"` is the historical verification profile. Its signed bytes and
+  attenuation semantics stay frozen by the historical vectors, including the E+
+  `max_children` drop case.
+- `"1.0.0-draft.2"` is the current issuance profile. It introduces the T1
+  `max_children` rule specified in §04.4 and §05.3 without reinterpreting a
+  `draft.1` certificate.
+
+Every certificate in one delegation chain MUST declare the same
+`aithos-mandate-core` version; a mixed-version chain is invalid. Migration is
+reissuance of a complete homogeneous chain under `draft.2`, following normal
+issuance and Gamma rules. It never consists of rewriting the discriminator or
+any other signed byte of a `draft.1` certificate. Distinct homogeneous `draft.1`
+and `draft.2` chains MAY coexist in the same bundle.
+
+Nothing is inherited from `Aithos-protocol` unless restated here; identity (DID
+document format) is restated in §01 with minimal carry.
 
 ## 0.5 Transverse principles
 

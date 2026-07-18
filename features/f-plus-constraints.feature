@@ -304,11 +304,35 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
       When the agent delegates the perimeter adding constraint key "quantum_cap"
       Then the helper's chain is rejected
 
-  Rule: max_children is non-droppable and counts direct children only
+  Rule: Mandate constraint semantics are versioned without rewriting history
+
+    @wip
+    Scenario Outline: max_children omission is interpreted only by a homogeneous version
+      Given a "<parent version>" parent mandate with max_children 4
+      When it mints a "<child version>" chain leaf with "<child constraint>"
+      Then the child chain is "<verdict>"
+
+      Examples:
+        | parent version | child version | child constraint | verdict  |
+        | draft.1        | draft.1       | no max_children  | accepted |
+        | draft.2        | draft.2       | no max_children  | rejected |
+        | draft.1        | draft.2       | max_children 4   | rejected |
+        | draft.2        | draft.1       | max_children 4   | rejected |
+
+    @wip
+    Scenario: Migration reissues a homogeneous chain and preserves historical bytes
+      Given a valid homogeneous draft.1 chain whose certificate bytes are recorded
+      When its authorities migrate the authority to draft.2
+      Then every certificate is reissued under draft.2 in issuer order
+      And the new grants are recorded in Gamma
+      And the resulting chain contains only draft.2 mandates
+      But no draft.1 certificate byte or signature is changed or reinterpreted
+
+  Rule: In draft.2 max_children is non-droppable and counts direct children only
 
     @wip
     Scenario Outline: A child cannot widen its parent's max_children
-      Given a parent mandate with max_children 4 and issue depth 2
+      Given a draft.2 parent mandate with max_children 4 and issue depth 2
       When it mints a child with "<child constraint>"
       Then the child chain is "<verdict>"
 
@@ -322,7 +346,7 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
 
     @wip
     Scenario: Grandchildren do not consume their grandparent's direct-child meter
-      Given a root mandate with max_children 1 and issue depth 2
+      Given a draft.2 root mandate with max_children 1 and issue depth 2
       And its sole direct child has max_children 3 and issue depth 1
       When that child mints three direct children
       Then all three grants verify against the child's meter
