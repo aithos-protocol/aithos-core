@@ -1,0 +1,2285 @@
+{
+  "commitment_domains": {
+    "operation_facts": "aithos-core/v1/operation-facts",
+    "state_bytes": "aithos-core/v1/state-bytes",
+    "state_fact": "aithos-core/v1/state-fact",
+    "state_key": "aithos-core/v1/state-key"
+  },
+  "description": "Independent Python standard-library oracle for the K1.1-B operation/state commitment envelopes and K1.2-M-B closed mutation families. cb2-fixture store-key strings are opaque canonical-key inputs only; they define no Bundle path or public sidecar.",
+  "fixture_sids": {
+    "circle_destination": "01J00000000000000000000003",
+    "circle_destination_child": "01J00000000000000000000004",
+    "circle_parent": "01J00000000000000000000002",
+    "circle_root": "01J00000000000000000000001",
+    "ethos_target": "01J00000000000000000000010",
+    "folder_create": "01J00000000000000000000021",
+    "folder_target": "01J00000000000000000000020",
+    "section_target": "01J00000000000000000000011",
+    "self_root": "01J00000000000000000000005"
+  },
+  "fixture_store_key_scope": "Opaque UTF-8 inputs to C(aithos-core/v1/state-key, K); not Bundle layout, not public coordinates, and not target-to-store derivation.",
+  "historical_vector_sha256": {
+    "e1-mandate.json": "e243e2348f3778c8e9ec9a3bbc350d480aeb779c4cadac0f8d00f9007264d45e",
+    "f1-gamma-chain.json": "38d466f934f17e99acbbdb76fb236efafb36f7b1c4070e9729d6edca17768ca3",
+    "f2-gamma-counting.json": "d593d204144ffa81c2ba51393d8190081d80f29246f41fdfa3fed96db77d230f",
+    "gplus-obligations.json": "f74f6c2b4611e798c0c00bd35ccdfb056e26de2d558efc0e2c3ad04ae57a7285"
+  },
+  "inventory": {
+    "operation_negative_ids": [
+      "missing-envelope-profile",
+      "extra-envelope-member",
+      "unknown-envelope-profile",
+      "kind-family-mismatch",
+      "facts-ref-digest-mismatch",
+      "unknown-domain",
+      "unknown-domain-verb",
+      "missing-family-member",
+      "clear-display-path",
+      "unknown-zone",
+      "unknown-node-kind",
+      "section-create-in-structure",
+      "null-source",
+      "destination-on-rename",
+      "noncanonical-target-sid",
+      "duplicate-source-sid",
+      "noncanonical-source-order",
+      "destination-contains-target",
+      "cross-zone-destination",
+      "invalid-create-transition",
+      "equal-present-state-digests",
+      "mismatched-vault-record-key",
+      "clear-vault-record-name"
+    ],
+    "positive_case_ids": [
+      "ethos-create",
+      "ethos-edit",
+      "ethos-delete",
+      "ethos-redact",
+      "structure-create-folder",
+      "structure-rename-folder",
+      "structure-rename-section",
+      "structure-delete-folder",
+      "structure-move-folder",
+      "structure-move-section",
+      "vault-create",
+      "vault-edit",
+      "vault-delete"
+    ],
+    "required_error_variants": [
+      "InvalidOperationFacts",
+      "InvalidStateFact"
+    ],
+    "state_negative_ids": [
+      "absent-state-has-reference",
+      "present-state-missing-reference",
+      "unknown-state-ref-profile",
+      "nonlowercase-state-ref-digest",
+      "unknown-state-fact-profile",
+      "empty-objects",
+      "unsorted-objects",
+      "duplicate-key-commitment",
+      "missing-object-member",
+      "extra-object-member",
+      "malformed-byte-commitment",
+      "missing-affected-object",
+      "unrelated-extra-object",
+      "clear-store-key",
+      "state-digest-mismatch"
+    ]
+  },
+  "negative_cases": {
+    "operation_facts": [
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "ethos",
+            "sid": "01J00000000000000000000010",
+            "verb": "edit",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "missing operation-facts profile",
+        "facts_ref": null,
+        "id": "missing-envelope-profile",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "ethos",
+            "sid": "01J00000000000000000000010",
+            "verb": "edit",
+            "zone": "circle"
+          },
+          "kind": "mutation",
+          "nonce": "forbidden"
+        },
+        "defect": "extra operation-facts envelope member",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:09821ebcd33c8bc58afe343ed35515a3a1e45a053586b5b1b61cf5bb1c119d2a"
+        },
+        "id": "extra-envelope-member",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "9.9.9",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "ethos",
+            "sid": "01J00000000000000000000010",
+            "verb": "edit",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "unknown operation-facts profile",
+        "facts_ref": {
+          "aithos-operation-facts-core": "9.9.9",
+          "digest": "sha256:9d509d6721f7dc4c40c801be40f9fe51dca9bd0ba6ede9a4f4cf37dac6cb5c78"
+        },
+        "id": "unknown-envelope-profile",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "ethos",
+            "sid": "01J00000000000000000000010",
+            "verb": "edit",
+            "zone": "circle"
+          },
+          "kind": "action"
+        },
+        "defect": "facts family different from operation kind",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:ad406dd32b0f13d35d8693c13caa25ea81b1e44ac3a3e206bdce5aa306c146f5"
+        },
+        "id": "kind-family-mismatch",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "ethos",
+            "sid": "01J00000000000000000000010",
+            "verb": "edit",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "facts_ref digest mismatch",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "id": "facts-ref-digest-mismatch",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "unknown",
+            "sid": "01J00000000000000000000010",
+            "verb": "edit",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "unknown domain",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:b99ac54ba9dd9e1d1b85aa5945b1b118a09b66a9ce25afafc67ce69065f1e206"
+        },
+        "id": "unknown-domain",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "ethos",
+            "sid": "01J00000000000000000000010",
+            "verb": "merge",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "unknown verb for the selected domain",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:214e9373510f10968af76e2aaf81931157e90311e684473143980788f389e5ae"
+        },
+        "id": "unknown-domain-verb",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "domain": "ethos",
+            "sid": "01J00000000000000000000010",
+            "verb": "edit",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "missing exact family member",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:870eb8d07d883798efc6e3ebc306c989997ca2f27ea565af75a9c71ce5d54985"
+        },
+        "id": "missing-family-member",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "ethos",
+            "path": "/Projets/Secret",
+            "sid": "01J00000000000000000000010",
+            "verb": "edit",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "forbidden clear display path",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:35bb49b5c808e1b55f80603dafa55fe9d997951f78efcd76085f51cfc1b5ec91"
+        },
+        "id": "clear-display-path",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "ethos",
+            "sid": "01J00000000000000000000010",
+            "verb": "edit",
+            "zone": "team"
+          },
+          "kind": "mutation"
+        },
+        "defect": "unknown zone",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:adca0943fc827a9a278b2bdf41e3e5332cac8f158c820933e55bd66d7c69f35d"
+        },
+        "id": "unknown-zone",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "structure-rename-folder",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+              }
+            },
+            "domain": "structure",
+            "node_kind": "page",
+            "sid": "01J00000000000000000000020",
+            "source": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "verb": "rename",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "unknown node kind",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:a1a18c176b066b18a73352590ed594a4a1871630c605ffdb25097e104404214b"
+        },
+        "id": "unknown-node-kind",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "structure-create-folder",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+              }
+            },
+            "before": {
+              "state": "absent"
+            },
+            "destination": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "structure",
+            "node_kind": "section",
+            "sid": "01J00000000000000000000021",
+            "verb": "create",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "structure create admits folder only",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:5578a4d1bcaf7c0c2a1fbd79638276338734b9584e624dd7fbc689e948ac5bda"
+        },
+        "id": "section-create-in-structure",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "structure-rename-folder",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+              }
+            },
+            "domain": "structure",
+            "node_kind": "folder",
+            "sid": "01J00000000000000000000020",
+            "source": null,
+            "verb": "rename",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "null source coordinate",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:d0b53fe6c543eba333bf5687148ed8ffe3166a3e35012dc59303be1fd67cd950"
+        },
+        "id": "null-source",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "structure-rename-folder",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+              }
+            },
+            "destination": [
+              "01J00000000000000000000003"
+            ],
+            "domain": "structure",
+            "node_kind": "folder",
+            "sid": "01J00000000000000000000020",
+            "source": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "verb": "rename",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "destination on the wrong structural variant",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:33bc005176f4a997b1968658a8f10bc31d2c35e0923a2aac80cf2cd9b5b29407"
+        },
+        "id": "destination-on-rename",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "ethos",
+            "sid": "not-a-sid",
+            "verb": "edit",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "non-canonical target SID",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:0941100ac0e3bd66c2b205bc4e3fa5898e7884407b2035481982562d08eaf56c"
+        },
+        "id": "noncanonical-target-sid",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "structure-rename-folder",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+              }
+            },
+            "domain": "structure",
+            "node_kind": "folder",
+            "sid": "01J00000000000000000000020",
+            "source": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000001"
+            ],
+            "verb": "rename",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "duplicate source SID",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:b553d60a16cd3ecdc1a90885a5ee6f21acea4aa31991aa35500c9d14fee105cd"
+        },
+        "id": "duplicate-source-sid",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "structure-rename-folder",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+              }
+            },
+            "domain": "structure",
+            "node_kind": "folder",
+            "sid": "01J00000000000000000000020",
+            "source": [
+              "01J00000000000000000000002",
+              "01J00000000000000000000001"
+            ],
+            "verb": "rename",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "source is not root-to-leaf",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:1b0cd42b9c588d580464bc49b3fdf6dba9c105a0a34b3e1876a1e66ff8bfe6bf"
+        },
+        "id": "noncanonical-source-order",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "structure-move-folder",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:1f4d1b5d85305d781a587769095d5a78f446560c62cfd263054528c3075a3d9f"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+              }
+            },
+            "destination": [
+              "01J00000000000000000000020"
+            ],
+            "domain": "structure",
+            "node_kind": "folder",
+            "sid": "01J00000000000000000000020",
+            "source": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "verb": "move",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "destination is inside the moved target",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:f9f2e340f22f82bf5c33f85d2286a19bb28141101f89fc4d15134ea523b8cb0b"
+        },
+        "id": "destination-contains-target",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "structure-move-folder",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:1f4d1b5d85305d781a587769095d5a78f446560c62cfd263054528c3075a3d9f"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+              }
+            },
+            "destination": [
+              "01J00000000000000000000005"
+            ],
+            "domain": "structure",
+            "node_kind": "folder",
+            "sid": "01J00000000000000000000020",
+            "source": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "verb": "move",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "cross-zone structural destination",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:0d7ad86072642e93465e9b0e255c3e12fb6bd43a2e346ee4c6c8176a1b4b0355"
+        },
+        "id": "cross-zone-destination",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "structure-create-folder",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+              }
+            },
+            "destination": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "structure",
+            "node_kind": "folder",
+            "sid": "01J00000000000000000000021",
+            "verb": "create",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "invalid before and after transition",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:c8c471e4cfe41127c26cb3a4a6358bd12aa832a64becfbfd22274b14aef32919"
+        },
+        "id": "invalid-create-transition",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "ethos-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+              }
+            },
+            "dir": [
+              "01J00000000000000000000001",
+              "01J00000000000000000000002"
+            ],
+            "domain": "ethos",
+            "sid": "01J00000000000000000000010",
+            "verb": "edit",
+            "zone": "circle"
+          },
+          "kind": "mutation"
+        },
+        "defect": "equal state digests for a mutation",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:22d865aa8a8c8f6d329b63f06ac3dbc9dd315e70c0177e24ef96b8b828795a59"
+        },
+        "id": "equal-present-state-digests",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "vault-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:5a8df0165bb08eddb49a25d6b0855019a1e1946aff69a8e451495e040c771899"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:25e1cedc833c6074be314da9bbe7c1ef2ad7ec93148b2d60de2bad8161a3cd2a"
+              }
+            },
+            "connector": "mail",
+            "domain": "vault-config",
+            "record_key": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "verb": "edit"
+          },
+          "kind": "mutation"
+        },
+        "defect": "mismatched vault record-key commitment",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:9f44b4ddd24bc968341c910ab3ad7d9ca3e830e51c038be288a6740642b73f41"
+        },
+        "id": "mismatched-vault-record-key",
+        "must_fail": "InvalidOperationFacts"
+      },
+      {
+        "base_case": "vault-edit",
+        "candidate": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "facts": {
+            "after": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:5a8df0165bb08eddb49a25d6b0855019a1e1946aff69a8e451495e040c771899"
+              }
+            },
+            "before": {
+              "state": "present",
+              "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:25e1cedc833c6074be314da9bbe7c1ef2ad7ec93148b2d60de2bad8161a3cd2a"
+              }
+            },
+            "connector": "mail",
+            "domain": "vault-config",
+            "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+            "record_name": "oauth",
+            "verb": "edit"
+          },
+          "kind": "mutation"
+        },
+        "defect": "forbidden clear vault record name",
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:e6d23c16de68dcd8619a3364e81a09150dbf338e971338134d56ba449737f193"
+        },
+        "id": "clear-vault-record-name",
+        "must_fail": "InvalidOperationFacts"
+      }
+    ],
+    "state_facts": [
+      {
+        "candidate": {
+          "state": "absent",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:048914460d10dbcf25aa5dff512cb4cee657453d8a3d19a076daa7238f3bfbe1"
+          }
+        },
+        "defect": "absent state has forbidden state_ref",
+        "id": "absent-state-has-reference",
+        "must_fail": "InvalidStateFact",
+        "scope": "logical_state"
+      },
+      {
+        "candidate": {
+          "state": "present"
+        },
+        "defect": "present state is missing state_ref",
+        "id": "present-state-missing-reference",
+        "must_fail": "InvalidStateFact",
+        "scope": "logical_state"
+      },
+      {
+        "candidate": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "9.9.9",
+            "digest": "sha256:048914460d10dbcf25aa5dff512cb4cee657453d8a3d19a076daa7238f3bfbe1"
+          }
+        },
+        "defect": "unknown state_ref profile",
+        "id": "unknown-state-ref-profile",
+        "must_fail": "InvalidStateFact",
+        "scope": "logical_state"
+      },
+      {
+        "candidate": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        "defect": "malformed or non-lowercase state_ref digest",
+        "id": "nonlowercase-state-ref-digest",
+        "must_fail": "InvalidStateFact",
+        "scope": "logical_state"
+      },
+      {
+        "candidate": {
+          "aithos-state-fact-core": "9.9.9",
+          "objects": [
+            {
+              "byte_commitment": "sha256:828cf7332b4fa7ce9d708614b499a166475f94449c73dfd45ff4d32f3ff1acc5",
+              "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+            }
+          ]
+        },
+        "defect": "unknown state-fact profile",
+        "id": "unknown-state-fact-profile",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_document"
+      },
+      {
+        "candidate": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "objects": []
+        },
+        "defect": "empty objects array",
+        "id": "empty-objects",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_document"
+      },
+      {
+        "candidate": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "objects": [
+            {
+              "byte_commitment": "sha256:999153a689a16a0518a9922f2f7e5044285bde0793c53045e663864abf41f2fe",
+              "key_commitment": "sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb"
+            },
+            {
+              "byte_commitment": "sha256:82c61c9f2b5868a9f3647b8cb79da6b4b97b837fe2d6384c157cf2f5e10bc47f",
+              "key_commitment": "sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34"
+            }
+          ]
+        },
+        "defect": "unsorted objects array",
+        "id": "unsorted-objects",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_document"
+      },
+      {
+        "candidate": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "objects": [
+            {
+              "byte_commitment": "sha256:828cf7332b4fa7ce9d708614b499a166475f94449c73dfd45ff4d32f3ff1acc5",
+              "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+            },
+            {
+              "byte_commitment": "sha256:828cf7332b4fa7ce9d708614b499a166475f94449c73dfd45ff4d32f3ff1acc5",
+              "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+            }
+          ]
+        },
+        "defect": "duplicate key commitment",
+        "id": "duplicate-key-commitment",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_document"
+      },
+      {
+        "candidate": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "objects": [
+            {
+              "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+            }
+          ]
+        },
+        "defect": "missing object member",
+        "id": "missing-object-member",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_document"
+      },
+      {
+        "candidate": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "objects": [
+            {
+              "byte_commitment": "sha256:828cf7332b4fa7ce9d708614b499a166475f94449c73dfd45ff4d32f3ff1acc5",
+              "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b",
+              "salt": "forbidden"
+            }
+          ]
+        },
+        "defect": "extra object member",
+        "id": "extra-object-member",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_document"
+      },
+      {
+        "candidate": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "objects": [
+            {
+              "byte_commitment": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+            }
+          ]
+        },
+        "defect": "malformed or non-lowercase commitment",
+        "id": "malformed-byte-commitment",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_document"
+      },
+      {
+        "candidate": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "objects": [
+            {
+              "byte_commitment": "sha256:82c61c9f2b5868a9f3647b8cb79da6b4b97b837fe2d6384c157cf2f5e10bc47f",
+              "key_commitment": "sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34"
+            }
+          ]
+        },
+        "defect": "missing affected object",
+        "expected_key_commitments": [
+          "sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34",
+          "sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb"
+        ],
+        "id": "missing-affected-object",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_document"
+      },
+      {
+        "candidate": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "objects": [
+            {
+              "byte_commitment": "sha256:c1b150ce2d7e1548e61aa2f950002380fa744c844b3988fe1443fc2f80b7a442",
+              "key_commitment": "sha256:52bc475d183fad8d81e0a0424386dbadd08dada406960f5ed7cf83068090a61c"
+            },
+            {
+              "byte_commitment": "sha256:828cf7332b4fa7ce9d708614b499a166475f94449c73dfd45ff4d32f3ff1acc5",
+              "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+            }
+          ]
+        },
+        "defect": "unrelated extra object",
+        "expected_key_commitments": [
+          "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+        ],
+        "id": "unrelated-extra-object",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_document"
+      },
+      {
+        "candidate": {
+          "aithos-state-fact-core": "1.0.0-draft.1",
+          "objects": [
+            {
+              "byte_commitment": "sha256:828cf7332b4fa7ce9d708614b499a166475f94449c73dfd45ff4d32f3ff1acc5",
+              "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b",
+              "store_key": "cb2-fixture/structure/circle/section"
+            }
+          ]
+        },
+        "defect": "forbidden clear store key",
+        "id": "clear-store-key",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_document"
+      },
+      {
+        "candidate": {
+          "document": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "objects": [
+              {
+                "byte_commitment": "sha256:828cf7332b4fa7ce9d708614b499a166475f94449c73dfd45ff4d32f3ff1acc5",
+                "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+              }
+            ]
+          },
+          "logical_state": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          }
+        },
+        "defect": "state digest mismatch",
+        "id": "state-digest-mismatch",
+        "must_fail": "InvalidStateFact",
+        "scope": "state_reference"
+      }
+    ]
+  },
+  "positive_cases": [
+    {
+      "digest": "sha256:5a2df1b699b7fb097ba8b688af134cc616e84d3f747114f6d17c56f07e8e2e64",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+            }
+          },
+          "before": {
+            "state": "absent"
+          },
+          "dir": [
+            "01J00000000000000000000001",
+            "01J00000000000000000000002"
+          ],
+          "domain": "ethos",
+          "sid": "01J00000000000000000000010",
+          "verb": "create",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e\"}},\"before\":{\"state\":\"absent\"},\"dir\":[\"01J00000000000000000000001\",\"01J00000000000000000000002\"],\"domain\":\"ethos\",\"sid\":\"01J00000000000000000000010\",\"verb\":\"create\",\"zone\":\"circle\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+          }
+        },
+        "before": {
+          "state": "absent"
+        },
+        "dir": [
+          "01J00000000000000000000001",
+          "01J00000000000000000000002"
+        ],
+        "domain": "ethos",
+        "sid": "01J00000000000000000000010",
+        "verb": "create",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:5a2df1b699b7fb097ba8b688af134cc616e84d3f747114f6d17c56f07e8e2e64"
+      },
+      "id": "ethos-create",
+      "variant": "ethos"
+    },
+    {
+      "digest": "sha256:9dc0167a59a086efcbb8bda08c759c4f1dd78d41047d4d3f099446445b41be58",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+            }
+          },
+          "dir": [
+            "01J00000000000000000000001",
+            "01J00000000000000000000002"
+          ],
+          "domain": "ethos",
+          "sid": "01J00000000000000000000010",
+          "verb": "edit",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e\"}},\"dir\":[\"01J00000000000000000000001\",\"01J00000000000000000000002\"],\"domain\":\"ethos\",\"sid\":\"01J00000000000000000000010\",\"verb\":\"edit\",\"zone\":\"circle\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e"
+          }
+        },
+        "dir": [
+          "01J00000000000000000000001",
+          "01J00000000000000000000002"
+        ],
+        "domain": "ethos",
+        "sid": "01J00000000000000000000010",
+        "verb": "edit",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:9dc0167a59a086efcbb8bda08c759c4f1dd78d41047d4d3f099446445b41be58"
+      },
+      "id": "ethos-edit",
+      "variant": "ethos"
+    },
+    {
+      "digest": "sha256:ca743df21da3a32ad8d94480cbbe8d8586b855871e8bd845b022ee7878ed0ccd",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "absent"
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+            }
+          },
+          "dir": [
+            "01J00000000000000000000001",
+            "01J00000000000000000000002"
+          ],
+          "domain": "ethos",
+          "sid": "01J00000000000000000000010",
+          "verb": "delete",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"absent\"},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819\"}},\"dir\":[\"01J00000000000000000000001\",\"01J00000000000000000000002\"],\"domain\":\"ethos\",\"sid\":\"01J00000000000000000000010\",\"verb\":\"delete\",\"zone\":\"circle\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "absent"
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+          }
+        },
+        "dir": [
+          "01J00000000000000000000001",
+          "01J00000000000000000000002"
+        ],
+        "domain": "ethos",
+        "sid": "01J00000000000000000000010",
+        "verb": "delete",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:ca743df21da3a32ad8d94480cbbe8d8586b855871e8bd845b022ee7878ed0ccd"
+      },
+      "id": "ethos-delete",
+      "variant": "ethos"
+    },
+    {
+      "digest": "sha256:a7653ac5760948b133b8d361cb8ea2c7b698be3411d800f2bbe04186246bd3c4",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:371f380f4803f7d26dbbb6c19d8c675ad239d0b802123750b6fe4533b2a266f8"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+            }
+          },
+          "dir": [
+            "01J00000000000000000000001",
+            "01J00000000000000000000002"
+          ],
+          "domain": "ethos",
+          "sid": "01J00000000000000000000010",
+          "verb": "redact",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:371f380f4803f7d26dbbb6c19d8c675ad239d0b802123750b6fe4533b2a266f8\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819\"}},\"dir\":[\"01J00000000000000000000001\",\"01J00000000000000000000002\"],\"domain\":\"ethos\",\"sid\":\"01J00000000000000000000010\",\"verb\":\"redact\",\"zone\":\"circle\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:371f380f4803f7d26dbbb6c19d8c675ad239d0b802123750b6fe4533b2a266f8"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819"
+          }
+        },
+        "dir": [
+          "01J00000000000000000000001",
+          "01J00000000000000000000002"
+        ],
+        "domain": "ethos",
+        "sid": "01J00000000000000000000010",
+        "verb": "redact",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:a7653ac5760948b133b8d361cb8ea2c7b698be3411d800f2bbe04186246bd3c4"
+      },
+      "id": "ethos-redact",
+      "variant": "ethos"
+    },
+    {
+      "digest": "sha256:abc6da4e2aafd54132d2bce45dd9b6b1142d34c62cdb00d9fa51bdc183cb8125",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+            }
+          },
+          "before": {
+            "state": "absent"
+          },
+          "destination": [
+            "01J00000000000000000000001",
+            "01J00000000000000000000002"
+          ],
+          "domain": "structure",
+          "node_kind": "folder",
+          "sid": "01J00000000000000000000021",
+          "verb": "create",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1\"}},\"before\":{\"state\":\"absent\"},\"destination\":[\"01J00000000000000000000001\",\"01J00000000000000000000002\"],\"domain\":\"structure\",\"node_kind\":\"folder\",\"sid\":\"01J00000000000000000000021\",\"verb\":\"create\",\"zone\":\"circle\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+          }
+        },
+        "before": {
+          "state": "absent"
+        },
+        "destination": [
+          "01J00000000000000000000001",
+          "01J00000000000000000000002"
+        ],
+        "domain": "structure",
+        "node_kind": "folder",
+        "sid": "01J00000000000000000000021",
+        "verb": "create",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:abc6da4e2aafd54132d2bce45dd9b6b1142d34c62cdb00d9fa51bdc183cb8125"
+      },
+      "id": "structure-create-folder",
+      "variant": "structure-create"
+    },
+    {
+      "digest": "sha256:65b9ffa9bbe42a5fb348659d0e2a1b93790c2d01c0853ad5c2bffc82c4a48792",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+            }
+          },
+          "domain": "structure",
+          "node_kind": "folder",
+          "sid": "01J00000000000000000000020",
+          "source": [
+            "01J00000000000000000000001",
+            "01J00000000000000000000002"
+          ],
+          "verb": "rename",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1\"}},\"domain\":\"structure\",\"node_kind\":\"folder\",\"sid\":\"01J00000000000000000000020\",\"source\":[\"01J00000000000000000000001\",\"01J00000000000000000000002\"],\"verb\":\"rename\",\"zone\":\"circle\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1"
+          }
+        },
+        "domain": "structure",
+        "node_kind": "folder",
+        "sid": "01J00000000000000000000020",
+        "source": [
+          "01J00000000000000000000001",
+          "01J00000000000000000000002"
+        ],
+        "verb": "rename",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:65b9ffa9bbe42a5fb348659d0e2a1b93790c2d01c0853ad5c2bffc82c4a48792"
+      },
+      "id": "structure-rename-folder",
+      "variant": "structure-source"
+    },
+    {
+      "digest": "sha256:b45b3a579b86dee1634d8bafad74b5b69597fd29c2a658b2fc56c85565c9742f",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:028598801c9a23547370113766468ff1f97695bf862760eee4a992f5d50102de"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:048914460d10dbcf25aa5dff512cb4cee657453d8a3d19a076daa7238f3bfbe1"
+            }
+          },
+          "domain": "structure",
+          "node_kind": "section",
+          "sid": "01J00000000000000000000011",
+          "source": [
+            "01J00000000000000000000001",
+            "01J00000000000000000000002"
+          ],
+          "verb": "rename",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:028598801c9a23547370113766468ff1f97695bf862760eee4a992f5d50102de\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:048914460d10dbcf25aa5dff512cb4cee657453d8a3d19a076daa7238f3bfbe1\"}},\"domain\":\"structure\",\"node_kind\":\"section\",\"sid\":\"01J00000000000000000000011\",\"source\":[\"01J00000000000000000000001\",\"01J00000000000000000000002\"],\"verb\":\"rename\",\"zone\":\"circle\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:028598801c9a23547370113766468ff1f97695bf862760eee4a992f5d50102de"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:048914460d10dbcf25aa5dff512cb4cee657453d8a3d19a076daa7238f3bfbe1"
+          }
+        },
+        "domain": "structure",
+        "node_kind": "section",
+        "sid": "01J00000000000000000000011",
+        "source": [
+          "01J00000000000000000000001",
+          "01J00000000000000000000002"
+        ],
+        "verb": "rename",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:b45b3a579b86dee1634d8bafad74b5b69597fd29c2a658b2fc56c85565c9742f"
+      },
+      "id": "structure-rename-section",
+      "variant": "structure-source"
+    },
+    {
+      "digest": "sha256:2667da334cfa879eab4840f769dea4f966e07ac6375c0f455d324f931f1d388a",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "absent"
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+            }
+          },
+          "domain": "structure",
+          "node_kind": "folder",
+          "sid": "01J00000000000000000000020",
+          "source": [
+            "01J00000000000000000000001",
+            "01J00000000000000000000002"
+          ],
+          "verb": "delete",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"absent\"},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba\"}},\"domain\":\"structure\",\"node_kind\":\"folder\",\"sid\":\"01J00000000000000000000020\",\"source\":[\"01J00000000000000000000001\",\"01J00000000000000000000002\"],\"verb\":\"delete\",\"zone\":\"circle\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "absent"
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+          }
+        },
+        "domain": "structure",
+        "node_kind": "folder",
+        "sid": "01J00000000000000000000020",
+        "source": [
+          "01J00000000000000000000001",
+          "01J00000000000000000000002"
+        ],
+        "verb": "delete",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:2667da334cfa879eab4840f769dea4f966e07ac6375c0f455d324f931f1d388a"
+      },
+      "id": "structure-delete-folder",
+      "variant": "structure-source"
+    },
+    {
+      "digest": "sha256:2b9f6f7bf0317e4365d557735c2c89275ccbcbd1dcb2b561f6658389614d9b0f",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:1f4d1b5d85305d781a587769095d5a78f446560c62cfd263054528c3075a3d9f"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+            }
+          },
+          "destination": [
+            "01J00000000000000000000003"
+          ],
+          "domain": "structure",
+          "node_kind": "folder",
+          "sid": "01J00000000000000000000020",
+          "source": [
+            "01J00000000000000000000001",
+            "01J00000000000000000000002"
+          ],
+          "verb": "move",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:1f4d1b5d85305d781a587769095d5a78f446560c62cfd263054528c3075a3d9f\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba\"}},\"destination\":[\"01J00000000000000000000003\"],\"domain\":\"structure\",\"node_kind\":\"folder\",\"sid\":\"01J00000000000000000000020\",\"source\":[\"01J00000000000000000000001\",\"01J00000000000000000000002\"],\"verb\":\"move\",\"zone\":\"circle\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:1f4d1b5d85305d781a587769095d5a78f446560c62cfd263054528c3075a3d9f"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba"
+          }
+        },
+        "destination": [
+          "01J00000000000000000000003"
+        ],
+        "domain": "structure",
+        "node_kind": "folder",
+        "sid": "01J00000000000000000000020",
+        "source": [
+          "01J00000000000000000000001",
+          "01J00000000000000000000002"
+        ],
+        "verb": "move",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:2b9f6f7bf0317e4365d557735c2c89275ccbcbd1dcb2b561f6658389614d9b0f"
+      },
+      "id": "structure-move-folder",
+      "variant": "structure-move"
+    },
+    {
+      "digest": "sha256:47dff8585fb53ec53955f9dc1bd5921138431d0944e89aa0b4bd61bf12db2fd8",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:269ba61947cc575cbef5ffb615b8eb71c1c4fbe36521ea26ad84f073c7bb8ebb"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:028598801c9a23547370113766468ff1f97695bf862760eee4a992f5d50102de"
+            }
+          },
+          "destination": [
+            "01J00000000000000000000003"
+          ],
+          "domain": "structure",
+          "node_kind": "section",
+          "sid": "01J00000000000000000000011",
+          "source": [
+            "01J00000000000000000000001",
+            "01J00000000000000000000002"
+          ],
+          "verb": "move",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:269ba61947cc575cbef5ffb615b8eb71c1c4fbe36521ea26ad84f073c7bb8ebb\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:028598801c9a23547370113766468ff1f97695bf862760eee4a992f5d50102de\"}},\"destination\":[\"01J00000000000000000000003\"],\"domain\":\"structure\",\"node_kind\":\"section\",\"sid\":\"01J00000000000000000000011\",\"source\":[\"01J00000000000000000000001\",\"01J00000000000000000000002\"],\"verb\":\"move\",\"zone\":\"circle\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:269ba61947cc575cbef5ffb615b8eb71c1c4fbe36521ea26ad84f073c7bb8ebb"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:028598801c9a23547370113766468ff1f97695bf862760eee4a992f5d50102de"
+          }
+        },
+        "destination": [
+          "01J00000000000000000000003"
+        ],
+        "domain": "structure",
+        "node_kind": "section",
+        "sid": "01J00000000000000000000011",
+        "source": [
+          "01J00000000000000000000001",
+          "01J00000000000000000000002"
+        ],
+        "verb": "move",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:47dff8585fb53ec53955f9dc1bd5921138431d0944e89aa0b4bd61bf12db2fd8"
+      },
+      "id": "structure-move-section",
+      "variant": "structure-move"
+    },
+    {
+      "digest": "sha256:3bbdb2db3d60eecdac29e7d1498f80f4be54ef408d1f56f1136acecd39e54af2",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:25e1cedc833c6074be314da9bbe7c1ef2ad7ec93148b2d60de2bad8161a3cd2a"
+            }
+          },
+          "before": {
+            "state": "absent"
+          },
+          "connector": "mail",
+          "domain": "vault-config",
+          "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+          "verb": "create"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:25e1cedc833c6074be314da9bbe7c1ef2ad7ec93148b2d60de2bad8161a3cd2a\"}},\"before\":{\"state\":\"absent\"},\"connector\":\"mail\",\"domain\":\"vault-config\",\"record_key\":\"sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb\",\"verb\":\"create\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:25e1cedc833c6074be314da9bbe7c1ef2ad7ec93148b2d60de2bad8161a3cd2a"
+          }
+        },
+        "before": {
+          "state": "absent"
+        },
+        "connector": "mail",
+        "domain": "vault-config",
+        "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+        "verb": "create"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:3bbdb2db3d60eecdac29e7d1498f80f4be54ef408d1f56f1136acecd39e54af2"
+      },
+      "id": "vault-create",
+      "variant": "vault-config"
+    },
+    {
+      "digest": "sha256:3d8d8567c0108461df5abfbf7567232f2f771ce1c11b26551be06fb899bea513",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:5a8df0165bb08eddb49a25d6b0855019a1e1946aff69a8e451495e040c771899"
+            }
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:25e1cedc833c6074be314da9bbe7c1ef2ad7ec93148b2d60de2bad8161a3cd2a"
+            }
+          },
+          "connector": "mail",
+          "domain": "vault-config",
+          "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+          "verb": "edit"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:5a8df0165bb08eddb49a25d6b0855019a1e1946aff69a8e451495e040c771899\"}},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:25e1cedc833c6074be314da9bbe7c1ef2ad7ec93148b2d60de2bad8161a3cd2a\"}},\"connector\":\"mail\",\"domain\":\"vault-config\",\"record_key\":\"sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb\",\"verb\":\"edit\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:5a8df0165bb08eddb49a25d6b0855019a1e1946aff69a8e451495e040c771899"
+          }
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:25e1cedc833c6074be314da9bbe7c1ef2ad7ec93148b2d60de2bad8161a3cd2a"
+          }
+        },
+        "connector": "mail",
+        "domain": "vault-config",
+        "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+        "verb": "edit"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:3d8d8567c0108461df5abfbf7567232f2f771ce1c11b26551be06fb899bea513"
+      },
+      "id": "vault-edit",
+      "variant": "vault-config"
+    },
+    {
+      "digest": "sha256:10d3c6a200a288b77bb6f11dc2a1237fb3f6d679534b740b09026b36c0adedf5",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "after": {
+            "state": "absent"
+          },
+          "before": {
+            "state": "present",
+            "state_ref": {
+              "aithos-state-fact-core": "1.0.0-draft.1",
+              "digest": "sha256:5a8df0165bb08eddb49a25d6b0855019a1e1946aff69a8e451495e040c771899"
+            }
+          },
+          "connector": "mail",
+          "domain": "vault-config",
+          "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+          "verb": "delete"
+        },
+        "kind": "mutation"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"after\":{\"state\":\"absent\"},\"before\":{\"state\":\"present\",\"state_ref\":{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:5a8df0165bb08eddb49a25d6b0855019a1e1946aff69a8e451495e040c771899\"}},\"connector\":\"mail\",\"domain\":\"vault-config\",\"record_key\":\"sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb\",\"verb\":\"delete\"},\"kind\":\"mutation\"}",
+      "facts": {
+        "after": {
+          "state": "absent"
+        },
+        "before": {
+          "state": "present",
+          "state_ref": {
+            "aithos-state-fact-core": "1.0.0-draft.1",
+            "digest": "sha256:5a8df0165bb08eddb49a25d6b0855019a1e1946aff69a8e451495e040c771899"
+          }
+        },
+        "connector": "mail",
+        "domain": "vault-config",
+        "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+        "verb": "delete"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:10d3c6a200a288b77bb6f11dc2a1237fb3f6d679534b740b09026b36c0adedf5"
+      },
+      "id": "vault-delete",
+      "variant": "vault-config"
+    }
+  ],
+  "profiles": {
+    "aithos-operation-facts-core": "1.0.0-draft.1",
+    "aithos-state-fact-core": "1.0.0-draft.1"
+  },
+  "states": {
+    "ethos_redacted": {
+      "digest": "sha256:371f380f4803f7d26dbbb6c19d8c675ad239d0b802123750b6fe4533b2a266f8",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:bea082b8c30f59a03d41b0856720a4c2a3c8e2a68e63123e809edc8445e6b8b7",
+            "key_commitment": "sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34"
+          },
+          {
+            "byte_commitment": "sha256:772495a79da5dc72aa414c9158c061acbb3cd8f60e835b1b80ce64e9795a4be2",
+            "key_commitment": "sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:bea082b8c30f59a03d41b0856720a4c2a3c8e2a68e63123e809edc8445e6b8b7\",\"key_commitment\":\"sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34\"},{\"byte_commitment\":\"sha256:772495a79da5dc72aa414c9158c061acbb3cd8f60e835b1b80ce64e9795a4be2\",\"key_commitment\":\"sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:bea082b8c30f59a03d41b0856720a4c2a3c8e2a68e63123e809edc8445e6b8b7",
+          "key_commitment": "sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34",
+          "store_key_utf8": "cb2-fixture/ethos/circle/blob",
+          "stored_bytes_hex": ""
+        },
+        {
+          "byte_commitment": "sha256:772495a79da5dc72aa414c9158c061acbb3cd8f60e835b1b80ce64e9795a4be2",
+          "key_commitment": "sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb",
+          "store_key_utf8": "cb2-fixture/ethos/circle/index",
+          "stored_bytes_hex": "7b22736964223a2273656374696f6e222c227265646163746564223a747275657d"
+        }
+      ]
+    },
+    "ethos_v1": {
+      "digest": "sha256:91b9ef34a790bf06a31a5a0c91bd92af61156eea7c602782653881b3d411ee3e",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:82c61c9f2b5868a9f3647b8cb79da6b4b97b837fe2d6384c157cf2f5e10bc47f",
+            "key_commitment": "sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34"
+          },
+          {
+            "byte_commitment": "sha256:999153a689a16a0518a9922f2f7e5044285bde0793c53045e663864abf41f2fe",
+            "key_commitment": "sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:82c61c9f2b5868a9f3647b8cb79da6b4b97b837fe2d6384c157cf2f5e10bc47f\",\"key_commitment\":\"sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34\"},{\"byte_commitment\":\"sha256:999153a689a16a0518a9922f2f7e5044285bde0793c53045e663864abf41f2fe\",\"key_commitment\":\"sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:82c61c9f2b5868a9f3647b8cb79da6b4b97b837fe2d6384c157cf2f5e10bc47f",
+          "key_commitment": "sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34",
+          "store_key_utf8": "cb2-fixture/ethos/circle/blob",
+          "stored_bytes_hex": "73656374696f6e20626f6479207631"
+        },
+        {
+          "byte_commitment": "sha256:999153a689a16a0518a9922f2f7e5044285bde0793c53045e663864abf41f2fe",
+          "key_commitment": "sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb",
+          "store_key_utf8": "cb2-fixture/ethos/circle/index",
+          "stored_bytes_hex": "7b22736964223a2273656374696f6e222c22726576223a317d"
+        }
+      ]
+    },
+    "ethos_v2": {
+      "digest": "sha256:8db7b53f71031eea53d12827245f4fa77bbc722dbb088ecc4f07f8304f4f7819",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:5ef245a6d07449c48b5f462a89d5fe287e7cf6e3cf429837ef300b36b6503572",
+            "key_commitment": "sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34"
+          },
+          {
+            "byte_commitment": "sha256:efa8c4daaf7d1be35ca57d2d9d2f2e7c7fcb4f52ec0586db37f4dcb0ad7c694a",
+            "key_commitment": "sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:5ef245a6d07449c48b5f462a89d5fe287e7cf6e3cf429837ef300b36b6503572\",\"key_commitment\":\"sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34\"},{\"byte_commitment\":\"sha256:efa8c4daaf7d1be35ca57d2d9d2f2e7c7fcb4f52ec0586db37f4dcb0ad7c694a\",\"key_commitment\":\"sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:5ef245a6d07449c48b5f462a89d5fe287e7cf6e3cf429837ef300b36b6503572",
+          "key_commitment": "sha256:09a245f37dd0b2fa3607ff13da2262b43b59a2cef96dce5df16608fd2cf3fd34",
+          "store_key_utf8": "cb2-fixture/ethos/circle/blob",
+          "stored_bytes_hex": "73656374696f6e20626f6479207632"
+        },
+        {
+          "byte_commitment": "sha256:efa8c4daaf7d1be35ca57d2d9d2f2e7c7fcb4f52ec0586db37f4dcb0ad7c694a",
+          "key_commitment": "sha256:7aaef59bbc729466d8c37f2b003add8e94d0544f104cb5fbd45e1b46f45a9ffb",
+          "store_key_utf8": "cb2-fixture/ethos/circle/index",
+          "stored_bytes_hex": "7b22736964223a2273656374696f6e222c22726576223a327d"
+        }
+      ]
+    },
+    "folder_v1": {
+      "digest": "sha256:14bbe7748e9a4fa29bbe4bcda5312358e97a67a331973fcbc93999ca663288e1",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:1df69eac6cdc5b4ceb80c869c8cc4c79a421ae48b7d0db8074fa050db75ba591",
+            "key_commitment": "sha256:5d5677522843c740204d381a8d5c19ca4ed0ab1325406791d79b22ece00b8493"
+          },
+          {
+            "byte_commitment": "sha256:37dd83768a1b498a3ee09a4980cec81033e4784eeeb9d4ff1696dd932126e1e2",
+            "key_commitment": "sha256:d0c157a7ea0a4d6ce8c99c3f99a76159f629ba4ed562f9c0f088921f76595a7e"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:1df69eac6cdc5b4ceb80c869c8cc4c79a421ae48b7d0db8074fa050db75ba591\",\"key_commitment\":\"sha256:5d5677522843c740204d381a8d5c19ca4ed0ab1325406791d79b22ece00b8493\"},{\"byte_commitment\":\"sha256:37dd83768a1b498a3ee09a4980cec81033e4784eeeb9d4ff1696dd932126e1e2\",\"key_commitment\":\"sha256:d0c157a7ea0a4d6ce8c99c3f99a76159f629ba4ed562f9c0f088921f76595a7e\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:1df69eac6cdc5b4ceb80c869c8cc4c79a421ae48b7d0db8074fa050db75ba591",
+          "key_commitment": "sha256:5d5677522843c740204d381a8d5c19ca4ed0ab1325406791d79b22ece00b8493",
+          "store_key_utf8": "cb2-fixture/structure/circle/index",
+          "stored_bytes_hex": "7b22666f6c646572223a22746172676574222c22726576223a317d"
+        },
+        {
+          "byte_commitment": "sha256:37dd83768a1b498a3ee09a4980cec81033e4784eeeb9d4ff1696dd932126e1e2",
+          "key_commitment": "sha256:d0c157a7ea0a4d6ce8c99c3f99a76159f629ba4ed562f9c0f088921f76595a7e",
+          "store_key_utf8": "cb2-fixture/structure/circle/header",
+          "stored_bytes_hex": "466f6c64657220746172676574"
+        }
+      ]
+    },
+    "folder_v2": {
+      "digest": "sha256:53ac55f7d656665099e4d406b0a3e1b38f349595144ec2fbfced0b9cd93d79ba",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:78fdbe42c9c4155e55957757a4eb7f4e202805ccd42e9459462d9ce4c6fd174f",
+            "key_commitment": "sha256:5d5677522843c740204d381a8d5c19ca4ed0ab1325406791d79b22ece00b8493"
+          },
+          {
+            "byte_commitment": "sha256:88f49e0eb9885c6018d15e0d88a01bf5dd2526ca71667135277a409d1d6f761e",
+            "key_commitment": "sha256:d0c157a7ea0a4d6ce8c99c3f99a76159f629ba4ed562f9c0f088921f76595a7e"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:78fdbe42c9c4155e55957757a4eb7f4e202805ccd42e9459462d9ce4c6fd174f\",\"key_commitment\":\"sha256:5d5677522843c740204d381a8d5c19ca4ed0ab1325406791d79b22ece00b8493\"},{\"byte_commitment\":\"sha256:88f49e0eb9885c6018d15e0d88a01bf5dd2526ca71667135277a409d1d6f761e\",\"key_commitment\":\"sha256:d0c157a7ea0a4d6ce8c99c3f99a76159f629ba4ed562f9c0f088921f76595a7e\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:78fdbe42c9c4155e55957757a4eb7f4e202805ccd42e9459462d9ce4c6fd174f",
+          "key_commitment": "sha256:5d5677522843c740204d381a8d5c19ca4ed0ab1325406791d79b22ece00b8493",
+          "store_key_utf8": "cb2-fixture/structure/circle/index",
+          "stored_bytes_hex": "7b22666f6c646572223a22746172676574222c22726576223a327d"
+        },
+        {
+          "byte_commitment": "sha256:88f49e0eb9885c6018d15e0d88a01bf5dd2526ca71667135277a409d1d6f761e",
+          "key_commitment": "sha256:d0c157a7ea0a4d6ce8c99c3f99a76159f629ba4ed562f9c0f088921f76595a7e",
+          "store_key_utf8": "cb2-fixture/structure/circle/header",
+          "stored_bytes_hex": "466f6c6465722072656e616d6564"
+        }
+      ]
+    },
+    "folder_v3": {
+      "digest": "sha256:1f4d1b5d85305d781a587769095d5a78f446560c62cfd263054528c3075a3d9f",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:463b264c55c55946346aaa70cd8ea1626ea8040fa3582ea11e4b50ee1d0cde4d",
+            "key_commitment": "sha256:5d5677522843c740204d381a8d5c19ca4ed0ab1325406791d79b22ece00b8493"
+          },
+          {
+            "byte_commitment": "sha256:66b13db7dc67ff9b963132836e5c756d0ae09121d4d35baf43e0dfe4bb64391a",
+            "key_commitment": "sha256:d0c157a7ea0a4d6ce8c99c3f99a76159f629ba4ed562f9c0f088921f76595a7e"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:463b264c55c55946346aaa70cd8ea1626ea8040fa3582ea11e4b50ee1d0cde4d\",\"key_commitment\":\"sha256:5d5677522843c740204d381a8d5c19ca4ed0ab1325406791d79b22ece00b8493\"},{\"byte_commitment\":\"sha256:66b13db7dc67ff9b963132836e5c756d0ae09121d4d35baf43e0dfe4bb64391a\",\"key_commitment\":\"sha256:d0c157a7ea0a4d6ce8c99c3f99a76159f629ba4ed562f9c0f088921f76595a7e\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:463b264c55c55946346aaa70cd8ea1626ea8040fa3582ea11e4b50ee1d0cde4d",
+          "key_commitment": "sha256:5d5677522843c740204d381a8d5c19ca4ed0ab1325406791d79b22ece00b8493",
+          "store_key_utf8": "cb2-fixture/structure/circle/index",
+          "stored_bytes_hex": "7b22666f6c646572223a22746172676574222c22726576223a337d"
+        },
+        {
+          "byte_commitment": "sha256:66b13db7dc67ff9b963132836e5c756d0ae09121d4d35baf43e0dfe4bb64391a",
+          "key_commitment": "sha256:d0c157a7ea0a4d6ce8c99c3f99a76159f629ba4ed562f9c0f088921f76595a7e",
+          "store_key_utf8": "cb2-fixture/structure/circle/header",
+          "stored_bytes_hex": "466f6c646572206d6f766564"
+        }
+      ]
+    },
+    "section_v1": {
+      "digest": "sha256:048914460d10dbcf25aa5dff512cb4cee657453d8a3d19a076daa7238f3bfbe1",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:828cf7332b4fa7ce9d708614b499a166475f94449c73dfd45ff4d32f3ff1acc5",
+            "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:828cf7332b4fa7ce9d708614b499a166475f94449c73dfd45ff4d32f3ff1acc5\",\"key_commitment\":\"sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:828cf7332b4fa7ce9d708614b499a166475f94449c73dfd45ff4d32f3ff1acc5",
+          "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b",
+          "store_key_utf8": "cb2-fixture/structure/circle/section",
+          "stored_bytes_hex": "7b227469746c65223a224265666f7265227d"
+        }
+      ]
+    },
+    "section_v2": {
+      "digest": "sha256:028598801c9a23547370113766468ff1f97695bf862760eee4a992f5d50102de",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:8b7ac97a9ea91f80bc29f942a938019883ca21f5f9edaf6fa8941e89718e02c4",
+            "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:8b7ac97a9ea91f80bc29f942a938019883ca21f5f9edaf6fa8941e89718e02c4\",\"key_commitment\":\"sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:8b7ac97a9ea91f80bc29f942a938019883ca21f5f9edaf6fa8941e89718e02c4",
+          "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b",
+          "store_key_utf8": "cb2-fixture/structure/circle/section",
+          "stored_bytes_hex": "7b227469746c65223a2252656e616d6564227d"
+        }
+      ]
+    },
+    "section_v3": {
+      "digest": "sha256:269ba61947cc575cbef5ffb615b8eb71c1c4fbe36521ea26ad84f073c7bb8ebb",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:7c54f8cfa0a1e0e04c42407029f27e5838d530afc6147d9972be6701f716f90d",
+            "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:7c54f8cfa0a1e0e04c42407029f27e5838d530afc6147d9972be6701f716f90d\",\"key_commitment\":\"sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:7c54f8cfa0a1e0e04c42407029f27e5838d530afc6147d9972be6701f716f90d",
+          "key_commitment": "sha256:55d10a807742da4a8523172d0a5d1c0ac457761f2fd53deca88bd0f07229d39b",
+          "store_key_utf8": "cb2-fixture/structure/circle/section",
+          "stored_bytes_hex": "7b227469746c65223a224d6f766564227d"
+        }
+      ]
+    },
+    "unrelated": {
+      "digest": "sha256:06e11749b3f41d7950c078986cd046920944dbfe34db211baab784e7d33b9911",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:c1b150ce2d7e1548e61aa2f950002380fa744c844b3988fe1443fc2f80b7a442",
+            "key_commitment": "sha256:52bc475d183fad8d81e0a0424386dbadd08dada406960f5ed7cf83068090a61c"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:c1b150ce2d7e1548e61aa2f950002380fa744c844b3988fe1443fc2f80b7a442\",\"key_commitment\":\"sha256:52bc475d183fad8d81e0a0424386dbadd08dada406960f5ed7cf83068090a61c\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:c1b150ce2d7e1548e61aa2f950002380fa744c844b3988fe1443fc2f80b7a442",
+          "key_commitment": "sha256:52bc475d183fad8d81e0a0424386dbadd08dada406960f5ed7cf83068090a61c",
+          "store_key_utf8": "cb2-fixture/unrelated/object",
+          "stored_bytes_hex": "756e72656c61746564"
+        }
+      ]
+    },
+    "vault_v1": {
+      "digest": "sha256:25e1cedc833c6074be314da9bbe7c1ef2ad7ec93148b2d60de2bad8161a3cd2a",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:9290bb87df60728b1d057391b09df2e0053ce5e8c86ca41559fe3aa54bcc814d",
+            "key_commitment": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:9290bb87df60728b1d057391b09df2e0053ce5e8c86ca41559fe3aa54bcc814d\",\"key_commitment\":\"sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:9290bb87df60728b1d057391b09df2e0053ce5e8c86ca41559fe3aa54bcc814d",
+          "key_commitment": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+          "store_key_utf8": "cb2-fixture/vault/mail/oauth",
+          "stored_bytes_hex": "7b22746f6b656e223a22636970686572746578742d7631227d"
+        }
+      ]
+    },
+    "vault_v2": {
+      "digest": "sha256:5a8df0165bb08eddb49a25d6b0855019a1e1946aff69a8e451495e040c771899",
+      "document": {
+        "aithos-state-fact-core": "1.0.0-draft.1",
+        "objects": [
+          {
+            "byte_commitment": "sha256:67a26d7634c773365d5eea507eb62c0c2da2c687aafd278ea1778ebe1a9a5f86",
+            "key_commitment": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb"
+          }
+        ]
+      },
+      "document_jcs": "{\"aithos-state-fact-core\":\"1.0.0-draft.1\",\"objects\":[{\"byte_commitment\":\"sha256:67a26d7634c773365d5eea507eb62c0c2da2c687aafd278ea1778ebe1a9a5f86\",\"key_commitment\":\"sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb\"}]}",
+      "input_objects": [
+        {
+          "byte_commitment": "sha256:67a26d7634c773365d5eea507eb62c0c2da2c687aafd278ea1778ebe1a9a5f86",
+          "key_commitment": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+          "store_key_utf8": "cb2-fixture/vault/mail/oauth",
+          "stored_bytes_hex": "7b22746f6b656e223a22636970686572746578742d7632227d"
+        }
+      ]
+    }
+  },
+  "vault_record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+  "vector": "CB2-K1-OPERATION-FACTS-MUTATION-1"
+}

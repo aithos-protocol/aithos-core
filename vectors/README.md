@@ -66,3 +66,15 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`61b53d0765c278a56adfa1b35bee99f5144d8ceeb78430be59aa50a8a519ba3c`);
   Rust consumer:
   `aithos-bundle/tests/cb2_bundle_version_coexistence.rs`.
+- `CB2-K1-OPERATION-FACTS-MUTATION-1`: K1.1-B operation/state commitment
+  bytes and all 13 K1.2-M-B mutation domain/verb cases, plus 23 operation-facts
+  and 15 state-fact fail-closed candidates using the approved
+  `InvalidOperationFacts` / `InvalidStateFact` taxonomy. The store-key strings
+  are opaque fixture inputs and define no Bundle path. Generator:
+  `gen-cb2-operation-facts-mutation.py`
+  (`6e1f460aa959389dcd44d2763f66a8839d7a8b8703813d728cd8191958e90b27`);
+  vector: `cb2-operation-facts-mutation.json`
+  (`dc3a57de91ff50895b680111da4da981e1518ad2dcd638d862e63be9eb29b83d`);
+  Rust consumer:
+  `aithos-core/tests/cb2_operation_facts_mutation.rs`
+  (`09e233412bc4add875acc2839f48156f5a10394d18e4691fd20984b6a3d81098`).
