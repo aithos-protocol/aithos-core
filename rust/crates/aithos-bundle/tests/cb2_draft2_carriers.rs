@@ -68,6 +68,8 @@ const CORE_CARRIERS_SOURCE: &str = include_str!(concat!(
 ));
 const BUNDLE_MANIFEST_SOURCE: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/manifest.rs"));
+const BUNDLE_PUBLICATION_SOURCE: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/publication.rs"));
 
 fn vector() -> Value {
     serde_json::from_slice(VECTOR_BYTES).expect("CB2 draft2 carrier vector parses")
@@ -695,8 +697,19 @@ fn cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary() {
     }
     for member in ["operation_ref", "changeset_ref", "evidence_ref"] {
         assert!(
-            !BUNDLE_MANIFEST_SOURCE.contains(member),
-            "draft2 manifest member {member} is still an explicit Bundle implementation gate"
+            BUNDLE_MANIFEST_SOURCE.contains(&format!("pub {member}:")),
+            "draft2 manifest member is missing: {member}"
+        );
+    }
+    for api in [
+        "pub fn assemble_draft2_candidate",
+        "pub fn verify_draft2_candidate",
+        "pub fn export_keyless",
+        "pub fn cold_verify",
+    ] {
+        assert!(
+            BUNDLE_PUBLICATION_SOURCE.contains(api),
+            "draft2 Bundle API is missing: {api}"
         );
     }
 }

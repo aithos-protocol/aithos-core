@@ -12,8 +12,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const CORE_VERSION: &str = "1.0.0-draft.1";
+pub const CORE_DRAFT2_VERSION: &str = "1.0.0-draft.2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Edition {
     pub height: u64,
     /// SHA-256 hex of the prior manifest's JCS with `signature.value=""`;
@@ -23,6 +25,7 @@ pub struct Edition {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Manifest {
     #[serde(rename = "aithos-core")]
     pub version: String,
@@ -60,6 +63,14 @@ pub struct Manifest {
     /// last — mirrors gamma's `authorized_via`. Empty = root-signed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub authorized_via: Vec<String>,
+    /// K1-C draft.2 carriers. Their all-or-none profile boundary is checked
+    /// before signature trust; historical draft.1 bytes omit all three.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_ref: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changeset_ref: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_ref: Option<serde_json::Value>,
     pub signature: SignatureBlock,
 }
 
@@ -141,6 +152,9 @@ impl Manifest {
             merges: spec.merges,
             resolves_fork: spec.resolves_fork,
             authorized_via: spec.authorized_via,
+            operation_ref: None,
+            changeset_ref: None,
+            evidence_ref: None,
             signature: SignatureBlock {
                 alg: "ed25519".to_owned(),
                 key,
@@ -151,8 +165,80 @@ impl Manifest {
         Ok(m)
     }
 
+    /// Build one K1-C manifest. Carrier documents and their references must
+    /// already have received Core's semantic verdict.
+    pub fn build_draft2(
+        spec: ManifestSpec,
+        operation_ref: serde_json::Value,
+        changeset_ref: serde_json::Value,
+        evidence_ref: serde_json::Value,
+        signer: ManifestSigner<'_>,
+    ) -> Result<Self> {
+        let (key, sk) = match signer {
+            ManifestSigner::Root(sk) => ("#root".to_owned(), sk),
+            ManifestSigner::Delegate { key_multibase, sk } => (key_multibase, sk),
+        };
+        let mut manifest = Manifest {
+            version: CORE_DRAFT2_VERSION.to_owned(),
+            edition: Edition {
+                height: spec.height,
+                prev_hash: spec.prev_hash,
+                created_at: spec.created_at,
+            },
+            files: spec.files,
+            roots: spec.roots,
+            gamma_roots: spec.gamma_roots,
+            gamma_counts_root: spec.gamma_counts_root,
+            gamma_head: spec.gamma_head,
+            merges: spec.merges,
+            resolves_fork: spec.resolves_fork,
+            authorized_via: spec.authorized_via,
+            operation_ref: Some(operation_ref),
+            changeset_ref: Some(changeset_ref),
+            evidence_ref: Some(evidence_ref),
+            signature: SignatureBlock {
+                alg: "ed25519".to_owned(),
+                key,
+                value: String::new(),
+            },
+        };
+        manifest.signature.value = hex::encode(sk.sign(&manifest.unsigned_jcs()?).to_bytes());
+        manifest.verify_form()?;
+        Ok(manifest)
+    }
+
+    /// Enforce the additive manifest profile boundary before signature trust.
+    pub fn verify_form(&self) -> Result<()> {
+        let err = |message: &str| Error::InvalidDidDocument(format!("manifest: {message}"));
+        let carrier_count = [
+            self.operation_ref.as_ref(),
+            self.changeset_ref.as_ref(),
+            self.evidence_ref.as_ref(),
+        ]
+        .iter()
+        .filter(|carrier| carrier.is_some())
+        .count();
+        match self.version.as_str() {
+            CORE_VERSION if carrier_count == 0 => {}
+            CORE_VERSION => return Err(err("draft.1 forbids K1-C carriers")),
+            CORE_DRAFT2_VERSION if carrier_count == 3 => {}
+            CORE_DRAFT2_VERSION => {
+                return Err(err("draft.2 requires all three non-null K1-C carriers"));
+            }
+            _ => return Err(err("unknown manifest profile")),
+        }
+        if self.signature.alg != "ed25519"
+            || self.signature.key.is_empty()
+            || self.signature.value.is_empty()
+        {
+            return Err(err("invalid signature block"));
+        }
+        Ok(())
+    }
+
     /// Verify this manifest's signature against the DID document's root key.
     pub fn verify_signature(&self, did_doc: &DidDocument) -> Result<()> {
+        self.verify_form()?;
         let err = |m: &str| Error::InvalidDidDocument(format!("manifest: {m}"));
         if self.signature.key != "#root" {
             return Err(err("manifest must be root-signed"));
@@ -171,6 +257,7 @@ impl Manifest {
     /// leaf grantee key of the presented chain; chain validity and node
     /// authority are the CALLER's checks (they need the certs and the trees).
     pub fn verify_delegate_signature(&self, leaf: &aithos_core::mandate::Mandate) -> Result<()> {
+        self.verify_form()?;
         let err = |m: &str| Error::InvalidDidDocument(format!("manifest: {m}"));
         if self.authorized_via.is_empty() {
             return Err(err("delegate verification on a root-signed manifest"));
@@ -190,6 +277,24 @@ impl Manifest {
         leaf.grantee_pub()?
             .verify(&self.unsigned_jcs()?, &Signature::from_bytes(&sig_bytes))
             .map_err(|_| err("signature does not verify under the grantee key"))
+    }
+
+    /// Verify a draft.2 actor signature after Core reconstructed and accepted
+    /// the actor/chain from public evidence.
+    pub fn verify_actor_signature(&self, actor_key: &str) -> Result<()> {
+        self.verify_form()?;
+        let err = |m: &str| Error::InvalidDidDocument(format!("manifest: {m}"));
+        if self.signature.key != actor_key && self.signature.key != "#root" {
+            return Err(err("signature key differs from the reconstructed actor"));
+        }
+        let key_bytes = wire::multibase_to_ed25519_pub(actor_key)?;
+        let key = VerifyingKey::from_bytes(&key_bytes).map_err(|_| err("malformed actor key"))?;
+        let signature: [u8; 64] = hex::decode(&self.signature.value)
+            .ok()
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(|| err("bad signature encoding"))?;
+        key.verify(&self.unsigned_jcs()?, &Signature::from_bytes(&signature))
+            .map_err(|_| err("signature does not verify under the reconstructed actor"))
     }
 }
 

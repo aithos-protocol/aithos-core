@@ -11,7 +11,9 @@ pub mod grants;
 pub mod log;
 pub mod manifest;
 pub mod merge;
+pub mod publication;
 pub mod revoke;
+pub mod session;
 pub mod state;
 pub mod structure;
 pub mod vault;
@@ -201,7 +203,21 @@ pub fn validate_store_key(value: &str) -> io::Result<()> {
             && segments[0] == "e"
             && segments[1] == "x"
             && name_accepted(segments[2])
-            && matches!(segments[3], "header.json" | "manifest.enc"));
+            && matches!(segments[3], "header.json" | "manifest.enc"))
+        // Frozen K1-C draft.2 carrier layout. These aliases are an additive,
+        // closed grammar; historical `e/*` objects remain byte-identical.
+        || (segments.len() == 3
+            && segments[0] == "public"
+            && segments[1] == "sections"
+            && segments[2].strip_suffix(".md").is_some_and(sid_accepted))
+        || (segments.len() == 3
+            && segments[0] == "circle"
+            && segments[1] == "blobs"
+            && segments[2].strip_suffix(".json").is_some_and(sid_accepted))
+        || matches!(
+            value,
+            "indices/public.json" | "roots/public.json" | "vault/catalog-pins.json"
+        );
     if accepted {
         Ok(())
     } else {

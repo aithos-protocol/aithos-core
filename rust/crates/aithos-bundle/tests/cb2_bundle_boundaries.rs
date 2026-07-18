@@ -49,6 +49,9 @@ const BUNDLE_LIB_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
 const BUNDLE_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bundle.rs"));
 const LOG_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/log.rs"));
 const MERGE_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/merge.rs"));
+const PUBLICATION_SOURCE: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/publication.rs"));
+const SESSION_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/session.rs"));
 
 fn vector() -> Value {
     serde_json::from_slice(VECTOR_BYTES).expect("CB2 Bundle boundary vector parses")
@@ -432,14 +435,26 @@ fn cb2_bundle_capability_keyless_and_api_inventory_preliminary() {
     }
     assert!(BUNDLE_SOURCE.contains("&OwnerKeys"));
     assert!(BUNDLE_SOURCE.contains("&StaticSecret"));
-    for absent in [
+    for present in [
         "pub fn export_keyless",
         "pub fn cold_verify",
         "pub fn import_keyless",
-        "OpaqueCapability",
+        "pub struct KeylessPublicationPackage",
     ] {
-        assert!(!BUNDLE_SOURCE.contains(absent), "{absent}");
+        assert!(PUBLICATION_SOURCE.contains(present), "{present}");
     }
+    for present in [
+        "pub struct ManifestSigningCapability",
+        "pub struct GammaSigningCapability",
+        "pub struct BodyOpeningCapability",
+        "pub struct HeaderWrappingCapability",
+        "pub struct LocalSession",
+    ] {
+        assert!(SESSION_SOURCE.contains(present), "{present}");
+    }
+    assert!(!SESSION_SOURCE.contains("pub fn sign("));
+    assert!(!SESSION_SOURCE.contains("pub fn open("));
+    assert!(!SESSION_SOURCE.contains("pub fn wrap("));
 }
 
 #[test]
