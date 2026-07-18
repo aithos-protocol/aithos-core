@@ -426,6 +426,17 @@ fn cb12_capabilities_are_class_bound_and_rejected_across_sessions() {
         Err(Error::InvalidSession(_))
     ));
 
+    let (owner, owner_context, _, _) = owner_cold_fixture();
+    let owner_first = LocalSession::owner(owner_context.subject.clone(), &owner);
+    let owner_second = LocalSession::owner(owner_context.subject, &owner);
+    let audit = owner_first
+        .audit_capability()
+        .expect("owner audit capability");
+    assert!(matches!(
+        owner_second.accepts_audit_capability(&audit),
+        Err(Error::InvalidSession(_))
+    ));
+
     // The direct assembly API is deterministic too; the session only narrows
     // authority and capability use.
     let direct = assemble_draft2_candidate(

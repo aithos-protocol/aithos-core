@@ -10,6 +10,7 @@ use crate::publication::{assemble_draft2_candidate, Draft2Candidate};
 use crate::Store;
 use aithos_core::carriers::{K1cActor, K1cVerificationContext};
 use aithos_core::error::{Error, Result};
+use aithos_core::gamma::Entry;
 use aithos_core::keys::OwnerKeys;
 use aithos_core::mandate::Mandate;
 use aithos_core::path::Zone;
@@ -26,6 +27,7 @@ enum CapabilityClass {
     Gamma,
     Body,
     Header,
+    Audit,
 }
 
 #[derive(Debug)]
@@ -63,6 +65,13 @@ pub struct HeaderWrappingCapability<'a> {
     _owner_kex: &'a StaticSecret,
 }
 
+/// Narrow owner audit capability. It opens only sealed Gamma arguments
+/// through Bundle's typed audit method and never exposes the vault DK.
+pub struct AuditArgsCapability<'a> {
+    binding: SessionBinding,
+    owner_kex: &'a StaticSecret,
+}
+
 impl Drop for ManifestSigningCapability<'_> {
     fn drop(&mut self) {}
 }
@@ -76,6 +85,10 @@ impl Drop for BodyOpeningCapability<'_> {
 }
 
 impl Drop for HeaderWrappingCapability<'_> {
+    fn drop(&mut self) {}
+}
+
+impl Drop for AuditArgsCapability<'_> {
     fn drop(&mut self) {}
 }
 
@@ -192,6 +205,18 @@ impl<'a> LocalSession<'a> {
         })
     }
 
+    pub fn audit_capability(&self) -> Result<AuditArgsCapability<'a>> {
+        Ok(AuditArgsCapability {
+            binding: SessionBinding {
+                id: self.id,
+                class: CapabilityClass::Audit,
+            },
+            owner_kex: self.owner_kex.ok_or_else(|| {
+                Error::InvalidSession("actor has no owner audit capability".into())
+            })?,
+        })
+    }
+
     fn check(&self, binding: &SessionBinding, class: CapabilityClass) -> Result<()> {
         if binding.id != self.id || binding.class != class {
             return Err(Error::InvalidSession(
@@ -286,6 +311,28 @@ impl<'a> LocalSession<'a> {
         capability: &HeaderWrappingCapability<'_>,
     ) -> Result<()> {
         self.check(&capability.binding, CapabilityClass::Header)
+    }
+
+    /// Prove audit class/session binding without opening an entry.
+    pub fn accepts_audit_capability(&self, capability: &AuditArgsCapability<'_>) -> Result<()> {
+        self.check(&capability.binding, CapabilityClass::Audit)
+    }
+
+    /// Open one action's sealed arguments without exposing a general body
+    /// opener or the vault derivation key.
+    pub fn audit_action_args<S: Store>(
+        &self,
+        capability: &AuditArgsCapability<'_>,
+        bundle: &Bundle<S>,
+        entry: &Entry,
+    ) -> Result<Value> {
+        self.check(&capability.binding, CapabilityClass::Audit)?;
+        if bundle.did != self.subject {
+            return Err(Error::InvalidSession(
+                "audit capability belongs to another Ethos".into(),
+            ));
+        }
+        bundle.audit_action_args_with_owner_kex(capability.owner_kex, entry)
     }
 }
 

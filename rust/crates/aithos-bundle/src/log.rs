@@ -407,9 +407,22 @@ impl<S: Store> Bundle<S> {
 
     /// Owner-side audit key for a connector (§07.9.3).
     pub fn audit_key_owner(&self, owner: &OwnerKeys, connector: &str) -> Result<[u8; 32]> {
+        self.audit_key_owner_with_kex(&owner.owner_kex, connector)
+    }
+
+    /// Owner-side audit key using only the narrow local KEX capability.
+    pub fn audit_key_owner_with_kex(
+        &self,
+        owner_kex: &x25519_dalek::StaticSecret,
+        connector: &str,
+    ) -> Result<[u8; 32]> {
         Ok(aithos_core::derive::derive_key(
             &format!("aithos-core/v1/x/{connector}"),
-            &self.vault_dk(owner)?,
+            &{
+                let header: aithos_core::header::Header = self.get_json("e/x/header.json")?;
+                header.validate()?;
+                header.open(&self.did, KV, "owner-kex", owner_kex)?
+            },
         ))
     }
 
@@ -988,6 +1001,15 @@ impl<S: Store> Bundle<S> {
     /// reopen under the connector's audit key AND recompute to the entry's
     /// clear `args_hash` — a mismatch is a tampered audit trail.
     pub fn audit_action_args(&self, owner: &OwnerKeys, entry: &Entry) -> Result<serde_json::Value> {
+        self.audit_action_args_with_owner_kex(&owner.owner_kex, entry)
+    }
+
+    /// Audit one action with the local session's narrow owner KEX capability.
+    pub fn audit_action_args_with_owner_kex(
+        &self,
+        owner_kex: &x25519_dalek::StaticSecret,
+        entry: &Entry,
+    ) -> Result<serde_json::Value> {
         let err = |m: &str| Error::InvalidGammaEntry(format!("{}: audit: {m}", entry.id));
         let connector = entry
             .target
@@ -998,7 +1020,7 @@ impl<S: Store> Bundle<S> {
             .body_enc
             .as_ref()
             .ok_or_else(|| err("no sealed args"))?;
-        let key = self.audit_key_owner(owner, connector)?;
+        let key = self.audit_key_owner_with_kex(owner_kex, connector)?;
         let body = open_body(&key, &self.did, &format!("x.{connector}"), KV, enc)?;
         let canon = aithos_core::jcs::canonical_bytes(&body.payload)?;
         let recomputed = format!("sha256:{}", aithos_core::gamma::sha256_hex(&canon));

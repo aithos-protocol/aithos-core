@@ -52,6 +52,7 @@ const MERGE_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/sr
 const PUBLICATION_SOURCE: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/publication.rs"));
 const SESSION_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/session.rs"));
+const VAULT_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/vault.rs"));
 
 fn vector() -> Value {
     serde_json::from_slice(VECTOR_BYTES).expect("CB2 Bundle boundary vector parses")
@@ -448,10 +449,12 @@ fn cb2_bundle_capability_keyless_and_api_inventory_preliminary() {
         "pub struct GammaSigningCapability",
         "pub struct BodyOpeningCapability",
         "pub struct HeaderWrappingCapability",
+        "pub struct AuditArgsCapability",
         "pub struct LocalSession",
     ] {
         assert!(SESSION_SOURCE.contains(present), "{present}");
     }
+    assert!(VAULT_SOURCE.contains("pub struct VaultConfigCapability"));
     assert!(!SESSION_SOURCE.contains("pub fn sign("));
     assert!(!SESSION_SOURCE.contains("pub fn open("));
     assert!(!SESSION_SOURCE.contains("pub fn wrap("));
