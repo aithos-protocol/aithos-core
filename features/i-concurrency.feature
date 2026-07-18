@@ -1,10 +1,11 @@
 Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pass I)
   Editions form a linear chain until two authors sign competing heights.
   Disjoint changesets (root-descent diffs against the common ancestor whose
-  node sets do not intersect) are NOT a conflict: any party publishes the
-  merge edition — prev_hash pins the parent with the lowest edition hash,
-  merges lists both ascending, additive wire — and every merger produces
-  byte-identical results. Shared index files merge 3-way by sid: changed
+  node sets do not intersect) are NOT a conflict: any party whose owner
+  capability or single grantee chain covers every derived change publishes
+  the merge edition — prev_hash pins the parent with the lowest edition
+  hash, merges lists both ascending, additive wire — and every merger
+  produces byte-identical results. Shared index files merge 3-way by sid: changed
   rows from their branch, added rows unioned, deletions hold, the same sid
   changed on both sides is a fork. The log re-joins at a signed merge entry
   (prev = min parent's tip, additive prevs = both tips, the only
@@ -92,3 +93,43 @@ Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pas
       Given two competing editions modifying the same section
       When the owner publishes the resolving edition naming the winner
       Then the resolving edition verifies and extends the winning branch
+
+  Rule: Local merge publication still has one fully covering actor
+
+    @wip
+    Scenario Outline: A merge author must cover every derived change
+      Given two local branches with disjoint changes
+      And the publishing actor has "<authority>"
+      When that actor attempts the deterministic merge edition
+      Then publication is "<verdict>"
+      And an accepted grantee merge uses one actor and one mandate chain
+
+      Examples:
+        | authority                              | verdict  |
+        | one chain covering both changed nodes  | accepted |
+        | one chain covering only the first node | refused  |
+        | two separate partial chains             | refused  |
+        | owner local capability                  | accepted |
+
+    @wip
+    Scenario: A local merge never simulates provider CAS
+      Given two exported local bundle branches with the same parent
+      When an authorized actor merges them into a fresh local store
+      Then conflict and authority are decided entirely by Core and Bundle
+      And no HTTP, provider backend, remote store or server CAS participates
+
+  Rule: Refused forks and accepted merges preserve replay state
+
+    @wip
+    Scenario: A refused resolution changes no local canonical byte
+      Given a forked local bundle snapshotted before resolution
+      When a grantee outside one touched perimeter attempts to resolve it
+      Then the resolution is refused
+      And the manifest, roots, Gamma tips and branch artifacts remain byte-for-byte unchanged
+
+    @wip
+    Scenario: A fresh store recomposes all counters across an accepted merge
+      Given two disjoint branches carrying delegated actions, mutations and grants
+      When one authorized actor publishes their deterministic local merge
+      Then fresh-store replay rebuilds the same action, mutation, total and direct-child tallies
+      And no branch consumption is omitted or counted twice

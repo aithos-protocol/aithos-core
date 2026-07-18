@@ -73,3 +73,84 @@ Feature: Mandates and the offline verifier
       Given a helper at the end of a depth-1 chain
       When the helper tries to delegate to a fourth key
       Then the new chain is rejected
+
+  Rule: The signed verb lattice maps operations without a create wire verb
+
+    @wip
+    Scenario Outline: Existing verbs decide each section operation exactly
+      Given an agent granted "<grant>" on one section perimeter
+      When Core authorizes the canonical "<operation>" operation on that section
+      Then the verdict is "<verdict>"
+      And the signed perimeter contains no create verb
+
+      Examples:
+        | grant  | operation | verdict |
+        | read   | create    | refused |
+        | edit   | create    | refused |
+        | delete | create    | refused |
+        | append | create    | allowed |
+        | write  | create    | allowed |
+        | read   | edit      | refused |
+        | delete | edit      | refused |
+        | edit   | edit      | allowed |
+        | append | edit      | allowed |
+        | write  | edit      | allowed |
+        | read   | delete    | refused |
+        | edit   | delete    | refused |
+        | append | delete    | refused |
+        | delete | delete    | allowed |
+        | write  | delete    | allowed |
+        | edit   | read      | allowed |
+        | append | read      | allowed |
+        | delete | read      | allowed |
+        | write  | read      | allowed |
+
+  Rule: Mandate form is closed before signature trust
+
+    @wip
+    Scenario Outline: A signed mandate with invalid form is rejected before its signature can authorize
+      Given a mandate whose signature bytes are otherwise valid
+      When its "<field>" has "<invalid form>"
+      Then mandate form validation is refused
+      And no authorization helper returns a partial Allow
+
+      Examples:
+        | field                 | invalid form                         |
+        | protocol version      | unsupported version                   |
+        | signature algorithm   | algorithm other than ed25519          |
+        | announced signer key  | key different from the issuer         |
+        | mandate id            | malformed mandate identifier          |
+        | subject id            | malformed or chain-changing subject   |
+        | parent and issued_by  | inconsistent issuer relationship      |
+        | grantee public key    | malformed multibase key               |
+        | kex public key        | mismatch with Ed25519 conversion      |
+        | nonce                 | empty string                          |
+        | not_before            | non-RFC-3339-Z timestamp              |
+        | not_after             | earlier than not_before               |
+        | issued_at             | non-RFC-3339-Z timestamp              |
+        | selector              | duplicate dir, tag or id dimension    |
+        | selector              | id combined with dir or tag           |
+        | issue depth           | issue#depth=0                         |
+
+  Rule: Grantee authority always joins possession and chain
+
+    @wip
+    Scenario Outline: Neither a key nor a certificate chain authorizes alone
+      Given a grantee operation with "<possession>" and "<chain>"
+      When the pure verifier evaluates the same target and time
+      Then the verdict is "<verdict>"
+
+      Examples:
+        | possession        | chain                  | verdict |
+        | valid key proof   | valid mandate chain    | allowed |
+        | valid key proof   | no mandate chain       | refused |
+        | no key proof      | valid mandate chain    | refused |
+        | wrong key proof   | valid mandate chain    | refused |
+        | valid key proof   | revoked mandate chain  | refused |
+
+    @wip
+    Scenario: Append-time and cold-time consume one mandate verdict
+      Given a form-valid grantee operation, historical Gamma prefix and injected time
+      When it is evaluated before append and replayed from the exported edition
+      Then both paths return the same typed authorization verdict
+      And revocation, constraints and proof of possession are present in both paths

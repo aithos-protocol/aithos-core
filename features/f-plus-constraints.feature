@@ -7,7 +7,9 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
   sealed for verifiable audit. Model/token truthfulness is staged: declared
   values count at tier V, reality is the container's duty (tier X) until a
   provider attestation bridges it back. Everything below reads files and an
-  injected T; the counting engine is step F's, unchanged.
+  injected T. Historical action, child and budget bytes remain unchanged;
+  D7's separate mutation and total-consumption meters stay conceptual until
+  their approved Gherkin and independent vectors freeze a representation.
 
   Rule: An active window is arithmetic — anchor, duration, nothing else
 
@@ -301,3 +303,106 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
       Given an agent granted gmail actions with issue depth 1
       When the agent delegates the perimeter adding constraint key "quantum_cap"
       Then the helper's chain is rejected
+
+  Rule: max_children is non-droppable and counts direct children only
+
+    @wip
+    Scenario Outline: A child cannot widen its parent's max_children
+      Given a parent mandate with max_children 4 and issue depth 2
+      When it mints a child with "<child constraint>"
+      Then the child chain is "<verdict>"
+
+      Examples:
+        | child constraint                    | verdict  |
+        | max_children 4                      | accepted |
+        | max_children 2                      | accepted |
+        | max_children 5                      | rejected |
+        | no max_children and can delegate    | rejected |
+        | no max_children and is a chain leaf | rejected |
+
+    @wip
+    Scenario: Grandchildren do not consume their grandparent's direct-child meter
+      Given a root mandate with max_children 1 and issue depth 2
+      And its sole direct child has max_children 3 and issue depth 1
+      When that child mints three direct children
+      Then all three grants verify against the child's meter
+      And the root still proves exactly one direct child
+
+  Rule: Root constraint form and forward-compatible extensions fail closed precisely
+
+    @wip
+    Scenario Outline: Known and unknown root constraints have distinct structural outcomes
+      Given a directly owner-issued mandate whose chain ends at that mandate
+      When its constraints contain "<constraint case>"
+      Then certificate validation is "<certificate verdict>"
+      And using it as a delegation parent is "<delegation verdict>"
+
+      Examples:
+        | constraint case                  | certificate verdict | delegation verdict |
+        | known well-formed max_actions    | accepted            | accepted            |
+        | known malformed max_actions      | rejected            | rejected            |
+        | unknown opaque quantum_cap       | preserved           | rejected            |
+
+    @wip
+    Scenario Outline: An unknown leaf extension never becomes an implicit Allow
+      Given a valid root-leaf mandate preserving unknown constraint "quantum_cap"
+      And a current-version verifier receives "<claim>"
+      When the grantee attempts a covered delegated mutation
+      Then the verdict is a typed extension not understood refusal
+      And the unknown extension remains visible in the audit
+      And no Gamma entry, canonical state or counter changes
+
+      Examples:
+        | claim                                                        |
+        | no claim of non-applicability                                |
+        | the grantee claims quantum_cap is non-applicable             |
+        | an unrecognized future envelope claims non-applicability     |
+
+  Rule: Every constraint family declares its operation applicability
+
+    @wip
+    Scenario Outline: The pure verdict follows the constraint applicability matrix
+      Given a grantee mandate carrying "<constraint family>"
+      When it attempts canonical operation "<operation>"
+      Then that family is "<applicability>"
+      And cold verification requires "<evidence>"
+
+      Examples:
+        | constraint family                    | operation          | applicability        | evidence                         |
+        | validity window                      | Ethos mutation     | applicable           | signed time facts                |
+        | freshness and heartbeat              | publication        | applicable           | revocation state and beacon      |
+        | session binding                      | grant              | applicable           | signed session certificate       |
+        | first_party_only and purpose         | revoke             | applicable           | mandate and operation binding    |
+        | obligation targeting the operation   | Ethos mutation     | applicable           | public signed receipt            |
+        | obligation targeting the operation   | publication        | applicable           | public signed receipt            |
+        | validity window                      | vault config mutation | applicable        | signed time facts                |
+        | obligation targeting the operation   | vault config mutation | applicable        | public signed receipt            |
+        | max_actions                          | Ethos mutation     | non-applicable       | none                             |
+        | max_actions                          | connector action   | applicable           | Gamma action count               |
+        | max_actions                          | vault config mutation | non-applicable    | none                             |
+        | reserved Ethos mutation meter        | Ethos mutation     | applicable           | Gamma mutation count             |
+        | reserved total consumption meter     | grant              | applicable           | Gamma delegated-consumption count |
+        | reserved total consumption meter     | vault config mutation | applicable        | delegated-consumption proof      |
+        | reserved total consumption meter     | journalized vault config read | applicable | signed read consumption evidence |
+        | max_children                         | grant              | applicable           | direct-child grant count         |
+        | max_children                         | connector action   | non-applicable       | none                             |
+        | budgets                              | inference          | applicable           | profile and required attestation |
+        | budgets                              | Ethos mutation     | non-applicable       | none                             |
+        | action_params and spend_cap          | connector action   | executor fact        | approved public attestation      |
+        | notify                               | connector action   | best effort only     | never a validity proof           |
+        | log_reads                            | read presentation  | applicable           | signed Gamma read entry          |
+        | log_reads                            | vault config read  | applicable           | signed read evidence             |
+
+    @wip
+    Scenario: The owner is journalized but never consumes mandate constraints
+      Given the same canonical mutation is available to an owner and a grantee
+      When the owner performs it with a narrow local capability
+      Then Gamma records the owner mutation
+      But no mandate, constraint or delegated counter is consumed
+
+    @wip
+    Scenario: Append and cold replay use the same applicability decisions
+      Given a delegated consumption with all constraint facts injected
+      When Core evaluates it before effect and from a fresh-store historical replay
+      Then every applicable, non-applicable, public-proof and executor-proof cell matches
+      And a required fact that cannot be evaluated is refused in both modes

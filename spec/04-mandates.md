@@ -29,6 +29,20 @@
   "signature": { "alg": "ed25519", "key": "…", "value": "…" } }
 ```
 
+**Form is verified before signature trust (T3).** A verifier first validates the
+supported `aithos-mandate-core` version; mandate, subject, parent, issuer, and
+grantee identifier forms; both public-key encodings and their conversion; a nonce
+that is a non-empty string; parseable RFC 3339 Zulu timestamps and a non-inverted
+validity window; and the complete perimeter grammar. `signature.alg` is exactly
+`ed25519`. On a root mandate, `issued_by == subject + "#root"` and
+`signature.key == "#root"`; on a child, both `issued_by` and `signature.key` equal
+the parent grantee public key. `issue#depth=0`, duplicate `dir`/`tag`/`id`
+selectors, and any entry combining `id` with another selector are invalid form.
+Only a form-valid document is canonicalized and submitted to signature
+verification. The current spec defines no tighter nonce alphabet or length; any
+tighter signed-byte rule requires the independent T3 vector in CB2 and MUST NOT be
+invented by one implementation.
+
 `kex_pubkey` MUST equal the Ed25519→X25519 conversion of `pubkey` under the normative
 map (§01.2); a mismatch invalidates the mandate. Header lines seal to `kex_pubkey` —
 nothing is left implicit, yet the grantee still owns exactly one keypair (the owner's
@@ -87,14 +101,27 @@ covers only the equal `tag`. `gamma-selector` `dir`s are **not** nodal: they
 filter log entries by their recorded, historical coordinates (§07.8).
 (The former `ns=` selector is gone: a namespace is a depth-1 folder, §02.2.)
 
-Verb lattice (normative): `read ⊑ edit ⊑ append ⊑ write`, `delete ⊑ write`; every
-mutation verb implies `read` on its perimeter. `append` = create + edit within
-perimeter; `write` = full CRUD. Multiple entries union per verb. A selector matching
-nothing yet is a valid forward-looking grant. Enforceability of a write perimeter:
+Verb lattice (normative): `read ⊑ edit ⊑ append ⊑ write`,
+`read ⊑ delete ⊑ write`; `delete` is otherwise incomparable with `edit` and
+`append`. Operationally, create requires `append` or `write`; editing an existing
+object accepts `edit`, `append`, or `write`; deletion accepts `delete` or `write`
+and always includes read authority; `write` is full CRUD. There is no wire verb
+`create`. Multiple entries union per verb. A selector matching nothing yet is a
+valid forward-looking grant. Enforceability of a write perimeter:
 `id=`/`dir=` are clear placements on `public`/`circle` (hard); `tag=` writes are hard
 on `public`/`circle` (clear tags, §07 authorship cross-check). On `self`, structure
 and tags are sealed (§02.8): `dir=` and `tag=` perimeters there are **read-only**;
 `self` writes use `id=` or zone-level grants.
+
+The same verbs cover sections and folders (D6): `read` lists and presents only
+covered objects. Rename, title, body, and tag changes are edits. A move requires
+edit authority on the source node and append/write on the destination; deleting a
+folder requires delete/write coverage for the folder and every affected descendant.
+Index rows, tag views, reindexing, required rotation, rewrap, and re-encryption are
+deterministic consequences committed in the same transaction, not extra silent
+mutations. Trust-root, succession, and recovery rotation remain owner-only;
+`issue`, `revoke`, and vault `.config` retain their dedicated rights and are never
+implied by `write.<zone>`.
 
 `read.gamma` grants log reading (§07.3, §07.8): appending never needs it (any
 mandate's actions imply their own entries), and by default nobody but the owner
@@ -134,11 +161,31 @@ are owner/delegate-local, offline.
 
 ## 4.4 Agentic constraint vocabulary (normative)
 
-`constraints` is an object; unknown keys MUST NOT cause rejection but MAY cause a
-tool host to refuse an action it cannot enforce. Each key states its **enforcement
-tier**: **V** verifier (offline, from files) or **X** executor/tool-host (runtime).
-(Counter-signature, once its own tier **C**, is now the owner instance of an
-obligation — tier V, §4.12.)
+`constraints` is always an object. Every known key is parsed and validated in its
+typed form, including on a directly owner-issued root; a malformed known value is
+invalid. For forward compatibility, an unknown key/value is preserved and tolerated
+only when that root mandate is also the chain leaf. A mandate carrying it cannot be
+a delegation parent, and an unknown key on any parent/child link is invalid because
+its attenuation law is unknown.
+
+> **CB1 decision G-E — validated at the human protocol gate on 2026-07-18.**
+> Structural tolerance is not permission to consume. The current opaque key/value
+> form has no Core-understood applicability envelope, so an unknown root-leaf
+> extension cannot prove itself non-applicable: every attempted consumption under
+> that mandate is refused with a typed “extension not understood” decision class.
+> That phrase is conceptual in CB1, not a frozen wire/API error name. Structural
+> tolerance permits parse, preserve, and audit only. A later approved protocol
+> version, frozen by independent vectors, may define a signed typed extension
+> envelope whose applicability, attenuation, and enforcement Core understands. Only
+> that future version may permit proven non-applicability; existing mandate bytes
+> are never reinterpreted. The refusal is exposed to the caller's operational audit
+> but appends no Gamma entry, changes no canonical state, and consumes no counter. No
+> Bundle or downstream surface may convert it into Allow or claim the extension was
+> enforced.
+
+Each known key states its **enforcement tier**: **V** verifier (offline, from files)
+or **X** executor/tool-host (runtime). (Counter-signature, once its own tier **C**,
+is now the owner instance of an obligation — tier V, §4.12.)
 
 | Key | Meaning | Tier |
 |---|---|---|
@@ -153,13 +200,13 @@ obligation — tier V, §4.12.)
 | `log_reads: true` | the grantee MUST journalize its reads as `ethos.read` entries (§07.9); off by default — reading is not logged under I5. Physics cannot force a reader's pen: an honest verifier of a *read presentation* requires the entry; a silent read stays possible and is exactly what this flag makes contractually visible | V+X |
 | `obligations: [obligation]` | listed actions may consume only if carrying a valid signed receipt from a pinned attestor whose verdict satisfies the predicate (§4.12): guardrail pass, human approval, dual control | V |
 | `counter_sign: [actions]` | shorthand for the **owner-approval** obligation: listed actions require a fresh owner co-signature (§4.6, §4.12) | V |
-| `binding: [actions]` | actions that constitute a commitment; implies counter_sign | V |
+| `binding: [actions]` | legacy mandate shorthand that adds the owner `co_sign` obligation to the named actions; it never classifies an action (§4.6, §08.1) | V |
 | `domains: [patterns]` | connector actions may touch only these domains/recipients | X |
 | `action_params: {action: predicates}` | per-action argument predicates (allow-listed recipients, subject patterns, no-attachments, numeric caps) — generalizes `domains`. Enforced on the real args by the container (X); **auditable at V** through the sealed args body of the entry (§07.9): the owner reopens the args and re-evaluates the predicates | X (+V audit) |
 | `disclose_agency: true` | the agent MUST identify itself as an agent in every outbound communication of a connector action (transparency; EU-AI-Act-aligned) | X |
 | `notify: [events]` | out-of-band owner alert on the listed events; best effort, never a validity condition | X |
-| `purpose: "<text>" ` | signed statement of intent; actions cite it; audited | V+X |
-| `session_bind: <pubkey>` | actions valid only from this ephemeral session key (§4.7) | V |
+| `purpose: "<text>" ` | signed statement of intent bound through `authorized_via` to every delegated consumption; existing actions also cite it; audited | V+X |
+| `session_bind: <pubkey>` | delegated consumptions valid only from this ephemeral session key (§4.7) | V |
 | `heartbeat: {every, grace}` | mandate valid only if owner liveness beacon < every+grace old (§4.8) | V |
 | `freshness: <duration>` | verifier MUST have revocation state newer than this (§06.5) | V |
 | `spend_cap: {unit, amount}` | cumulative external spend ceiling (audited; for future paid actions) | X |
@@ -173,6 +220,25 @@ mandate and against every ancestor named in its `authorized_via` chain (§07.4).
 delegate can therefore never multiply its parent's budget by issuing children.
 Corollary: minting a sub-mandate is itself a `grant` gamma entry (§07) — issuance is
 never a silent action (I5) — and that entry is what `max_children` counts.
+`max_children` bounds only children whose `parent` is that exact mandate. If present
+on a parent it is non-droppable: every child repeats it with a value less than or
+equal to the parent's; omission is a widening. It is not a subtree-descendant
+counter.
+
+`max_actions` and its rate derivatives remain connector-action meters; content
+mutation never consumes them. D7 additionally requires one explicit Ethos-mutation
+limit/counter and one explicit total-delegated-consumption limit/counter. Their
+conceptual counting boundaries are fixed by §4.13. Wire names, encodings, and
+concrete migration mechanics remain reserved until CB2 supplies independent
+vectors: the mutation and total-consumption meters are validated semantics but do
+not exist in the current wire. A counter schema becomes enforceable only through an
+explicitly versioned signed protocol contract freezing leaf encoding, roots, replay,
+and migration. Historical artifacts are evaluated under their declared historical
+protocol version and remain byte-identical; existing versions, `max_actions`, Gamma
+kinds, and count roots are never reinterpreted to simulate a new meter. Added meter
+material under an old or unversioned schema, and an unknown counter-schema version,
+fail closed. Implementations MUST NOT synthesize new committed bytes for historical
+artifacts or silently infer either new meter.
 
 ## 4.5 Verifier algorithm (offline)
 
@@ -197,35 +263,42 @@ To verify grantee G may do `OP` on subject `DID` at time `T` from a presented ch
 Fail any ⇒ reject. Every step reads files (DID doc, certs, gamma — revocation state
 included, §06.5); none needs a live server.
 
-## 4.6 Counter-signature (binding actions) — the owner-approval obligation
+## 4.6 Counter-signature and binding actions — the owner-approval obligation
 
-`counter_sign`/`binding` are the **owner instance of an obligation** (§4.12):
-listed actions may consume only if accompanied by a `co_sign` — a receipt whose
-attestor is the owner content key and whose verdict is *approve*. The agent
-prepares the action, obtains the owner's live co-signature (out of band — the
-human approves), then emits it with the gamma entry. This is how "the AI may
-act, but a commitment needs me in the loop" is expressed.
+The approved connector manifest is the sole source of the canonical `binding`
+**class** (§08.1). A classed-binding action must be named exactly and accompanied by
+the owner `co_sign` receipt. The mandate constraints `counter_sign:[actions]` and
+legacy `binding:[actions]` do not classify or reclassify an action; both only tighten
+the named actions by adding that same owner-approval obligation. Thus a catalog
+`binding` action always needs `co_sign`, while a catalog `read`/`act` action may also
+need it because the mandate explicitly says so.
 
-`counter_sign` desugars to the reserved obligation id **`co_sign`** — attestor =
-the owner content key, `verdict: "approve"`, `max_age` = Δ_cosign (normative
-default **5 minutes**). The receipt signs the full §4.12 payload
+The agent prepares the action, obtains the owner's live co-signature (out of band —
+the human approves), then emits it with the Gamma entry. This is how "the AI may act,
+but a commitment needs me in the loop" is expressed.
+
+Both mandate shorthands desugar to the reserved obligation id **`co_sign`** —
+attestor = the owner content key, `verdict: "approve"`, `max_age` = Δ_cosign
+(normative default **5 minutes**). The receipt signs the full §4.12 payload
 `{obligation: "co_sign", mandate_id, action, args_hash, verdict,
 presented_digest?, at}` — **one wire shape** (decided 2026-07-10): *implicit*
 lives in the shorthand declaration, never in the signed bytes. Every
 anti-replay property is §4.12's: one-shot (`args_hash`-bound), logged, and
 fresh-bound — valid only if `|entry.at − receipt.at| ≤ max_age`, so a stored
-"fresh" co-signature cannot be replayed later. `binding` additionally
-marks the action as a commitment (implies `counter_sign`). Enforcement is
-**tier V** (§4.5 step 7): a signed file artifact verified offline like any
-obligation, not handed to a runtime executor.
+"fresh" co-signature cannot be replayed later. Enforcement is **tier V** (§4.5
+step 7): a signed file artifact verified offline like any obligation, not handed to
+a runtime executor.
 
 ## 4.7 Session binding
 
 `session_bind: <pubkey>` ties the mandate to an ephemeral **session key** the grantee
-generates per run. Every action entry must also be signed by the session key, and the
-session key is itself certified by the grantee's long-term key for a short window.
-Effect: exfiltrating the mandate file without the live session key yields nothing —
-useful for agents whose mandate persists but whose runtime is ephemeral.
+generates per run. Every delegated consumption must also prove that session key, and
+the session key is itself certified by the grantee's long-term key for a short
+window. Existing action entries carry the current proof. The evidence encoding for
+non-action consumptions is WIP until independent CB2 vectors; they cannot silently
+bypass the constraint in the meantime. Effect: exfiltrating the mandate file without
+the live session key yields nothing — useful for agents whose mandate persists but
+whose runtime is ephemeral.
 
 ## 4.8 Heartbeat / dead-man switch
 
@@ -243,11 +316,13 @@ the tree with no present ancestor — nobody is watching it — and expiry/heart
 the only cuts that require nobody to show up. The dead-man bound turns a stolen or
 rogue head key from an unbounded impersonation into at most ~one period (§10.8).
 Beacons are owner-content-signed (§07.5) from an owner device: grantees never hold
-owner keys, so a head agent can never beacon for itself. Suspension cuts *action*
-only; the accompanying rotation is lazy hygiene (§06.8). Declining the heartbeat — a
-true "issue and vanish" head mandate — is permitted but MUST be treated as an
-assumed risk: revocation then waits on the owner's return or the succession key
-(§01.1).
+owner keys, so a head agent can never beacon for itself. Suspension cuts every
+delegated protocol consumption — mutation, connector action, grant, revoke, and
+publication — while already-held decryption material remains subject to the honest
+physics limit. The accompanying rotation is lazy hygiene (§06.8). Declining the
+heartbeat — a true "issue and vanish" head mandate — is permitted but MUST be
+treated as an assumed risk: revocation then waits on the owner's return or the
+succession key (§01.1).
 
 ## 4.9 Storage and transport
 
@@ -356,6 +431,14 @@ An **obligation** attaches a discharge requirement to a permit: an in-scope acti
 may *consume* (append its `action` entry) only if it carries a valid **receipt**
 from a pinned attestor whose verdict satisfies the predicate.
 
+The signed v1 shape below targets connector actions. D3/D7 reserve the same
+fail-closed receipt semantics for an explicitly targeted mutation, grant, revoke,
+vault-config operation, or publication, but CB1 introduces no matcher or generalized
+receipt field for them. Until approved Gherkin and an independent CB2 vector freeze
+that encoding, a non-action operation cannot claim such an obligation discharged,
+and an implementation MUST NOT reinterpret the existing `action`/`args_hash` fields
+to manufacture support.
+
 ```jsonc
 "obligations": [
   { "id": "publish-approval",
@@ -420,3 +503,114 @@ ever holds the committed action carrying its receipt, or nothing (§07 has no
 
 *M-of-N (quorum of approvers) is reserved: the `attestor` set already carries the
 keys; a future `quorum: k` on the obligation turns OR-across-set into k-of-n.*
+
+## 4.13 Constraint applicability matrix (D7)
+
+This matrix is normative for the pure verdict and deliberately does not assign wire
+names to the two new meters. Operation columns mean: **R** = an authorized read
+presentation, **M** = an Ethos or structural mutation, **A** = a connector action
+(including an inference where the row says so), **Cfg-R** = reserved vault config
+read, **Cfg-M** = reserved vault config create/edit/delete, both outside the
+business action catalog under G-A, **G** = grant/sub-grant, **Rev** =
+revocation/rotation authority, and **Pub** = edition publication/merge/resolution.
+`Cfg-R` and `Cfg-M` are applicability columns only: the current mandate version has
+one indivisible exact `.config` authority, not two separately grantable rights.
+
+Symbols: **A** = applicable from public protocol facts; **P** = applicable and a
+signed public proof/receipt is required for cold acceptance; **X** = the fact is
+known to an executor, so keyless acceptance requires an approved public
+attestation/receipt when validity depends on it; **B** = best-effort side effect,
+never a validity condition; **F** = fail closed unconditionally under the current
+wire; suffix **W** = semantic applicability is validated and fixed, but its public
+encoding/proof is reserved for CB2 and cannot yet yield Allow; suffix
+**?** = applies only under the condition stated below; **—** = non-applicable by
+definition.
+
+The cells describe a **grantee** consumption. Owner-local treatment is the separate
+actor row below and never consumes these mandate constraints or counters.
+
+| Constraint or fact family | R | M | A | Cfg-R | Cfg-M | G | Rev | Pub |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Form, subject, proof of possession, chain, perimeter, revocation | P | P | P | P | P | P | P | P |
+| `not_before` / `not_after`, `active_windows` | A | A | A | A | A | A | A | A |
+| `freshness`, `heartbeat` | P | P | P | P | P | P | P | P |
+| `session_bind`, `max_sessions` | P-W | P-W | P | P-W | P-W | P-W | P-W | P-W |
+| `first_party_only` | A | A | A | A | A | A | A | A |
+| `purpose` | A | A | A | A | A | A | A | A |
+| Explicitly applicable `obligations` (including a `co_sign` instance) | P-W* | P-W* | P* | P-W* | P-W* | P-W* | P-W* | P-W* |
+| Canonical catalog `binding` class → exact right + `co_sign` | — | — | P | — | — | — | — | — |
+| Mandate `counter_sign` / legacy `constraints.binding` shorthand | — | — | P | — | — | — | — | — |
+| `max_actions`, `max_actions_per`, `rate_limit` | — | — | P | — | — | — | — | — |
+| Explicit Ethos-mutation meter reserved by D7 | — | P-W | — | — | — | — | — | — |
+| Explicit total delegated-consumption meter reserved by D7 | P-W† | P-W | P-W | P-W† | P-W | P-W | P-W | P-W# |
+| `max_children` | — | — | — | — | — | P‡ | — | — |
+| `budgets` profiles, model/token/action totals, usage attestation | — | — | P/X§ | — | — | — | — | — |
+| `domains` | — | — | X? | — | — | — | — | — |
+| `action_params` | — | — | X? | — | — | — | — | — |
+| `spend_cap` | — | — | X? | — | — | — | — | — |
+| `disclose_agency` | — | — | X? | — | — | — | — | — |
+| `notify` | B? | B? | B? | B? | B? | B? | B? | B? |
+| `log_reads` | P† | — | — | P-W† | — | — | — | — |
+| Approved connector catalog version/class pin and wildcard rule | — | — | P | — | — | — | — | — |
+| Unknown root-leaf extension under G-E | F¶ | F¶ | F¶ | F¶ | F¶ | F¶ | F¶ | F¶ |
+
+`*` An obligation applies only when its signed declaration explicitly targets that
+canonical operation. Otherwise it is non-applicable. Existing connector-action
+encodings stay byte-identical. Non-action cells state the validated semantic
+contract but remain unencodable WIP until the CB2 matcher/receipt vector; they
+cannot be silently inferred from current fields. Once explicitly encodable, lack of
+the public receipt is a refusal, including on a delegated mutation or publication.
+
+`†` A private read that leaves no protocol artifact cannot be cold-replayed or
+metered by physics. A Bundle Ethos or config read API still checks the chain at
+operation time; a read becomes replayable/countable only when `log_reads` or an
+explicit presentation produces signed evidence. The config-read evidence encoding
+is WIP; config mutations are always journalized independently of `log_reads`.
+
+`#` **CB1 counting decision — validated at the human protocol gate on
+2026-07-18:** a grantee publication, merge, or resolution contributes exactly one
+logical total-consumption unit for its publisher authority in addition to the
+already-counted, semantically distinct contained operations. Counters count logical
+protocol consumptions, not artifacts: Gamma evidence and an edition reference for
+the same mutation count once, and an existing `kind:"merge"` entry plus its merge
+publication envelope count once when they express the same publisher decision. A
+resolution envelope and any canonical evidence for that same resolution likewise
+count once; no distinct resolution kind is implied. A
+manifest/changeset proof and any other canonical representation of the same logical
+publication authority are evidence for that unit, never additional units. The
+public correlation/proof representation is reserved for CB2 and MUST NOT be
+invented as a new Gamma kind.
+
+`‡` `max_children` counts direct children of the exact minting mandate only, and is
+checked before the grant becomes usable. It never counts all descendants.
+
+`§` Budgets cover connector actions and inference entries exactly as §4.11 says,
+never Ethos mutations. Public attestation is mandatory whenever the selected
+profile requires it or a keyless verifier otherwise cannot establish a required
+executor fact.
+
+`?` `domains` applies only when an action addresses a domain/recipient;
+`action_params` only to parameters for which the mandate declares predicates;
+`spend_cap` only to paid external effects; `disclose_agency` only to outbound
+communications; `notify` only to a listed event. Otherwise that family is
+non-applicable. An applicable X fact needs approved public evidence for keyless
+acceptance; notification delivery remains best effort and never changes validity.
+
+`¶` Under the current G-E wire, Core has no understood applicability envelope and
+therefore returns the typed “extension not understood” refusal for every
+consumption. This cell can never become an implicit Allow. Only a later approved
+version carrying a typed applicability envelope may establish non-applicability.
+Existing mandate bytes are never reinterpreted by that future version.
+
+Actor and time-mode rules apply to every row:
+
+| Actor | Append-time | Cold-time |
+|---|---|---|
+| Owner | Local narrow capability; operation is authorized without a mandate, journalized, and consumes no mandate counter or constraint. | Verify owner signature, canonical operation, Gamma, changeset, and state transition; never synthesize a mandate consumption. |
+| Grantee | One local actor capability plus exactly one valid chain; evaluate every applicable row before canonical effect and commit its required evidence. | Replay the same pure operation and rows from public artifacts against the historical prefix; missing executor proof or private fact required for validity fails closed. |
+
+Publication does not launder contained operations: its one actor/chain is checked
+both for publication authority and for every derived change (§02.6.1). Append-time
+and cold-time MUST call the same pure rule with an injected time and historical
+prefix; a helper that exposes only a successful partial check is not an
+authorization API.

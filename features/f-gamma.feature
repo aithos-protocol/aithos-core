@@ -157,3 +157,76 @@ Feature: The gamma log
       Then the matching entries come back
       But a query for day 40 is refused
       And a query for action "send" is refused
+
+  Rule: Gamma replays every protocol consumption semantically
+
+    @wip
+    Scenario Outline: Each canonical operation is authorized before its entry joins history
+      Given a candidate Gamma entry for "<operation class>" by "<actor>"
+      When Core replays it against the exact historical prefix
+      Then form, time, signer, actor authority and operation coverage are verified
+      And applicable revocation, constraints, receipts and counters are consumed
+      And only then does the entry join replay state
+
+      Examples:
+        | operation class      | actor   |
+        | Ethos create         | owner   |
+        | Ethos edit           | grantee |
+        | Ethos delete         | grantee |
+        | connector action     | grantee |
+        | metered inference    | grantee |
+        | journalized read     | grantee |
+        | sub-grant            | grantee |
+        | scoped revocation    | grantee |
+        | disjoint merge kind:merge | grantee |
+
+    @wip
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+      Given a hash-linked and correctly encoded candidate Gamma history
+      When replay encounters "<semantic defect>"
+      Then semantic replay is refused at that entry
+      And no later entry or counter is accepted
+
+      Examples:
+        | semantic defect                                  |
+        | historical action N plus 1 beyond its limit      |
+        | receipt replayed under another consumption       |
+        | stale heartbeat or freshness state               |
+        | consumption at or after effective revocation     |
+        | sub-grant absent from Gamma                      |
+        | direct-child grant beyond max_children           |
+        | mutation outside the authorized opaque SID       |
+        | valid signature presented under the wrong chain  |
+        | owner entry signed by a different owner key      |
+        | delegated entry signed without leaf possession   |
+
+    @wip
+    Scenario: A log link and signature never substitute for semantic verification
+      Given a Gamma chain whose hashes, order and signatures all verify
+      But one delegated mutation is outside its mandate perimeter
+      When the bundle performs cold verification
+      Then the edition is rejected as semantically invalid
+      And no structural-only helper reports the history authorized
+
+  Rule: Append-time and cold-time share one replay front door
+
+    @wip
+    Scenario Outline: The same candidate and prefix produce the same typed verdict
+      Given identical public facts for "<case>"
+      When the candidate is checked before append and after export to a fresh store
+      Then the verdict, accepted prefix and counters are identical
+
+      Examples:
+        | case                                  |
+        | valid owner mutation                  |
+        | valid delegated mutation              |
+        | valid connector action                |
+        | revoked delegated mutation            |
+        | exhausted action counter              |
+        | missing public obligation receipt     |
+
+    @wip
+    Scenario: Active revocations are derived only from verified historical entries
+      Given a hash-linked Gamma file containing a forged revocation entry
+      When cold replay reconstructs active revocations
+      Then the forged entry is rejected before it can revoke or authorize anything

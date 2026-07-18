@@ -97,3 +97,94 @@ Feature: Delegated writes — the mandate is a pen, not just a key
       When the owner grants the agent one mandate carrying write on "projets/perso", gmail reply, gamma read on actions, issue depth 1 and revoke, max_actions 2, for 30 days
       Then at day 31 the same mandate can neither read, nor write, nor act, nor delegate
       But the owner still writes at day 31
+
+  Rule: Grantee content operations have zone-specific parity
+
+    @wip
+    Scenario Outline: One pure operation enforces the grantee rules of each zone
+      Given a published bundle and a grantee with "<authority>"
+      When the grantee performs "<operation>" in "<zone>"
+      Then the operation is "<verdict>"
+      And an accepted operation is journalized and cold-verifiable under the same chain
+
+      Examples:
+        | zone   | operation | authority                         | verdict  |
+        | public | list      | read.public#dir=projects           | accepted |
+        | public | read      | read.public#id=note                | accepted |
+        | public | create    | append.public#dir=projects         | accepted |
+        | public | edit      | edit.public#id=note                | accepted |
+        | public | delete    | delete.public#id=note              | accepted |
+        | circle | list      | read.circle#dir=projects           | accepted |
+        | circle | read      | read.circle#id=note                | accepted |
+        | circle | create    | append.circle#dir=projects         | accepted |
+        | circle | edit      | edit.circle#id=note                | accepted |
+        | circle | delete    | delete.circle#id=note              | accepted |
+        | self   | list      | read.self#dir=sealed               | accepted |
+        | self   | read      | read.self#id=opaque-note           | accepted |
+        | self   | create    | append.self                        | accepted |
+        | self   | create    | append.self#id=preallocated        | accepted |
+        | self   | edit      | edit.self#id=opaque-note           | accepted |
+        | self   | delete    | delete.self#id=opaque-note         | accepted |
+        | self   | edit      | edit.self#dir=sealed               | refused  |
+        | self   | delete    | delete.self#tag=private            | refused  |
+
+  Rule: Authority and decryption remain independent fences
+
+    @wip
+    Scenario Outline: A grantee needs both its chain and the exact content line
+      Given a grantee holds "<key material>" and presents "<authority>"
+      When it attempts to read the exact protected section
+      Then the result is "<verdict>"
+
+      Examples:
+        | key material                    | authority                | verdict                   |
+        | exact valid section line        | valid covering chain      | readable and authorized   |
+        | exact valid section line        | no mandate chain          | refused as unauthorized   |
+        | no section line                 | valid covering chain      | authorized but unreadable |
+        | sibling section line            | valid covering chain      | unreadable                |
+
+  Rule: Delegated authorship and self proofs survive cold verification
+
+    @wip
+    Scenario: A public grantee edit never imitates owner authorship
+      Given an agent with edit authority on one public section
+      When the agent publishes a normal delegated edit
+      Then its authorship signature binds content hash, SID, operation, edition and authorized_via
+      And Gamma and the manifest commit that signature
+      And fresh-store verification labels the grantee, never the owner, as author
+
+    @wip
+    Scenario Outline: A self mutation proves only an opaque state transition
+      Given an agent with exact authority for self SID "opaque-note"
+      When it performs "<operation>" and publishes
+      Then the edition proves "<state relation>" for that SID
+      And reveals no name, path, title, tags, body, folder relation or key
+
+      Examples:
+        | operation | state relation                    |
+        | create    | prior absence and new inclusion   |
+        | edit      | same-SID replacement              |
+        | delete    | prior inclusion and new absence   |
+
+  Rule: A session never freezes authority past the operation
+
+    @wip
+    Scenario Outline: Expiry or revocation after session open is checked before effect
+      Given a grantee opened a local bundle session while its chain was valid
+      And the mandate becomes "<authority change>" before the candidate mutation
+      When the grantee attempts to commit that mutation
+      Then the current pure verdict refuses it
+      And the bundle, manifest and Gamma head remain byte-for-byte unchanged
+
+      Examples:
+        | authority change |
+        | expired          |
+        | revoked          |
+
+    @wip
+    Scenario: Any delegated refusal rolls back content and Gamma together
+      Given a published bundle snapshotted before a delegated edit
+      And the candidate fails an applicable constraint during Core validation
+      When the bundle transaction is reopened
+      Then every canonical byte equals the snapshot
+      And no failed authorship proof, blob or Gamma entry remains reachable

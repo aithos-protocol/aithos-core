@@ -152,3 +152,40 @@ Feature: Integration — one bundle lives the whole protocol (plan §K, spec §0
       Then the night agent's chain is rejected as revoked from its cut
       And the action logged before revoked_at still verifies at its own timestamp
       And the watchdog opens no body anywhere in the bundle
+
+  Rule: Offline E2E means export into a genuinely fresh local store
+
+    @wip
+    Scenario Outline: Owner and delegated history verify keyless after a fresh-store round trip
+      Given a lived bundle containing owner and grantee publications
+      When its public and opaque artifacts are exported into a fresh empty "<store>" store
+      And the producer is destroyed and all private signing, opening and wrapping capabilities are absent
+      Then Bundle reopens and cold-verifies the complete editions and Gamma history
+      And owner and grantee authorship remain distinct
+      And no provider, remote store, network client or connector call participates
+
+      Examples:
+        | store   |
+        | MemStore |
+        | FsStore  |
+
+    @wip
+    Scenario: Private capabilities are reintroduced only after keyless verification
+      Given a fresh local store whose complete history already verifies keyless
+      When one separately supplied grantee opening capability is attached
+      Then it opens only the content lines in its still-valid perimeter
+      And removing it again leaves the keyless verdict unchanged
+
+    @wip
+    Scenario Outline: A missing or substituted public artifact fails the cold round trip
+      Given a complete export in a fresh local store
+      When "<artifact defect>" is introduced before reopen
+      Then cold verification is rejected without private fallback
+
+      Examples:
+        | artifact defect                              |
+        | one required mandate certificate is missing |
+        | one certificate is substituted              |
+        | one Gamma entry is missing                   |
+        | the expected parent manifest is substituted |
+        | a public authorship proof is omitted         |

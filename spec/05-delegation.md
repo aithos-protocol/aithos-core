@@ -28,14 +28,15 @@ in every request and gamma entry.
 ## 5.3 Attenuation invariants (verifier, per link child→parent)
 
 1. **Perimeter containment.** Every child entry is covered by a parent entry under
-   the verb lattice and selector algebra (§04.2): a parent `circle` no-selector
-   covers any child circle selector; `dir=p` covers `dir=p/q`, covers `id=` of any
-   section under `p`, covers `dir=p/q&tag=t`; `tag=t` covers `tag=t` and — policy
-   level — `dir=X&tag=t`; containment of `dir` is by segment list, never by string
-   prefix. Key level: a `dir&tag` grant is minted by a holder of the folder (or an
+   the verb lattice and selector algebra (§04.2). A parent zone with no selector
+   covers any child selector in that zone. `id=x` covers only `id=x`; `dir=` and
+   `tag=` NEVER cover an `id=` child, even if an external resolver says that SID
+   currently lies below the folder or carries the tag. `dir=p` covers narrower
+   `dir=p/q` and `dir=p/q&tag=t`; `tag=t` covers `tag=t` and — policy level —
+   `dir=X&tag=t`. Containment of `dir` is nodal (§04.2), never a string prefix.
+   Key level: a `dir&tag` grant is minted by a holder of the folder (or an
    ancestor) — a holder of only the zone-root tag view holds section wraps, not the
-   folder, and so can delegate per-section (`id=`) subsets but cannot mint the
-   folder-local anchor (§5.2 physical attenuation).
+   folder, and so cannot mint the folder-local anchor (§5.2 physical attenuation).
 2. **Window containment.** `parent.nb ≤ child.nb ≤ child.na ≤ parent.na`.
 3. **Constraint monotonicity.** Child constraints are ≥ strict: numeric caps ≤ parent,
    `domains ⊆`, `counter_sign/binding ⊇`, `obligations ⊇` (a sub-mandate may add
@@ -43,6 +44,12 @@ in every request and gamma entry.
    JCS-identical to the parent's, decided 2026-07-10; tightening is expressed by
    *adding* a stricter obligation, the conjunction is the tightening), `heartbeat`
    at least as tight, `freshness` ≤ parent, `first_party_only` not weakened.
+   `max_children` is specifically non-droppable: if the parent carries it, every
+   child repeats a value ≤ the parent's; it counts that child's direct children
+   only, not the ancestor's whole subtree. Every known constraint is type-valid on
+   both documents. An unknown constraint may be carried only by a directly
+   owner-issued chain leaf; it can neither cross nor parent a delegation link
+   because no attenuation law is known (§04.4).
 4. **Depth.** child `issue#depth=m` ⇒ `m ≤ n−1`; chain length in links ≤ root depth.
 5. **Signature & identity.** child.signature verifies under parent.grantee.pubkey;
    `child.issued_by == parent.grantee.pubkey`; `child.grantee.pubkey ≠ child.issued_by`.

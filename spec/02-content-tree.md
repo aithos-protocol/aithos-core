@@ -75,6 +75,23 @@ gamma/gamma.jsonl          §07
 Sharding of large indexes is permitted (deterministic, by `sha256(sid)`) but omitted
 here for clarity; it does not affect keys or headers.
 
+> **CB1 conformance-hardening decision — validated at the human protocol gate on
+> 2026-07-18; no new grammar.**
+> Untrusted display paths are relative to their already-selected logical zone and
+> enforce the human-name grammar of §2.2. They reject a leading absolute prefix,
+> empty or dot segments, traversal, nonconforming names, and any resolution that
+> would escape that zone before store access. Store keys are likewise relative and
+> confined, but obey the exact canonical layout of §2.3 (whose fixed filenames and
+> extensions are not human names), not the §2.2 name grammar. The logical canonical
+> paths of §2.1 keep their leading `/e/...` or `/x/...`; they are not display-path
+> inputs. `FsStore` anchors its opened canonical root and refuses any symlink,
+> junction, reparse point, or equivalent indirection whose resolution would leave
+> that root, before read, write, list, edition load, staging publication, or
+> recovery. A signed manifest cannot legitimize an escape or out-of-layout object.
+> The invariant is observable confinement and prescribes no particular syscall.
+> This is enforcement of the existing grammar and layout, not a new path or wire
+> form.
+
 ## 2.4 Blob format
 
 Encrypted zones: blob plaintext is JCS of `{md, sig?}` for `circle` sections
@@ -118,10 +135,13 @@ rules, enforceable by any verifier:
   its `prev_hash` matches.
 - **Disjoint merge (deterministic, arbiter-free).** Two competing editions at the
   same height whose changesets touch **disjoint node sets** are not a conflict: any
-  party MAY publish the merge edition at height+1 — both changesets applied, parents
-  ordered by ascending edition hash, listed in a `merges: [hash_a, hash_b]` field —
-  and every verifier computes the same result. Multi-agent contention on different
-  nodes therefore never waits for anyone.
+  owner, or one leaf grantee whose single chain covers every typed operation and
+  change on all nodes touched by both parents, MAY publish the merge edition at
+  height+1 — both changesets applied, parents ordered by ascending edition hash,
+  listed in a
+  `merges: [hash_a, hash_b]` field — and every verifier computes the same result.
+  Multi-agent contention on different nodes therefore needs no online arbiter, but
+  it never bypasses authority.
 - A **fork** proper (same-node conflict, or irreconcilable merges) is resolved by the
   **nearest common manager**: the closest authority whose perimeter covers every node
   touched by both branches. A delegate qualifies within its own authority; the owner
@@ -158,6 +178,39 @@ Wire conventions (graved 2026-07-11, pass I — they condition the signed bytes)
   those nodes; the losing branch's delegated writes are surfaced, never
   silently replayed.
 
+### 2.6.1 Normal delegated editions (D3)
+
+Edition v1 has exactly one actor. The actor is either the owner, using its local
+capability without a mandate, or the leaf grantee, proving possession of its key and
+presenting exactly one valid chain. Every content, structure, header, Gamma, root,
+and manifest change in a grantee edition MUST be explained by that same actor and
+chain. If two chains are needed, they produce separate editions; v1 has no aggregate
+multi-chain edition.
+
+For a merge or resolution, the single actor/chain is the publisher and authority of
+the new edition: it covers the complete derived changeset. Already-verified entries
+and authorship on each parent retain their historical actors; the publisher neither
+rewrites nor impersonates them. Only the new Gamma delta and the new edition
+signature/publication authority are single-actor.
+
+The verifier derives the typed changeset from the pinned parent state and the
+candidate state; it never trusts a caller-asserted list. It checks the expected
+parent and height, every changed object and removal, the corresponding canonical
+operation and Gamma entry, the chain and certificate hashes needed for cold
+verification, the recomputed roots and Gamma head, and the actor signature. An
+unexplained change, an omitted change, an extra Gamma consumption, or a different
+actor inside the candidate's new delta invalidates the edition even if all hashes
+and links are structurally valid.
+CB1 freezes this semantic requirement only. Independent CB2 vectors will determine
+the minimal additive public artifact or signed encoding needed to carry the typed
+changeset and evidence while preserving historical bytes; CB1 introduces and
+presumes no field name.
+
+A grantee signs as itself, never as the owner. The owner is absent from a normal
+delegated publication unless an explicitly applicable obligation requires an owner
+`co_sign` receipt; that receipt attests the operation and does not make the owner the
+edition actor.
+
 This keeps integrity authority-anchored without an online arbiter — and without an
 owner availability dependency (§00.5); a mirror that serializes writes is a
 convenience (§00), not a requirement.
@@ -182,6 +235,22 @@ either. Consequence (same honest limit as sealed tags, §10.7): on `self`, `dir=
 `tag=` perimeters are enforceable for **reading** (keys are physics) but not
 verifier-checkable for **writing** — write perimeters on `self` use `id=` or
 zone-level grants.
+
+Keyless verification of a `self` mutation uses opaque state evidence only. Create
+proves prior absence and subsequent inclusion of an authorized preallocated SID (or
+uses zone-wide append/write authority); edit proves replacement of the same SID;
+delete proves its removal. The evidence binds the prior and next commitments,
+operation, Gamma entry, chain, roots, and edition without exposing a name, path,
+title, tag, body, folder relation, or key. A signed assertion without a proof tied to
+the prior state is insufficient.
+
+For a `self` folder delete or move, that opaque proof covers the exact set of
+affected commitments and the authority for each of them. Delete proves coverage and
+removal of every descendant commitment; move proves source edit authority,
+destination append/write authority, and every required rotation, rewrap, and
+re-encryption consequence. The proof exposes neither the relationships among those
+commitments nor their names or contents. Its additive signed encoding is reserved
+for independent CB2 vectors.
 
 ## 2.9 Tag views, rename, move
 
@@ -323,3 +392,50 @@ Agent-authored content is never signed with owner keys, in any zone: the agent
 signs its gamma entry with its own keypair under its chain (§07.2). "I said it"
 versus "my agent said it in my name" is a cryptographic boundary that no mandate
 scoping error can blur.
+
+For `public`, that boundary also travels with the content. A grantee-authored
+mutation carries the grantee's signature bound to the content hash, SID, canonical
+operation, edition, and leaf `authorized_via`; Gamma and the manifest commit that
+proof. Cold verification therefore distinguishes owner authorship from delegated
+authorship without a private key. Product presentation MAY show the grantee and its
+authorization chain, but MUST NOT label that content as directly owner-signed.
+
+## 2.12 Local transaction and keyless verification boundary
+
+> **CB1 decisions G-B and G-D — validated at the human protocol gate on
+> 2026-07-18.**
+
+**Local transaction (G-B).** A mutation is calculated against an immutable snapshot
+in an overlay, submitted to the pure Core verdict, reduced to a deterministic
+write-set, and only then committed. Business helpers never write canonical objects
+directly. Every transaction has one logical linearization point after Core
+validation. Rejection or failure before that point leaves the canonical bundle
+byte-for-byte unchanged: no advanced manifest or Gamma head, partial index, header,
+wrap, blob, or orphan from the failed local mutation.
+
+`MemStore` commits by atomically replacing its canonical state. `FsStore` prepares in
+recoverable staging physically outside the canonical bundle directory and uses a
+Store-local recoverable linearization mechanism. Any internal generation metadata,
+commit marker, or reference is outside the canonical bundle namespace, §2.3 layout,
+manifest, pins, and signed wire; it only selects which complete staged state the
+Store exposes as the canonical view. The contract does not require a non-portable
+multi-file syscall. Readers, reopen, and recovery observe either the complete old
+state or the complete new state, never a mixture. A crash or lost acknowledgement
+at the linearization boundary may require discovering the committed outcome from
+the canonical manifest/head; scratch is cleaned or recoverably resolved. The sole
+orphan exception is D3's explicit preloading of unreferenced opaque
+content-addressed publication blobs, outside the local transaction. Such blobs are
+never reachable canonical state.
+
+**Keyless façade (G-D).** Bundle is the only public assembly boundary: it decodes and
+validates layout, version, hashes, references, reachability, and proof shape, then
+passes typed public artifacts to Core's pure semantic verifier. Append-time and
+cold-time feed the same facts to that verifier and obtain the same verdict. Exporting
+an edition into a fresh `MemStore` or `FsStore` and reopening it without owner or
+grantee private capabilities MUST be sufficient to verify owner and delegated
+history.
+
+A future provider may call this one Bundle façade and then perform only opaque
+storage, transport, and its own CAS. It receives no content key or protected
+plaintext and MUST NOT copy or reimplement perimeter, mandate, constraint,
+revocation, Gamma, changeset, or authorship semantics.

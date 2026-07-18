@@ -11,7 +11,8 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
   under root+n. Sorted adjacency proves absence. Withholding breaks the
   counts, forging breaks the roots. Appending is untouched: an author still
   needs only gamma_head, and the appender-side checks keep their raw
-  tallies — same bytes, same result.
+  tallies. Historical bytes stay identical; no mutation/total counter wire
+  is implied before the CB2 vectors.
 
   Rule: Every edition commits the gamma roots, additively
 
@@ -84,3 +85,70 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
       Given a published edition whose log spans one month
       When a mirror serves the segment with one entry withheld
       Then the recomputed segment root dies against the committed root and count
+
+  Rule: Counter domains stay distinct before their wire representation is frozen
+
+    @wip
+    Scenario Outline: Each delegated consumption affects only its conceptual meters
+      Given a mandate history containing one "<consumption>"
+      When the verifier rebuilds action, Ethos-mutation and total-consumption tallies
+      Then the action tally changes by "<action delta>"
+      And the mutation tally changes by "<mutation delta>"
+      And the total delegated-consumption tally changes by "<total delta>"
+
+      Examples:
+        | consumption                | action delta | mutation delta | total delta |
+        | connector action           | 1            | 0              | 1           |
+        | metered inference          | 0            | 0              | 1           |
+        | delegated Ethos mutation   | 0            | 1              | 1           |
+        | journalized delegated read | 0            | 0              | 1           |
+        | delegated config mutation  | 0            | 0              | 1           |
+        | direct sub-grant           | 0            | 0              | 1           |
+        | scoped revocation          | 0            | 0              | 1           |
+        | normal grantee publication | 0            | 0              | 1           |
+        | merge publication plus its kind:merge entry | 0          | 0              | 1           |
+        | delegated fork resolution  | 0            | 0              | 1           |
+        | owner Ethos mutation       | 0            | 0              | 0           |
+
+    @wip
+    Scenario: New conceptual counters do not rewrite historical committed bytes
+      Given a historical edition and Gamma vector predating mutation and total meters
+      When a verifier replays it under its historical protocol version
+      Then the historical edition remains byte-identical and verifiable
+      And new meter material is accepted only under a signed versioned schema frozen by independent vectors
+      And old Gamma kinds, max_actions and count roots are never reinterpreted
+      And new meter material under an old or unversioned schema, or under an unknown counter-schema version, fails closed
+
+    @wip
+    Scenario Outline: Publication authority counts once across all of its evidence
+      Given a grantee "<operation>" contains two semantically distinct already-counted mutations
+      And its publisher authority is evidenced by "<edition evidence>"
+      And the same publisher decision has "<Gamma evidence>"
+      When semantic replay rebuilds the total delegated-consumption tally
+      Then the two mutations and the publication contribute exactly three
+      And the edition and Gamma evidence correlate to the same single publisher unit
+      And any Gamma evidence and edition reference for the same contained mutation count it once
+      And no manifest, root or derived write-set consequence adds another consumption
+      And the closed Gamma kind registry gains no implicit publication entry
+
+      Examples:
+        | operation          | edition evidence                    | Gamma evidence                         |
+        | normal publication | signed manifest and changeset       | no Gamma publication entry             |
+        | disjoint merge     | signed merge manifest and changeset | the existing kind:merge entry           |
+        | fork resolution    | signed resolving manifest           | no distinct Gamma resolution entry       |
+
+  Rule: Roots prove committed bytes but never authorize them
+
+    @wip
+    Scenario: A valid root over an unauthorized mutation is still refused
+      Given an edition whose Gamma roots and inclusion proofs recompute exactly
+      But one proven mutation is outside its actor's SID perimeter
+      When the fresh-store verifier performs semantic replay
+      Then the edition is rejected despite the valid roots
+
+    @wip
+    Scenario: Append-time and cold-time rebuild identical semantic counts
+      Given one accepted mixed history of reads, actions, inferences, mutations, config mutations, grants, revocations, publications and merges
+      When counters are computed before the next append and from a fresh-store replay
+      Then every conceptual tally and limit verdict is identical
+      And the roots commit that replay state without replacing semantic checks

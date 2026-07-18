@@ -73,3 +73,80 @@ Feature: Section-precise mandates — the id= selector
       Given an agent granted read on section "note1" by id
       When the agent attempts a read op on section "note2"
       Then the op is not covered
+
+    @wip
+    Scenario Outline: An exact id operation stays exact in every zone
+      Given an agent granted "<verb>" on "<zone>" section "note1" by id
+      When the agent attempts "<operation>" on the same SID
+      Then the operation is covered
+      But the identical operation on sibling SID "note2" is not covered
+
+      Examples:
+        | zone   | verb   | operation |
+        | public | read   | read      |
+        | public | edit   | edit      |
+        | public | delete | delete    |
+        | circle | read   | read      |
+        | circle | edit   | edit      |
+        | circle | delete | delete    |
+        | self   | read   | read      |
+        | self   | edit   | edit      |
+        | self   | delete | delete    |
+
+    @wip
+    Scenario Outline: A dir or tag parent never covers an id child
+      Given an agent granted "<selector>" on a zone with issue depth 1
+      When the agent delegates the apparently related section by id
+      Then the helper's chain is rejected without resolving the SID position
+
+      Examples:
+        | selector                         |
+        | read.public#dir=projects         |
+        | read.circle#dir=projects         |
+        | read.self#dir=sealed             |
+        | read.public#tag=toto             |
+        | read.circle#tag=toto             |
+        | read.self#tag=private            |
+        | read.circle#dir=projects&tag=toto |
+        | read.self#dir=sealed&tag=private |
+
+    @wip
+    Scenario Outline: A whole-zone parent covers an id child in every zone
+      Given an agent granted read on all of "<zone>" with issue depth 1
+      When the agent delegates one section of that zone by id
+      Then the helper's chain verifies
+      And no other section is covered by the child
+
+      Examples:
+        | zone   |
+        | public |
+        | circle |
+        | self   |
+
+    @wip
+    Scenario Outline: A duplicated selector dimension is invalid form
+      When a mandate carries one perimeter entry with "<duplicate selector>"
+      Then the mandate is rejected before signature verification
+
+      Examples:
+        | duplicate selector   |
+        | dir=a&dir=b          |
+        | tag=a&tag=b          |
+        | id=one&id=two        |
+
+  Rule: A self creation is zone-wide or bound to a preallocated opaque SID
+
+    @wip
+    Scenario Outline: Self create authority reveals no structure
+      Given an agent granted "<authority>" in self
+      When the agent creates an opaque self section with "<candidate SID>"
+      Then the create verdict is "<verdict>"
+      And its proof reveals no name, path, title, tags, body or folder relation
+
+      Examples:
+        | authority                    | candidate SID          | verdict |
+        | append.self                  | fresh opaque SID       | allowed |
+        | write.self                   | fresh opaque SID       | allowed |
+        | append.self#id=preallocated  | preallocated SID       | allowed |
+        | append.self#id=preallocated  | different fresh SID    | refused |
+        | append.self#dir=sealed       | SID apparently below it | refused |

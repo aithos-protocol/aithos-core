@@ -1,6 +1,6 @@
 Feature: Revocation — the full ladder, with no server in any trust role
   Cutting an agent is a ladder, not a switch: expiry and cert revocation cut
-  the ACTION (every honoring verifier refuses), rotation cuts FUTURE reads
+  delegated protocol consumption (every honoring verifier refuses), rotation cuts FUTURE reads
   (a fresh key the revoked cannot derive), re-encryption cuts EXISTING
   content, and the cost follows the reach of the revoked key — never the
   number of keys. The revoker is the owner or an authorized ancestor,
@@ -123,3 +123,43 @@ Feature: Revocation — the full ladder, with no server in any trust role
       Given an agent granted read on circle folder "projets"
       When the owner moves folder "archives/old" under "projets"
       Then the agent reads "projets/old/note1" through the wrap posted under "projets"
+
+  Rule: Revocation, cryptographic cut, Gamma and publication are one transaction
+
+    @wip
+    Scenario: A complete incident cut verifies after a cold reopen
+      Given a published encrypted subtree shared with one grantee and one survivor
+      When an authorized manager revokes the grantee
+      And the transaction rotates, rewraps survivors, re-encrypts protected content and appends Gamma
+      Then one edition commits the revocation and every derived cryptographic change
+      And the revoked line opens no new key or rewritten body
+      And a fresh keyless store verifies the authority, cut and resulting roots
+
+    @wip
+    Scenario Outline: Failure during a revocation leaves no partial cut
+      Given a published bundle snapshotted byte for byte before revocation
+      And an injected failure at "<boundary>"
+      When an authorized manager attempts revoke, rotation and publication
+      Then the canonical bundle remains byte-for-byte identical to the snapshot
+      And reopening observes the old recipients, old Gamma head and old edition
+      And no revocation entry or rotated material from the failed attempt is reachable
+
+      Examples:
+        | boundary                    |
+        | revocation verdict          |
+        | fresh node key generation   |
+        | survivor rewrap             |
+        | body re-encryption           |
+        | Gamma append                |
+        | before manifest and roots linearization |
+
+  Rule: Revocation replay is forward-only
+
+    @wip
+    Scenario: Historical authority is judged at each entry timestamp
+      Given a valid delegated mutation before its mandate revocation
+      And an otherwise identical mutation at or after revoked_at
+      When a fresh store replays the complete Gamma history
+      Then the earlier mutation remains valid
+      But the later mutation is rejected
+      And current revocation state is derived only from verified prior entries

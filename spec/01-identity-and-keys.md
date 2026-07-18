@@ -118,7 +118,12 @@ the **previous** document's `succession` key. Any other signer — including
 `#root` itself — is rejected: a stolen `S` can never steal the identity's future. It is signed by root_sign and versioned by the same
 edition chain as the bundle. Grantee keys never appear in it.
 
-## 1.5 Key inventory (complete)
+## 1.5 Persistent root-key inventory (complete)
+
+This table is complete for independently persisted secret roots and backup
+material. Domain-separated subkeys, session keys, and narrow capabilities derived
+from these roots MAY exist for a protocol purpose; they add no independent backup
+secret and are not interchangeable across purposes.
 
 | Holder | Material | Mutable? |
 |---|---|---|
@@ -127,4 +132,38 @@ edition chain as the bundle. Grantee keys never appear in it.
 | Device | one X25519 device key + wrap of `S` | replaceable per device |
 | Grantee | one Ed25519 keypair | **never** (I2) |
 | Node | DK per (path, key_version) | rotated by authorized revocations |
-| — | there is no other key material in the system | — |
+| — | no other independently persisted secret root; purpose-separated derived material follows its own contract | — |
+
+## 1.6 Local cryptographic capability boundary
+
+> **CB1 decision G-C — validated at the human protocol gate on 2026-07-18;
+> no wire change.**
+
+Private material is a local implementation concern, not an input that higher-level
+bundle APIs may assume they can export. A protocol operation receives only the
+narrow opaque capability it needs — signing, opening, or wrapping — together with
+the public identity needed to verify its result. Possessing such a capability is
+never sufficient authority: an owner capability is valid only in an owner-local
+session, and a grantee capability still requires proof of possession plus one valid
+mandate chain for the operation.
+
+Every stable capability is bound to one typed protocol purpose and context. It
+accepts a typed object or request rather than arbitrary caller-selected bytes and
+binds the expected subject, domain, Ethos, actor and, where relevant, node path, key
+version, and recipient before performing cryptography. A generic `sign(bytes)`,
+decrypt-bytes, cross-context opening, or wrap-bytes oracle is not a compliant Bundle
+API, and a capability for one artifact class cannot substitute for another;
+lower-level raw primitives may remain an implementation detail behind that
+boundary.
+
+One local session is bound to one Ethos and one actor and, for a grantee, exactly
+one mandate chain. Work spanning several Ethos or chains uses isolated sessions;
+there is no ambient global authority or capability pool from which a caller can
+silently assemble a wider actor.
+
+The current local key implementation may back these capabilities directly. Stable
+APIs MUST NOT require a raw seed or private key when the narrow operation suffices,
+and MUST NOT expose private material as an output. This boundary changes neither
+signed bytes nor the persistent-root inventory above. D9's distinct audit and config
+capabilities remain purpose-separated; their derivation topology is reserved for
+the CB2 vectors.

@@ -159,3 +159,51 @@ Feature: Obligations — the general gate (spec 04.12)
       Given a head mandate requiring human approval on publish
       When a sub-mandate is minted with the same obligation loosened to 1 hour
       Then the chain is refused at verification time
+
+  Rule: An explicitly targeted obligation gates every delegated consumption class
+
+    @wip
+    Scenario Outline: A delegated operation commits only with its bound receipt
+      Given a mandate with an obligation explicitly targeting "<operation>"
+      When the grantee presents "<receipt state>" for that canonical operation
+      Then the operation is "<verdict>"
+      And any accepted receipt is bound to the leaf mandate, operation arguments and time
+
+      Examples:
+        | operation             | receipt state                    | verdict  |
+        | public content edit   | valid pinned-attestor receipt    | accepted |
+        | public content edit   | no receipt                       | refused  |
+        | structural move       | receipt for different arguments | refused  |
+        | normal publication    | valid owner co_sign receipt      | accepted |
+        | normal publication    | stale owner co_sign receipt      | refused  |
+        | connector action      | replayed sibling receipt         | refused  |
+
+    @wip
+    Scenario: A co-signed delegated publication still has one grantee actor
+      Given a grantee publication explicitly requiring owner co_sign
+      When the owner supplies the bound approval receipt
+      Then the grantee remains the sole edition actor and signer
+      And the owner appears only as the receipt attestor
+      And every change remains covered by the grantee's single chain
+
+  Rule: Executor facts need public evidence for keyless acceptance
+
+    @wip
+    Scenario Outline: A required tier-X truth cannot be asserted by the grantee
+      Given a delegated publication whose operation requires "<executor fact>"
+      When the public edition carries "<public evidence>"
+      Then keyless cold verification is "<verdict>"
+
+      Examples:
+        | executor fact       | public evidence                      | verdict  |
+        | action_params       | approved bound attestation           | accepted |
+        | action_params       | grantee assertion only               | refused  |
+        | spend_cap           | no acceptable public attestation     | refused  |
+        | disclose_agency     | approved bound attestation           | accepted |
+
+    @wip
+    Scenario: Receipt evaluation is identical before append and after export
+      Given a delegated operation with a complete ordered receipt set
+      When it is evaluated before effect and replayed from a fresh keyless store
+      Then both verdicts accept the same receipts and reject the same replays
+      And sealed operation data is never exposed to the keyless verifier
