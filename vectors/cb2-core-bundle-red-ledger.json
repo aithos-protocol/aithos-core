@@ -21,14 +21,14 @@
   "gherkin_inventory": {
     "feature_file_count": 18,
     "declaration_count": 375,
-    "wip_occurrence_count": 165,
+    "wip_occurrence_count": 155,
     "active_cucumber": {
-      "features": 14,
-      "rules": 65,
-      "scenarios": 229,
-      "steps": 906
+      "features": 15,
+      "rules": 69,
+      "scenarios": 290,
+      "steps": 1133
     },
-    "note": "The active runner excludes @wip. The 74 post-baseline additive declarations remain @wip with the 91 CB1 declarations; CB2 removes no tag. Promotion belongs only to the owning GREEN lot."
+    "note": "The active runner excludes @wip. CB3 promoted exactly 10 declarations: the verb-lattice and closed-form outlines plus eight id-selector/containment declarations. The declaration inventory remains 375; 155 future-owned @wip declarations remain."
   },
   "coverage_matrix": [
     {
@@ -123,7 +123,7 @@
       "generator": "vectors/gen-cb2-mandate-contracts.py",
       "generator_sha256": "c51b53600d8a01b388d568d32c89217a80885447999ae929a08e44e21b933a48",
       "consumer": "rust/crates/aithos-core/tests/cb2_mandate_contracts.rs",
-      "consumer_sha256": "67e53c449623ff73f8546209789bf4e9cf348dd3bf7a49545c24b843e1c601a0"
+      "consumer_sha256": "3d04e98781d0eedb7c2189fe6d511cec43fe50b9070fcf326a739fddb5c544cf"
     },
     "CB2-MC1": {
       "file": "vectors/cb2-max-children-versioning.json",
@@ -483,12 +483,18 @@
       "name": "final CB2 workspace compatibility gates",
       "command": "Run cargo fmt --all -- --check; cargo clippy --workspace --all-targets --locked -- -D warnings; cargo check -p aithos-wasm --target wasm32-unknown-unknown --locked; then cargo test --workspace --locked with output captured outside the repository.",
       "observed": "Formatting, workspace Clippy and the WASM target are GREEN. The workspace test run stops at the first qualified-RED binary with exactly the two registered Bundle version-coexistence failures and two passes; exhaustive isolated replay already accounts for the remaining 32 registered RED cases and reports no unrelated failure."
+    },
+    {
+      "name": "CB3 canonical mandate scopes final gate",
+      "command": "Regenerate/check the CB2 mandate and max_children oracles; run cb3_mandate_scopes, cb2_mandate_contracts, cb2_max_children_versioning, cb2_bundle_version_coexistence, historical Core and full Bundle/Cucumber; then formatting, targeted and workspace Clippy, workspace tests classified against the ledger, and the WASM target with the isolated environment.",
+      "observed": "Implementation 1af558a6e9b05082a43b067690ecbacbab103223: cb3_mandate_scopes 3/3, Bundle and Cucumber 15 features / 69 rules / 290 scenarios / 1133 steps, historical Core, formatting, both Clippy gates and WASM are GREEN. The mandate suite has only 7 registered CB5 failures; max_children has only its one registered CB5 omission failure; Bundle version coexistence is 4/4. @wip decreased exactly 165 to 155. All 52 CB3 IDs are VERT; only the 107 future-owned IDs remain open."
     }
   ],
   "status_counts": {
-    "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 92,
-    "COMPILE-RED-PRELIMINAIRE": 33,
+    "RED-QUALIFIE": 8,
+    "PREEXISTING-GREEN": 71,
+    "COMPILE-RED-PRELIMINAIRE": 28,
+    "VERT": 52,
     "total": 159
   },
   "entries": [
@@ -501,11 +507,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "The vector file SHA-256 is 771eef3b92314a5cc6a37882a35cc81cbbb2b4e0d4976c4d555a10ba05cf1e3e.",
-      "observed_reason": "The exact committed bytes have the expected SHA-256. This is an integrity check, not a semantic protocol proof.",
+      "observed_reason": "The exact committed bytes have the expected SHA-256. This is an integrity check, not a semantic protocol proof. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_vector_hash_is_stable_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-MANDATE-HISTORICAL-JCS",
@@ -516,11 +522,11 @@
       "vector_slice": "historical_without_id_selector and form_cases[historical F1 action perimeter]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_historical_e1_f1_hash_and_jcs_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "Frozen E1 and F1 mandate JCS and hashes do not change.",
-      "observed_reason": "Both historical documents retain their frozen hashes and canonical JCS bytes.",
+      "observed_reason": "Both historical documents retain their frozen hashes and canonical JCS bytes. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_historical_e1_f1_hash_and_jcs_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-ID-MANDATE-JCS",
@@ -531,11 +537,11 @@
       "vector_slice": "id_selector.canonical_mandate_jcs and id_selector.canonical_mandate_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_id_mandate_jcs_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "The Mandate JSON containing an id= perimeter string round-trips through serde to the oracle JCS.",
-      "observed_reason": "Raw Mandate serde/JCS matches exactly; this does not claim that PerimeterEntry parses id=.",
+      "observed_reason": "Raw Mandate serde/JCS matches exactly; this does not claim that PerimeterEntry parses id=. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_id_mandate_jcs_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-ID-CODEC",
@@ -546,24 +552,24 @@
       "vector_slice": "id_selector.roundtrips",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_id_selector_parse_and_roundtrip_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "Both valid id= entries parse and to_entry_string reproduces each oracle string exactly.",
-      "observed_reason": "Both valid entries are rejected before rendering with Error::InvalidMandate unknown selector.",
+      "observed_reason": "Both valid entries are rejected before rendering with Error::InvalidMandate unknown selector. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_id_selector_parse_and_roundtrip_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-ID-INVALID-PARSE-GATE",
-      "test_id": null,
+      "test_id": "cb2_id_mixed_and_duplicate_invalid_entries_parse_gate_preliminary",
       "decision": "D1 and T3 selector form",
       "scenario": "Duplicate id and id combined with dir or tag are rejected for their invalid composition after id= becomes a supported selector.",
       "vector_ref": "CB2-MANDATE-CONTRACTS",
       "vector_slice": "id_selector.invalid_entries[2:7]",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_id_mixed_and_duplicate_invalid_entries_parse_gate_preliminary --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "After the id= codec skeleton exists, the five invalid id-bearing forms reach a semantic typed rejection.",
-      "observed_reason": "The current parser rejects every id= spelling as unknown, so these negative examples cannot yet distinguish invalid composition from an unsupported valid selector.",
+      "observed_reason": "The current parser rejects every id= spelling as unknown, so these negative examples cannot yet distinguish invalid composition from an unsupported valid selector. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_id_mixed_and_duplicate_invalid_entries_parse_gate_preliminary passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "evidence": {
         "kind": "passing diagnostic, not protocol GREEN",
         "test_id": "cb2_id_mixed_and_duplicate_invalid_entries_parse_gate_preliminary",
@@ -571,20 +577,20 @@
         "observed": "All five cases currently return Error::InvalidMandate only because id= is wholly unsupported."
       },
       "owner": "CB3",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-ID-CONTAINMENT-GATE",
-      "test_id": null,
+      "test_id": "cb3_id_selector_containment_reaches_the_semantic_oracle",
       "decision": "D1 — Containment de id=",
       "scenario": "Whole-zone, identical-id, different-id, dir/tag-to-id, and cross-zone containment follow D1.",
       "vector_ref": "CB2-MANDATE-CONTRACTS",
       "vector_slice": "id_selector.containment",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb3_mandate_scopes -- cb3_id_selector_containment_reaches_the_semantic_oracle --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "A representable Ethos id selector lets covers reach all seven D1 containment assertions.",
-      "observed_reason": "PerimeterEntry has no representable Ethos id selector, so a semantic containment assertion cannot be arranged without inventing a future Rust shape.",
+      "observed_reason": "PerimeterEntry has no representable Ethos id selector, so a semantic containment assertion cannot be arranged without inventing a future Rust shape. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb3_id_selector_containment_reaches_the_semantic_oracle passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "evidence": {
         "kind": "passing inventory diagnostic",
         "test_id": "cb2_id_selector_containment_parse_gate_inventory_preliminary",
@@ -593,7 +599,7 @@
         "observed": "The seven id-bearing containment cases are inventoried and all are blocked at id= parsing."
       },
       "owner": "CB3",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-DIR-NODAL-CONTAINMENT",
@@ -604,11 +610,11 @@
       "vector_slice": "id_selector.containment[dir containment follows the terminal node after an address change]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_dir_selector_containment_after_address_change_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "The parent terminal folder SID covers the moved descendant chain.",
-      "observed_reason": "PerimeterEntry::covers returns the oracle verdict true.",
+      "observed_reason": "PerimeterEntry::covers returns the oracle verdict true. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_dir_selector_containment_after_address_change_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-DUPLICATE-DIR-SELECTOR",
@@ -619,11 +625,11 @@
       "vector_slice": "id_selector.invalid_entries[0]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_duplicate_dir_invalid_entry_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "PerimeterEntry::parse returns Error::InvalidMandate for dir=a&dir=b.",
-      "observed_reason": "PerimeterEntry::parse returns Ok and concatenates the two folder selectors.",
+      "observed_reason": "PerimeterEntry::parse returns Ok and concatenates the two folder selectors. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_duplicate_dir_invalid_entry_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-DUPLICATE-TAG-SELECTOR",
@@ -634,24 +640,24 @@
       "vector_slice": "id_selector.invalid_entries[1]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_duplicate_tag_invalid_entry_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "PerimeterEntry::parse returns Error::InvalidMandate for tag=a&tag=b.",
-      "observed_reason": "PerimeterEntry::parse returns Ok and silently retains the last tag.",
+      "observed_reason": "PerimeterEntry::parse returns Ok and silently retains the last tag. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_duplicate_tag_invalid_entry_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-OP-SID-GATE",
-      "test_id": null,
+      "test_id": "cb3_section_operation_supplies_its_sid_to_core",
       "decision": "D1 — a section-specific Ethos operation supplies its SID to the pure Core verdict",
       "scenario": "The op carries the section — covers_op confronts it.",
       "vector_ref": "CB2-MANDATE-CONTRACTS",
       "vector_slice": "id_selector",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb3_mandate_scopes -- cb3_section_operation_supplies_its_sid_to_core --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "The existing public operation surface can express the target section identity without exposing a guessed future API name.",
-      "observed_reason": "mandate::Op currently exposes verb, zone, folders, and tags only; no public section SID input exists.",
+      "observed_reason": "mandate::Op currently exposes verb, zone, folders, and tags only; no public section SID input exists. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb3_section_operation_supplies_its_sid_to_core passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "evidence": {
         "kind": "source observation",
         "file": "rust/crates/aithos-core/src/mandate.rs",
@@ -665,7 +671,7 @@
         ]
       },
       "owner": "CB3",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-DELETE-COVERS-READ",
@@ -676,11 +682,11 @@
       "vector_slice": "verb_lattice[grant=delete,required=read]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_delete_covers_read_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "A delete grant covers a read requirement.",
-      "observed_reason": "PerimeterEntry::covers returns false for delete.circle covering read.circle.",
+      "observed_reason": "PerimeterEntry::covers returns false for delete.circle covering read.circle. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_delete_covers_read_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-LINK-CONSTRAINTS-WELL-FORMED",
@@ -894,11 +900,11 @@
       "vector_slice": "form_cases[historical F1 action perimeter]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_historical_f1_form_and_signature_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "The frozen F1 mandate canonicalizes and verifies under its reconstructed DID.",
-      "observed_reason": "Canonical JCS and verify_chain are GREEN.",
+      "observed_reason": "Canonical JCS and verify_chain are GREEN. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_historical_f1_form_and_signature_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-SUPPORTED-DRAFT1",
@@ -909,11 +915,11 @@
       "vector_slice": "form_cases[supported draft.1 root]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_supported_draft1_root_and_signature_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain accepts the signed draft.1 root.",
-      "observed_reason": "verify_chain returns Ok.",
+      "observed_reason": "verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_supported_draft1_root_and_signature_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-SUPPORTED-DRAFT2",
@@ -924,11 +930,11 @@
       "vector_slice": "form_cases[supported draft.2 root]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_supported_draft2_root_and_signature_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain accepts the signed draft.2 root.",
-      "observed_reason": "verify_chain returns Ok. This positive result alone does not prove version dispatch because the unsupported-version negative is RED.",
+      "observed_reason": "verify_chain returns Ok. This positive result alone does not prove version dispatch because the unsupported-version negative is RED. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_supported_draft2_root_and_signature_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-PUNCTUATION-NONCE",
@@ -939,11 +945,11 @@
       "vector_slice": "form_cases[supported punctuation nonce]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_punctuation_nonce_and_signature_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "The signed root with a non-empty punctuation nonce verifies.",
-      "observed_reason": "verify_chain returns Ok.",
+      "observed_reason": "verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_punctuation_nonce_and_signature_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-FRACTIONAL-ZULU",
@@ -954,11 +960,11 @@
       "vector_slice": "form_cases[supported fractional Zulu timestamps]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_fractional_zulu_timestamps_and_signature_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "The valid signed fractional-Zulu fixture verifies.",
-      "observed_reason": "verify_chain returns Ok.",
+      "observed_reason": "verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_fractional_zulu_timestamps_and_signature_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-UNSUPPORTED-VERSION",
@@ -969,11 +975,11 @@
       "vector_slice": "form_cases[unsupported protocol version]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_unsupported_protocol_version_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok.",
+      "observed_reason": "verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_unsupported_protocol_version_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-SIGNATURE-ALGORITHM",
@@ -984,11 +990,11 @@
       "vector_slice": "form_cases[signature algorithm other than ed25519]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_signature_algorithm_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok.",
+      "observed_reason": "verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_signature_algorithm_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-ROOT-ANNOUNCED-KEY",
@@ -999,11 +1005,11 @@
       "vector_slice": "form_cases[root announced signer key differs from issuer]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_root_announced_signer_key_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok because signature.key is not checked.",
+      "observed_reason": "verify_chain returns Ok because signature.key is not checked. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_root_announced_signer_key_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-CHILD-ANNOUNCED-KEY",
@@ -1014,11 +1020,11 @@
       "vector_slice": "form_cases[child announced signer key differs from issuer]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_child_announced_signer_key_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The dedicated no-id parent fixture reaches the semantic check and verify_chain returns Ok.",
+      "observed_reason": "The dedicated no-id parent fixture reaches the semantic check and verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_child_announced_signer_key_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-MANDATE-ID",
@@ -1029,11 +1035,11 @@
       "vector_slice": "form_cases[malformed mandate identifier]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_malformed_mandate_identifier_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok.",
+      "observed_reason": "verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_malformed_mandate_identifier_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-SUBJECT-ID",
@@ -1044,11 +1050,11 @@
       "vector_slice": "form_cases[malformed subject identifier]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_malformed_subject_identifier_rejected_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The root identity check returns Error::InvalidMandate.",
+      "observed_reason": "The root identity check returns Error::InvalidMandate. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_malformed_subject_identifier_rejected_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-CHILD-SUBJECT",
@@ -1059,11 +1065,11 @@
       "vector_slice": "form_cases[child subject changes along the chain]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_child_subject_change_rejected_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The child subject-continuity check returns Error::InvalidMandate.",
+      "observed_reason": "The child subject-continuity check returns Error::InvalidMandate. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_child_subject_change_rejected_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-ROOT-PARENT",
@@ -1074,11 +1080,11 @@
       "vector_slice": "form_cases[root carries a parent identifier]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_root_parent_identifier_rejected_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The root relationship check returns Error::InvalidMandate.",
+      "observed_reason": "The root relationship check returns Error::InvalidMandate. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_root_parent_identifier_rejected_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-CHILD-PARENT",
@@ -1089,11 +1095,11 @@
       "vector_slice": "form_cases[child parent identifier differs from presented parent]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_child_parent_mismatch_rejected_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The parent-link identity check returns Error::InvalidMandate.",
+      "observed_reason": "The parent-link identity check returns Error::InvalidMandate. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_child_parent_mismatch_rejected_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-CHILD-ISSUER",
@@ -1104,11 +1110,11 @@
       "vector_slice": "form_cases[child issued_by differs from parent grantee]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_child_issuer_mismatch_rejected_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The child issuer check returns Error::InvalidMandate.",
+      "observed_reason": "The child issuer check returns Error::InvalidMandate. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_child_issuer_mismatch_rejected_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-GRANTEE-SIGNING-KEY",
@@ -1119,11 +1125,11 @@
       "vector_slice": "form_cases[malformed grantee signing key]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_malformed_grantee_signing_key_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Error::InvalidMultibase(\"z6Mk-not-base58\"), the wrong typed variant.",
+      "observed_reason": "verify_chain returns Error::InvalidMultibase(\"z6Mk-not-base58\"), the wrong typed variant. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_malformed_grantee_signing_key_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-GRANTEE-KEX",
@@ -1134,11 +1140,11 @@
       "vector_slice": "form_cases[grantee kex key does not match signing key]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_grantee_kex_mismatch_rejected_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The kex binding check returns Error::InvalidMandate. This final verdict does not prove form-before-signature ordering.",
+      "observed_reason": "The kex binding check returns Error::InvalidMandate. This final verdict does not prove form-before-signature ordering. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_grantee_kex_mismatch_rejected_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-EMPTY-NONCE",
@@ -1149,24 +1155,24 @@
       "vector_slice": "form_cases[empty nonce]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_empty_nonce_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok.",
+      "observed_reason": "verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_empty_nonce_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-NON-STRING-RAW-FORM-GATE",
-      "test_id": null,
+      "test_id": "cb2_t3_non_string_nonce_serde_gate_preliminary",
       "decision": "T3 — nonce has string form before signature trust",
       "scenario": "A signed mandate with a non-string nonce is refused through the public Core form boundary.",
       "vector_ref": "CB2-MANDATE-CONTRACTS",
       "vector_slice": "form_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_non_string_nonce_serde_gate_preliminary --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "A raw-form public boundary returns a typed Core form rejection before verification.",
-      "observed_reason": "serde_json rejects the document before Mandate exists, and no public raw-form Core API exposes a typed mandate result.",
+      "observed_reason": "serde_json rejects the document before Mandate exists, and no public raw-form Core API exposes a typed mandate result. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_non_string_nonce_serde_gate_preliminary passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "evidence": {
         "kind": "passing serde boundary diagnostic",
         "test_id": "cb2_t3_non_string_nonce_serde_gate_preliminary",
@@ -1174,7 +1180,7 @@
         "observed": "serde_json::from_str::<Mandate> returns Err before verify_chain."
       },
       "owner": "CB3",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-OFFSET-TIMESTAMP",
@@ -1185,11 +1191,11 @@
       "vector_slice": "form_cases[timestamp uses an offset instead of Zulu]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_offset_timestamp_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok.",
+      "observed_reason": "verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_offset_timestamp_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-INVALID-CALENDAR-TIMESTAMP",
@@ -1200,11 +1206,11 @@
       "vector_slice": "form_cases[timestamp is not a calendar instant]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_invalid_calendar_timestamp_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok.",
+      "observed_reason": "verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_invalid_calendar_timestamp_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-INVERTED-WINDOW",
@@ -1215,11 +1221,11 @@
       "vector_slice": "form_cases[validity window is inverted]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_inverted_validity_window_rejected_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The injected-time window check returns Error::InvalidMandate. It runs after signature verification and is not ordering proof.",
+      "observed_reason": "The injected-time window check returns Error::InvalidMandate. It runs after signature verification and is not ordering proof. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_inverted_validity_window_rejected_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-SUBMICROSECOND-INVERTED-WINDOW",
@@ -1230,11 +1236,11 @@
       "vector_slice": "form_cases[sub-microsecond validity window is inverted]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_submicrosecond_inverted_window_rejected_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The injected-time window check returns Error::InvalidMandate. It is final-verdict evidence only.",
+      "observed_reason": "The injected-time window check returns Error::InvalidMandate. It is final-verdict evidence only. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_submicrosecond_inverted_window_rejected_preexisting_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-ISSUE-DEPTH-ZERO",
@@ -1245,11 +1251,11 @@
       "vector_slice": "form_cases[issue depth zero]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_issue_depth_zero_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok.",
+      "observed_reason": "verify_chain returns Ok. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_issue_depth_zero_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-DUPLICATE-DIR",
@@ -1260,11 +1266,11 @@
       "vector_slice": "form_cases[duplicate dir selector]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_duplicate_dir_selector_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The root mandate is accepted because root perimeter form is not validated.",
+      "observed_reason": "The root mandate is accepted because root perimeter form is not validated. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_duplicate_dir_selector_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-DUPLICATE-TAG",
@@ -1275,11 +1281,11 @@
       "vector_slice": "form_cases[duplicate tag selector]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_duplicate_tag_selector_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The root mandate is accepted because root perimeter form is not validated.",
+      "observed_reason": "The root mandate is accepted because root perimeter form is not validated. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_duplicate_tag_selector_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-DUPLICATE-ID",
@@ -1290,11 +1296,11 @@
       "vector_slice": "form_cases[duplicate id selector]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_duplicate_id_selector_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The root mandate is accepted because root perimeter form is not validated.",
+      "observed_reason": "The root mandate is accepted because root perimeter form is not validated. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_duplicate_id_selector_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-ID-MIXED-DIR",
@@ -1305,11 +1311,11 @@
       "vector_slice": "form_cases[id mixed with dir]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_id_mixed_with_dir_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The root mandate is accepted because root perimeter form is not validated.",
+      "observed_reason": "The root mandate is accepted because root perimeter form is not validated. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_id_mixed_with_dir_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-ID-MIXED-TAG",
@@ -1320,11 +1326,11 @@
       "vector_slice": "form_cases[id mixed with tag]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_id_mixed_with_tag_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The root mandate is accepted because root perimeter form is not validated.",
+      "observed_reason": "The root mandate is accepted because root perimeter form is not validated. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_id_mixed_with_tag_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-DIR-MIXED-ID",
@@ -1335,11 +1341,11 @@
       "vector_slice": "form_cases[dir mixed with id]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_dir_mixed_with_id_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The root mandate is accepted because root perimeter form is not validated.",
+      "observed_reason": "The root mandate is accepted because root perimeter form is not validated. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_dir_mixed_with_id_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-TAG-MIXED-ID",
@@ -1350,24 +1356,24 @@
       "vector_slice": "form_cases[tag mixed with id]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_t3_tag_mixed_with_id_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "The root mandate is accepted because root perimeter form is not validated.",
+      "observed_reason": "The root mandate is accepted because root perimeter form is not validated. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_t3_tag_mixed_with_id_rejected_red passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-FORM-BEFORE-SIGNATURE-GATE",
-      "test_id": null,
+      "test_id": "cb3_raw_mandate_form_is_a_typed_error_before_signature_trust",
       "decision": "T3 — mandate form is closed before signature trust",
       "scenario": "A signed mandate with invalid form is rejected before its signature can authorize.",
       "vector_ref": "CB2-MANDATE-CONTRACTS",
       "vector_slice": "form_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb3_mandate_scopes -- cb3_raw_mandate_form_is_a_typed_error_before_signature_trust --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "A public observable boundary proves that complete form validation precedes signature trust and cannot return a partial Allow.",
-      "observed_reason": "verify_chain exposes only a final Result and verify_sig is private; no existing public API can observe phase ordering without inventing a symbol or reason code.",
+      "observed_reason": "verify_chain exposes only a final Result and verify_sig is private; no existing public API can observe phase ordering without inventing a symbol or reason code. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb3_raw_mandate_form_is_a_typed_error_before_signature_trust passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "evidence": {
         "kind": "source observation",
         "file": "rust/crates/aithos-core/src/mandate.rs",
@@ -1381,7 +1387,7 @@
         ]
       },
       "owner": "CB3",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-MC1-HISTORICAL-BYTES",
@@ -1392,11 +1398,11 @@
       "vector_slice": "historical_eplus and certificates",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_max_children_versioning -- cb2_historical_hashes_and_all_certificate_bytes_are_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "The historical E+ hash and all 15 certificate JCS, hashes, signatures, algorithms, subjects, issuer keys, and key bindings match the oracle.",
-      "observed_reason": "Every frozen byte/signature assertion and independent signature verification is GREEN.",
+      "observed_reason": "Every frozen byte/signature assertion and independent signature verification is GREEN. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_historical_hashes_and_all_certificate_bytes_are_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-MC1-NUMERIC-ATTENUATION",
@@ -1437,11 +1443,11 @@
       "vector_slice": "cases[mixed_draft1_to_draft2,mixed_draft2_to_draft1]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_max_children_versioning -- cb2_cb3_red_mixed_version_links --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "Both mixed-version links return Error::InvalidMandate before attenuation.",
-      "observed_reason": "verify_chain accepts both; mismatches are [mixed_draft1_to_draft2, mixed_draft2_to_draft1].",
+      "observed_reason": "verify_chain accepts both; mismatches are [mixed_draft1_to_draft2, mixed_draft2_to_draft1]. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_cb3_red_mixed_version_links passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-MC1-DRAFT2-ROOT-BUILDER",
@@ -1452,11 +1458,11 @@
       "vector_slice": "certificates.draft2_parent",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_max_children_versioning -- cb2_cb3_red_root_builder_emits_the_draft2_vector_bytes --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "Mandate::build_root emits version draft.2 and exact oracle JCS/signature bytes.",
-      "observed_reason": "The builder emits draft.1; mismatch fields are [version, JCS].",
+      "observed_reason": "The builder emits draft.1; mismatch fields are [version, JCS]. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_cb3_red_root_builder_emits_the_draft2_vector_bytes passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-MC1-DRAFT2-SUB-BUILDER",
@@ -1467,11 +1473,11 @@
       "vector_slice": "certificates.draft2_reduced_leaf",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_max_children_versioning -- cb2_cb3_red_sub_builder_emits_the_draft2_vector_bytes --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "Mandate::build_sub emits version draft.2 and exact oracle JCS/signature bytes.",
-      "observed_reason": "The builder emits draft.1; mismatch fields are [version, JCS].",
+      "observed_reason": "The builder emits draft.1; mismatch fields are [version, JCS]. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_cb3_red_sub_builder_emits_the_draft2_vector_bytes passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-MC1-DIRECT-CHILD-METER",
@@ -1497,11 +1503,11 @@
       "vector_slice": "migration",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_max_children_versioning -- cb2_migration_reissue_structure_and_gamma_are_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "Legacy and reissued chains are internally valid, homogeneous, fresh-ID reissues with signed Gamma grants.",
-      "observed_reason": "The static Core fixtures, chain relations, signatures, hashes, and Gamma structure match. This does not prove Bundle coexistence or a live migration workflow.",
+      "observed_reason": "The static Core fixtures, chain relations, signatures, hashes, and Gamma structure match. This does not prove Bundle coexistence or a live migration workflow. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_migration_reissue_structure_and_gamma_are_green passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-BUNDLE-VECTOR-HISTORICAL-BYTES",
@@ -1512,11 +1518,11 @@
       "vector_slice": "historical_inputs, did, certificates, positive.gamma_jsonl",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_version_coexistence -- cb2_bundle_version_coexistence_vector_and_historical_bytes_are_frozen --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "Historical E+ bytes, DID and certificate JCS/hashes, signatures, versions, IDs, and typed Gamma entries match the frozen oracle.",
-      "observed_reason": "All frozen-byte, canonicalization, typed-decoding, DID verification, and certificate metadata assertions are GREEN.",
+      "observed_reason": "All frozen-byte, canonicalization, typed-decoding, DID verification, and certificate metadata assertions are GREEN. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_bundle_version_coexistence_vector_and_historical_bytes_are_frozen passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-BUNDLE-HOMOGENEOUS-COEXISTENCE",
@@ -1527,11 +1533,11 @@
       "vector_slice": "positive",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_version_coexistence -- cb2_homogeneous_draft1_and_draft2_chains_coexist_after_fsstore_reopen --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "Bundle::open survives a cold FsStore reopen and gamma_verify accepts both independent homogeneous version chains under one DID.",
-      "observed_reason": "The exact certificate and Gamma bytes persist through the public Store; cold Bundle::open and gamma_verify are GREEN.",
+      "observed_reason": "The exact certificate and Gamma bytes persist through the public Store; cold Bundle::open and gamma_verify are GREEN. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_homogeneous_draft1_and_draft2_chains_coexist_after_fsstore_reopen passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-BUNDLE-MIXED-DRAFT1-TO-DRAFT2",
@@ -1542,11 +1548,11 @@
       "vector_slice": "negative_cases[mixed_draft1_to_draft2]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_version_coexistence -- cb2_mixed_draft1_to_draft2_authorized_via_is_typed_invalid_mandate --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "gamma_verify returns typed Error::InvalidMandate at version dispatch before attenuation.",
-      "observed_reason": "gamma_verify returns Ok; mixed_draft1_to_draft2 is accepted before attenuation.",
+      "observed_reason": "gamma_verify returns Ok; mixed_draft1_to_draft2 is accepted before attenuation. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_mixed_draft1_to_draft2_authorized_via_is_typed_invalid_mandate passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-BUNDLE-MIXED-DRAFT2-TO-DRAFT1",
@@ -1557,11 +1563,11 @@
       "vector_slice": "negative_cases[mixed_draft2_to_draft1]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_version_coexistence -- cb2_mixed_draft2_to_draft1_authorized_via_is_typed_invalid_mandate --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "1af558a6e9b05082a43b067690ecbacbab103223",
       "expected_reason": "gamma_verify returns typed Error::InvalidMandate at version dispatch before attenuation.",
-      "observed_reason": "gamma_verify returns Ok; mixed_draft2_to_draft1 is accepted before attenuation.",
+      "observed_reason": "gamma_verify returns Ok; mixed_draft2_to_draft1 is accepted before attenuation. CB3 GREEN at 1af558a6e9b05082a43b067690ecbacbab103223: cb2_mixed_draft2_to_draft1_authorized_via_is_typed_invalid_mandate passes against the frozen oracle; the historical Core, Bundle, Cucumber, workspace Clippy, formatting and WASM gates remain green.",
       "owner": "CB3",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-VECTOR-HASH",
