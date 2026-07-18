@@ -240,6 +240,110 @@ Feature: The gamma log
       And no existing args_hash, Gamma identifier or edition hash is reinterpreted as that commitment
       And commitment material is refused under a historical or unknown protocol version, or without a version
 
+  Rule: Gamma v2 is a monotone operation-evidence profile
+
+    @wip
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+      Given a manifest with aithos-core "1.0.0-draft.2"
+      And a structurally valid Gamma v2 entry of kind "<kind>"
+      When Core checks its top-level operation reference
+      Then operation_ref is "<presence>"
+      And when required it is the exact closed reference of the underlying occurrence
+      And the opposite presence is refused
+
+      Examples:
+        | kind           | presence  |
+        | section.add    | required  |
+        | section.modify | required  |
+        | section.delete | required  |
+        | section.redact | required  |
+        | ethos.read     | required  |
+        | action         | required  |
+        | inference      | required  |
+        | grant          | required  |
+        | revoke         | required  |
+        | rotate         | required  |
+        | merge          | required  |
+        | heartbeat      | forbidden |
+
+    @wip
+    Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
+      Given a parent manifest "<parent manifest>" whose Gamma predecessor is "<parent gamma>"
+      When a child manifest "<child manifest>" introduces a Gamma "<child gamma>" entry
+      Then the profile transition is "<verdict>"
+
+      Examples:
+        | parent manifest | parent gamma | child manifest | child gamma | verdict  |
+        | draft.1         | v1           | draft.1        | v1          | accepted |
+        | draft.1         | v1           | draft.2        | v2          | accepted |
+        | draft.2         | v2           | draft.2        | v2          | accepted |
+        | draft.2         | v2           | draft.1        | v1          | refused  |
+        | draft.1         | v1           | draft.1        | v2          | refused  |
+        | draft.2         | v2           | draft.2        | v1          | refused  |
+        | unknown         | v1           | draft.2        | v2          | refused  |
+        | draft.1         | unknown      | draft.2        | v2          | refused  |
+
+    @wip
+    Scenario: A mixed-profile fork migrates at its draft2 merge
+      Given disjoint competing branches under draft.1 with Gamma v1 and draft.2 with Gamma v2
+      When the branches are joined by their deterministic merge
+      Then the merge manifest declares draft.2
+      And the new kind:merge entry is Gamma v2 with its operation_ref
+      And monotonicity is checked against both manifest parents and both Gamma predecessors
+      And every retained v1 and v2 parent byte remains unchanged
+      And physical segment order never reinterprets a causal edge
+      And no publication or resolution Gamma kind is introduced
+
+    @wip
+    Scenario: Gamma append is evidence rather than another operation
+      Given one typed operation occurrence with an allocated operation_ref
+      When its required Gamma evidence is appended
+      Then the entry carries that exact operation_ref
+      And the append allocates no additional operation occurrence
+      And the Gamma id is never reinterpreted as the occurrence
+
+    @wip
+    Scenario: A local read.gamma query leaves no protocol artifact
+      Given an auditor authorized to query Gamma under read.gamma
+      When the auditor performs a local query without producing a signed presentation
+      Then the perimeter is checked at operation time
+      But no Gamma entry or persisted operation_ref is produced
+      And the query is neither cold-replayable nor countable
+      And log_reads does not reinterpret the query as ethos.read
+
+    @wip
+    Scenario: A signed read.gamma presentation is evidence without a new Gamma kind
+      Given an authorized Gamma query whose result is made opposable
+      When signed presentation evidence is produced
+      Then it represents one canonical read or presentation occurrence
+      And the signed evidence carries that occurrence's operation_ref
+      But no gamma.read entry or automatic Gamma append is created
+
+    @wip
+    Scenario Outline: Gamma occurrence reuse distinguishes replay from a new operation
+      Given an accepted operation-bearing Gamma v2 entry with occurrence "O" and commitment "C"
+      When a second Gamma candidate has "<occurrence>" and "<commitment>" for "<effect>"
+      Then the candidate is "<verdict>"
+      And the same verdict applies when the candidate is first compared while joining branches
+
+      Examples:
+        | occurrence | commitment | effect      | verdict                              |
+        | O          | C          | same effect | refused as replay before tally       |
+        | O          | different  | any effect  | refused as equivocation before tally |
+        | different  | different  | same effect | accepted as a distinct occurrence    |
+
+    @wip
+    Scenario: H2 roots tally raw Gamma lines and never deduplicate operation references
+      Given a verified history with a Gamma v1 prefix, valid operation-bearing v2 entries and a v2 heartbeat
+      And non-Gamma evidence shares an operation_ref with one accepted Gamma entry
+      When segment roots and the counts trie are recomputed
+      Then every exact Gamma line contributes once to its segment root and n
+      And the existing kind and mandate fields alone feed the existing counters
+      And the non-Gamma evidence contributes no H2 line or count
+      And two distinct occurrences with identical effects remain two raw entries
+      And replay or equivocation invalidates the edition instead of being deduplicated
+      And no mutation or total-consumption counter is inferred
+
   Rule: Append-time and cold-time share one replay front door
 
     @wip

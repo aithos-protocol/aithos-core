@@ -46,6 +46,66 @@ profile may still seal today's clear counting fields (`kind`, `authorized_via`,
 action names) and verify counts against the committed roots alone; the `v` field
 exists so that transition is a version bump, not a fork (deferred, 2026-07-11).
 
+### 7.1.1 Gamma v2 as operation evidence
+
+> **W1.1 protocol decision — H1 + E1 + M1, human-validated on
+> 2026-07-18.**
+
+The Gamma v1 envelope above is historical and remains byte-identical. Gamma v2
+keeps the same chain, signature, confidentiality, kind-registry and per-kind
+payload/body rules. For an operation-bearing entry it adds this clear, signed
+top-level member:
+
+```jsonc
+"operation_ref": {
+  "aithos-operation-core": "1.0.0-draft.1",
+  "occurrence": "op_<ULID>",
+  "commitment": "sha256:<64 lowercase hex>"
+}
+```
+
+The object is exactly the closed reference of §4.5.1. It is covered by the entry
+signature and is never moved into `payload` or `body_enc`.
+
+Presence is fail-closed:
+
+| Entry profile and kind | `operation_ref` |
+|---|---|
+| Gamma v1, every kind | forbidden |
+| Gamma v2 `section.add/modify/delete/redact` | required |
+| Gamma v2 `ethos.read` | required |
+| Gamma v2 `action` / `inference` | required |
+| Gamma v2 `grant` / `revoke` / `rotate` / `merge` | required |
+| Gamma v2 `heartbeat` | forbidden |
+
+Missing a required reference, adding a forbidden one, an extra or missing member
+inside it, a malformed occurrence or digest, or an unknown operation profile
+invalidates the entry. The closed registry remains §7.9.2's: W1.1 introduces no
+`publication`, `resolution`, or `gamma.read` kind.
+
+A Gamma append is native evidence for its underlying operation, not another
+operation. It carries that operation's already allocated `operation_ref`; neither
+the append nor `gamma_<ULID>` allocates or substitutes another occurrence. One
+occurrence may be correlated with other applicable native evidence, but at most one
+operation-bearing Gamma entry may consume it. A second Gamma entry reusing the same
+occurrence and commitment is replay. Reusing the occurrence with a different
+commitment is equivocation. Both are rejected before the candidate joins accepted
+history or affects an accepted tally, including when first discovered while joining
+branches.
+
+The manifest profile governs only the delta newly introduced relative to every
+parent. A manifest with `aithos-core: "1.0.0-draft.1"` introduces Gamma v1 entries
+only. A manifest with `aithos-core: "1.0.0-draft.2"` introduces Gamma v2 entries
+only and MAY retain any reachable, byte-identical Gamma v1 ancestry.
+
+Version order is checked on every causal edge. A draft.1 manifest may lead to
+draft.1 or draft.2; a draft.2 manifest may lead only to draft.2. A Gamma v1
+predecessor may lead to v1 or v2; a Gamma v2 predecessor may lead only to v2.
+For a merge the rule applies independently to both manifest parents and both Gamma
+predecessors. Missing or unknown profiles and versions fail closed. Therefore each
+causal path transitions at most once, no v2 material is accepted under draft.1, and
+no historical entry is rewritten or assigned a synthetic reference.
+
 ## 7.2 Who may sign an entry
 
 - **Owner** entries: signed by `content_sign` (§01.1); no `authorized_by`. The
@@ -144,6 +204,12 @@ payload `{seq}`. Heartbeat-bound mandates are valid only while the latest beacon
 within `every+grace` of `T`. Cheap (one tiny entry per period), and they double as a
 freshness anchor for offline verifiers.
 
+Under manifest draft.2, every newly emitted beacon is Gamma v2 but carries no
+`operation_ref`. A heartbeat is an owner-signed liveness fact, not a canonical
+operation occurrence or an additional mandate consumption. It may nevertheless be
+the historical Gamma head from which the next operation is projected. Historical
+Gamma v1 beacons remain unchanged.
+
 ## 7.6 Ordering without a server
 
 Entries are appended in edition order; the manifest's `gamma_head` fixes the log's tip
@@ -173,6 +239,15 @@ rewritten. `at` monotonicity is relaxed at the join (the signed merge entry
 documents it); chain truth stays the `prev`/`prevs` links. The merge edition
 recommits the §7.10 segment roots and counts trie over the merged layout, and
 every verifier reproduces them from the files alone.
+
+**Mixed-profile migration merge (M1).** Competing draft.1/v1 and draft.2/v2
+branches MAY be joined by a draft.2 edition whose new `kind:"merge"` entry is
+Gamma v2 and carries the merge publication's `operation_ref`. Both parent histories
+remain byte-identical. Monotonicity is causal, over each parent edge and each
+`prevs` edge; the deterministic merged segment layout MAY place a retained v1 line
+after a v2 line physically without creating a v2→v1 causal downgrade. A merge that
+would produce a draft.1 child of a draft.2 parent, or a v1 child of a v2
+predecessor, is invalid.
 
 ## 7.7 Freshness anchor (anti-backdating)
 
@@ -213,6 +288,18 @@ hit the chain. A wrong index can waste time, never forge history.
 
 The certificate half of log access is the `read.gamma` perimeter entry (§04.2);
 its physics half is the node-key material the grantee already holds (§7.3).
+
+A local `read.gamma` query checks its perimeter at operation time but emits no
+signed protocol artifact, appends no Gamma entry, persists no `operation_ref`, and
+cannot later be cold-replayed or counted. `log_reads` and `kind:"ethos.read"` remain
+the journal contract for Ethos content reads; they do not recursively journal access
+to the Gamma log.
+
+If a query result is made opposable as an explicitly signed presentation, that
+presentation is one canonical read/presentation occurrence and its signed evidence
+carries the occurrence's `operation_ref`. The exact presentation carrier is outside
+this Gamma profile. Producing it does not create a `gamma.read` entry or turn the
+Gamma append into another occurrence.
 
 ## 7.9 Inference metering, the kind registry, sealed args
 
@@ -359,3 +446,17 @@ Honest limits: a proof shows inclusion in a signed edition, never freshness
 (§7.7 bounds staleness, double counting inside the window included).
 Committed roots shrink what a verifier must fetch — they do not change the
 serverless trust model.
+
+**W1.1 leaves H2 raw.** Segment roots continue to hash every exact Gamma line JCS;
+a v2 line therefore includes its signed `operation_ref` when required, while a v2
+heartbeat does not. The segment count `n` still counts the physical lines.
+
+The counts-trie schema and tally inputs remain exactly those defined above:
+`kind`, `authorized_by`, `authorized_via`, and the existing payload counters.
+`occurrence`, `commitment`, and evidence outside Gamma are not count keys.
+Implementations MUST NOT group or deduplicate Gamma lines by `operation_ref`.
+Two valid occurrences with identical effects remain two raw lines; a replay or
+equivocation instead invalidates the edition even if its mechanically recomputed
+roots match. A heartbeat contributes to its segment root and `n`, but an
+owner-signed heartbeat still creates no mandate count leaf. W1.1 adds no mutation
+or total-consumption counter and changes no historical H2 root or proof.
