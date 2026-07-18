@@ -2662,11 +2662,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_boundary_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "green_sha": "2b54d16752d2f5be65b03ebd5d6854d9e5f9efab",
       "expected_reason": "The vector file SHA-256 is 73149da64fbdc73bcfd81f8a3d11c83e9421e43f2053ad649bf0db0f585ee187.",
-      "observed_reason": "The exact committed oracle bytes match the independently generated file.",
+      "observed_reason": "CB7 GREEN at 2b54d16752d2f5be65b03ebd5d6854d9e5f9efab: the frozen vector still has SHA-256 73149da64fbdc73bcfd81f8a3d11c83e9421e43f2053ad649bf0db0f585ee187 after Store transaction, recovery and confinement admission; the activated Cucumber gate consumes the same exact bytes.",
       "owner": "CB7",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB7-BUNDLE-BOUNDARY-HISTORICAL-HASHES",
@@ -2677,11 +2677,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_boundary_historical_hashes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "green_sha": "2b54d16752d2f5be65b03ebd5d6854d9e5f9efab",
       "expected_reason": "All seven selected historical vector hashes remain exact.",
-      "observed_reason": "No historical signed object, Merkle root or concurrency byte is changed or reinterpreted.",
+      "observed_reason": "CB7 GREEN at 2b54d16752d2f5be65b03ebd5d6854d9e5f9efab: all seven historical hashes remain exact; the transaction namespace and compatibility mirror are internal Store metadata and do not rewrite any historical signed object, Merkle root or concurrency byte.",
       "owner": "CB7",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB7-BUNDLE-TRANSACTION-RECOVERY-ORACLE",
@@ -2692,11 +2692,11 @@
       "vector_slice": "transaction",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_transaction_write_set_and_recovery_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "green_sha": "2b54d16752d2f5be65b03ebd5d6854d9e5f9efab",
       "expected_reason": "Generic JCS/SHA-256 reproduces both snapshot digests, the sorted five-key write-set, twelve old-visible failure boundaries, four deterministic recovery decisions and one logical linearization.",
-      "observed_reason": "The pure-data transaction oracle reproduces exactly; this does not claim that current Store implementations are transactional.",
+      "observed_reason": "CB7 GREEN at 2b54d16752d2f5be65b03ebd5d6854d9e5f9efab: the pure oracle still reproduces both exact snapshot digests and the sorted five-key write-set; MemStore overlays and FsStore prepared generations exercise all twelve labelled failure boundaries, recover prepared and acknowledged states as exact old or new snapshots, and publish through one atomic generation pointer.",
       "owner": "CB7",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB7-BUNDLE-CONFINEMENT-ORACLE",
@@ -2707,11 +2707,11 @@
       "vector_slice": "confinement",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_confinement_decisions_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "green_sha": "2b54d16752d2f5be65b03ebd5d6854d9e5f9efab",
       "expected_reason": "The independent allowlist admits five cases and refuses fifteen, including intermediate/final symlink escapes during read, write, cold load and recovery.",
-      "observed_reason": "A separate Rust decision function reproduces all twenty oracle outcomes; this is a diagnostic, not current FsStore enforcement.",
+      "observed_reason": "CB7 GREEN at 2b54d16752d2f5be65b03ebd5d6854d9e5f9efab: validate_display_path and the closed validate_store_key grammar reproduce all twenty lexical outcomes; FsStore checked traversal and symlink_metadata gates refuse intermediate and final symlink escapes on read, write, cold reopen and recovery before out-of-root access.",
       "owner": "CB7",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB12-BUNDLE-CAPABILITY-KEYLESS-ORACLE",
@@ -2730,16 +2730,16 @@
     },
     {
       "id": "CB2-CB7-BUNDLE-TRANSACTION-CONFINEMENT-API-GATE",
-      "test_id": null,
+      "test_id": "cb7_fsstore_failure_recovery_and_reopen_are_byte_exact",
       "decision": "Transactional MemStore/FsStore and one mandatory confinement gate",
       "scenario": "All logical mutations prepare in an overlay, validate before one publication point, recover deterministically, and reject every lexical or filesystem-resolved root escape.",
       "vector_ref": "CB2-BUNDLE-BOUNDARIES-1",
       "vector_slice": "transaction and confinement",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb7_transaction_contracts",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "2b54d16752d2f5be65b03ebd5d6854d9e5f9efab",
       "expected_reason": "MemStore and FsStore satisfy all twelve failure boundaries, four recovery cases and twenty path decisions without exposing staging or partial canonical generations.",
-      "observed_reason": "At observation SHA 44f27a7, Store exposes only get/put/list; business helpers write directly and FsStore joins caller paths under root without lexical or symlink confinement.",
+      "observed_reason": "The preliminary inventory at 44f27a7 had no transaction or confinement seam. CB7 GREEN at 2b54d16752d2f5be65b03ebd5d6854d9e5f9efab: Store now exposes begin/commit/rollback/recover/delete, MemStore stages a complete BTreeMap overlay, FsStore stages a synced generation and atomically renames one pointer, Bundle::transaction commits mutation plus signed publication together, Bundle/log/merge funnel writes through one validated helper, open recovers deterministically, and the closed lexical plus resolved-symlink gate protects all Store access. The integration target passes 6/6 tests, the activated BDD suite passes 489/489 scenarios and 2078/2078 steps, CLI passes 17/17, Gateway passes 152/152 BDD scenarios plus all socket journeys, strict workspace Clippy and WASM pass.",
       "evidence": {
         "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
         "observation_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
@@ -2749,7 +2749,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_capability_keyless_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB7",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB12-BUNDLE-CAPABILITY-KEYLESS-API-GATE",
