@@ -189,3 +189,17 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`a3cc536ea452940af061ce421c238e08f0894923562b8c8193dbb8d8b853cd06`);
   Rust consumer: `aithos-core/tests/cb2_gamma_v2_replay.rs`
   (`fa2593db199d6cbb2c68bfecd170f95f06826c7bfadd9744ce9aa48de6434e15`).
+- `CB2-K1-C-DRAFT2-CARRIERS-1`: one coherent signed draft2 candidate with
+  exact W1/K1.2 facts, five contained operations, last-writer changeset
+  attribution over five changed Store keys, all five K1-C evidence variants,
+  a six-consumption/two-mutation D7 leaf, canonical changeset/evidence
+  references and sidecar paths, ordinary file pins, and the acyclic
+  publication occurrence. The independent cryptography/blake3 oracle preserves
+  eleven historical vector hashes and rejects 32 carrier/correlation defects as
+  `InvalidOperation` plus 5 signed-manifest form defects as
+  `InvalidDidDocument`. Generator: `gen-cb2-draft2-carriers.py`
+  (`d0fbc85c29b2fe06362eec9ee7084f69746589697d44da9570ec94e3e8c8c6eb`);
+  vector: `cb2-draft2-carriers.json`
+  (`2e75e9af30ba0207bd01a6f347cac1a263f816a7ae0fb3d583f75beabef2badc`);
+  Rust consumer: `aithos-bundle/tests/cb2_draft2_carriers.rs`
+  (`9c392d0acd16fcc4eb5699cb0677f88f36b48b98239f99327430e59ef8f1e3dd`).

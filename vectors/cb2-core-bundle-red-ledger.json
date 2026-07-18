@@ -8,7 +8,7 @@
     "git_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
     "observation_sha": "9b30ab504bba3e56c7fc63f47a637a0b7c9ec668",
     "index_was_empty": true,
-    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection, signed Gamma v2 operation evidence and semantic replay matrix, SC1 session certificate/proof bytes, R2/U1 receipts and draft3 obligation matcher, signed CAT1 connector catalog and owner approval bytes, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
+    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection, signed Gamma v2 operation evidence and semantic replay matrix, SC1 session certificate/proof bytes, R2/U1 receipts and draft3 obligation matcher, signed CAT1 connector catalog and owner approval bytes, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, the closed K1-C draft2 carrier assembly, and their explicit API gates are recorded. The list is not frozen."
   },
   "command_context": {
     "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core/rust",
@@ -122,6 +122,14 @@
       "generator_sha256": "558fa9320caf570363365222457bdf1acd9b059a0719445ac4c899ebfcbd3207",
       "consumer": "rust/crates/aithos-core/tests/cb2_gamma_v2_replay.rs",
       "consumer_sha256": "fa2593db199d6cbb2c68bfecd170f95f06826c7bfadd9744ce9aa48de6434e15"
+    },
+    "CB2-K1-C-DRAFT2-CARRIERS-1": {
+      "file": "vectors/cb2-draft2-carriers.json",
+      "sha256": "2e75e9af30ba0207bd01a6f347cac1a263f816a7ae0fb3d583f75beabef2badc",
+      "generator": "vectors/gen-cb2-draft2-carriers.py",
+      "generator_sha256": "d0fbc85c29b2fe06362eec9ee7084f69746589697d44da9570ec94e3e8c8c6eb",
+      "consumer": "rust/crates/aithos-bundle/tests/cb2_draft2_carriers.rs",
+      "consumer_sha256": "9c392d0acd16fcc4eb5699cb0677f88f36b48b98239f99327430e59ef8f1e3dd"
     }
   },
   "suite_observations": [
@@ -260,13 +268,24 @@
       "name": "Gamma-v2 semantic-replay byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_gamma_v2_replay -- --nocapture",
       "observed": "5 passed; vector/historical hashes, exact signed Gamma-v2 bytes, W1 commitments, causal monotonicity, migration merge, occurrence admission and raw H2 root/counts are GREEN. Typed Gamma-v2 admission and the pure semantic replay front door remain absent."
+    },
+    {
+      "name": "K1-C draft2-carrier generator reproducibility",
+      "command": "UV_CACHE_DIR=/private/tmp/aithos-cb2-uv-cache python3 vectors/gen-cb2-draft2-carriers.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-draft2-carriers.json; the independent cryptography/blake3 oracle assembles one signed draft2 candidate with 5 contained operations, 5 last-writer Store changes, 5 evidence variants, 2 carrier sidecars and 9 exact file pins while rejecting 37 mono-defect candidates at the approved boundary."
+    },
+    {
+      "name": "K1-C draft2-carrier byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- --nocapture",
+      "observed": "5 passed; vector/historical hashes, exact K1.2 facts, W1 commitments, last-writer changeset bytes, five evidence signatures, D7 root, references, paths, file pins and signed manifest bytes are GREEN. Typed Core carriers and Bundle draft2 assembly/cold verification remain absent."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 67,
-    "COMPILE-RED-PRELIMINAIRE": 22,
-    "total": 123
+    "PREEXISTING-GREEN": 72,
+    "COMPILE-RED-PRELIMINAIRE": 24,
+    "total": 130
   },
   "entries": [
     {
@@ -2291,6 +2310,127 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_gamma_v2_replay -- cb2_gamma_v2_closed_negative_and_semantic_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB6",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB11-K1C-VECTOR-HASH",
+      "test_id": "cb2_k1c_vector_hash_is_stable_preexisting_green",
+      "decision": "K1-C independent carrier-oracle integrity",
+      "scenario": "The complete draft2 changeset/evidence/manifest qualification vector remains frozen within the partial CB2 tranche.",
+      "vector_ref": "CB2-K1-C-DRAFT2-CARRIERS-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
+      "expected_reason": "The vector file SHA-256 is 2e75e9af30ba0207bd01a6f347cac1a263f816a7ae0fb3d583f75beabef2badc.",
+      "observed_reason": "The exact bytes match the independent Python cryptography/blake3 oracle.",
+      "owner": "CB11",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB11-K1C-HISTORICAL-HASHES",
+      "test_id": "cb2_k1c_historical_hashes_preexisting_green",
+      "decision": "K1-C additive Core/Bundle historical non-regression",
+      "scenario": "Bundle coexistence and every selected K1/W1/SC1/R2/CAT1/D7/Gamma-v2 source vector remain byte-identical while draft2 carriers are assembled.",
+      "vector_ref": "CB2-K1-C-DRAFT2-CARRIERS-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_historical_hashes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
+      "expected_reason": "All eleven complete source-vector hashes remain exact.",
+      "observed_reason": "No historical manifest, facts, operation, proof, receipt, catalog, counter or Gamma bytes are upgraded or reinterpreted.",
+      "owner": "CB11",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB11-K1C-CHANGESET-BYTES",
+      "test_id": "cb2_k1c_changeset_reference_path_and_file_bytes_preexisting_green",
+      "decision": "K1-C exact facts, W1 references and last-writer changeset bytes",
+      "scenario": "Generic primitives reproduce five exact K1.2 fact tables, their W1 commitments, five causal Store changes, the domain-separated changeset reference, canonical path and ordinary file hash.",
+      "vector_ref": "CB2-K1-C-DRAFT2-CARRIERS-1",
+      "vector_slice": "positive.state_facts, facts_documents, facts_refs, operation_projections, contained_operations and changeset",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_changeset_reference_path_and_file_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
+      "expected_reason": "Every exact JCS/domain byte reproduces; aggregate Gamma bytes name the last action writer; unchanged authority/catalog files and both carrier sidecars are excluded from the changeset.",
+      "observed_reason": "Existing JCS and SHA-256 primitives reproduce every state-fact, operation-fact, operation, state-key/state-byte, changeset-reference and file-pin byte.",
+      "owner": "CB11",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB11-K1C-EVIDENCE-BYTES",
+      "test_id": "cb2_k1c_evidence_signatures_sorting_and_d7_preexisting_green",
+      "decision": "K1-C closed evidence variants, signatures, sorting, correlation and D7 bytes",
+      "scenario": "Generic primitives reproduce public authorship, SC1, R2, CAT1 and Gamma-presentation items, complete-item JCS ordering and the required delegated-counts root.",
+      "vector_ref": "CB2-K1-C-DRAFT2-CARRIERS-1",
+      "vector_slice": "positive.evidence, delegated_counts_fixture and gamma_query",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_evidence_signatures_sorting_and_d7_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
+      "expected_reason": "All five exact nested item variants verify, sort uniquely by complete JCS, bind the applicable contained operations and reproduce the six-consumption/two-mutation D7 leaf.",
+      "observed_reason": "Existing JCS, SHA-256, BLAKE3, multibase and Ed25519 primitives reproduce every independent evidence, query-result, reference, sidecar and signature byte.",
+      "owner": "CB11",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB12-K1C-MANIFEST-BOUNDARY-BYTES",
+      "test_id": "cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary",
+      "decision": "K1-C signed draft2 manifest assembly and closed error inventory",
+      "scenario": "The manifest signature covers the publication, changeset and evidence references; sidecar and unchanged/changed Store pins use exact bytes; all 37 mono-defect candidates retain their approved boundary.",
+      "vector_ref": "CB2-K1-C-DRAFT2-CARRIERS-1",
+      "vector_slice": "positive.publication, candidate, manifest_jcs, manifest_preimage_jcs, negative_cases and inventory",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
+      "expected_reason": "The publication commitment is acyclic, the signed manifest pins all 9 exact files, 32 carrier defects select InvalidOperation and 5 signed-form defects select InvalidDidDocument.",
+      "observed_reason": "Generic bytes and signatures are GREEN; the source inventory inside this passing diagnostic confirms that typed draft2 manifest members and InvalidOperation remain absent.",
+      "owner": "CB12",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB11-K1C-TYPED-CARRIER-API-GATE",
+      "test_id": null,
+      "decision": "Typed changeset, evidence, authorship and presentation validation",
+      "scenario": "Core validates exact carrier form, state consequences, last-writer attribution, signatures, evidence correlation, D7 and all 32 semantic defects through one pure verdict.",
+      "vector_ref": "CB2-K1-C-DRAFT2-CARRIERS-1",
+      "vector_slice": "positive.changeset, evidence, delegated_counts_fixture, gamma_query and InvalidOperation negative_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "The coherent carrier candidate validates and every one of the 32 form, omission, invention, order, signature, correlation, query, private-material, reference, path or file-pin defects returns Error::InvalidOperation(String).",
+      "observed_reason": "At observation SHA 2f1a645, Core has no typed K1-C carrier tables, last-writer replay validator or Error::InvalidOperation variant.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
+        "source_command": "rg -n 'Changeset|EvidenceSet|Authorship|GammaPresentation|InvalidOperation' rust/crates/aithos-core/src",
+        "source_observed": "No matching K1-C carrier type, validator or approved InvalidOperation variant exists.",
+        "inventory_test_id": "cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB11",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB12-K1C-BUNDLE-ASSEMBLY-COLD-GATE",
+      "test_id": null,
+      "decision": "Bundle draft2 transactional assembly, canonical sidecars and cold verification",
+      "scenario": "Bundle derives the complete write-set in an overlay, obtains Core verdicts, writes both sidecars and every file pin atomically, signs draft2 and cold-replays the exact candidate from a fresh keyless Store.",
+      "vector_ref": "CB2-K1-C-DRAFT2-CARRIERS-1",
+      "vector_slice": "positive.candidate, publication and negative_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "The positive candidate assembles and cold-verifies byte for byte; every refusal leaves the prior manifest, carrier sidecars and Gamma head unreachable and unchanged.",
+      "observed_reason": "At observation SHA 2f1a645, Bundle Manifest has no operation_ref/changeset_ref/evidence_ref members, no draft2 builder, no carrier sidecar assembly and no cold K1-C verifier.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
+        "source_command": "rg -n 'operation_ref|changeset_ref|evidence_ref|Draft2|Carrier' rust/crates/aithos-bundle/src",
+        "source_observed": "No draft2 manifest members, carrier derivation, canonical sidecar write-set or keyless K1-C cold replay API exists.",
+        "inventory_test_id": "cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB12",
       "status": "COMPILE-RED-PRELIMINAIRE"
     }
   ]
