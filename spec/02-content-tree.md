@@ -332,12 +332,15 @@ four members shown. `before` and `after` each select one exact variant:
 
 Changes sort by `(key_commitment, operation_ref.occurrence)` in ascending exact
 ASCII order; a key commitment occurs once. Each `operation_ref` is an exact member
-of `operations`. Deterministic index, root, wrap, header, Gamma, vault and rotation
-consequences name the occurrence that caused them rather than allocating another.
-The changeset is non-empty except at normal genesis. It excludes its own sidecar,
-the evidence sidecar and the candidate manifest: those three carrier objects are
-already pinned by the references and manifest signature, and including them would
-create a cycle.
+of `operations`. When several contained operations write the same canonical Store
+key, replay applies them in `operations` order and the single change names the last
+writer of the final stored bytes; the preceding writes are intermediate replay
+states, not duplicate changes. Deterministic index, root, wrap, header, Gamma,
+vault and rotation consequences therefore name their last causal writer rather
+than allocating another occurrence. The changeset is non-empty except at normal
+genesis. It excludes its own sidecar, the evidence sidecar and the candidate
+manifest: those three carrier objects are already pinned by the references and
+manifest signature, and including them would create a cycle.
 
 The public evidence set has exactly:
 

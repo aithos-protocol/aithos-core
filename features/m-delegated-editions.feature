@@ -77,6 +77,7 @@ Feature: Normal delegated editions
       And every change has exactly key_commitment, before, after and operation_ref
       And absent state has only state while present state adds byte_commitment
       And every change names one contained operation and before differs from after
+      And an aggregate key names its last writer after causal replay
       And changes sort by key commitment then occurrence with no duplicate key
 
     @wip
