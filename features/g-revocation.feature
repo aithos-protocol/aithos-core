@@ -126,7 +126,6 @@ Feature: Revocation — the full ladder, with no server in any trust role
 
   Rule: Revocation, cryptographic cut, Gamma and publication are one transaction
 
-    @wip
     Scenario: A complete incident cut verifies after a cold reopen
       Given a published encrypted subtree shared with one grantee and one survivor
       When an authorized manager revokes the grantee
@@ -135,7 +134,6 @@ Feature: Revocation — the full ladder, with no server in any trust role
       And the revoked line opens no new key or rewritten body
       And a fresh keyless store verifies the authority, cut and resulting roots
 
-    @wip
     Scenario Outline: Failure during a revocation leaves no partial cut
       Given a published bundle snapshotted byte for byte before revocation
       And an injected failure at "<boundary>"
@@ -155,7 +153,6 @@ Feature: Revocation — the full ladder, with no server in any trust role
 
   Rule: Revocation replay is forward-only
 
-    @wip
     Scenario: Historical authority is judged at each entry timestamp
       Given a valid delegated mutation before its mandate revocation
       And an otherwise identical mutation at or after revoked_at

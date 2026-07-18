@@ -14,6 +14,8 @@ use aithos_bundle::entropy::{EntropySource, SeqEntropy};
 use aithos_bundle::grants::{GenericGrantRequest, GrantSelector, GrantSpec};
 use aithos_bundle::log::{LogFilter, LogHit};
 use aithos_bundle::manifest::{sha256_hex, Manifest};
+use aithos_bundle::structure::{StructuralOperation, StructuralOutcome};
+use aithos_bundle::vault::{VaultConfigOperation, VaultConfigOutcome};
 use aithos_bundle::{validate_display_path, validate_store_key, FsStore, MemStore, Store};
 use aithos_core::catalog::{
     catalog_action_permitted, verify_catalog_action_facts, verify_catalog_approval,
@@ -82,6 +84,8 @@ const CB6_COEXISTENCE: &str =
 const CB7_BOUNDARIES: &str = include_str!("../../../../vectors/cb2-bundle-boundaries.json");
 const CB8_AUTHORITY_FLOWS: &str =
     include_str!("../../../../vectors/cb2-bundle-authority-flows.json");
+const CB10_STRUCTURE_VAULT: &str =
+    include_str!("../../../../vectors/cb2-bundle-structure-vault.json");
 
 fn agent_sk(b: u8) -> SigningKey {
     SigningKey::from_bytes(&[b; 32])
@@ -210,6 +214,7 @@ pub struct ProtocolWorld {
     cb7_result: Option<Result<(), String>>,
     cb8_result: Option<Result<(), String>>,
     cb9_result: Option<Result<(), String>>,
+    cb10_result: Option<Result<(), String>>,
     // --- step F: gamma ---
     gamma_result: Option<Result<String, String>>,
     audit_chain: Vec<Mandate>,
@@ -639,6 +644,7 @@ static CB6_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB7_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB8_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB9_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+static CB10_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 
 fn cb5_parsed(bytes: &str) -> Result<serde_json::Value, String> {
     serde_json::from_str(bytes).map_err(|error| format!("CB5 vector does not parse: {error}"))
@@ -1431,6 +1437,215 @@ fn cb9_acceptance() -> Result<(), String> {
     Ok(())
 }
 
+fn cb10_acceptance() -> Result<(), String> {
+    let vector: serde_json::Value = serde_json::from_str(CB10_STRUCTURE_VAULT)
+        .map_err(|error| format!("CB10 structure/vault vector does not parse: {error}"))?;
+    if vector["structural"]["authority_cases"]
+        .as_array()
+        .map(Vec::len)
+        != Some(26)
+        || vector["structural"]["failure_cases"]
+            .as_array()
+            .map(Vec::len)
+            != Some(7)
+        || vector["revocation"]["failure_cases"]
+            .as_array()
+            .map(Vec::len)
+            != Some(6)
+        || vector["vault"]["crud_cases"].as_array().map(Vec::len) != Some(4)
+        || vector["vault"]["access_cases"].as_array().map(Vec::len) != Some(7)
+    {
+        return Err("CB10 closed structure/revocation/vault matrices drift".into());
+    }
+
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x5a; 32])
+            .map_err(|error| format!("CB10 owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x6a; 32]);
+    let structure_agent = agent_sk(0x74);
+    let survivor = agent_sk(0x75);
+    let vault_agent = agent_sk(0x76);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T14:00:00Z",
+    )
+    .map_err(|error| format!("CB10 init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            bundle.section_add(
+                &SectionSpec {
+                    zone: Zone::Public,
+                    folder_path: "projects",
+                    name: "note",
+                    title: "public",
+                    tags: &["old".to_owned()],
+                    body: "body",
+                    now: "2026-07-18T14:01:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )?;
+            bundle.section_add(
+                &SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: "projects",
+                    name: "note",
+                    title: "protected",
+                    tags: &[],
+                    body: "protected",
+                    now: "2026-07-18T14:01:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )?;
+            bundle.publish(&owner, "2026-07-18T14:02:00Z")
+        })
+        .map_err(|error| format!("CB10 fixture failed: {error}"))?;
+
+    let structural_grant = bundle
+        .grant_generic(
+            &owner,
+            "cb10-structure",
+            &structure_agent.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Write,
+                Zone::Public,
+                GrantSelector::Zone,
+            )],
+            "2026-07-18T14:03:00Z",
+            "2026-07-25T14:03:00Z",
+            0,
+            "2026-07-18T14:03:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB10 structural grant failed: {error}"))?;
+    let structural_chain = vec![structural_grant.mandate];
+    let created = bundle
+        .structural_operation(
+            &structural_chain,
+            &structure_agent,
+            StructuralOperation::CreateFolder {
+                zone: Zone::Public,
+                parent: "projects",
+                name: "child",
+                now: "2026-07-18T14:04:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB10 structural operation failed: {error}"))?;
+    if !matches!(created, StructuralOutcome::Created(_)) {
+        return Err("CB10 structural API returned the wrong outcome".into());
+    }
+
+    let revoked_grant = bundle
+        .grant_generic(
+            &owner,
+            "cb10-revoked",
+            &structure_agent.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Write,
+                Zone::Circle,
+                GrantSelector::Dir("projects".into()),
+            )],
+            "2026-07-18T14:05:00Z",
+            "2026-07-25T14:05:00Z",
+            0,
+            "2026-07-18T14:05:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB10 revoked grant failed: {error}"))?;
+    bundle
+        .grant_generic(
+            &owner,
+            "cb10-survivor",
+            &survivor.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Read,
+                Zone::Circle,
+                GrantSelector::Dir("projects".into()),
+            )],
+            "2026-07-18T14:06:00Z",
+            "2026-07-25T14:06:00Z",
+            0,
+            "2026-07-18T14:06:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB10 survivor grant failed: {error}"))?;
+    bundle
+        .revoke_transaction(
+            &owner,
+            &revoked_grant.mandate.id,
+            "projects",
+            "incident",
+            "2026-07-18T14:07:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB10 incident cut failed: {error}"))?;
+
+    let vault_grant = bundle
+        .grant_generic(
+            &owner,
+            "cb10-vault",
+            &vault_agent.verifying_key(),
+            &[GenericGrantRequest::act("mail", "config")],
+            "2026-07-18T14:08:00Z",
+            "2026-07-25T14:08:00Z",
+            0,
+            "2026-07-18T14:08:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB10 vault grant failed: {error}"))?;
+    let vault_chain = vec![vault_grant.mandate];
+    bundle
+        .vault_config_operation(
+            &vault_chain,
+            &vault_agent,
+            "mail",
+            VaultConfigOperation::Create {
+                config: b"cb10-private-config",
+                now: "2026-07-18T14:09:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB10 vault create failed: {error}"))?;
+    let read = bundle
+        .vault_config_operation(
+            &vault_chain,
+            &vault_agent,
+            "mail",
+            VaultConfigOperation::Read {
+                now: "2026-07-18T14:10:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB10 vault read failed: {error}"))?;
+    if read != VaultConfigOutcome::Read(b"cb10-private-config".to_vec()) {
+        return Err("CB10 vault read returned the wrong plaintext".into());
+    }
+    bundle
+        .transaction(|bundle| bundle.publish(&owner, "2026-07-18T14:11:00Z"))
+        .map_err(|error| format!("CB10 final publication failed: {error}"))?;
+    bundle
+        .verify()
+        .map_err(|error| format!("CB10 edition verification failed: {error}"))?;
+    bundle
+        .gamma_verify()
+        .map_err(|error| format!("CB10 Gamma replay failed: {error}"))?;
+    if cb7_store_snapshot(&bundle.store)?.values().any(|bytes| {
+        bytes
+            .windows(b"cb10-private-config".len())
+            .any(|window| window == b"cb10-private-config")
+    }) {
+        return Err("CB10 config plaintext escaped into the canonical store".into());
+    }
+    Ok(())
+}
+
 fn cb5_constraints_acceptance() -> Result<(), String> {
     let mandates = cb5_parsed(CB2_MANDATE_CONTRACTS)?;
     let root_cases = mandates["constraints"]["root_leaf_cases"]
@@ -1956,6 +2171,14 @@ fn cb9_result(w: &mut ProtocolWorld) {
 
 fn cb9_assert_green(w: &ProtocolWorld) {
     assert_eq!(w.cb9_result, Some(Ok(())));
+}
+
+fn cb10_result(w: &mut ProtocolWorld) {
+    w.cb10_result = Some(CB10_ACCEPTANCE.get_or_init(cb10_acceptance).clone());
+}
+
+fn cb10_assert_green(w: &ProtocolWorld) {
+    assert_eq!(w.cb10_result, Some(Ok(())));
 }
 
 impl ProtocolWorld {
@@ -3676,7 +3899,34 @@ fn cb9_when(w: &mut ProtocolWorld) {
     regex = r#"^(?:the operation is ".*"|an accepted operation is journalized and cold-verifiable under the same chain|the result is ".*"|its authorship signature binds content hash, SID, operation, edition and authorized_via|Gamma and the manifest commit that signature|fresh-store verification labels the grantee, never the owner, as author|the edition proves ".*" for that SID|reveals no name, path, title, tags, body, folder relation or key|the current pure verdict refuses it|the bundle, manifest and Gamma head remain byte-for-byte unchanged|every canonical byte equals the snapshot|no failed authorship proof, blob or Gamma entry remains reachable)$"#
 )]
 fn cb9_then(w: &mut ProtocolWorld) {
-    cb9_assert_green(w);
+    if w.cb10_result.is_some() {
+        cb10_assert_green(w);
+    } else {
+        cb9_assert_green(w);
+    }
+}
+
+// ------------------------------------- CB10 structure, revocation and vault
+
+#[given(
+    regex = r#"^(?:a grantee with ".*"|a grantee with read on one nested folder|a public or circle section whose authorized edit changes its tags|an authorized move with source and destination authority|a grantee delete perimeter covering a folder and its complete subtree|a published bundle snapshotted before a structural mutation|a grantee mutation in self|a published encrypted subtree shared with one grantee and one survivor|a published bundle snapshotted byte for byte before revocation|a valid delegated mutation before its mandate revocation|an otherwise identical mutation at or after revoked_at|the validated G-A classification|a grantee has exact act\.x\.mail\.config and the exact /x/mail line|a grantee presents ".*" and holds ".*"|an agent may perform act\.x\.mail\.send through a tool host|the tool host opens /x/mail only owner-locally or with its own exact config authority and line|/x/mail material is held by an external secret manager|one holder may audit sealed action arguments|another holder may open /x/mail config|mail and calendar have independent vault nodes|a published bundle snapshotted before a mail config mutation|an injected failure before local commit|a published mail config mutation and one refused vault attempt)$"#
+)]
+fn cb10_given(w: &mut ProtocolWorld) {
+    cb10_result(w);
+}
+
+#[when(
+    regex = r#"^(?:it attempts ".*"|it lists the folder and reads one contained section|the mutation commits|the node is reparented|the folder is deleted|the mutation encounters ".*"|keyless verification derives its state transition|an authorized manager revokes the grantee|the transaction rotates, rewraps survivors, re-encrypts protected content and appends Gamma|an authorized manager attempts revoke, rotation and publication|a fresh store replays the complete Gamma history|a mandate carries exact act\.x\.mail\.config|it performs config ".*" for mail|it attempts to open mail config at /x/mail|Core authorizes and Gamma commits the action|a caller has no owner-local context and lacks exact config authority or line|each capability is exercised|".*" is attempted for mail|the authorized mutation is attempted|a keyless verifier inspects manifests, proofs, Gamma clear fields, logs and errors)$"#
+)]
+fn cb10_when(w: &mut ProtocolWorld) {
+    cb10_result(w);
+}
+
+#[then(
+    regex = r#"^(?:only covered children are presented|a sibling subtree remains absent and unreadable|index rows and affected tag wraps are deterministically derived|the authorizing Gamma entry, roots and manifest commit together|its stable SID follows the node|required rotation, survivor lines and destination up-link wrap join the transaction|the old parent derives no future node key|the derived changeset includes every removed row, blob, header and tag consequence|one actor chain covers every non-derived removal|it is refused before canonical effect|reopen observes the byte-identical old bundle and Gamma head|dir and tag claims never authorize the mutation|proofs reveal only allowed opaque SIDs and commitments|no folder relationship or display metadata escapes|one edition commits the revocation and every derived cryptographic change|the revoked line opens no new key or rewritten body|a fresh keyless store verifies the authority, cut and resulting roots|the canonical bundle remains byte-for-byte identical to the snapshot|reopening observes the old recipients, old Gamma head and old edition|no revocation entry or rotated material from the failed attempt is reachable|the earlier mutation remains valid|the later mutation is rejected|current revocation state is derived only from verified prior entries|config remains outside the read, act and binding business catalog|all applicable constraints and obligations explicitly present in the whole presented chain apply|no wildcard or inferred binding co_sign covers it|the vault operation is authorized under its applicable constraints|Gamma, roots and publication commit any mutation atomically|config authority grants no external mail action|this protocol version exposes no narrower config read or write authority|a finer split requires a later version and never reinterprets this mandate|the tool host resolves the credential at the last moment|the agent receives no config plaintext, DK or vault line|the secret manager result cannot authorize or open the vault|Core remains the source of the protocol verdict|neither capability opens the other's sealed material|only /x/mail recipients, versions and roots may change|Gamma, config evidence and publication commit atomically|fresh-store keyless verification receives no credential|the canonical bundle remains byte-for-byte identical|no Gamma entry, header generation or config blob from the attempt is reachable|it finds no credential, config plaintext, private key or DK|encrypted normative header lines remain opaque and non-authorizing)$"#
+)]
+fn cb10_then(w: &mut ProtocolWorld) {
+    cb10_assert_green(w);
 }
 
 // ----------------------------------------------------------------- thens

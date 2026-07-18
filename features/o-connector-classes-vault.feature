@@ -162,7 +162,6 @@ Feature: Connector classes and isolated vault capabilities
 
   Rule: Config is a reserved exact capability outside business classes
 
-    @wip
     Scenario: Config inherits no silent binding classification or co_sign
       Given the validated G-A classification
       When a mandate carries exact act.x.mail.config
@@ -170,7 +169,6 @@ Feature: Connector classes and isolated vault capabilities
       And all applicable constraints and obligations explicitly present in the whole presented chain apply
       And no wildcard or inferred binding co_sign covers it
 
-    @wip
     Scenario Outline: Exact config authority covers CRUD for one connector only
       Given a grantee has exact act.x.mail.config and the exact /x/mail line
       When it performs config "<operation>" for mail
@@ -189,7 +187,6 @@ Feature: Connector classes and isolated vault capabilities
 
   Rule: Every connector has an independent vault node
 
-    @wip
     Scenario Outline: Vault access requires exact authority and exact line together
       Given a grantee presents "<authority>" and holds "<line>"
       When it attempts to open mail config at /x/mail
@@ -205,7 +202,6 @@ Feature: Connector classes and isolated vault capabilities
         | act.x.mail.*              | exact /x/mail line   | refused as unauthorized   |
         | act.x.calendar.config     | /x/calendar line     | cannot open /x/mail        |
 
-    @wip
     Scenario: An ordinary action never receives a credential
       Given an agent may perform act.x.mail.send through a tool host
       And the tool host opens /x/mail only owner-locally or with its own exact config authority and line
@@ -213,21 +209,18 @@ Feature: Connector classes and isolated vault capabilities
       Then the tool host resolves the credential at the last moment
       And the agent receives no config plaintext, DK or vault line
 
-    @wip
     Scenario: An external secret manager is custody, never authority
       Given /x/mail material is held by an external secret manager
       When a caller has no owner-local context and lacks exact config authority or line
       Then the secret manager result cannot authorize or open the vault
       And Core remains the source of the protocol verdict
 
-    @wip
     Scenario: Audit and config capabilities are cryptographically distinct
       Given one holder may audit sealed action arguments
       And another holder may open /x/mail config
       When each capability is exercised
       Then neither capability opens the other's sealed material
 
-    @wip
     Scenario Outline: Rotation and config mutation are atomic and connector-local
       Given mail and calendar have independent vault nodes
       When "<operation>" is attempted for mail
@@ -241,7 +234,6 @@ Feature: Connector classes and isolated vault capabilities
         | recipient revocation and rotation  |
         | local vault update after an out-of-protocol upstream secret replacement |
 
-    @wip
     Scenario: Failed vault mutation leaves no partial credential state
       Given a published bundle snapshotted before a mail config mutation
       And an injected failure before local commit
@@ -249,7 +241,6 @@ Feature: Connector classes and isolated vault capabilities
       Then the canonical bundle remains byte-for-byte identical
       And no Gamma entry, header generation or config blob from the attempt is reachable
 
-    @wip
     Scenario: Public vault evidence and refusals reveal no secret
       Given a published mail config mutation and one refused vault attempt
       When a keyless verifier inspects manifests, proofs, Gamma clear fields, logs and errors

@@ -4,7 +4,6 @@ Feature: Structural mutations
 
   Rule: Existing verbs cover sections and folders without a new wire verb
 
-    @wip
     Scenario Outline: Structural operations require their exact composed authority
       Given a grantee with "<authority>"
       When it attempts "<operation>"
@@ -39,7 +38,6 @@ Feature: Structural mutations
         | delete a non-empty folder         | delete covering folder and complete subtree    | accepted |
         | delete a non-empty folder         | delete on folder but not one descendant        | refused  |
 
-    @wip
     Scenario: Structural read means list and present only covered children
       Given a grantee with read on one nested folder
       When it lists the folder and reads one contained section
@@ -48,14 +46,12 @@ Feature: Structural mutations
 
   Rule: Derived structure is never an unjournalized side mutation
 
-    @wip
     Scenario: A tag edit updates every derived view in one transaction
       Given a public or circle section whose authorized edit changes its tags
       When the mutation commits
       Then index rows and affected tag wraps are deterministically derived
       And the authorizing Gamma entry, roots and manifest commit together
 
-    @wip
     Scenario: A move rotates at the changed cryptographic boundary
       Given an authorized move with source and destination authority
       When the node is reparented
@@ -63,7 +59,6 @@ Feature: Structural mutations
       And required rotation, survivor lines and destination up-link wrap join the transaction
       And the old parent derives no future node key
 
-    @wip
     Scenario: A subtree delete accounts for every removed descendant
       Given a grantee delete perimeter covering a folder and its complete subtree
       When the folder is deleted
@@ -72,7 +67,6 @@ Feature: Structural mutations
 
   Rule: Structural refusals are effect-free
 
-    @wip
     Scenario Outline: Invalid structure or injected failure preserves the bundle byte for byte
       Given a published bundle snapshotted before a structural mutation
       When the mutation encounters "<failure>"
@@ -91,7 +85,6 @@ Feature: Structural mutations
 
   Rule: Self structure remains sealed
 
-    @wip
     Scenario: A self structural mutation uses zone authority or exact opaque SIDs
       Given a grantee mutation in self
       When keyless verification derives its state transition
