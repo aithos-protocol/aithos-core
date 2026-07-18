@@ -789,18 +789,66 @@ fn validate_publication(
             "publication operation_ref does not select its projection",
         ));
     }
-    let facts = context
-        .publication_facts
-        .as_object()
-        .ok_or_else(|| invalid("publication facts are not an object"))?;
+    let facts = exact_object(
+        &context.publication_facts,
+        &["aithos-operation-facts-core", "kind", "facts"],
+        "publication facts",
+    )?;
     if facts["aithos-operation-facts-core"] != OPERATION_PROFILE || facts["kind"] != "publication" {
         return Err(invalid("publication facts profile or kind is invalid"));
     }
-    let body = facts["facts"]
+    let body_value = &facts["facts"];
+    let body = body_value
         .as_object()
         .ok_or_else(|| invalid("publication facts body is invalid"))?;
-    if body["mode"] != "normal"
-        || body["height"].as_u64() != Some(context.height)
+    let common_members = [
+        "mode",
+        "height",
+        "predecessors",
+        "changeset_ref",
+        "contained_operations",
+    ];
+    let mode = body["mode"]
+        .as_str()
+        .ok_or_else(|| invalid("publication mode is invalid"))?;
+    match mode {
+        "normal" => {
+            exact_object(body_value, &common_members, "normal publication facts")?;
+            match (context.height, context.predecessors.len()) {
+                (1, 0) => {}
+                (height, 1) if height > 1 => {}
+                _ => {
+                    return Err(invalid(
+                        "normal publication predecessor cardinality is invalid",
+                    ));
+                }
+            }
+        }
+        "merge" => {
+            exact_object(body_value, &common_members, "merge publication facts")?;
+            validate_two_predecessors(context)?;
+        }
+        "resolution" => {
+            let mut resolution_members = common_members.to_vec();
+            resolution_members.push("winner");
+            exact_object(
+                body_value,
+                &resolution_members,
+                "resolution publication facts",
+            )?;
+            let predecessors = validate_two_predecessors(context)?;
+            if !body["winner"]
+                .as_str()
+                .is_some_and(|winner| predecessors.contains(&winner))
+            {
+                return Err(invalid(
+                    "resolution winner is not one of its two predecessors",
+                ));
+            }
+        }
+        _ => return Err(invalid("publication facts mode is unknown")),
+    }
+    if body["height"].as_u64() != Some(context.height)
         || body["predecessors"] != Value::Array(context.predecessors.clone())
         || body["changeset_ref"] != *changeset_ref
         || body["contained_operations"] != Value::Array(context.contained_operations.clone())
@@ -825,6 +873,30 @@ fn validate_publication(
         return Err(invalid("publication projection selects different facts"));
     }
     Ok(reference)
+}
+
+fn validate_two_predecessors(context: &K1cVerificationContext) -> Result<BTreeSet<&str>> {
+    if context.height < 3 || context.predecessors.len() != 2 {
+        return Err(invalid(
+            "merge or resolution requires two predecessors at height three or later",
+        ));
+    }
+    let predecessors = context
+        .predecessors
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|digest| is_prefixed_digest(digest))
+                .ok_or_else(|| invalid("publication predecessor is invalid"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if predecessors[0] >= predecessors[1] {
+        return Err(invalid(
+            "merge or resolution predecessors are not distinct and sorted",
+        ));
+    }
+    Ok(predecessors.into_iter().collect())
 }
 
 fn item_jcs(item: &EvidenceItem) -> Result<Vec<u8>> {

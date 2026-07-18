@@ -19,6 +19,7 @@
 
 pub mod carriers;
 pub mod catalog;
+pub mod concurrency;
 pub mod constraints;
 pub mod delegated_counts;
 pub mod derive;

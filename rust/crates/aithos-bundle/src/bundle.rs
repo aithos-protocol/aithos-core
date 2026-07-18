@@ -1546,8 +1546,9 @@ impl<S: Store> Bundle<S> {
     /// (§02.6, pass I): merge editions must name two same-height parents
     /// sharing a grandparent with disjoint changesets; fork resolutions must
     /// be signed by an authority covering every touched node of BOTH
-    /// branches. A delegate signature is accepted ONLY on a resolving
-    /// edition (fail-closed — plain delegate publishing is a later pass).
+    /// branches. A delegate signature is accepted only on a merge or
+    /// resolving edition and must carry one chain covering every touched
+    /// node; ordinary legacy delegate publication remains fail-closed.
     pub fn verify(&self) -> Result<()> {
         let err = |m: String| Error::SealRejected(format!("edition: {m}"));
         let doc: DidDocument = self.get_json("did.json")?;
@@ -1558,9 +1559,9 @@ impl<S: Store> Bundle<S> {
             let m: Manifest = self.get_json(&format!("manifests/{h}.json"))?;
             if m.authorized_via.is_empty() {
                 m.verify_signature(&doc)?;
-            } else if m.resolves_fork.is_empty() {
+            } else if m.resolves_fork.is_empty() && m.merges.is_empty() {
                 return Err(err(format!(
-                    "height {h}: delegate-signed editions are accepted only as fork resolutions"
+                    "height {h}: delegate-signed editions are accepted only as merge or fork resolution publications"
                 )));
             }
             if m.edition.height != h {

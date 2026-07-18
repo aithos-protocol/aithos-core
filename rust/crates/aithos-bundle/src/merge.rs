@@ -12,9 +12,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use aithos_core::concurrency::{
+    recompose_counts, verify_disjoint_merge, verify_fork_resolution, MergeAuthority,
+    SemanticCounts, SemanticOccurrence,
+};
 use aithos_core::did::DidDocument;
 use aithos_core::error::{Error, Result};
-use aithos_core::gamma::{self, owner_entry, EntrySpec, Kind};
+use aithos_core::gamma::{self, delegated_entry, owner_entry, EntrySpec, Kind};
 use aithos_core::ids::Sid;
 use aithos_core::keys::OwnerKeys;
 use aithos_core::mandate::{covers_op, verify_chain, Mandate, Op, PerimeterEntry, Verb};
@@ -23,8 +27,13 @@ use ed25519_dalek::SigningKey;
 
 use crate::bundle::{Bundle, SelfIndex, ZoneIndex};
 use crate::manifest::{sha256_hex, Manifest, ManifestSigner, ManifestSpec};
+use crate::publication::{
+    assemble_draft2_candidate, cold_verify, export_keyless, KeylessPublicationPackage,
+};
 use crate::state::{tree_diff, StateTree};
 use crate::Store;
+use aithos_core::carriers::{K1cActor, K1cVerificationContext, VerifiedK1cCarriers};
+use serde_json::Value;
 
 /// Derivation domain of the deterministic merge-entry id: both mergers must
 /// produce byte-identical entries, so the id derives from what they share.
@@ -189,6 +198,230 @@ pub enum ForkResolver<'a> {
     },
 }
 
+/// Public, secret-free qualification inputs for one draft.2 disjoint merge.
+pub struct Draft2MergePlan {
+    pub parents: [String; 2],
+    pub left_changed_sids: BTreeSet<String>,
+    pub right_changed_sids: BTreeSet<String>,
+    pub deleted_sids: BTreeSet<String>,
+    pub authority: MergeAuthority,
+    pub left_occurrences: Vec<SemanticOccurrence>,
+    pub right_occurrences: Vec<SemanticOccurrence>,
+}
+
+/// Public, secret-free qualification inputs for one fork resolution.
+pub struct Draft2ResolutionPlan {
+    pub parents: [String; 2],
+    pub winner: String,
+    pub touched_sids: BTreeSet<String>,
+    pub authority: MergeAuthority,
+    pub left_occurrences: Vec<SemanticOccurrence>,
+    pub right_occurrences: Vec<SemanticOccurrence>,
+}
+
+fn context_changed_sids(context: &K1cVerificationContext) -> BTreeSet<String> {
+    context
+        .change_causes
+        .keys()
+        .filter_map(|path| {
+            path.strip_prefix("public/sections/")
+                .and_then(|name| name.strip_suffix(".md"))
+                .or_else(|| {
+                    path.strip_prefix("circle/blobs/")
+                        .and_then(|name| name.strip_suffix(".json"))
+                })
+                .or_else(|| {
+                    path.split('/')
+                        .find(|segment| segment.len() == 26 && segment.starts_with("01"))
+                })
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
+fn verify_plan_actor(context: &K1cVerificationContext, authority: &MergeAuthority) -> Result<()> {
+    match (&context.actor, authority) {
+        (K1cActor::Owner { .. }, MergeAuthority::Owner) => Ok(()),
+        (
+            K1cActor::Grantee {
+                authority_chain, ..
+            },
+            MergeAuthority::Grantee { chain_count: 1, .. },
+        ) if !authority_chain.is_empty() => Ok(()),
+        _ => Err(Error::InvalidOperation(
+            "merge plan authority differs from the K1-C publication actor".into(),
+        )),
+    }
+}
+
+fn verify_plan_parents(context: &K1cVerificationContext, parents: &[String; 2]) -> Result<()> {
+    if parents[0] >= parents[1]
+        || context.predecessors
+            != parents
+                .iter()
+                .cloned()
+                .map(Value::String)
+                .collect::<Vec<_>>()
+    {
+        return Err(Error::InvalidOperation(
+            "merge plan parents differ from the sorted publication predecessors".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Qualify a real two-parent K1-C merge, assemble its signed draft.2
+/// candidate, and export the same keyless package used by normal publication.
+#[allow(clippy::too_many_arguments)]
+pub fn merge_draft2_package(
+    plan: &Draft2MergePlan,
+    context: K1cVerificationContext,
+    evidence: Value,
+    signer: ManifestSigner<'_>,
+    extra_public_objects: BTreeMap<String, Vec<u8>>,
+) -> Result<KeylessPublicationPackage> {
+    verify_plan_parents(&context, &plan.parents)?;
+    verify_plan_actor(&context, &plan.authority)?;
+    let touched = plan
+        .left_changed_sids
+        .union(&plan.right_changed_sids)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    verify_disjoint_merge(
+        &plan.left_changed_sids,
+        &plan.right_changed_sids,
+        &plan.deleted_sids,
+        &plan.authority,
+    )?;
+    if context_changed_sids(&context) != touched {
+        return Err(Error::InvalidOperation(
+            "derived K1-C changeset SIDs differ from the merge plan".into(),
+        ));
+    }
+    let counts = recompose_counts(&plan.left_occurrences, &plan.right_occurrences)?;
+    let expected_counts = serde_json::to_value(&counts)
+        .map_err(|error| Error::InvalidOperation(format!("merge counts: {error}")))?;
+    if context
+        .publication_facts
+        .pointer("/facts/mode")
+        .and_then(Value::as_str)
+        != Some("merge")
+        || context
+            .publication_facts
+            .pointer("/facts/semantic_counts")
+            .is_some_and(|actual| actual != &expected_counts)
+    {
+        return Err(Error::InvalidOperation(
+            "merge publication facts mode or semantic counts differ".into(),
+        ));
+    }
+    let candidate = assemble_draft2_candidate(&context, evidence, signer)?;
+    export_keyless(candidate, context, extra_public_objects)
+}
+
+/// Qualify a two-parent resolution and export its signed draft.2 package.
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_draft2_package(
+    plan: &Draft2ResolutionPlan,
+    context: K1cVerificationContext,
+    evidence: Value,
+    signer: ManifestSigner<'_>,
+    extra_public_objects: BTreeMap<String, Vec<u8>>,
+) -> Result<KeylessPublicationPackage> {
+    verify_plan_parents(&context, &plan.parents)?;
+    verify_plan_actor(&context, &plan.authority)?;
+    verify_fork_resolution(&plan.touched_sids, &plan.authority)?;
+    if context_changed_sids(&context) != plan.touched_sids
+        || context
+            .publication_facts
+            .pointer("/facts/mode")
+            .and_then(Value::as_str)
+            != Some("resolution")
+        || context
+            .publication_facts
+            .pointer("/facts/winner")
+            .and_then(Value::as_str)
+            != Some(&plan.winner)
+        || !plan.parents.contains(&plan.winner)
+    {
+        return Err(Error::InvalidOperation(
+            "resolution facts, winner or derived SIDs differ from the plan".into(),
+        ));
+    }
+    recompose_counts(&plan.left_occurrences, &plan.right_occurrences)?;
+    let candidate = assemble_draft2_candidate(&context, evidence, signer)?;
+    export_keyless(candidate, context, extra_public_objects)
+}
+
+/// Rebuild semantic counts from both branches, deduplicated by occurrence.
+pub fn recompose_semantic_counts(
+    left: &[SemanticOccurrence],
+    right: &[SemanticOccurrence],
+) -> Result<SemanticCounts> {
+    recompose_counts(left, right)
+}
+
+/// Cold-verify a merged/resolved keyless package from one fresh Store.
+pub fn cold_merge_from_keyless_store<S: Store>(
+    store: &S,
+    package: &KeylessPublicationPackage,
+) -> Result<VerifiedK1cCarriers> {
+    cold_verify(store, package)
+}
+
+fn cold_object_digest(objects: &BTreeMap<String, Vec<u8>>) -> Result<String> {
+    let object = objects
+        .iter()
+        .map(|(path, bytes)| {
+            let value = match std::str::from_utf8(bytes) {
+                Ok(text) => Value::String(text.to_owned()),
+                Err(_) => serde_json::json!({ "hex": hex::encode(bytes) }),
+            };
+            (path.clone(), value)
+        })
+        .collect::<serde_json::Map<_, _>>();
+    let bytes = aithos_core::jcs::canonical_bytes(&Value::Object(object))?;
+    Ok(format!("sha256:{}", sha256_hex(&bytes)))
+}
+
+/// Prove that each supplied order inserts exactly the same complete object
+/// set and therefore produces one cold digest.
+pub fn verify_insertion_order_independence(
+    objects: &BTreeMap<String, Vec<u8>>,
+    orders: &[Vec<String>],
+) -> Result<String> {
+    let expected_keys = objects.keys().cloned().collect::<BTreeSet<_>>();
+    let expected_digest = cold_object_digest(objects)?;
+    for order in orders {
+        if order.iter().cloned().collect::<BTreeSet<_>>() != expected_keys
+            || order.len() != expected_keys.len()
+        {
+            return Err(Error::InvalidOperation(
+                "insertion order is not an exact object-set permutation".into(),
+            ));
+        }
+        let rebuilt = order
+            .iter()
+            .map(|path| {
+                objects
+                    .get(path)
+                    .map(|bytes| (path.clone(), bytes.clone()))
+                    .ok_or_else(|| {
+                        Error::InvalidOperation(format!(
+                            "insertion order names an unknown object: {path}"
+                        ))
+                    })
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
+        if cold_object_digest(&rebuilt)? != expected_digest {
+            return Err(Error::InvalidOperation(
+                "cold digest depends on insertion order".into(),
+            ));
+        }
+    }
+    Ok(expected_digest)
+}
+
 // -------------------------------------------------------------- the bundle
 
 impl<S: Store> Bundle<S> {
@@ -276,10 +509,50 @@ impl<S: Store> Bundle<S> {
         owner: &OwnerKeys,
         now: &str,
     ) -> Result<()> {
+        self.edition_merge_as(other, &ForkResolver::Owner(owner), now)
+    }
+
+    /// Publish a deterministic merge through one owner or one fully covering
+    /// grantee chain. The complete mutation is one Store transaction.
+    pub fn edition_merge_as<S2: Store>(
+        &mut self,
+        other: &Bundle<S2>,
+        publisher: &ForkResolver<'_>,
+        now: &str,
+    ) -> Result<()> {
+        self.transaction(|bundle| bundle.edition_merge_inner(other, publisher, now))
+    }
+
+    fn edition_merge_inner<S2: Store>(
+        &mut self,
+        other: &Bundle<S2>,
+        publisher: &ForkResolver<'_>,
+        now: &str,
+    ) -> Result<()> {
         let (mine, theirs, height) = self.competing_tips(other)?;
         let (f_mine, f_theirs) = self.changeset_frontiers(other, height)?;
         if let Some(label) = f_mine.intersection(&f_theirs).next() {
             return Err(Error::EditionFork(format!("same-node conflict on {label}")));
+        }
+        if let ForkResolver::Delegate { chain, sk } = publisher {
+            let doc: DidDocument = self.get_json("did.json")?;
+            verify_chain(chain, &doc, now)?;
+            let leaf = chain
+                .last()
+                .ok_or_else(|| Error::MergeRejected("empty publisher chain".into()))?;
+            if leaf.grantee.pubkey
+                != aithos_core::wire::ed25519_pub_to_multibase(&sk.verifying_key().to_bytes())
+            {
+                return Err(Error::MergeRejected(
+                    "merge publisher key differs from its chain leaf".into(),
+                ));
+            }
+            let touched = f_mine.union(&f_theirs).cloned().collect::<BTreeSet<_>>();
+            if !write_covers_labels(&leaf.parsed_perimeter()?, &touched) {
+                return Err(Error::MergeRejected(
+                    "merge publisher chain does not cover every changed node".into(),
+                ));
+            }
         }
         let (my_hash, their_hash) = (mine.chain_hash()?, theirs.chain_hash()?);
         let i_am_low = my_hash < their_hash;
@@ -434,24 +707,29 @@ impl<S: Store> Bundle<S> {
             hasher.update(hash_hi.as_bytes());
             let digest = hasher.finalize();
             let id_bytes: [u8; 16] = digest.as_bytes()[..16].try_into().expect("16 bytes");
-            let entry = owner_entry(
-                EntrySpec {
-                    id: format!(
-                        "gamma_{}",
-                        Sid(ulid::Ulid::from(u128::from_be_bytes(id_bytes)))
-                    ),
-                    prev: head_lo.clone(),
-                    prevs: Some(vec![head_lo.clone(), head_hi.clone()]),
-                    at: now.to_owned(),
-                    kind: Kind::Merge,
-                    target: None,
-                    payload: Some(serde_json::json!({
-                        "merges": [hash_lo.clone(), hash_hi.clone()]
-                    })),
-                    body_enc: None,
-                },
-                &owner.content_sign,
-            )?;
+            let entry_spec = EntrySpec {
+                id: format!(
+                    "gamma_{}",
+                    Sid(ulid::Ulid::from(u128::from_be_bytes(id_bytes)))
+                ),
+                prev: head_lo.clone(),
+                prevs: Some(vec![head_lo.clone(), head_hi.clone()]),
+                at: now.to_owned(),
+                kind: Kind::Merge,
+                target: None,
+                payload: Some(serde_json::json!({
+                    "merges": [hash_lo.clone(), hash_hi.clone()]
+                })),
+                body_enc: None,
+            };
+            let entry = match publisher {
+                ForkResolver::Owner(owner) => owner_entry(entry_spec, &owner.content_sign)?,
+                ForkResolver::Delegate { chain, sk } => delegated_entry(
+                    entry_spec,
+                    chain.iter().map(|mandate| mandate.id.clone()).collect(),
+                    sk,
+                )?,
+            };
             let seg = crate::log::segment_of(now)?;
             let mut bytes = self.store.get(&seg).map_err(io_err)?.unwrap_or_default();
             bytes.extend_from_slice(aithos_core::jcs::canonicalize(&entry)?.as_bytes());
@@ -465,6 +743,19 @@ impl<S: Store> Bundle<S> {
         // 5. The merge manifest: prev_hash pins the LOW parent, `merges`
         //    lists both ascending (§02.6).
         let a = self.publish_artifacts(height + 1)?;
+        let (signer, authorized_via) = match publisher {
+            ForkResolver::Owner(owner) => (ManifestSigner::Root(&owner.root_sign), Vec::new()),
+            ForkResolver::Delegate { chain, sk } => {
+                let leaf = chain.last().expect("publisher chain checked above");
+                (
+                    ManifestSigner::Delegate {
+                        key_multibase: leaf.grantee.pubkey.clone(),
+                        sk,
+                    },
+                    chain.iter().map(|mandate| mandate.id.clone()).collect(),
+                )
+            }
+        };
         let manifest = Manifest::build_spec(
             ManifestSpec {
                 height: height + 1,
@@ -477,9 +768,9 @@ impl<S: Store> Bundle<S> {
                 gamma_head: a.gamma_head,
                 merges: vec![hash_lo, hash_hi],
                 resolves_fork: String::new(),
-                authorized_via: Vec::new(),
+                authorized_via,
             },
-            ManifestSigner::Root(&owner.root_sign),
+            signer,
         )?;
         self.put_json(&format!("manifests/{}.json", height + 1), &manifest)?;
         self.put_json("manifest.json", &manifest)
@@ -492,6 +783,15 @@ impl<S: Store> Bundle<S> {
     /// branch's manifest and tree are kept in the `-alt` slots — surfaced,
     /// never silently replayed. Returns the losing frontier labels.
     pub fn resolve_fork<S2: Store>(
+        &mut self,
+        loser: &Bundle<S2>,
+        resolver: &ForkResolver<'_>,
+        now: &str,
+    ) -> Result<Vec<String>> {
+        self.transaction(|bundle| bundle.resolve_fork_inner(loser, resolver, now))
+    }
+
+    fn resolve_fork_inner<S2: Store>(
         &mut self,
         loser: &Bundle<S2>,
         resolver: &ForkResolver<'_>,
@@ -648,6 +948,24 @@ impl<S: Store> Bundle<S> {
             return Err(Error::EditionFork(format!(
                 "height {height}: same-node conflict on {label}"
             )));
+        }
+        if !m.authorized_via.is_empty() {
+            let chain: Vec<Mandate> = m
+                .authorized_via
+                .iter()
+                .map(|id| self.get_json(&format!("certs/{id}.json")))
+                .collect::<Result<_>>()?;
+            verify_chain(&chain, &doc, &m.edition.created_at)?;
+            let leaf = chain
+                .last()
+                .ok_or_else(|| err("empty authorized_via".into()))?;
+            m.verify_delegate_signature(leaf)?;
+            let touched = f_lo.union(&f_hi).cloned().collect::<BTreeSet<_>>();
+            if !write_covers_labels(&leaf.parsed_perimeter()?, &touched) {
+                return Err(Error::MergeRejected(format!(
+                    "height {height}: the merge publisher does not cover every changed node"
+                )));
+            }
         }
         // The log join: the pinned head is the merge entry citing both
         // parents' tips — or the shared tip when the log never forked.

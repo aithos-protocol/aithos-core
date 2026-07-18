@@ -12,6 +12,7 @@ use aithos_core::carriers::{
 use aithos_core::did::DidDocument;
 use aithos_core::error::{Error, Result};
 use aithos_core::jcs;
+use aithos_core::mandate::{verify_chain, Mandate};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -80,18 +81,91 @@ fn authority_ids(context: &K1cVerificationContext) -> Result<Vec<String>> {
         .collect()
 }
 
-fn expected_prev_hash(context: &K1cVerificationContext) -> Result<String> {
-    match (context.height, context.predecessors.as_slice()) {
-        (1, []) => Ok(String::new()),
-        (height, [predecessor]) if height > 1 => predecessor
-            .as_str()
-            .and_then(|digest| digest.strip_prefix("sha256:"))
-            .filter(|digest| digest.len() == 64)
-            .map(str::to_owned)
-            .ok_or_else(|| invalid("publication predecessor is invalid")),
-        _ => Err(invalid(
-            "normal publication requires one predecessor, except genesis",
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManifestTopology {
+    prev_hash: String,
+    merges: Vec<String>,
+    resolves_fork: String,
+}
+
+fn bare_predecessors(context: &K1cVerificationContext) -> Result<Vec<String>> {
+    context
+        .predecessors
+        .iter()
+        .map(|predecessor| {
+            predecessor
+                .as_str()
+                .and_then(|digest| digest.strip_prefix("sha256:"))
+                .filter(|digest| {
+                    digest.len() == 64
+                        && digest
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                })
+                .map(str::to_owned)
+                .ok_or_else(|| invalid("publication predecessor is invalid"))
+        })
+        .collect()
+}
+
+fn manifest_topology(context: &K1cVerificationContext) -> Result<ManifestTopology> {
+    let facts = context
+        .publication_facts
+        .get("facts")
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid("publication facts body is invalid"))?;
+    let mode = facts["mode"]
+        .as_str()
+        .ok_or_else(|| invalid("publication mode is invalid"))?;
+    let predecessors = bare_predecessors(context)?;
+    match mode {
+        "normal" => match (context.height, predecessors.as_slice()) {
+            (1, []) => Ok(ManifestTopology {
+                prev_hash: String::new(),
+                merges: Vec::new(),
+                resolves_fork: String::new(),
+            }),
+            (height, [predecessor]) if height > 1 => Ok(ManifestTopology {
+                prev_hash: predecessor.clone(),
+                merges: Vec::new(),
+                resolves_fork: String::new(),
+            }),
+            _ => Err(invalid(
+                "normal publication requires one predecessor, except genesis",
+            )),
+        },
+        "merge" if context.height >= 3 && predecessors.len() == 2 => {
+            if predecessors[0] >= predecessors[1] {
+                return Err(invalid("merge predecessors are not distinct and sorted"));
+            }
+            Ok(ManifestTopology {
+                prev_hash: predecessors[0].clone(),
+                merges: predecessors,
+                resolves_fork: String::new(),
+            })
+        }
+        "resolution" if context.height >= 3 && predecessors.len() == 2 => {
+            if predecessors[0] >= predecessors[1] {
+                return Err(invalid(
+                    "resolution predecessors are not distinct and sorted",
+                ));
+            }
+            let winner = facts["winner"]
+                .as_str()
+                .and_then(|winner| winner.strip_prefix("sha256:"))
+                .filter(|winner| predecessors.iter().any(|parent| parent == *winner))
+                .ok_or_else(|| invalid("resolution winner is not a predecessor"))?
+                .to_owned();
+            Ok(ManifestTopology {
+                prev_hash: winner.clone(),
+                merges: Vec::new(),
+                resolves_fork: winner,
+            })
+        }
+        "merge" | "resolution" => Err(invalid(
+            "merge or resolution requires two predecessors at height three or later",
         )),
+        _ => Err(invalid("publication mode is unknown")),
     }
 }
 
@@ -199,18 +273,19 @@ pub fn assemble_draft2_candidate(
         (evidence_path, evidence_bytes),
     ]);
     let files = expected_files(context, &sidecars)?;
+    let topology = manifest_topology(context)?;
     let manifest = Manifest::build_draft2(
         ManifestSpec {
             height: context.height,
-            prev_hash: expected_prev_hash(context)?,
+            prev_hash: topology.prev_hash,
             created_at: context.publication_at.clone(),
             files,
             roots: BTreeMap::new(),
             gamma_roots: BTreeMap::new(),
             gamma_counts_root: String::new(),
             gamma_head: context.gamma_source_head.clone(),
-            merges: Vec::new(),
-            resolves_fork: String::new(),
+            merges: topology.merges,
+            resolves_fork: topology.resolves_fork,
             authorized_via: authority_ids(context)?,
         },
         context.publication_ref.clone(),
@@ -251,11 +326,14 @@ pub fn verify_draft2_candidate(
     candidate
         .manifest
         .verify_actor_signature(context.actor.public_key())?;
+    let topology = manifest_topology(context)?;
     if candidate.manifest.edition.height != context.height
-        || candidate.manifest.edition.prev_hash != expected_prev_hash(context)?
+        || candidate.manifest.edition.prev_hash != topology.prev_hash
         || candidate.manifest.edition.created_at != context.publication_at
         || candidate.manifest.authorized_via != authority_ids(context)?
         || candidate.manifest.gamma_head != context.gamma_source_head
+        || candidate.manifest.merges != topology.merges
+        || candidate.manifest.resolves_fork != topology.resolves_fork
     {
         return Err(invalid(
             "manifest edition, authority, time, predecessor or Gamma head mismatch",
@@ -500,6 +578,38 @@ fn candidate_from_store<S: Store>(
     Ok(candidate)
 }
 
+fn verify_stored_manifest_authority<S: Store>(
+    store: &S,
+    manifest: &Manifest,
+    did: &DidDocument,
+) -> Result<()> {
+    if manifest.authorized_via.is_empty() {
+        return manifest.verify_signature(did);
+    }
+    let chain = manifest
+        .authorized_via
+        .iter()
+        .map(|id| {
+            let bytes = store
+                .get(&format!("certs/{id}.json"))
+                .map_err(io_error)?
+                .ok_or_else(|| {
+                    invalid(format!("manifest authority certificate is missing: {id}"))
+                })?;
+            serde_json::from_slice::<Mandate>(&bytes).map_err(|error| {
+                invalid(format!(
+                    "manifest authority certificate is invalid: {error}"
+                ))
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    verify_chain(&chain, did, &manifest.edition.created_at)?;
+    let leaf = chain
+        .last()
+        .ok_or_else(|| invalid("manifest authority chain is empty"))?;
+    manifest.verify_delegate_signature(leaf)
+}
+
 /// Reopen and verify from Store bytes with public package inputs only.
 pub fn cold_verify<S: Store>(
     store: &S,
@@ -555,13 +665,6 @@ pub fn cold_verify<S: Store>(
         return Err(invalid("manifest.json is not the edition history tip"));
     }
     if height > 1 {
-        let parent_path = format!("manifests/{}.json", height - 1);
-        let parent_bytes = store
-            .get(&parent_path)
-            .map_err(io_error)?
-            .ok_or_else(|| invalid("expected parent manifest is missing"))?;
-        let parent: Manifest = serde_json::from_slice(&parent_bytes)
-            .map_err(|error| manifest_error(format!("parent is invalid: {error}")))?;
         let did_bytes = store
             .get("did.json")
             .map_err(io_error)?
@@ -569,15 +672,43 @@ pub fn cold_verify<S: Store>(
         let did: DidDocument = serde_json::from_slice(&did_bytes)
             .map_err(|error| invalid(format!("cold verification DID is invalid: {error}")))?;
         did.verify()?;
-        if parent.authorized_via.is_empty() {
-            parent.verify_signature(&did)?;
-        } else {
-            return Err(invalid(
-                "cold parent uses delegated authority unsupported by this normal package",
-            ));
-        }
+        let parent_path = format!("manifests/{}.json", height - 1);
+        let parent_bytes = store
+            .get(&parent_path)
+            .map_err(io_error)?
+            .ok_or_else(|| invalid("expected parent manifest is missing"))?;
+        let parent: Manifest = serde_json::from_slice(&parent_bytes)
+            .map_err(|error| manifest_error(format!("parent is invalid: {error}")))?;
+        verify_stored_manifest_authority(store, &parent, &did)?;
         if parent.chain_hash()? != candidate.manifest.edition.prev_hash {
             return Err(invalid("candidate names a different parent manifest"));
+        }
+        let topology = manifest_topology(package.context())?;
+        if !topology.merges.is_empty() || !topology.resolves_fork.is_empty() {
+            let alternative_path = format!("manifests/{}-alt.json", height - 1);
+            let alternative_bytes = store
+                .get(&alternative_path)
+                .map_err(io_error)?
+                .ok_or_else(|| invalid("competing parent manifest is missing"))?;
+            let alternative: Manifest = serde_json::from_slice(&alternative_bytes)
+                .map_err(|error| manifest_error(format!("competing parent is invalid: {error}")))?;
+            verify_stored_manifest_authority(store, &alternative, &did)?;
+            if alternative.edition.height != parent.edition.height
+                || alternative.edition.prev_hash != parent.edition.prev_hash
+            {
+                return Err(invalid(
+                    "competing parents do not share height and grandparent",
+                ));
+            }
+            let mut actual_parents = vec![parent.chain_hash()?, alternative.chain_hash()?];
+            actual_parents.sort();
+            let mut expected_parents = bare_predecessors(package.context())?;
+            expected_parents.sort();
+            if actual_parents != expected_parents {
+                return Err(invalid(
+                    "cold competing parents differ from publication predecessors",
+                ));
+            }
         }
     }
     verify_draft2_candidate(&candidate, package.context())

@@ -5,6 +5,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use aithos_bundle::merge::{recompose_semantic_counts, verify_insertion_order_independence};
+use aithos_core::concurrency::{
+    verify_disjoint_merge, verify_fork_resolution, MergeAuthority, SemanticOccurrence,
+};
 use aithos_core::jcs;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -153,6 +157,30 @@ fn cb2_bundle_merge_conflict_and_authority_decisions_preexisting_green() {
     assert_eq!(cases.len(), 5);
     for case in cases {
         assert_eq!(merge_verdict(case), case["expected"], "{}", case["id"]);
+        let left = case["left_changed_sids"]
+            .as_array()
+            .expect("left SIDs")
+            .iter()
+            .map(|value| value.as_str().expect("SID").to_owned())
+            .collect::<BTreeSet<_>>();
+        let right = case["right_changed_sids"]
+            .as_array()
+            .expect("right SIDs")
+            .iter()
+            .map(|value| value.as_str().expect("SID").to_owned())
+            .collect::<BTreeSet<_>>();
+        let deleted = if case["delete_wins"] == true {
+            left.clone()
+        } else {
+            BTreeSet::new()
+        };
+        let production = verify_disjoint_merge(&left, &right, &deleted, &MergeAuthority::Owner);
+        assert_eq!(
+            production.is_ok(),
+            case["expected"] != "conflict",
+            "{}",
+            case["id"]
+        );
         if case["expected"] == "conflict" {
             assert_eq!(case["visible_state_digest"], vector["initial_state_digest"]);
         }
@@ -168,6 +196,36 @@ fn cb2_bundle_merge_conflict_and_authority_decisions_preexisting_green() {
     assert_eq!(authority.len(), 4);
     for case in authority {
         assert_eq!(authority_verdict(case), case["expected"], "{}", case["id"]);
+        let changed = case["changed_sids"]
+            .as_array()
+            .expect("changed SIDs")
+            .iter()
+            .map(|value| value.as_str().expect("SID").to_owned())
+            .collect::<BTreeSet<_>>();
+        let chains = case["chains"].as_array().expect("chains");
+        let authority = if case["actor"] == "owner" {
+            MergeAuthority::Owner
+        } else {
+            MergeAuthority::Grantee {
+                chain_count: chains.len(),
+                covered_sids: chains
+                    .iter()
+                    .flat_map(|chain| {
+                        chain["covers"]
+                            .as_array()
+                            .expect("coverage")
+                            .iter()
+                            .map(|value| value.as_str().expect("SID").to_owned())
+                    })
+                    .collect(),
+            }
+        };
+        assert_eq!(
+            verify_disjoint_merge(&changed, &BTreeSet::new(), &BTreeSet::new(), &authority).is_ok(),
+            case["expected"] == "accepted",
+            "{}",
+            case["id"]
+        );
         if case["expected"] == "accepted" {
             assert!(matches!(
                 case["published_actor"].as_str(),
@@ -204,6 +262,27 @@ fn cb2_bundle_resolution_and_counter_recomposition_preexisting_green() {
             _ => "refused",
         };
         assert_eq!(expected, case["expected"], "{}", case["id"]);
+        if case["actor"] != "none" {
+            let touched = BTreeSet::from(["sid-left".to_owned(), "sid-right".to_owned()]);
+            let authority = if case["actor"] == "owner" {
+                MergeAuthority::Owner
+            } else {
+                MergeAuthority::Grantee {
+                    chain_count: case["chain_count"].as_u64().expect("chain count") as usize,
+                    covered_sids: if case["covers_every_touched_sid"] == true {
+                        touched.clone()
+                    } else {
+                        BTreeSet::from(["sid-left".to_owned()])
+                    },
+                }
+            };
+            assert_eq!(
+                verify_fork_resolution(&touched, &authority).is_ok(),
+                expected == "accepted",
+                "{}",
+                case["id"]
+            );
+        }
         if expected != "accepted" {
             assert_eq!(case["visible_state_digest"], vector["initial_state_digest"]);
         }
@@ -244,6 +323,29 @@ fn cb2_bundle_resolution_and_counter_recomposition_preexisting_green() {
             "direct_children": children,
         })
     );
+    let occurrences = |side: &str| {
+        counters[side]
+            .as_array()
+            .expect("occurrences")
+            .iter()
+            .map(|occurrence| SemanticOccurrence {
+                operation_ref: occurrence["operation_ref"]
+                    .as_str()
+                    .expect("operation ref")
+                    .to_owned(),
+                kind: occurrence["kind"].as_str().expect("kind").to_owned(),
+            })
+            .collect::<Vec<_>>()
+    };
+    let recomposed = recompose_semantic_counts(
+        &occurrences("left_occurrences"),
+        &occurrences("right_occurrences"),
+    )
+    .expect("production counter recomposition");
+    assert_eq!(
+        serde_json::to_value(recomposed).expect("counts value"),
+        counters["expected_counts"]
+    );
     assert_eq!(counters["shared_prefix_counted_once"], true);
     assert_eq!(counters["branch_occurrence_omitted"], false);
     assert_eq!(counters["branch_occurrence_double_counted"], false);
@@ -283,21 +385,49 @@ fn cb2_bundle_fresh_store_order_and_api_inventory_preliminary() {
     assert_eq!(fresh["network_participates"], false);
     assert_eq!(fresh["provider_cas_participates"], false);
 
+    let objects = fresh["objects"]
+        .as_object()
+        .expect("objects")
+        .iter()
+        .map(|(path, value)| {
+            (
+                path.clone(),
+                value.as_str().expect("object bytes").as_bytes().to_vec(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let orders = cases
+        .iter()
+        .map(|case| {
+            case["insertion_order"]
+                .as_array()
+                .expect("insertion order")
+                .iter()
+                .map(|path| path.as_str().expect("path").to_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        verify_insertion_order_independence(&objects, &orders)
+            .expect("production insertion-order proof"),
+        fresh["expected_cold_digest"]
+    );
+
     assert!(MERGE_SOURCE.contains("pub fn edition_merge"));
     assert!(MERGE_SOURCE.contains("pub fn resolve_fork"));
     assert!(MERGE_SOURCE.contains("Owner(&'a OwnerKeys)"));
     assert!(MERGE_SOURCE.contains("Delegate {"));
     assert!(MANIFEST_SOURCE.contains("pub resolves_fork: String"));
     assert!(MANIFEST_SOURCE.contains("pub authorized_via: Vec<String>"));
-    for absent in [
+    for present in [
         "pub fn merge_draft2_package",
         "pub fn cold_merge_from_keyless_store",
         "pub fn recompose_semantic_counts",
         "pub fn verify_insertion_order_independence",
     ] {
         assert!(
-            !MERGE_SOURCE.contains(absent) && !MANIFEST_SOURCE.contains(absent),
-            "{absent}"
+            MERGE_SOURCE.contains(present) || MANIFEST_SOURCE.contains(present),
+            "{present}"
         );
     }
 }
