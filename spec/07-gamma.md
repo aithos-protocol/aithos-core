@@ -458,5 +458,62 @@ Implementations MUST NOT group or deduplicate Gamma lines by `operation_ref`.
 Two valid occurrences with identical effects remain two raw lines; a replay or
 equivocation instead invalidates the edition even if its mechanically recomputed
 roots match. A heartbeat contributes to its segment root and `n`, but an
-owner-signed heartbeat still creates no mandate count leaf. W1.1 adds no mutation
-or total-consumption counter and changes no historical H2 root or proof.
+owner-signed heartbeat still creates no mandate count leaf. W1.1 added no mutation
+or total-consumption field to H2 and changed no historical H2 root or proof; D7
+uses the separate trie below rather than reinterpreting that historical wire.
+
+### 7.10.1 Delegated occurrence counts
+
+> **D7-CB2 counter wire — human-validated on 2026-07-18.**
+
+`gamma_counts_root` remains exactly the historical raw-Gamma counter trie above.
+Its `entries` field counts lines, not canonical occurrences, and MUST NOT be used
+as `max_consumptions`. Some countable occurrences have evidence outside Gamma, and
+several views may evidence one occurrence.
+
+The draft2 public evidence set therefore carries one closed reference:
+
+```json
+"delegated_counts": {
+  "aithos-delegated-counts-core": "1.0.0-draft.1",
+  "root": "<64 lowercase hex>"
+}
+```
+
+The exact enclosing evidence-set table and sidecar path remain separately gated;
+the nested object above has exactly two non-null members. `root` is a bare
+lowercase 32-byte SHA-256/Merkle hex value, consistent with existing root wire.
+
+One leaf exists per mandate whose verified subtree has a non-zero new count:
+
+```json
+{ "mutations": 2, "consumptions": 7 }
+```
+
+`mutations` and `consumptions` are unsigned integers. Zero fields are omitted; an
+empty counter object has no leaf. Leaves sort by exact mandate id and reuse the H2
+Merkle primitives byte-for-byte:
+
+```text
+leaf = H_leaf(mandate_id || 0x00 || RFC8785-JCS(counters))
+root = mroot(sorted leaves)
+```
+
+Mutation and total deltas are the exact D7 table in §4.4. A verifier first validates
+and correlates every operation reference and its native evidence, then deduplicates
+by occurrence, then increments each mandate in that grantee actor's
+`authorized_via` chain. Reusing an occurrence with a different commitment is
+equivocation and fails before tallying. The same occurrence seen through several
+valid views contributes once.
+
+A proof reuses the v1 Merkle proof wire with claimed payload
+`mandate_id || 0x00 || JCS(counters)`. Absence uses the existing adjacent-leaf
+proof. The root is recomputed during append-time authorization and cold replay from
+the same accepted occurrence set; an injected tally, missing evidence view,
+duplicate occurrence, or unknown profile fails closed.
+
+Malformed `delegated_counts` material, an invalid leaf or proof, a tally mismatch,
+or an occurrence-correlation failure returns
+`Error::InvalidDelegatedCounts(String)`. A malformed or non-attenuating
+`max_mutations` / `max_consumptions` certificate remains
+`Error::InvalidMandate(String)`.

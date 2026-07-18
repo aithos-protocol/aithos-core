@@ -86,7 +86,17 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
       When a mirror serves the segment with one entry withheld
       Then the recomputed segment root dies against the committed root and count
 
-  Rule: Counter domains stay distinct before their wire representation is frozen
+  Rule: Counter domains stay distinct under the versioned delegated-counts trie
+
+    @wip
+    Scenario: D7-CB2 fixes the two signed limits and separate counter root
+      Given a homogeneous draft3 mandate carrying max_mutations and max_consumptions
+      When its accepted occurrences are committed for cold replay
+      Then max_mutations counts only delegated Ethos mutation occurrences
+      And max_consumptions counts every delegated canonical occurrence once
+      And delegated_counts has exactly aithos-delegated-counts-core and root
+      And its leaves have only non-zero mutations and consumptions
+      But historical gamma_counts_root and entries bytes are unchanged
 
     @wip
     Scenario Outline: Each delegated consumption affects only its conceptual meters
@@ -111,13 +121,20 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
         | owner Ethos mutation       | 0            | 0              | 0           |
 
     @wip
-    Scenario: New conceptual counters do not rewrite historical committed bytes
+    Scenario: New delegated counters do not rewrite historical committed bytes
       Given a historical edition and Gamma vector predating mutation and total meters
       When a verifier replays it under its historical protocol version
       Then the historical edition remains byte-identical and verifiable
-      And new meter material is accepted only under a signed versioned schema frozen by independent vectors
+      And new meter material is accepted only under the delegated-counts profile
       And old Gamma kinds, max_actions and count roots are never reinterpreted
       And new meter material under an old or unversioned schema, or under an unknown counter-schema version, fails closed
+
+    @wip
+    Scenario: Invalid delegated counter evidence has one typed refusal
+      Given delegated-counts material with an invalid shape, proof, tally or occurrence correlation
+      When Core validates it at append time or during cold replay
+      Then it is refused as InvalidDelegatedCounts
+      And a malformed max_mutations or max_consumptions certificate is refused as InvalidMandate
 
     @wip
     Scenario Outline: Publication authority counts once across all of its evidence

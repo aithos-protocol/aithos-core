@@ -404,10 +404,10 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
         | max_actions                          | Ethos mutation     | non-applicable       | none                             |
         | max_actions                          | connector action   | applicable           | Gamma action count               |
         | max_actions                          | vault config mutation | non-applicable    | none                             |
-        | reserved Ethos mutation meter        | Ethos mutation     | applicable           | Gamma mutation count             |
-        | reserved total consumption meter     | grant              | applicable           | Gamma delegated-consumption count |
-        | reserved total consumption meter     | vault config mutation | applicable        | delegated-consumption proof      |
-        | reserved total consumption meter     | journalized vault config read | applicable | signed read consumption evidence |
+        | max_mutations                        | Ethos mutation     | applicable           | delegated mutation count         |
+        | max_consumptions                     | grant              | applicable           | delegated-consumption count      |
+        | max_consumptions                     | vault config mutation | applicable        | delegated-consumption proof      |
+        | max_consumptions                     | journalized vault config read | applicable | signed read consumption evidence |
         | max_children                         | grant              | applicable           | direct-child grant count         |
         | max_children                         | connector action   | non-applicable       | none                             |
         | budgets                              | inference          | applicable           | profile and required attestation |

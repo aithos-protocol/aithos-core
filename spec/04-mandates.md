@@ -45,10 +45,11 @@ the child is a chain leaf. It does not reinterpret any `draft.1` certificate.
 > **K1-B mandate migration decision — human-validated on 2026-07-18.**
 
 Mandate `"1.0.0-draft.3"` is the first profile permitted to carry the approved
-connector-catalog pins and the typed non-action obligation matcher. It is a new
-homogeneous issuance profile, not a companion certificate, sidecar extension, or
-reinterpretation of `draft.1`/`draft.2`. Migration reissues the complete chain with
-fresh mandate ids and normal Gamma v2 `grant` occurrences.
+connector-catalog pins, the typed non-action obligation matcher, and the D7
+`max_mutations` / `max_consumptions` constraints. It is a new homogeneous issuance
+profile, not a companion certificate, sidecar extension, or reinterpretation of
+`draft.1`/`draft.2`. Migration reissues the complete chain with fresh mandate ids
+and normal Gamma v2 `grant` occurrences.
 
 Every catalog binding applicable at a parent is non-droppable: each child keeps the
 same exact approved catalog reference or selects a strictly narrower set already
@@ -56,9 +57,11 @@ permitted by its parent. A changed catalog digest, version, class assignment, ow
 approval, or action set requires new draft3 authority; it never widens an existing
 chain. Catalog signature and owner approval remain distinct proofs (§08.1).
 
-The complete draft3 member names, catalog-reference object, typed matcher,
-attenuation encoding, and signature vectors remain reserved. Until those tables are
-human-validated, `draft.3` is not issuable and an emitter MUST NOT guess its bytes.
+The complete draft3 member names, catalog-reference object, typed matcher, their
+attenuation encoding, and signature vectors remain reserved. The two D7 constraint
+names and their numeric attenuation are fixed below, but that partial table alone
+does not make `draft.3` issuable. Until all remaining tables are human-validated,
+an emitter MUST NOT guess its bytes.
 
 A delegation chain is version-homogeneous: every certificate from root through
 leaf carries the same `aithos-mandate-core` value. Any link between different
@@ -269,18 +272,52 @@ child has no width cap of its own. It is not a subtree-descendant counter.
 
 `max_actions` and its rate derivatives remain connector-action meters; content
 mutation never consumes them. D7 additionally requires one explicit Ethos-mutation
-limit/counter and one explicit total-delegated-consumption limit/counter. Their
-conceptual counting boundaries are fixed by §4.13. Wire names, encodings, and
-concrete migration mechanics remain reserved until CB2 supplies independent
-vectors: the mutation and total-consumption meters are validated semantics but do
-not exist in the current wire. A counter schema becomes enforceable only through an
-explicitly versioned signed protocol contract freezing leaf encoding, roots, replay,
-and migration. Historical artifacts are evaluated under their declared historical
-protocol version and remain byte-identical; existing versions, `max_actions`, Gamma
-kinds, and count roots are never reinterpreted to simulate a new meter. Added meter
-material under an old or unversioned schema, and an unknown counter-schema version,
-fail closed. Implementations MUST NOT synthesize new committed bytes for historical
-artifacts or silently infer either new meter.
+limit/counter and one explicit total-delegated-consumption limit/counter.
+
+> **D7-CB2 counter wire — human-validated on 2026-07-18.**
+
+The two mandate constraint names are exactly:
+
+- `max_mutations: N` — at most `N` delegated Ethos `mutation` occurrences in the
+  mandate subtree;
+- `max_consumptions: N` — at most `N` total delegated canonical operation
+  occurrences in the mandate subtree.
+
+Both values are JSON unsigned integers. Zero is valid and denies the first
+applicable occurrence. They are introduced only by homogeneous mandate `draft.3`.
+`draft.1` and `draft.2` never interpret these names as known limits; an old-profile
+certificate carrying either remains an unknown extension and cannot be consumed as
+if the limit were enforced. Migration reissues the complete chain with fresh ids
+under draft3.
+
+Both limits are non-droppable. If present on a parent, every child repeats the same
+name with a value less than or equal to the parent's value. Counts use the same
+subtree rule as `max_actions`: one accepted occurrence increments every applicable
+mandate in its actor's `authorized_via` chain. A direct sub-grant increments the
+total consumption of its issuing chain and separately increments only its direct
+issuer's historical `children` counter.
+
+`max_mutations` increments only for grantee `operation.kind:"mutation"` with
+facts domain `ethos`. Structural mutations, vault-config mutations, actions,
+inferences, reads, grants, revocations, rotations, and publications do not consume
+it. `max_consumptions` increments once for every accepted grantee operation kind:
+an opposable read, mutation, action, inference, grant, revoke, standalone rotate,
+or publication. A silent local read has no occurrence and consumes nothing.
+
+Evidence views are deduplicated by the already-verified operation occurrence.
+Gamma, authorship, receipt, changeset, and edition views of one occurrence never
+add units. In particular, the two contained mutations and publisher authority of a
+grantee publication contribute three total units; a merge manifest and its
+existing `kind:"merge"` evidence are one publisher unit, not two. A derived
+rotation is part of its parent occurrence and adds no unit. Owner-local operations
+are journalized where required but increment neither delegated counter.
+
+The committed schema is the separate `delegated_counts` trie of §7.10.1, referenced
+from the draft2 public evidence set. It does not add a manifest member and does not
+alter the historical `gamma_counts_root`, `GammaCounters.entries`, Gamma kind
+registry, or any historical leaf. An absent, old-profile, unversioned, or unknown
+delegated-counts schema cannot prove either limit and fails closed when one is
+applicable.
 
 ## 4.5 Verifier algorithm (offline)
 
@@ -1580,8 +1617,8 @@ actor row below and never consumes these mandate constraints or counters.
 | Canonical catalog `binding` class → exact right + `co_sign` | — | — | P | — | — | — | — | — |
 | Mandate `counter_sign` / legacy `constraints.binding` shorthand | — | — | P | — | — | — | — | — |
 | `max_actions`, `max_actions_per`, `rate_limit` | — | — | P | — | — | — | — | — |
-| Explicit Ethos-mutation meter reserved by D7 | — | P-W | — | — | — | — | — | — |
-| Explicit total delegated-consumption meter reserved by D7 | P-W† | P-W | P-W | P-W† | P-W | P-W | P-W | P-W# |
+| `max_mutations` | — | P | — | — | — | — | — | — |
+| `max_consumptions` | P† | P | P | P† | P | P | P | P# |
 | `max_children` | — | — | — | — | — | P‡ | — | — |
 | `budgets` profiles, model/token/action totals, usage attestation | — | — | P/X§ | — | — | — | — | — |
 | `domains` | — | — | X? | — | — | — | — | — |
