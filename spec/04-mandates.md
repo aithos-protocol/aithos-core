@@ -381,29 +381,55 @@ closed.
 §4.7. Without `session_bind`, `session` is omitted; `null`, an empty object, or a
 volunteered session fact is invalid.
 
-`operation` is a separate closed variant covering only:
+> **K1-B operation-reference architecture — human-validated on 2026-07-18.**
 
-- a read or presentation, bound to its source edition/head, zone, and SID or request
-  digest;
-- an Ethos mutation, structural mutation, or vault-config operation, bound to its
-  exact verb, target and applicable source/destination plus before/after facts;
-- a connector action or inference, bound before effect to every applicable
-  connector, action, approved-catalog, argument, budget, and purpose fact already
-  known at authorization time. Actual `tokens`, `tokens_in`, and `tokens_out` are
-  post-effect facts: they MUST NOT enter the pre-effect operation projection or its
-  commitment, and are bound afterward by the usage receipt v2 of §4.12.1;
-- a grant, revoke, or rotation, bound to its affected identifiers and certificate
-  commitments;
-- a publication, merge, or resolution, bound to height, predecessors or winner,
-  factual changeset commitment, and contained operation references.
+`operation` is exactly this closed two-member object:
+
+```jsonc
+"operation": {
+  "kind": "read",
+  "facts_ref": {
+    "aithos-operation-facts-core": "1.0.0-draft.1",
+    "digest": "sha256:<64 lowercase hex>"
+  }
+}
+```
+
+`kind` is exactly one of `read`, `mutation`, `action`, `inference`, `grant`,
+`revoke`, `rotate`, or `publication`. It selects one closed facts family:
+
+- `read` covers an Ethos read or an explicitly signed Gamma presentation and binds
+  its source edition/head plus exact SID or request digest;
+- `mutation` covers an Ethos, structural, or vault-config mutation. Its closed facts
+  select domain `ethos`, `structure`, or `vault-config`, the exact verb and target,
+  applicable source/destination, and before/after state;
+- `action` binds every applicable connector, exact action, approved-catalog,
+  argument, budget, and purpose fact known before effect;
+- `inference` binds its provider, model, private-request commitment, applicable
+  budget, and purpose facts without inventing an `args_hash`;
+- `grant`, `revoke`, and `rotate` bind their affected identifiers and applicable
+  certificate or state commitments;
+- `publication` selects mode `normal`, `merge`, or `resolution` and binds height,
+  predecessors or winner, factual changeset commitment, and contained operation
+  references.
+
+`facts_ref` has exactly the two members shown. No member is nullable or optional.
+Its profile is exactly `"1.0.0-draft.1"` and its digest has the same strict lowercase
+SHA-256 text form as other W1 digests. A missing or extra member, another kind,
+unknown facts profile, malformed digest, or facts document whose selected family
+does not equal `operation.kind` fails before commitment comparison.
+
+Actual `tokens`, `tokens_in`, and `tokens_out` remain post-effect facts: they MUST
+NOT enter the pre-effect `action` or `inference` facts document or its digest and
+are bound afterward by the applicable usage receipt v2 of §4.12.1.
 
 A1 fixes the complete `authority` member set, absence rules, digest input, and
-reconstruction equalities above. The nested `operation` discriminants and member
-table remain reserved. SC1's profile and verification semantics are fixed by §4.7,
-but its complete JSON member table, signed-byte construction, and carrier placement
-remain reserved. No producer may invent any of those remaining bytes or emit a
-completed operation commitment before their independent vector is
-human-validated.
+reconstruction equalities above. K1-B fixes the complete `operation` and
+`facts_ref` member sets, the kind registry, and the family split above. The complete
+facts-document member tables, digest preimage and domain, state reference,
+changeset, catalog, SC1, receipt, authorship, presentation, and carrier bytes remain
+reserved until their own independent tables are human-validated. No producer may
+invent those remaining bytes or emit a completed operation commitment before then.
 
 The public reference has exactly this shape:
 

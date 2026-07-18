@@ -211,6 +211,45 @@ Feature: The gamma log
   Rule: One typed operation occurrence has one cross-view commitment
 
     @wip
+    Scenario Outline: K1-B selects one closed operation-facts family
+      Given a W1 projection for operation kind "<kind>"
+      When its operation member is encoded
+      Then operation has exactly kind and facts_ref
+      And facts_ref has exactly aithos-operation-facts-core and digest
+      And the facts profile is "1.0.0-draft.1"
+      And its selected closed facts family is "<family>"
+
+      Examples:
+        | kind        | family                                  |
+        | read        | Ethos read or signed Gamma presentation |
+        | mutation    | Ethos, structure or vault-config mutation |
+        | action      | pre-effect connector action             |
+        | inference   | pre-effect connector inference          |
+        | grant       | mandate grant                           |
+        | revoke      | mandate revocation                      |
+        | rotate      | key or protected-state rotation         |
+        | publication | normal, merge or resolution publication |
+
+    @wip
+    Scenario Outline: The K1-B operation wrapper is fail-closed
+      Given a candidate W1 operation wrapper with "<defect>"
+      When Core validates its closed form before commitment comparison
+      Then the wrapper is refused
+      And no operation commitment or operation_ref is emitted
+
+      Examples:
+        | defect                                     |
+        | missing kind                               |
+        | unknown kind                               |
+        | missing facts_ref                          |
+        | null facts_ref                             |
+        | extra operation member                     |
+        | extra facts_ref member                     |
+        | unknown operation-facts profile            |
+        | malformed or non-lowercase facts digest    |
+        | facts family different from operation kind |
+
+    @wip
     Scenario: Append-time and public evidence identify the same operation occurrence
       Given one fresh typed operation occurrence
       When its append-time, Gamma, authorship and edition views are projected
