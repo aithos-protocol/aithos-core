@@ -37,6 +37,40 @@ Feature: Normal delegated editions
   Rule: The changeset is derived and every byte transition is explained
 
     @wip
+    Scenario Outline: Manifest profiles fix the K1-B carrier presence
+      Given a candidate manifest under "<profile>"
+      And its K1-B carrier state is "<carrier state>"
+      When Bundle validates signed manifest form before semantic replay
+      Then the manifest is "<verdict>"
+
+      Examples:
+        | profile | carrier state                                        | verdict  |
+        | draft.1 | operation_ref, changeset_ref and evidence_ref absent | accepted |
+        | draft.1 | any K1-B carrier present                             | refused  |
+        | draft.2 | all three exact top-level carriers present           | accepted |
+        | draft.2 | operation_ref missing or null                        | refused  |
+        | draft.2 | changeset_ref missing or null                        | refused  |
+        | draft.2 | evidence_ref missing or null                         | refused  |
+        | unknown | all three carriers present                           | refused  |
+
+    @wip
+    Scenario: The publication reference and changeset are acyclic
+      Given a draft2 candidate with contained operation occurrences
+      When Bundle derives its closed changeset and publication operation
+      Then the changeset carries the contained operation references in causal order
+      But excludes the publication operation_ref and candidate manifest hash
+      And publication facts commit the completed changeset
+      And every verifier reconstructs the same dependency direction
+
+    @wip
+    Scenario: The evidence carrier proves but never authorizes
+      Given a complete draft2 evidence set for delegated occurrences
+      When a fresh-store verifier replays authorship, session, receipts and catalog evidence
+      Then every item is correlated through its exact operation_ref
+      And authority is still derived only from owner capability or the mandate chain
+      And no private content, credential, DK, private key or protected plaintext is present
+
+    @wip
     Scenario Outline: A caller cannot omit or invent a change
       Given a parent edition and a candidate state with "<defect>"
       When Bundle derives the typed changeset by comparing both states

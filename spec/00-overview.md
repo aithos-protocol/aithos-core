@@ -60,9 +60,23 @@ key_version` for `header-line`. Purposes never overlap.
 
 ## 0.4 Version discriminators
 
-`aithos-core` in the manifest; `aithos-mandate-core` in certificates; `aithos-gamma-core`
-in log files. The manifest and Gamma discriminators remain `"1.0.0-draft.1"` in
-this series. The mandate plane supports two explicit semantic profiles:
+`aithos-core` in the manifest; `aithos-mandate-core` in certificates; numeric `v`
+on each Gamma entry.
+
+The manifest/Gamma publication plane has two monotone profiles:
+
+- manifest `"1.0.0-draft.1"` introduces only historical Gamma v1 entries. Their
+  signed bytes and verification semantics remain unchanged;
+- manifest `"1.0.0-draft.2"` introduces only Gamma v2 entries and the K1-B
+  operation, changeset, and evidence references (§02.6.2, §07.1.1). It MAY retain
+  byte-identical draft1/v1 ancestry.
+
+Version order is causal, never inferred from physical JSONL order: draft1/v1 may
+lead to draft1/v1 or draft2/v2, while draft2/v2 never leads back. Missing, mixed on
+one introducing edge, or unknown profiles fail closed. Historical manifests and
+entries are never rewritten or assigned synthetic references.
+
+The mandate plane separately supports two currently issuable semantic profiles:
 
 - `"1.0.0-draft.1"` is the historical verification profile. Its signed bytes and
   attenuation semantics stay frozen by the historical vectors, including the E+
@@ -76,7 +90,10 @@ Every certificate in one delegation chain MUST declare the same
 reissuance of a complete homogeneous chain under `draft.2`, following normal
 issuance and Gamma rules. It never consists of rewriting the discriminator or
 any other signed byte of a `draft.1` certificate. Distinct homogeneous `draft.1`
-and `draft.2` chains MAY coexist in the same bundle.
+and `draft.2` chains MAY coexist in the same bundle. Mandate `draft.3` is reserved
+for the independently versioned catalog and obligation-matcher additions approved
+at K1-B; it is not issuable until those closed member tables and migration vectors
+are fixed (§04, §08).
 
 Nothing is inherited from `Aithos-protocol` unless restated here; identity (DID
 document format) is restated in §01 with minimal carry.

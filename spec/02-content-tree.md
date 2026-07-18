@@ -201,10 +201,8 @@ verification, the recomputed roots and Gamma head, and the actor signature. An
 unexplained change, an omitted change, an extra Gamma consumption, or a different
 actor inside the candidate's new delta invalidates the edition even if all hashes
 and links are structurally valid.
-CB1 freezes this semantic requirement only. Independent CB2 vectors will determine
-the minimal additive public artifact or signed encoding needed to carry the typed
-changeset and evidence while preserving historical bytes; CB1 introduces and
-presumes no field name.
+K1-B fixes the three additive draft2 manifest member names and carrier split in
+§2.6.2. Their remaining nested byte tables stay independently gated.
 
 A grantee signs as itself, never as the owner. The owner is absent from a normal
 delegated publication unless an explicitly applicable obligation requires an owner
@@ -214,6 +212,49 @@ edition actor.
 This keeps integrity authority-anchored without an online arbiter — and without an
 owner availability dependency (§00.5); a mirror that serializes writes is a
 convenience (§00), not a requirement.
+
+### 2.6.2 Draft2 operation, changeset, and evidence carriers (K1-B)
+
+> **K1-B carrier architecture — human-validated on 2026-07-18.**
+
+Every newly issued manifest with `aithos-core: "1.0.0-draft.2"` has these three
+additional signed top-level members:
+
+- `operation_ref` is the exact W1 reference of this normal, merge, or resolution
+  publication occurrence;
+- `changeset_ref` content-addresses the one derived closed changeset for the
+  candidate relative to its applicable parent state or states;
+- `evidence_ref` content-addresses the closed public evidence set needed to replay
+  the contained occurrences and publisher authority without private capabilities.
+
+The manifest signature covers all three references. A draft2 manifest missing one,
+carrying `null`, or carrying an unknown or malformed reference fails closed. A
+draft1 manifest forbids all three and remains byte-identical under historical
+verification.
+
+The changeset is derived, never caller-asserted. It binds the applicable parent
+references, contained operation references in deterministic causal order, their
+logical before/after transitions, and every deterministic store consequence needed
+to explain the candidate bytes. It includes the contained operation references but
+excludes the publication's own `operation_ref`, the candidate manifest hash, and
+anything transitively derived from them. The publication facts may therefore commit
+the completed changeset without a cycle. A missing transition, unexplained byte,
+extra operation, or mismatched consequence invalidates the publication.
+
+The evidence set carries only public proof material: delegated authorship, SC1
+certificate and session proof when applicable, R2/U1 receipts, approved-catalog
+evidence, and any explicitly signed read presentation. Evidence never grants
+authority by itself; every item is cross-checked against its exact `operation_ref`,
+the reconstructed facts, authority chain, candidate manifest, and derived
+changeset. Private content, credentials, DKs, private keys, and protected plaintext
+are forbidden.
+
+K1-B fixes these three manifest member names, their required/forbidden profile
+presence, the changeset/evidence separation, and the acyclic dependency direction.
+The exact `changeset_ref` and `evidence_ref` member sets, sidecar profiles, digest
+preimages, array ordering within equal causal positions, public authorship and
+presentation objects, and canonical sidecar paths remain reserved. No producer may
+emit a draft2 manifest until those tables and vectors are independently approved.
 
 ## 2.7 Gamma anchoring
 
