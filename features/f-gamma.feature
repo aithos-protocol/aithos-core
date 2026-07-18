@@ -208,6 +208,38 @@ Feature: The gamma log
       Then the edition is rejected as semantically invalid
       And no structural-only helper reports the history authorized
 
+  Rule: One typed operation occurrence has one cross-view commitment
+
+    @wip
+    Scenario: Append-time and public evidence identify the same operation occurrence
+      Given one fresh typed operation occurrence
+      When its append-time, Gamma, authorship and edition views are projected
+      Then every applicable view yields the same operation commitment
+      And changing any applicable authority fact changes that commitment
+      And no private operation argument appears in public commitment material
+
+    @wip
+    Scenario: Identical effects remain distinct occurrences
+      Given two typed operation occurrences with identical effects and distinct occurrence anchors
+      When their operation commitments are derived
+      Then the commitments differ
+
+    @wip
+    Scenario: Cross-view evidence does not create another logical occurrence
+      Given the applicable Gamma, authorship and edition views of one typed operation occurrence
+      When semantic replay correlates their operation commitments
+      Then all evidence refers to exactly one logical occurrence
+      And no additional occurrence is inferred from the number of evidence views
+
+    @wip
+    Scenario: Historical evidence is never retrofitted with an operation commitment
+      Given historical protocol evidence predating operation commitments
+      When it is verified under its declared historical protocol version
+      Then its bytes and hashes remain unchanged
+      And no operation commitment is synthesized
+      And no existing args_hash, Gamma identifier or edition hash is reinterpreted as that commitment
+      And commitment material is refused under a historical or unknown protocol version, or without a version
+
   Rule: Append-time and cold-time share one replay front door
 
     @wip
