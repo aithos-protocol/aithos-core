@@ -164,3 +164,15 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`2ce3d53bda43dc28ce599a8f7ec97d0050c3bf61b8f9ade4b51e8a74336ff22c`);
   Rust consumer: `aithos-core/tests/cb2_operation_receipts.rs`
   (`4279a897f6adb5ac7189f9a6f087adc8e6acc82f13af1e533cb2d59c632af300`).
+- `CB2-CAT1-CONNECTOR-CATALOG-1`: exact signed connector catalogue and
+  distinct owner-content approval tables, complete signed-document content
+  addresses, homogeneous draft3 `catalog_pins`, K1.2 `catalog_ref` binding,
+  and closed `read`/`act`/`binding` authorization decisions. The independent
+  cryptography oracle rejects 27 catalogue, 22 approval, 19 chain and 8
+  action-facts defects with the approved exact variants while preserving five
+  historical vector hashes. Generator: `gen-cb2-connector-catalog.py`
+  (`4bd896da63a10ced75b263feadb711a7895125de8dec65786b51a3de3bec3ab0`);
+  vector: `cb2-connector-catalog.json`
+  (`f73b35d29602217983c6401f06fbb49c73032a955d0ac14356d3a988181fe43c`);
+  Rust consumer: `aithos-core/tests/cb2_connector_catalog.rs`
+  (`56ec7a150fccf9da9bdcaf365b9ea9cc33c116908e64c592195da437bb6e4a22`).

@@ -6,9 +6,9 @@
   "as_of": "2026-07-18",
   "baseline": {
     "git_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-    "observation_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+    "observation_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
     "index_was_empty": true,
-    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection, SC1 session certificate/proof bytes, R2/U1 receipts and draft3 obligation matcher, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
+    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection, SC1 session certificate/proof bytes, R2/U1 receipts and draft3 obligation matcher, signed CAT1 connector catalog and owner approval bytes, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
   },
   "command_context": {
     "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core/rust",
@@ -106,6 +106,14 @@
       "generator_sha256": "4247b6485ffba02b860d079fdf60da84bb6d431f9aed5ebbb257b95147c034b3",
       "consumer": "rust/crates/aithos-core/tests/cb2_operation_receipts.rs",
       "consumer_sha256": "4279a897f6adb5ac7189f9a6f087adc8e6acc82f13af1e533cb2d59c632af300"
+    },
+    "CB2-CAT1-CONNECTOR-CATALOG-1": {
+      "file": "vectors/cb2-connector-catalog.json",
+      "sha256": "f73b35d29602217983c6401f06fbb49c73032a955d0ac14356d3a988181fe43c",
+      "generator": "vectors/gen-cb2-connector-catalog.py",
+      "generator_sha256": "4bd896da63a10ced75b263feadb711a7895125de8dec65786b51a3de3bec3ab0",
+      "consumer": "rust/crates/aithos-core/tests/cb2_connector_catalog.rs",
+      "consumer_sha256": "56ec7a150fccf9da9bdcaf365b9ea9cc33c116908e64c592195da437bb6e4a22"
     }
   },
   "suite_observations": [
@@ -222,13 +230,24 @@
       "name": "R2/U1 operation-receipt byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- --nocapture",
       "observed": "5 passed; vector/historical hashes, all W1 commitments, closed receipt tables, omitted-sig JCS, Ed25519 signatures, usage totals and draft3 matcher/attenuation bytes are GREEN. Typed R2/U1 validation and matcher APIs remain absent."
+    },
+    {
+      "name": "CAT1 connector-catalog generator reproducibility",
+      "command": "PYTHONPYCACHEPREFIX=/private/tmp/aithos-cb2-pycache python3 vectors/gen-cb2-connector-catalog.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-connector-catalog.json; the independent cryptography oracle verifies the owner DID, connector-signed catalog, distinct owner-content approval, complete content addresses, homogeneous draft3 pins, K1.2 catalog_ref and 7 class decisions while rejecting 76 mono-defect candidates with exact established variants."
+    },
+    {
+      "name": "CAT1 connector-catalog byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- --nocapture",
+      "observed": "5 passed; vector/historical hashes, owner DID, exact signed catalog and approval tables, complete digests, pin inheritance, K1.2 reference binding and closed class matrix are GREEN. Typed catalog/approval, pin and class-enforcement APIs remain absent."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 59,
-    "COMPILE-RED-PRELIMINAIRE": 18,
-    "total": 111
+    "PREEXISTING-GREEN": 63,
+    "COMPILE-RED-PRELIMINAIRE": 20,
+    "total": 117
   },
   "entries": [
     {
@@ -2039,6 +2058,112 @@
         "source_observed": "No matching draft3 non-action matcher type, parser or attenuation implementation.",
         "inventory_test_id": "cb2_r2_u1_closed_negative_and_api_inventory_preliminary",
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB5",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB5-CAT1-VECTOR-HASH",
+      "test_id": "cb2_cat1_vector_hash_is_stable_preexisting_green",
+      "decision": "CAT1 independent cryptography-oracle integrity",
+      "scenario": "The complete signed connector-catalog qualification vector bytes remain frozen within the partial CB2 tranche.",
+      "vector_ref": "CB2-CAT1-CONNECTOR-CATALOG-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+      "expected_reason": "The vector file SHA-256 is f73b35d29602217983c6401f06fbb49c73032a955d0ac14356d3a988181fe43c.",
+      "observed_reason": "The exact bytes match the independent Python cryptography oracle.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-CAT1-HISTORICAL-HASHES",
+      "test_id": "cb2_cat1_historical_hashes_preexisting_green",
+      "decision": "CAT1 additive historical non-regression",
+      "scenario": "Historical DID, mandate, action facts, receipt and obligation vectors remain byte-identical while signed catalog semantics are added.",
+      "vector_ref": "CB2-CAT1-CONNECTOR-CATALOG-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_historical_hashes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+      "expected_reason": "All five complete source-vector hashes remain exact.",
+      "observed_reason": "No historical syntactic catalog fixture, mandate, receipt, obligation or DID document is rewritten or reinterpreted.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-CAT1-SIGNED-DOCUMENT-BYTES",
+      "test_id": "cb2_cat1_signed_documents_and_complete_digests_preexisting_green",
+      "decision": "CAT1 exact signed catalog, distinct owner approval and complete content addresses",
+      "scenario": "Generic Core primitives reproduce the owner DID, connector-signed closed catalog, owner-content-signed approval and both full-document digests.",
+      "vector_ref": "CB2-CAT1-CONNECTOR-CATALOG-1",
+      "vector_slice": "owner_did, catalog and approval",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_signed_documents_and_complete_digests_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+      "expected_reason": "Each exact signed table verifies over JCS with signature.value empty, the approval uses the owner's #content key rather than the catalog signer, and each digest addresses the complete signed document.",
+      "observed_reason": "Existing JCS, SHA-256, multibase and Ed25519 primitives reproduce every independent oracle byte and prove the two authorities are distinct.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-CAT1-PIN-CLASS-BYTES",
+      "test_id": "cb2_cat1_pin_chain_facts_and_class_bytes_preexisting_green",
+      "decision": "CAT1 draft3 pin inheritance, K1.2 reference binding and closed class matrix",
+      "scenario": "The initial authority pins its business connector exactly, descendants preserve those bytes, action facts select the pin and the catalog alone derives the read/act/binding decision.",
+      "vector_ref": "CB2-CAT1-CONNECTOR-CATALOG-1",
+      "vector_slice": "catalog_pin, draft3_chain, action_facts and class_cases",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_pin_chain_facts_and_class_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+      "expected_reason": "The exact four-member pin is inherited byte-identically; catalog_ref selects all three evidence coordinates; wildcard authorizes read/act only and exact binding additionally requires owner co_sign.",
+      "observed_reason": "Generic JSON/JCS/SHA-256 operations reproduce the independent pin, reference and seven-row decision matrix without claiming a typed Core validator.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-CAT1-DOCUMENT-API-GATE",
+      "test_id": null,
+      "decision": "Typed signed connector catalog and owner-content approval validation",
+      "scenario": "Core validates the two exact documents, their distinct Ed25519 authorities and their complete content addresses before accepting a pin.",
+      "vector_ref": "CB2-CAT1-CONNECTOR-CATALOG-1",
+      "vector_slice": "owner_did, catalog, approval, negative_catalog_cases and negative_approval_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "The two positives validate; all 27 catalog and 22 approval defects return Error::InvalidCatalog(String).",
+      "observed_reason": "At observation SHA 035fb95, Core has no public ConnectorCatalog/CatalogApproval type, validator or Error::InvalidCatalog variant.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+        "source_command": "rg -n 'ConnectorCatalog|CatalogApproval|InvalidCatalog|aithos-connector-catalog' rust/crates/aithos-core/src",
+        "source_observed": "No matching public signed catalog/approval wire type, validator or approved error variant.",
+        "inventory_test_id": "cb2_cat1_closed_negative_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB5",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB5-CAT1-PIN-ENFORCEMENT-API-GATE",
+      "test_id": null,
+      "decision": "Typed draft3 catalog pin, K1.2 reference and class enforcement",
+      "scenario": "Core verifies complete pin coverage and immutable inheritance, reconstructs the action class from the selected catalog, and applies binding co_sign before effect and during replay.",
+      "vector_ref": "CB2-CAT1-CONNECTOR-CATALOG-1",
+      "vector_slice": "catalog_pin, draft3_chain, action_facts, class_cases, negative_chain_cases and negative_action_facts_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "The positive chain and all 7 class decisions hold; 19 pin/chain defects return Error::InvalidMandate(String) and 8 reference/facts defects return Error::InvalidOperationFacts(String).",
+      "observed_reason": "At observation SHA 035fb95, Core has no typed catalog_pins constraint, catalog_ref resolver or catalog-derived action-class/co_sign enforcement.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+        "source_command": "rg -n 'catalog_pins|CatalogPin|CatalogRef|ActionClass|InvalidOperationFacts' rust/crates/aithos-core/src",
+        "source_observed": "No matching typed pin/reference/class model, resolver or approved operation-facts error variant.",
+        "inventory_test_id": "cb2_cat1_closed_negative_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB5",
       "status": "COMPILE-RED-PRELIMINAIRE"
