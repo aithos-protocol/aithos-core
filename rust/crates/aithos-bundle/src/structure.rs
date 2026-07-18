@@ -102,6 +102,7 @@ impl<S: Store> Bundle<S> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn structural_section_gate(
         &self,
         chain: &[Mandate],
@@ -383,6 +384,7 @@ impl<S: Store> Bundle<S> {
         Ok(StructuralOutcome::Listed(entries))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn structural_create_folder(
         &mut self,
         chain: &[Mandate],
@@ -440,6 +442,7 @@ impl<S: Store> Bundle<S> {
         Ok(StructuralOutcome::Created(sid))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn structural_rename_folder(
         &mut self,
         chain: &[Mandate],
