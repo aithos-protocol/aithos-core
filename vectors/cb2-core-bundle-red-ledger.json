@@ -2601,11 +2601,11 @@
       "vector_slice": "positive.publication, candidate, manifest_jcs, manifest_preimage_jcs, negative_cases and inventory",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary --exact --nocapture",
       "red_sha": null,
-      "green_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
+      "green_sha": "75881d6de66bbd54a3f2950956373204f4200421",
       "expected_reason": "The publication commitment is acyclic, the signed manifest pins all 9 exact files, 32 carrier defects select InvalidOperation and 5 signed-form defects select InvalidDidDocument.",
-      "observed_reason": "Generic bytes and signatures are GREEN; the source inventory inside this passing diagnostic confirms that typed draft2 manifest members and InvalidOperation remain absent.",
+      "observed_reason": "Manifest draft.2 now signs all three typed carrier references, exact vector assembly is byte-identical, and the 32 InvalidOperation plus 5 InvalidDidDocument mono-defects retain their closed boundary.",
       "owner": "CB12",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB11-K1C-TYPED-CARRIER-API-GATE",
@@ -2632,26 +2632,26 @@
     },
     {
       "id": "CB2-CB12-K1C-BUNDLE-ASSEMBLY-COLD-GATE",
-      "test_id": null,
+      "test_id": "cb12_owner_package_survives_fresh_mem_and_fs_cold_verification",
       "decision": "Bundle draft2 transactional assembly, canonical sidecars and cold verification",
       "scenario": "Bundle derives the complete write-set in an overlay, obtains Core verdicts, writes both sidecars and every file pin atomically, signs draft2 and cold-replays the exact candidate from a fresh keyless Store.",
       "vector_ref": "CB2-K1-C-DRAFT2-CARRIERS-1",
       "vector_slice": "positive.candidate, publication and negative_cases",
-      "command": null,
-      "red_sha": null,
-      "green_sha": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb12_publication_package",
+      "red_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
+      "green_sha": "75881d6de66bbd54a3f2950956373204f4200421",
       "expected_reason": "The positive candidate assembles and cold-verifies byte for byte; every refusal leaves the prior manifest, carrier sidecars and Gamma head unreachable and unchanged.",
-      "observed_reason": "At observation SHA 2f1a645, Bundle Manifest has no operation_ref/changeset_ref/evidence_ref members, no draft2 builder, no carrier sidecar assembly and no cold K1-C verifier.",
+      "observed_reason": "Bundle derives the exact frozen candidate, pins both canonical sidecars and the complete Store, exports only public/opaque objects, installs atomically into fresh MemStore/FsStore, reopens, and reaches the same pure Core verdict without producer capabilities.",
       "evidence": {
-        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "kind": "historical compile RED closed by byte-exact assembly plus fresh-Store cold replay",
         "observation_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
         "source_command": "rg -n 'operation_ref|changeset_ref|evidence_ref|Draft2|Carrier' rust/crates/aithos-bundle/src",
         "source_observed": "No draft2 manifest members, carrier derivation, canonical sidecar write-set or keyless K1-C cold replay API exists.",
         "inventory_test_id": "cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary",
-        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary --exact --nocapture"
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb12_publication_package"
       },
       "owner": "CB12",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB7-BUNDLE-BOUNDARY-VECTOR-HASH",
@@ -2722,11 +2722,11 @@
       "vector_slice": "capabilities and keyless_export",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_capability_keyless_and_api_inventory_preliminary --exact --nocapture",
       "red_sha": null,
-      "green_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "green_sha": "01e8a63d228a6f0ffe20cfb141577ef244502071",
       "expected_reason": "Six exact capability uses succeed, eighteen cross-class/context/object substitutions fail, two complete cold loads succeed and six defective exports fail without any stable capability encoding.",
-      "observed_reason": "Generic comparisons, JCS and SHA-256 reproduce the independent oracle; the same passing test explicitly inventories the missing typed Bundle APIs and is not protocol GREEN for them.",
+      "observed_reason": "All six capability classes have opaque non-serializable production types, cross-session substitutions are rejected, and keyless export contains no capability or private material.",
       "owner": "CB12",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB7-BUNDLE-TRANSACTION-CONFINEMENT-API-GATE",
@@ -2753,26 +2753,26 @@
     },
     {
       "id": "CB2-CB12-BUNDLE-CAPABILITY-KEYLESS-API-GATE",
-      "test_id": null,
+      "test_id": "cb12_capabilities_are_class_bound_and_rejected_across_sessions",
       "decision": "Typed opaque Bundle capabilities and explicit keyless export/cold verifier",
       "scenario": "Bundle business methods receive only purpose/context-bound capabilities, export only public/opaque committed artifacts, and cold-verify a fresh MemStore/FsStore after producer destruction.",
       "vector_ref": "CB2-BUNDLE-BOUNDARIES-1",
       "vector_slice": "capabilities and keyless_export",
-      "command": null,
-      "red_sha": null,
-      "green_sha": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb12_publication_package",
+      "red_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "green_sha": "01e8a63d228a6f0ffe20cfb141577ef244502071",
       "expected_reason": "All six capability classes are non-substitutable and non-serializable as wire; both complete keyless stores reopen while every missing, substituted, truncated, unpinned or private-bearing export fails closed.",
-      "observed_reason": "At observation SHA 44f27a7, Bundle APIs accept raw OwnerKeys/StaticSecret and expose no typed opaque capability boundary, explicit keyless export or fresh-Store cold verifier.",
+      "observed_reason": "The local mono-Ethos/actor session exposes six purpose-bound capability classes with no generic sign/open/wrap oracle; owner and grantee protected reads resume only after separate capability reintroduction, while fresh-store cold verification remains keyless.",
       "evidence": {
-        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "kind": "historical compile RED closed by typed capability and keyless cold tests",
         "observation_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
         "source_command": "rg -n 'OwnerKeys|StaticSecret|OpaqueCapability|export_keyless|import_keyless|cold_verify' rust/crates/aithos-bundle/src",
         "source_observed": "Bundle business methods take raw OwnerKeys/StaticSecret throughout; no typed opaque capability family, keyless artifact export or cold-reopen verification façade exists.",
         "inventory_test_id": "cb2_bundle_capability_keyless_and_api_inventory_preliminary",
-        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_capability_keyless_and_api_inventory_preliminary --exact --nocapture"
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb12_publication_package --test cb2_bundle_boundaries"
       },
       "owner": "CB12",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB8-BUNDLE-AUTHORITY-FLOW-VECTOR-HASH",
