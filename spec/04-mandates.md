@@ -278,7 +278,10 @@ To verify grantee G may do `OP` on subject `DID` at time `T` from a presented ch
 6. OP ∈ effective perimeter of the leaf (verb lattice + selector match).
 7. Constraints tier V all pass (counts via gamma §07, session_bind, heartbeat,
    obligations §4.12 — incl. counter_sign co-signatures — …).
-8. Proof of possession: the presented request/entry is signed by leaf.grantee.pubkey.
+8. Proof of possession: the presented request or evidence proves possession of
+   `leaf.grantee.pubkey`. A W1 operation subject to an effective `session_bind`
+   additionally proves possession of that exact session key; both independent
+   proofs bind the same exact `operation_ref` (§4.7).
 9. Tier X constraints are handed to the executor (real-arg predicates, model
    truth). Obligations — including binding/counter_sign co-signatures — are
    **tier V**, already enforced at step 7 from the signed receipts in the log.
@@ -317,10 +320,68 @@ when no prior Gamma head exists, carries one head for an ordinary operation, or
 two distinct heads sorted by ASCII bytes for a merge. Candidate entry hashes and
 the resulting Gamma head are outputs and never projection inputs.
 
-`authority` is a closed owner-or-grantee variant. The owner variant is exactly
-`{"actor":"owner"}`. The grantee variant commits the acting key, leaf mandate, the
-issuer-ordered chain of `{id, certificate_digest}`, and the applicable session
-fact. `operation` is a closed variant covering only:
+> **W1.1 A1/SC1 authority decision — human-validated on 2026-07-18.**
+
+`authority` is a closed owner-or-grantee variant. The owner variant is exactly:
+
+```json
+{"actor":"owner"}
+```
+
+The grantee variant without an applicable session is exactly:
+
+```json
+{
+  "actor": "grantee",
+  "key": "z6Mk…",
+  "authorized_by": "mandate_…",
+  "authorized_via": [
+    {
+      "id": "mandate_…",
+      "certificate_digest": "sha256:<64 lowercase hex>"
+    }
+  ]
+}
+```
+
+When the verified chain has an effective `session_bind`, the same object has the
+additional exact member:
+
+```json
+"session": {
+  "key": "z6Mk…",
+  "certificate_digest": "sha256:<64 lowercase hex>"
+}
+```
+
+No other `authority` member is permitted. `authorized_via` is non-empty, contains
+one element per mandate in issuer-to-leaf order, and contains no duplicate id.
+Every element's `id` equals the id inside the corresponding certificate;
+`authorized_by` equals the final id; and `key` equals that leaf certificate's
+`grantee.pubkey`. The certificates form the exact homogeneous chain verified for
+`subject` at the projection's `at`.
+
+For any complete signed mandate or SC1 session certificate `C`:
+
+```text
+certificate_digest(C) =
+  "sha256:" ||
+  lowercase_hex(SHA-256(RFC8785-JCS(C)))
+```
+
+The digest covers the complete signed certificate, including its signature value;
+it does not cover arbitrary non-canonical storage bytes. Duplicate JSON members,
+a malformed certificate, a non-lowercase digest, a digest mismatch, or a
+certificate whose embedded identity does not equal the accompanying `id` fails
+closed.
+
+`session` is present if and only if an effective `session_bind` applies.
+`session.key` equals that exact bound Ed25519 public key and
+`session.certificate_digest` pins the complete signed SC1 certificate described in
+§4.7. Without `session_bind`, `session` is omitted; `null`, an empty object, or a
+volunteered session fact is invalid.
+
+`operation` is a separate closed variant covering only:
 
 - a read or presentation, bound to its source edition/head, zone, and SID or request
   digest;
@@ -333,10 +394,13 @@ fact. `operation` is a closed variant covering only:
 - a publication, merge, or resolution, bound to height, predecessors or winner,
   factual changeset commitment, and contained operation references.
 
-These are typed closed objects, never extension maps. Their nested member names,
-discriminants, optionality, absence encoding, digest inputs, and session encoding
-are not fixed by W1. No producer may emit a commitment and no independent vector
-may invent those bytes until that remaining wire table is human-validated.
+A1 fixes the complete `authority` member set, absence rules, digest input, and
+reconstruction equalities above. The nested `operation` discriminants and member
+table remain reserved. SC1's profile and verification semantics are fixed by §4.7,
+but its complete JSON member table, signed-byte construction, and carrier placement
+remain reserved. No producer may invent any of those remaining bytes or emit a
+completed operation commitment before their independent vector is
+human-validated.
 
 The public reference has exactly this shape:
 
@@ -418,14 +482,46 @@ the receipt is verified offline and is never delegated to a runtime executor.
 
 ## 4.7 Session binding
 
-`session_bind: <pubkey>` ties the mandate to an ephemeral **session key** the grantee
-generates per run. Every delegated consumption must also prove that session key, and
-the session key is itself certified by the grantee's long-term key for a short
-window. Existing action entries carry the current proof. The evidence encoding for
-non-action consumptions is WIP until independent CB2 vectors; they cannot silently
-bypass the constraint in the meantime. Effect: exfiltrating the mandate file without
-the live session key yields nothing — useful for agents whose mandate persists but
-whose runtime is ephemeral.
+> **W1.1 SC1 double-proof decision — human-validated on 2026-07-18.**
+
+`session_bind: <pubkey>` binds every delegated W1 consumption to that exact
+ephemeral Ed25519 session key. The public session certificate is a separately
+versioned, closed profile identified by
+`"aithos-session-core": "1.0.0-draft.1"` (SC1).
+
+Semantically, SC1 certifies for the operation subject and leaf mandate that the
+leaf's long-term grantee key authorized the exact `session.key` for a short
+validity interval containing the operation's `at`. Its signature MUST verify under
+`authority.key`, and its complete signed certificate MUST reproduce
+`authority.session.certificate_digest`. SC1 conveys no perimeter or authority of
+its own: the mandate chain remains the sole authority source.
+
+A session-bound operation requires two independent possession proofs:
+
+1. the ordinary leaf proof under `authority.key`; and
+2. a session proof under `authority.session.key`.
+
+Both proofs MUST bind the same exact `operation_ref`. The leaf signature on the
+SC1 certificate is authorization of the session key and does not replace either
+operation proof. A missing proof, a proof for another occurrence or commitment, a
+wrong key, an expired certificate, a subject or leaf mismatch, a bad certificate
+signature, or a certificate-digest mismatch fails closed.
+
+W1.1 does not fix SC1's remaining JSON member names, its complete member set, the
+exact signature block or signed preimage, the carrier location of the certificate,
+or the member name and signed preimage of the second operation proof. Those bytes
+require a later human-validated carrier table and independent vector. Until then,
+no implementation may invent `session_signature` bytes or claim a session-bound
+carrier wire-complete.
+
+SC1 also does not define session issuance, replacement, revocation, expiry
+indexing, or the public set of simultaneously active sessions. Consequently the
+`max_sessions` lifecycle and counter remain reserved and fail closed until their
+own versioned wire is approved.
+
+Historical artifacts remain byte-identical and are verified solely under their
+declared historical profiles. A verifier MUST NOT synthesize A1 session facts,
+SC1 certificates, or session proofs for them.
 
 ## 4.8 Heartbeat / dead-man switch
 
@@ -694,7 +790,7 @@ actor row below and never consumes these mandate constraints or counters.
 | Form, subject, proof of possession, chain, perimeter, revocation | P | P | P | P | P | P | P | P |
 | `not_before` / `not_after`, `active_windows` | A | A | A | A | A | A | A | A |
 | `freshness`, `heartbeat` | P | P | P | P | P | P | P | P |
-| `session_bind`, `max_sessions` | P-W | P-W | P | P-W | P-W | P-W | P-W | P-W |
+| `session_bind`, `max_sessions` | P-W | P-W | P-W | P-W | P-W | P-W | P-W | P-W |
 | `first_party_only` | A | A | A | A | A | A | A | A |
 | `purpose` | A | A | A | A | A | A | A | A |
 | Explicitly applicable `obligations` (including a `co_sign` instance) | P-W* | P-W* | P* | P-W* | P-W* | P-W* | P-W* | P-W* |
