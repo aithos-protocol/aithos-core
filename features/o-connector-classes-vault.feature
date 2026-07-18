@@ -5,6 +5,32 @@ Feature: Connector classes and isolated vault capabilities
   Rule: An approved catalog is the sole source of action class
 
     @wip
+    Scenario: CAT1 closes the signed catalog table and content address
+      Given a connector catalog with exact profile, connector, version, actions and signature
+      When the catalog signer signs RFC8785-JCS with signature.value empty
+      Then every action row has exactly name and one read, act or binding class
+      And rows are non-empty, unique and sorted by action name
+      And catalog_digest addresses the complete signed catalog
+      But malformed, duplicate, unsorted, unclassed or multiply classed actions are InvalidCatalog
+
+    @wip
+    Scenario: CAT1 keeps catalog attestation and owner approval distinct
+      Given one complete signed connector catalog
+      When the owner content key approves its exact connector, version and digest
+      Then the approval has exact profile, subject, connector, catalog_version, catalog_digest, approved_at and signature
+      And approval_digest addresses the complete signed approval
+      But the catalog signer, owner root, grantee or a different subject cannot supply owner approval
+      And neither complete signed document can substitute for the other
+
+    @wip
+    Scenario: Draft3 catalog_pins is one exact non-droppable constraint
+      Given a homogeneous draft3 mandate carrying connector business actions
+      When its signed constraints are validated
+      Then catalog_pins has one sorted exact connector, catalog_version, catalog_digest and approval_digest row per business connector
+      And every descendant copies the complete pin array byte-for-byte
+      But draft1, draft2, a sidecar, a changed pin, an unrelated pin or a pin for only .config is InvalidMandate
+
+    @wip
     Scenario Outline: Catalog authority begins only with a homogeneous draft3 chain
       Given a connector mandate chain under "<profile>"
       When it presents "<catalog claim>" for a new W1 action occurrence

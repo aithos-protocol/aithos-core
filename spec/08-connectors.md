@@ -30,8 +30,125 @@ owner-approved catalog is pinned by new authority.
 > cannot silently replace the pin of a draft3 chain. Catalog change means fresh
 > draft3 certificate ids, issuer-ordered reissuance, and normal Gamma v2 `grant`
 > evidence. Historical action and mandate bytes keep their historical semantics.
-> The exact draft3 catalog member and catalog/approval document tables remain
-> reserved; no draft3 certificate may be emitted before their vectors are approved.
+
+> **CAT1 closed catalog, approval, and draft3 pin tables — reviewed under the
+> delegated protocol ritual on 2026-07-18.**
+
+The signed catalog is the closed document:
+
+```jsonc
+{
+  "aithos-connector-catalog-core": "1.0.0-draft.1",
+  "connector": "mail",
+  "catalog_version": "2026.07",
+  "actions": [
+    {"name":"list","class":"read"},
+    {"name":"purchase","class":"binding"},
+    {"name":"send","class":"act"}
+  ],
+  "signature": {
+    "alg": "ed25519",
+    "key": "z6Mk<catalog signer public key>",
+    "value": "<128 lowercase hex>"
+  }
+}
+```
+
+The top-level table, signature block, and every action row are exact and closed.
+`connector` and each action `name` match
+`[a-z][a-z0-9_-]{0,63}`. `catalog_version` matches
+`[A-Za-z0-9][A-Za-z0-9._-]{0,63}`. `actions` is non-empty, sorted by the UTF-8
+bytes of `name`, and contains each name exactly once. `class` is exactly `read`,
+`act`, or `binding`; no array of classes, omitted class, alias, or duplicate row
+is accepted.
+
+The catalog signer signs exactly RFC8785-JCS of the complete document with
+`signature.value` replaced by the empty string. `signature.alg` is exactly
+`ed25519`, `signature.key` is a full Ed25519 multibase public key, and `value` is
+the signature. The immutable catalog content address is:
+
+```text
+catalog_digest =
+  "sha256:" ||
+  lowercase_hex(SHA-256(RFC8785-JCS(complete signed catalog document)))
+```
+
+Owner approval is a separate closed signed document:
+
+```jsonc
+{
+  "aithos-connector-catalog-approval-core": "1.0.0-draft.1",
+  "subject": "did:aithos:z6Mk<owner root>",
+  "connector": "mail",
+  "catalog_version": "2026.07",
+  "catalog_digest": "sha256:<64 lowercase hex>",
+  "approved_at": "2026-07-18T12:00:00Z",
+  "signature": {
+    "alg": "ed25519",
+    "key": "#content",
+    "value": "<128 lowercase hex>"
+  }
+}
+```
+
+Its `subject` is the mandate subject, its connector/version/digest equal the
+complete catalog, and `approved_at` is canonical RFC3339 UTC with `Z`. The owner
+content key selected by that subject's verified DID document signs RFC8785-JCS of
+the approval with `signature.value` empty. The signature key literal is exactly
+`#content`; a catalog-signer key, root key, grantee key, later sidecar, or another
+subject is not owner approval. Its content address is:
+
+```text
+approval_digest =
+  "sha256:" ||
+  lowercase_hex(SHA-256(RFC8785-JCS(complete signed approval document)))
+```
+
+Malformed form, ordering, identifiers, class, timestamp, signature, digest, or
+catalog/approval cross-binding fails as `Error::InvalidCatalog(String)`. The two
+profiles and their digests are never interchangeable.
+
+A homogeneous mandate `draft.3` chain carrying any business action authority has
+the closed constraint member `catalog_pins`. It is a non-empty array sorted by
+`connector`, with no duplicate connector, whose row is exactly:
+
+```json
+{
+  "connector": "mail",
+  "catalog_version": "2026.07",
+  "catalog_digest": "sha256:<64 lowercase hex>",
+  "approval_digest": "sha256:<64 lowercase hex>"
+}
+```
+
+On the first draft3 mandate of a chain, every connector named by a business
+`act.x.<connector>.<action|*>` perimeter has exactly one pin, and no unrelated
+connector pin is accepted. The reserved exact `act.x.<connector>.config`
+capability is not a business action and neither requires nor permits a pin by
+itself. If both business action and `.config` authority exist for one connector,
+the pin applies only to the business actions.
+
+Every descendant copies `catalog_pins` byte-for-byte; a child cannot omit, add,
+replace, reorder, or mutate a pin. An inherited pin may remain after the child
+narrows away that connector; it conveys no authority without a covering perimeter
+entry. Catalog change requires complete homogeneous draft3 reissuance with fresh
+mandate ids. Draft1 and draft2 reject a catalog pin and cannot acquire one from a
+sidecar. Pin form, initial coverage, version mixing, or attenuation failure is
+`Error::InvalidMandate(String)`.
+
+For a W1 action, the K1.2 `catalog_ref` must equal the row for its connector, both
+complete documents must hash and verify as above, and the named action must occur
+exactly once. A mismatch remains the more specific
+`Error::InvalidOperationFacts(String)`. The derived class then drives both
+delegation and execution: wildcard covers `read|act`, never `binding`; `binding`
+needs the exact named right and one valid owner `co_sign` R2 receipt in addition to
+all other applicable obligations.
+
+CAT1 fixes both signed profiles, all member tables, identifier registries, ordering,
+signature preimages, content addresses, distinct proof roles, the draft3
+`catalog_pins` field, migration, attenuation, `.config` exclusion, class derivation,
+and error boundaries. Public evidence-set storage remains reserved for its own
+carrier table; no runtime sidecar is authority.
 
 > **K1-B external-effect sequence — human-validated on 2026-07-18.**
 

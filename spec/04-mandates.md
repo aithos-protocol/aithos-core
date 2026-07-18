@@ -885,12 +885,11 @@ six members:
 `connector` and `action` are the exact canonical identifiers presented to the
 approved catalog. `catalog_ref` is a closed three-member reference to the catalog
 version, the complete signed catalog document, and its distinct complete signed
-owner-approval document. Both digests are strict lowercase `sha256:` text. Their
-future document tables define how those complete canonical signed documents are
-verified; this reference does not treat either proof as the other and does not make
-mandate `draft.3` issuable by itself. The exact action and immutable catalog digest
-together bind its derived `read`, `act`, or `binding` class; the class is not
-duplicated as a caller-controlled fact.
+owner-approval document. Both digests are strict lowercase `sha256:` text. The
+complete document and mandate `catalog_pins` tables are fixed by §08.1; this
+reference does not treat either proof as the other. The exact action and immutable
+catalog digest together bind its derived `read`, `act`, or `binding` class; the
+class is not duplicated as a caller-controlled fact.
 
 `args_hash` reuses the historical native action commitment byte-for-byte:
 
@@ -1164,12 +1163,11 @@ the grant/revoke certificate binding, closed reason variants, standalone rotatio
 domains and state transitions, derived-rotation non-duplication, and all three
 publication fact tables including predecessor, changeset-reference, and contained
 operation ordering. Exact proof encodings and target-to-store-key derivations, the
-changeset document table, catalog and approval document tables, authorship,
-presentation, and carrier bytes remain reserved until their own independent tables
-are validated. SC1 is fixed by §4.7 and the R2/U1 receipt tables are fixed by
-§4.12.1; neither may be substituted for a remaining reserved carrier. No producer
-may invent those remaining bytes or emit a completed operation commitment before
-then.
+changeset document table, authorship, presentation, and carrier bytes remain
+reserved until their own independent tables are validated. Catalog and approval
+documents are fixed by §08.1, SC1 by §4.7, and R2/U1 receipts by §4.12.1; none may
+be substituted for a remaining reserved carrier. No producer may invent those
+remaining bytes or emit a completed operation commitment before then.
 
 The public reference has exactly this shape:
 
