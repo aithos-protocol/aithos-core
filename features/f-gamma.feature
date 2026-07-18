@@ -221,7 +221,7 @@ Feature: The gamma log
 
       Examples:
         | kind        | family                                  |
-        | read        | Ethos read or signed Gamma presentation |
+        | read        | Ethos read, signed Gamma presentation or vault-config read |
         | mutation    | Ethos, structure or vault-config mutation |
         | action      | pre-effect connector action             |
         | inference   | pre-effect connector inference          |
@@ -300,6 +300,61 @@ Feature: The gamma log
         | unrelated extra object                  |
         | extra object member                     |
         | state digest mismatch                   |
+
+    @wip
+    Scenario Outline: K1.2-R-B selects one exact closed read variant
+      Given a read facts object in domain "<domain>"
+      When Core validates its selected member table
+      Then its exact members are "<members>"
+      And null, a missing member or an extra member is refused
+
+      Examples:
+        | domain       | members                                        |
+        | ethos        | domain,zone,sid,source_edition                  |
+        | gamma        | domain,source_head,request_digest               |
+        | vault-config | domain,connector,record_key,source_edition      |
+
+    @wip
+    Scenario: K1.2-R-B binds an exact source without a circular carrier digest
+      Given one signed source manifest and one canonical read.gamma query string Q
+      When their read facts are committed
+      Then source_edition is sha256-prefixed existing manifest chain hash
+      And source_head is the exact non-empty Gamma head being presented
+      And request_digest is domain-separated SHA-256 of the exact UTF-8 bytes of Q
+      And Q uses canonical selector order dir,id,tag,kind,action,since,until
+      And no signature, operation_ref or presentation carrier digest enters request_digest
+
+    @wip
+    Scenario Outline: K1.2-R-B creates an occurrence only for opposable read evidence
+      Given an authorized "<read>" with no signed read evidence
+      When the local read completes
+      Then no operation-facts document or persisted operation_ref is produced
+      But journalized or explicitly presented read evidence uses one read occurrence
+      And every native view carries that same operation_ref
+
+      Examples:
+        | read                    |
+        | Ethos read              |
+        | Gamma query             |
+        | vault-config read       |
+
+    @wip
+    Scenario Outline: K1.2-R-B read facts fail closed without disclosing protected coordinates
+      Given a candidate read facts object with "<defect>"
+      When Core validates it before operation commitment
+      Then the read facts are refused as InvalidOperationFacts
+      And no operation commitment or operation_ref is emitted
+
+      Examples:
+        | defect                                      |
+        | unknown read domain                         |
+        | unknown zone or non-canonical SID           |
+        | malformed or mismatched source edition      |
+        | empty or malformed source head              |
+        | non-canonical Gamma query encoding           |
+        | mismatched Gamma request digest              |
+        | mismatched vault record-key commitment      |
+        | clear display path or vault record name     |
 
     @wip
     Scenario Outline: K1.2-M-B selects one exact closed mutation variant

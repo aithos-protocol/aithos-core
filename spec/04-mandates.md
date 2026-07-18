@@ -416,8 +416,10 @@ volunteered session fact is invalid.
 `kind` is exactly one of `read`, `mutation`, `action`, `inference`, `grant`,
 `revoke`, `rotate`, or `publication`. It selects one closed facts family:
 
-- `read` covers an Ethos read or an explicitly signed Gamma presentation and binds
-  its source edition/head plus exact SID or request digest;
+- `read` covers an Ethos read, an explicitly signed Gamma presentation, or a
+  vault-config read. Its closed facts bind the exact source edition or Gamma head
+  plus the applicable SID, canonical query-request digest, or vault record-key
+  commitment;
 - `mutation` covers an Ethos, structural, or vault-config mutation. Its closed facts
   select domain `ethos`, `structure`, or `vault-config`, the exact verb and target,
   applicable source/destination, and before/after state;
@@ -544,6 +546,97 @@ path or a new disclosure rule. Only the references required by the applicable
 public carrier are public. The selected K1.2 family binds the operation target to
 the exact expected store keys; opaque `self` and vault evidence proves their
 correspondence without disclosing those keys.
+
+> **K1.2-R-B closed read facts — human-validated on 2026-07-18.**
+
+When `operation.kind` is `read`, the selected `facts` object is exactly one of
+three closed variants. An Ethos read has exactly these four members:
+
+```json
+{
+  "domain": "ethos",
+  "zone": "circle",
+  "sid": "01J...",
+  "source_edition": "sha256:<64 lowercase hex>"
+}
+```
+
+`zone` is exactly `public`, `circle`, or `self`; `sid` is the canonical SID of the
+section read. `source_edition` identifies the exact signed manifest whose state is
+read. If `M0` is that manifest with only `signature.value` replaced by the empty
+string, then:
+
+```text
+source_edition =
+  "sha256:" ||
+  lowercase_hex(SHA-256(RFC8785-JCS(M0)))
+```
+
+This is the existing manifest chain-hash preimage and digest with only the
+`sha256:` textual prefix added; it does not rehash or reinterpret `prev_hash`.
+
+An explicitly signed Gamma presentation has exactly these three members:
+
+```json
+{
+  "domain": "gamma",
+  "source_head": "sha256:<64 lowercase hex>",
+  "request_digest": "sha256:<64 lowercase hex>"
+}
+```
+
+`source_head` is the exact non-empty Gamma head against which the presented result
+was selected. Let `Q` be the exact canonical UTF-8 `read.gamma` perimeter-entry
+string representing the query. It uses the already-defined gamma-selector grammar
+and canonical selector order `dir`, `id`, `tag`, `kind`, `action`, `since`,
+`until`; each dimension occurs at most once, omitted dimensions are absent, and
+the unfiltered query is exactly `read.gamma`. Then:
+
+```text
+request_digest =
+  C("aithos-core/v1/gamma-read-request", UTF8(Q))
+```
+
+`Q` is query intent, not a signed carrier. It contains no `operation_ref`,
+signature, result, or presentation digest, so the operation commitment remains
+acyclic. The later signed presentation evidence binds the exact same `Q`,
+`source_head`, and `operation_ref`.
+
+A vault-config read has exactly these four members:
+
+```json
+{
+  "domain": "vault-config",
+  "connector": "mail",
+  "record_key": "sha256:<64 lowercase hex>",
+  "source_edition": "sha256:<64 lowercase hex>"
+}
+```
+
+`connector` is the exact canonical connector identifier covered by the current
+indivisible `.config` capability. `record_key` is the K1.1-B `key_commitment` of
+the affected record's canonical store key; the clear vault record name is
+forbidden. `source_edition` uses the same exact manifest chain hash as the Ethos
+variant. The later opaque evidence binds that record commitment to the vault state
+root without disclosing the store key, record name, credential, or plaintext.
+This variant does not split `.config` into separately grantable read and write
+rights and introduces no connector catalog action or new operation kind.
+
+A local read without signed evidence still performs its operation-time authority
+check but emits no operation-facts document, persists no `operation_ref`, and is
+not cold-replayable or countable. An Ethos read journalized because `log_reads`
+applies, an explicitly signed Gamma presentation, or signed vault-config read
+evidence allocates exactly one `read` occurrence. Native evidence reuses that
+occurrence and never creates another consumption.
+
+Only `facts_ref` is required in the public W1 projection. The selected read facts,
+including a `self` SID, Gamma query digest, or vault record-key commitment, remain
+protected unless an independently approved evidence carrier requires them.
+An unknown domain, null, missing or extra member, unknown zone, non-canonical SID,
+malformed or mismatched source reference, non-canonical query spelling, mismatched
+request digest, mismatched vault record-key commitment, clear display path, or
+clear vault record name fails closed as `Error::InvalidOperationFacts(String)`
+before an operation commitment is emitted.
 
 > **K1.2-M-B closed mutation facts — human-validated on 2026-07-18.**
 
@@ -730,13 +823,16 @@ reconstruction equalities above. K1-B fixes the complete `operation` and
 `facts_ref` member sets, the kind registry, and the family split above. K1.1-B fixes
 the operation-facts envelope and digest, both logical-state variants, the state-fact
 envelope and object-entry table, all four digest domains, and the state-object
-ordering and privacy rules. K1.2-M-B additionally fixes every mutation-family
-member set, its domain/verb/node registries, coordinate semantics, state-transition
-matrix, vault record-key binding, and failure rules. The other selected-family
-`facts` member tables, exact proof encodings and target-to-store-key derivations,
-changeset, catalog, SC1, receipt, authorship, presentation, and carrier bytes remain
-reserved until their own independent tables are human-validated. No producer may
-invent those remaining bytes or emit a completed operation commitment before then.
+ordering and privacy rules. K1.2-R-B fixes the three read-family member sets, their
+source references, canonical Gamma request digest, signed-evidence occurrence
+boundary, vault record-key binding, privacy, and failure rules. K1.2-M-B fixes
+every mutation-family member set, its domain/verb/node registries, coordinate
+semantics, state-transition matrix, vault record-key binding, and failure rules.
+The other selected-family `facts` member tables, exact proof encodings and
+target-to-store-key derivations, changeset, catalog, SC1, receipt, authorship,
+presentation, and carrier bytes remain reserved until their own independent tables
+are human-validated. No producer may invent those remaining bytes or emit a
+completed operation commitment before then.
 
 The public reference has exactly this shape:
 
