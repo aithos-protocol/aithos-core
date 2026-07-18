@@ -920,7 +920,8 @@ fn validate_known_constraints(c: &serde_json::Value, reject_unknown: bool) -> Re
     let obj = constraints_object(c)?;
     for (key, v) in obj {
         match key.as_str() {
-            "max_actions" | "max_children" | "max_sessions" => {
+            "max_actions" | "max_children" | "max_sessions" | "max_mutations"
+            | "max_consumptions" => {
                 want_u64(key, v, None)?;
             }
             "max_actions_per" => {
@@ -1039,8 +1040,12 @@ pub fn validate_link_constraints(c: &serde_json::Value) -> Result<()> {
 ///
 /// Preservation is structural only. [`verify_operation_constraints`] is the
 /// operation-side fail-closed gate.
-pub(crate) fn validate_root_constraints(c: &serde_json::Value) -> Result<()> {
-    validate_known_constraints(c, false)
+pub(crate) fn validate_root_constraints(
+    c: &serde_json::Value,
+    mandate_profile: &str,
+) -> Result<()> {
+    validate_known_constraints(c, false)?;
+    validate_profile_constraints(c, mandate_profile)
 }
 
 /// Opaque proof that every constraint affecting a current operation is known
@@ -1070,10 +1075,70 @@ pub fn verify_operation_constraints(
     })
 }
 
+/// Opaque proof of the injected active-session lifecycle tally.
+#[derive(Debug)]
+pub struct VerifiedSessionTally {
+    active: usize,
+}
+
+impl VerifiedSessionTally {
+    #[must_use]
+    pub const fn active(&self) -> usize {
+        self.active
+    }
+}
+
+/// Enforce `max_sessions` over an injected set of already verified active
+/// session public keys. This adds no certificate wire or storage rule.
+pub fn verify_max_sessions(
+    max_sessions: u64,
+    active_session_keys: &[&str],
+) -> Result<VerifiedSessionTally> {
+    let mut distinct = std::collections::BTreeSet::new();
+    for key in active_session_keys {
+        crate::wire::multibase_to_ed25519_pub(key)
+            .map_err(|_| Error::InvalidSession("malformed active session key".into()))?;
+        if !distinct.insert(*key) {
+            return Err(Error::InvalidSession(
+                "duplicate active session certificate".into(),
+            ));
+        }
+    }
+    let active = u64::try_from(active_session_keys.len())
+        .map_err(|_| Error::InvalidSession("active session count exceeds u64".into()))?;
+    if active > max_sessions {
+        return Err(Error::InvalidSession(format!(
+            "max_sessions {max_sessions} exceeded by {active} active sessions"
+        )));
+    }
+    Ok(VerifiedSessionTally {
+        active: active_session_keys.len(),
+    })
+}
+
+fn validate_profile_constraints(c: &serde_json::Value, mandate_profile: &str) -> Result<()> {
+    let object = constraints_object(c)?;
+    let has_mutations = object.contains_key("max_mutations");
+    let has_consumptions = object.contains_key("max_consumptions");
+    if has_mutations || has_consumptions {
+        if mandate_profile != crate::mandate::MANDATE_VERSION_DRAFT3 {
+            return Err(Error::InvalidMandate(
+                "max_mutations/max_consumptions require mandate draft.3".into(),
+            ));
+        }
+        if !(has_mutations && has_consumptions) {
+            return Err(Error::InvalidMandate(
+                "max_mutations and max_consumptions are a non-droppable pair".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn family_containment(key: &str, pv: &serde_json::Value, cv: &serde_json::Value) -> Result<()> {
     let widened = |what: String| Err(c_err(key, &what));
     match key {
-        "max_actions" | "max_children" | "max_sessions" => {
+        "max_actions" | "max_children" | "max_sessions" | "max_mutations" | "max_consumptions" => {
             let (p, c) = (want_u64(key, pv, None)?, want_u64(key, cv, None)?);
             if c > p {
                 return widened(format!("child cap {c} exceeds the parent's {p}"));
@@ -1293,6 +1358,8 @@ pub fn constraints_attenuate_for_profile(
 ) -> Result<()> {
     validate_link_constraints(parent)?;
     validate_link_constraints(child)?;
+    validate_profile_constraints(parent, mandate_profile)?;
+    validate_profile_constraints(child, mandate_profile)?;
     // The two historic gates keep their own drop/containment semantics.
     windows_attenuate(
         parse_windows(parent)?.as_deref(),

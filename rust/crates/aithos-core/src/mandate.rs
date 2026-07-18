@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 pub const MANDATE_VERSION_DRAFT1: &str = "1.0.0-draft.1";
 pub const MANDATE_VERSION_DRAFT2: &str = "1.0.0-draft.2";
+pub const MANDATE_VERSION_DRAFT3: &str = "1.0.0-draft.3";
 pub const MANDATE_VERSION: &str = MANDATE_VERSION_DRAFT2;
 
 // ------------------------------------------------------------- perimeter
@@ -859,7 +860,7 @@ impl Mandate {
         if !self.constraints.is_object() {
             return Err(invalid("constraints is not an object"));
         }
-        crate::constraints::validate_root_constraints(&self.constraints)?;
+        crate::constraints::validate_root_constraints(&self.constraints, &self.version)?;
         for entry in &self.perimeter {
             PerimeterEntry::parse(entry).map_err(|_| invalid("malformed perimeter entry"))?;
         }

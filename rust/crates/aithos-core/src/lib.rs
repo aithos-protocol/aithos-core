@@ -18,6 +18,7 @@
 //! - `merkle`  (todo)     → 02.10 (state roots, inclusion proofs)
 
 pub mod constraints;
+pub mod delegated_counts;
 pub mod derive;
 pub mod did;
 pub mod error;
@@ -30,6 +31,7 @@ pub mod mandate;
 pub mod merkle;
 pub mod operation;
 pub mod path;
+pub mod receipts;
 pub mod revocation;
 pub mod seal;
 pub mod wire;

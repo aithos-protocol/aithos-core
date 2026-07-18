@@ -50,6 +50,9 @@ pub enum Error {
     #[error("invalid session: {0}")]
     InvalidSession(String),
 
+    #[error("invalid delegated counts: {0}")]
+    InvalidDelegatedCounts(String),
+
     #[error("I3 violated — header without an owner line: {0}")]
     MissingOwnerLine(String),
 
