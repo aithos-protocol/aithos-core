@@ -18,6 +18,7 @@
 //! - `merkle`  (todo)     → 02.10 (state roots, inclusion proofs)
 
 pub mod catalog;
+pub mod carriers;
 pub mod constraints;
 pub mod delegated_counts;
 pub mod derive;

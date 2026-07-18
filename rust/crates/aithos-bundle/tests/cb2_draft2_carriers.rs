@@ -1,8 +1,8 @@
 //! CB2 K1-C draft2 carrier vector consumer.
 //!
 //! Existing generic JCS, SHA-256, BLAKE3, multibase and Ed25519 primitives
-//! reproduce the independent Python oracle. Typed carrier validation and
-//! draft2 Bundle assembly/cold verification remain explicit compile gates.
+//! reproduce the independent Python oracle. Typed Core carrier validation is
+//! active; draft2 Bundle assembly/cold verification remains the explicit gate.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -62,9 +62,9 @@ const SESSION_PROOF: &[u8] = include_bytes!(concat!(
     "/../../../vectors/cb2-session-proof.json"
 ));
 
-const CORE_ERROR_SOURCE: &str = include_str!(concat!(
+const CORE_CARRIERS_SOURCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../aithos-core/src/error.rs"
+    "/../aithos-core/src/carriers.rs"
 ));
 const BUNDLE_MANIFEST_SOURCE: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/manifest.rs"));
@@ -682,10 +682,17 @@ fn cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary() {
     );
     assert!(negatives.iter().all(|case| case["candidate"].is_object()));
 
-    assert!(
-        !CORE_ERROR_SOURCE.contains("InvalidOperation(String)"),
-        "typed K1-C carrier error is still an explicit Core implementation gate"
-    );
+    for api in [
+        "pub fn derive_changeset",
+        "pub fn verify_k1c_carriers",
+        "pub struct K1cVerificationContext",
+        "pub enum EvidenceItem",
+    ] {
+        assert!(
+            CORE_CARRIERS_SOURCE.contains(api),
+            "typed K1-C Core API remains incomplete: {api}"
+        );
+    }
     for member in ["operation_ref", "changeset_ref", "evidence_ref"] {
         assert!(
             !BUNDLE_MANIFEST_SOURCE.contains(member),
