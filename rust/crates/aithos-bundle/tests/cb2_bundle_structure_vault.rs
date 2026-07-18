@@ -50,6 +50,9 @@ const AUTHORITY_FLOWS: &[u8] = include_bytes!(concat!(
 const BUNDLE_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bundle.rs"));
 const REVOKE_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/revoke.rs"));
 const STATE_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/state.rs"));
+const STRUCTURE_SOURCE: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/structure.rs"));
+const VAULT_SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/vault.rs"));
 
 fn vector() -> Value {
     serde_json::from_slice(VECTOR_BYTES).expect("CB2 Bundle structure/vault vector parses")
@@ -221,7 +224,7 @@ fn cb2_bundle_revocation_rotation_reopen_preexisting_green() {
 }
 
 #[test]
-fn cb2_bundle_vault_isolation_and_api_inventory_preliminary() {
+fn cb2_bundle_vault_isolation_and_cb10_api_inventory() {
     let vector = vector();
     let vault = &vector["vault"];
     assert_eq!(vault["config_is_outside_business_classes"], true);
@@ -277,18 +280,21 @@ fn cb2_bundle_vault_isolation_and_api_inventory_preliminary() {
     assert!(REVOKE_SOURCE.contains("pub fn move_folder("));
     assert!(REVOKE_SOURCE.contains("self.put_json("));
     assert!(BUNDLE_SOURCE.contains("\"e/x/header.json\""));
-    assert!(STATE_SOURCE.contains("e/x/**/header.json"));
-    for absent in [
-        "pub fn structural_operation(",
-        "pub fn revoke_transaction(",
-        "pub fn vault_config_operation(",
-        "pub fn open_vault_with_capability(",
+    assert!(STATE_SOURCE.contains("self.store.list(\"e/x/\")"));
+    assert!(STATE_SOURCE.contains("path.ends_with(\"header.json\")"));
+    for (source, api) in [
+        (STRUCTURE_SOURCE, "pub fn structural_operation("),
+        (REVOKE_SOURCE, "pub fn revoke_transaction("),
+        (VAULT_SOURCE, "pub fn vault_config_operation("),
+        (VAULT_SOURCE, "pub fn open_vault_with_capability("),
+        (VAULT_SOURCE, "pub fn rotate_vault_connector("),
     ] {
         assert!(
-            !BUNDLE_SOURCE.contains(absent)
-                && !REVOKE_SOURCE.contains(absent)
-                && !STATE_SOURCE.contains(absent),
-            "{absent}"
+            source.contains(api),
+            "CB10 closed API surface is missing {api}"
         );
     }
+    assert!(VAULT_SOURCE.contains("e/x/{connector}/header.json"));
+    assert!(VAULT_SOURCE.contains("e/x/{connector}/manifest.enc"));
+    assert!(VAULT_SOURCE.contains("exact act.x.{connector}.config authority is required"));
 }

@@ -387,22 +387,11 @@ impl<S: Store> Bundle<S> {
         connector: &str,
     ) -> Result<[u8; 32]> {
         let label = format!("aithos-core/v1/x/{connector}");
-        // Exact connector line first (CB8); the historical vault-root line
-        // remains readable for existing bundles.
+        // Audit stays on its historical root-derived capability. Connector
+        // `.config` lines are random and live in separate exact headers; they
+        // must never substitute for audit access.
         if let Some(leaf) = chain.last() {
             let kex = grantee_kex_secret(agent_sk);
-            if let Some(bytes) = self
-                .store
-                .get(&format!("e/x/{connector}/header.json"))
-                .ok()
-                .flatten()
-            {
-                if let Ok(header) = serde_json::from_slice::<aithos_core::header::Header>(&bytes) {
-                    if let Ok(key) = header.open(&self.did, KV, &leaf.grantee.pubkey, &kex) {
-                        return Ok(key);
-                    }
-                }
-            }
             if let Some(bytes) = self.store.get("e/x/header.json").ok().flatten() {
                 if let Ok(header) = serde_json::from_slice::<aithos_core::header::Header>(&bytes) {
                     if let Ok(dk) = header.open(&self.did, KV, &leaf.grantee.pubkey, &kex) {

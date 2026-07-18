@@ -13,6 +13,8 @@ pub mod manifest;
 pub mod merge;
 pub mod revoke;
 pub mod state;
+pub mod structure;
+pub mod vault;
 
 use std::collections::BTreeMap;
 use std::io;

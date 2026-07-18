@@ -1320,16 +1320,46 @@ impl<S: Store> Bundle<S> {
             ));
         }
         let index: ZoneIndex = self.get_json(&format!("e/{}/index.json", zone.as_str()))?;
+        fn folder_path(
+            sid: &str,
+            index: &ZoneIndex,
+            known: &mut BTreeMap<String, String>,
+            visiting: &mut std::collections::BTreeSet<String>,
+        ) -> Result<String> {
+            if let Some(path) = known.get(sid) {
+                return Ok(path.clone());
+            }
+            if !visiting.insert(sid.to_owned()) {
+                return Err(Error::InvalidPath(format!("folder parent cycle at {sid}")));
+            }
+            let row = index
+                .folders
+                .iter()
+                .find(|row| row.sid == sid)
+                .ok_or_else(|| Error::InvalidPath(format!("missing folder {sid}")))?;
+            let path = match row.parent_sid.as_deref() {
+                None => row.name.clone(),
+                Some(parent) => {
+                    format!(
+                        "{}/{}",
+                        folder_path(parent, index, known, visiting)?,
+                        row.name
+                    )
+                }
+            };
+            visiting.remove(sid);
+            known.insert(sid.to_owned(), path.clone());
+            Ok(path)
+        }
         let mut out = Vec::new();
-        // Folders are appended parents-first by construction.
         let mut known: BTreeMap<String, String> = BTreeMap::new();
         for f in &index.folders {
-            let prefix = match &f.parent_sid {
-                None => String::new(),
-                Some(p) => format!("{}/", known.get(p).cloned().unwrap_or_default()),
-            };
-            let path = format!("{prefix}{}", f.name);
-            known.insert(f.sid.clone(), path.clone());
+            let path = folder_path(
+                &f.sid,
+                &index,
+                &mut known,
+                &mut std::collections::BTreeSet::new(),
+            )?;
             out.push(TreeEntry {
                 path,
                 kind: TreeEntryKind::Folder,
@@ -1338,7 +1368,15 @@ impl<S: Store> Bundle<S> {
         for s in &index.sections {
             let prefix = match &s.folder_sid {
                 None => String::new(),
-                Some(p) => format!("{}/", known.get(p).cloned().unwrap_or_default()),
+                Some(parent) => format!(
+                    "{}/",
+                    folder_path(
+                        parent,
+                        &index,
+                        &mut known,
+                        &mut std::collections::BTreeSet::new(),
+                    )?
+                ),
             };
             out.push(TreeEntry {
                 path: format!("{prefix}{}", s.name),

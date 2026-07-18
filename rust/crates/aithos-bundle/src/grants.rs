@@ -407,15 +407,20 @@ impl<S: Store> Bundle<S> {
         Self::gate_display_name(connector)?;
         let node = format!("/x/{connector}");
         let file = format!("e/x/{connector}/header.json");
-        let key = self.audit_key_owner(owner, connector)?;
         match self.store.get(&file).map_err(io_err)? {
             Some(bytes) => {
                 let mut header: Header = serde_json::from_slice(&bytes)
                     .map_err(|error| Error::SealRejected(format!("{file}: {error}")))?;
-                header.append_line(&self.did, KV, &key, recipient, ent.e32(), ent.e24())?;
+                let version = header.latest_version();
+                let key = header.open(&self.did, version, "owner-kex", &owner.owner_kex)?;
+                header.append_line(&self.did, version, &key, recipient, ent.e32(), ent.e24())?;
                 self.put_json(&file, &header)?;
             }
             None => {
+                // Config is a random connector-local capability, not a KDF
+                // descendant of the historical audit root. An audit holder
+                // therefore cannot derive it.
+                let key = ent.e32();
                 let header = Header::build(
                     &self.did,
                     &node,
@@ -1215,7 +1220,7 @@ impl<S: Store> Bundle<S> {
 
     // ------------------------------------------ CB9 delegated content API
 
-    fn verify_current_grantee(
+    pub(crate) fn verify_current_grantee(
         &self,
         chain: &[Mandate],
         agent_sk: &SigningKey,

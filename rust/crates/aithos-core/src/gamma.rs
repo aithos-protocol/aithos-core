@@ -218,13 +218,14 @@ impl Entry {
             // Mutation on public (no zone key, §07.3): clear, like structural.
             (true, Some(_), None) if self.target.is_some() && kind != Kind::EthosRead => Ok(()),
             // A journalized public read/list is clear because public has no
-            // content key. Keyed-zone reads remain sealed.
+            // content key. Vault-config reads also stay clear only at the
+            // connector/opaque-record commitment layer; config plaintext is
+            // never present. Keyed Ethos reads remain sealed.
             (true, Some(_), None)
                 if kind == Kind::EthosRead
-                    && self
-                        .target
-                        .as_deref()
-                        .is_some_and(|target| target.starts_with("/e/public")) =>
+                    && self.target.as_deref().is_some_and(|target| {
+                        target.starts_with("/e/public") || target.starts_with("/x/")
+                    }) =>
             {
                 Ok(())
             }

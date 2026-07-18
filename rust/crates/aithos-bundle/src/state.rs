@@ -234,18 +234,24 @@ impl<S: Store> Bundle<S> {
         Ok((leaves, root))
     }
 
-    /// Flat vault root: every `e/x/**/header.json`, labeled and sorted by
-    /// storage path.
+    /// Flat vault root: every connector-local encrypted object and header,
+    /// labeled and sorted by storage path. Historical header-only bundles
+    /// retain their exact root because header hashing is unchanged.
     fn vault_build(&self) -> Result<FlatZone> {
         let mut leaves: Vec<(String, [u8; 32])> = Vec::new();
         for path in self.store.list("e/x/").map_err(io_err)? {
-            if !path.ends_with("header.json") {
-                continue;
-            }
-            let hh = self.header_hash_at(&path)?;
+            let object_hash = if path.ends_with("header.json") {
+                self.header_hash_at(&path)?
+            } else {
+                let bytes =
+                    self.store.get(&path).map_err(io_err)?.ok_or_else(|| {
+                        Error::SealRejected(format!("missing vault object {path}"))
+                    })?;
+                *blake3::hash(&bytes).as_bytes()
+            };
             let mut payload = path.clone().into_bytes();
             payload.push(0);
-            payload.extend_from_slice(&hh);
+            payload.extend_from_slice(&object_hash);
             leaves.push((path, h_leaf(&payload)));
         }
         leaves.sort();

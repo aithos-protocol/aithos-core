@@ -167,6 +167,11 @@ impl<S: Store> Bundle<S> {
             .key_versions
             .get(&old_v.to_string())
             .ok_or_else(|| Error::SealRejected("no current header version".to_owned()))?;
+        if !kv.lines.iter().any(|line| line.kid == revoked_kid) {
+            return Err(Error::GammaRevocationRejected(
+                "revoked recipient has no current line on the protected folder".into(),
+            ));
+        }
         let mut survivors: Vec<Recipient> = Vec::new();
         for line in &kv.lines {
             if line.kid == revoked_kid {
@@ -232,6 +237,32 @@ impl<S: Store> Bundle<S> {
             self.bump_section_version(sid, new_v, &sha)?;
         }
         Ok(())
+    }
+
+    /// Owner incident cut: authority verdict, signed revocation, fresh
+    /// protected key, survivor rewrap, subtree re-encryption and owner
+    /// publication share one Store transaction and one linearization point.
+    pub fn revoke_transaction(
+        &mut self,
+        owner: &OwnerKeys,
+        target_mandate_id: &str,
+        display_folder: &str,
+        reason: &str,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        self.transaction(|bundle| {
+            let target_chain = bundle.cert_chain(target_mandate_id)?;
+            let target = target_chain
+                .last()
+                .ok_or_else(|| Error::InvalidMandate("empty revocation target chain".into()))?;
+            // Loading and validating the stored chain before the first write
+            // is the owner's pure revocation verdict.
+            aithos_core::mandate::verify_chain(&target_chain, &bundle.did_doc()?, now)?;
+            bundle.log_revoke_owner(owner, target_mandate_id, reason, now, ent)?;
+            bundle.rotate_folder(owner, display_folder, &target.grantee.pubkey, ent)?;
+            bundle.publish(owner, now)
+        })
     }
 
     /// Set a circle section's key_version and blob hash after re-encryption.

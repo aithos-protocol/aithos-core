@@ -157,6 +157,54 @@ impl GammaReplayState {
             // Their physics proof is the successful key use at append-time.
             return Ok(());
         };
+        let leaf = chain
+            .last()
+            .ok_or_else(|| Error::InvalidMandate("empty delegated chain".into()))?;
+        let perimeter = leaf.parsed_perimeter()?;
+        if let Some(connector) = target.strip_prefix("/x/") {
+            if connector.is_empty() || connector.contains('/') {
+                return Err(Error::InvalidMandate(
+                    "invalid connector config target".into(),
+                ));
+            }
+            let exact = perimeter.iter().any(|entry| {
+                matches!(
+                    entry,
+                    crate::mandate::PerimeterEntry::Act {
+                        connector: granted,
+                        action: Some(action),
+                    } if granted == connector && action == "config"
+                )
+            });
+            if !exact {
+                return Err(Error::InvalidMandate(format!(
+                    "{}: exact connector config authority is required",
+                    leaf.id
+                )));
+            }
+            let operation = entry
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.get("operation"))
+                .and_then(serde_json::Value::as_str);
+            let expected = match kind {
+                Kind::EthosRead => "read",
+                Kind::SectionAdd => "create",
+                Kind::SectionModify => "edit",
+                Kind::SectionDelete => "delete",
+                _ => {
+                    return Err(Error::InvalidMandate(
+                        "invalid connector config Gamma kind".into(),
+                    ))
+                }
+            };
+            if operation != Some(expected) {
+                return Err(Error::InvalidMandate(
+                    "connector config operation/kind mismatch".into(),
+                ));
+            }
+            return Ok(());
+        }
         let node = NodePath::parse(target)
             .map_err(|error| Error::InvalidMandate(format!("invalid mutation target: {error}")))?;
         let tags = entry
@@ -172,10 +220,6 @@ impl GammaReplayState {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let leaf = chain
-            .last()
-            .ok_or_else(|| Error::InvalidMandate("empty delegated chain".into()))?;
-        let perimeter = leaf.parsed_perimeter()?;
         let covered = match node.leaf {
             Leaf::Section(sid) => covers_section_op(
                 &perimeter,
@@ -187,7 +231,7 @@ impl GammaReplayState {
                     tags: &tags,
                 },
             ),
-            Leaf::Folder if kind == Kind::EthosRead => covers_op(
+            Leaf::Folder => covers_op(
                 &perimeter,
                 &Op {
                     verb,
@@ -203,6 +247,37 @@ impl GammaReplayState {
                 "{}: content operation exceeds the leaf perimeter",
                 leaf.id
             )));
+        }
+        if entry
+            .payload
+            .as_ref()
+            .and_then(|payload| payload.get("structural"))
+            .and_then(serde_json::Value::as_str)
+            == Some("folder.move")
+        {
+            let destination = entry
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.get("destination"))
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| Error::InvalidMandate("move destination missing".into()))?;
+            let destination = NodePath::parse(destination)?;
+            if destination.leaf != Leaf::Folder
+                || !covers_op(
+                    &perimeter,
+                    &Op {
+                        verb: Verb::Append,
+                        zone: destination.zone,
+                        folders: &destination.folders,
+                        tags: &[],
+                    },
+                )
+            {
+                return Err(Error::InvalidMandate(format!(
+                    "{}: move destination exceeds the leaf perimeter",
+                    leaf.id
+                )));
+            }
         }
         Ok(())
     }
