@@ -1,0 +1,373 @@
+{
+  "vector": "CB2-BUNDLE-CONCURRENCY-FINAL-1",
+  "description": "Independent pure-data CB13 oracle for deterministic local merge/conflict, one fully covering actor/chain, effect-free fork resolution, semantic counter recomposition and fresh-store insertion-order independence. Provider CAS and network participation are excluded.",
+  "historical_vector_sha256": {
+    "i1-concurrency.json": "556de81a4e842e04ada7b0521c89845000e3174d66ddd7c1736cdfb24b3e7864",
+    "h2-gamma-roots.json": "c497b9b2bced8fbf449ab249ea193cda956d2438a003f7bd06f6173c3486ef50",
+    "cb2-delegated-counts.json": "c1edd459b00ff72f2693e54370a60d2c8b981c18ee10d213a4b26897ed2618f1",
+    "cb2-gamma-v2-replay.json": "a3cc536ea452940af061ce421c238e08f0894923562b8c8193dbb8d8b853cd06",
+    "cb2-draft2-carriers.json": "2e75e9af30ba0207bd01a6f347cac1a263f816a7ae0fb3d583f75beabef2badc",
+    "cb2-bundle-boundaries.json": "73149da64fbdc73bcfd81f8a3d11c83e9421e43f2053ad649bf0db0f585ee187",
+    "cb2-bundle-authority-flows.json": "30545958c170fda12e53817d3c5b7adb295432a4352e1abcbc7749fdd5c7eca0",
+    "cb2-bundle-structure-vault.json": "ebaf4871a233f1f4631f1ec21c63a3cec68fd0829c6a9dddfe3d6d9aa4179f5d"
+  },
+  "initial_state": {
+    "common_parent": "sha256:common-parent",
+    "manifest": "sha256:canonical-before",
+    "gamma_tips": [
+      "sha256:tip-left",
+      "sha256:tip-right"
+    ],
+    "circle_root": "sha256:circle-before",
+    "counts_root": "sha256:counts-before"
+  },
+  "initial_state_digest": "sha256:330ddb6b66a2b68eb483224b77d652f258202763094ee302b5cf4e3eba0176e5",
+  "merge": {
+    "cases": [
+      {
+        "id": "different-folders",
+        "left_changed_sids": [
+          "sid-left"
+        ],
+        "right_changed_sids": [
+          "sid-right"
+        ],
+        "delete_wins": false,
+        "expected": "accepted",
+        "merged_sid_order": [
+          "sid-left",
+          "sid-right"
+        ]
+      },
+      {
+        "id": "same-folder-distinct-sids",
+        "left_changed_sids": [
+          "sid-b"
+        ],
+        "right_changed_sids": [
+          "sid-a"
+        ],
+        "delete_wins": false,
+        "expected": "accepted",
+        "merged_sid_order": [
+          "sid-a",
+          "sid-b"
+        ]
+      },
+      {
+        "id": "delete-and-sibling-add",
+        "left_changed_sids": [
+          "sid-deleted"
+        ],
+        "right_changed_sids": [
+          "sid-added"
+        ],
+        "delete_wins": true,
+        "expected": "accepted without resurrection",
+        "deleted_sid_present": false,
+        "merged_sid_order": [
+          "sid-added"
+        ]
+      },
+      {
+        "id": "same-sid-modified",
+        "left_changed_sids": [
+          "sid-shared"
+        ],
+        "right_changed_sids": [
+          "sid-shared"
+        ],
+        "delete_wins": false,
+        "expected": "conflict",
+        "visible_state_digest": "sha256:330ddb6b66a2b68eb483224b77d652f258202763094ee302b5cf4e3eba0176e5"
+      },
+      {
+        "id": "derived-row-overlap",
+        "left_changed_sids": [
+          "sid-view"
+        ],
+        "right_changed_sids": [
+          "sid-view"
+        ],
+        "delete_wins": false,
+        "expected": "conflict",
+        "visible_state_digest": "sha256:330ddb6b66a2b68eb483224b77d652f258202763094ee302b5cf4e3eba0176e5"
+      }
+    ],
+    "authority_cases": [
+      {
+        "id": "one-covering-chain",
+        "actor": "grantee",
+        "changed_sids": [
+          "sid-left",
+          "sid-right"
+        ],
+        "chains": [
+          {
+            "id": "chain-covering",
+            "covers": [
+              "sid-left",
+              "sid-right"
+            ]
+          }
+        ],
+        "expected": "accepted",
+        "published_actor": "grantee",
+        "published_chain_count": 1
+      },
+      {
+        "id": "one-partial-chain",
+        "actor": "grantee",
+        "changed_sids": [
+          "sid-left",
+          "sid-right"
+        ],
+        "chains": [
+          {
+            "id": "chain-left",
+            "covers": [
+              "sid-left"
+            ]
+          }
+        ],
+        "expected": "refused",
+        "visible_state_digest": "sha256:330ddb6b66a2b68eb483224b77d652f258202763094ee302b5cf4e3eba0176e5"
+      },
+      {
+        "id": "two-partial-chains",
+        "actor": "grantee",
+        "changed_sids": [
+          "sid-left",
+          "sid-right"
+        ],
+        "chains": [
+          {
+            "id": "chain-left",
+            "covers": [
+              "sid-left"
+            ]
+          },
+          {
+            "id": "chain-right",
+            "covers": [
+              "sid-right"
+            ]
+          }
+        ],
+        "expected": "refused",
+        "visible_state_digest": "sha256:330ddb6b66a2b68eb483224b77d652f258202763094ee302b5cf4e3eba0176e5"
+      },
+      {
+        "id": "owner-local",
+        "actor": "owner",
+        "changed_sids": [
+          "sid-left",
+          "sid-right"
+        ],
+        "chains": [],
+        "expected": "accepted",
+        "published_actor": "owner",
+        "published_chain_count": 0
+      }
+    ],
+    "parent_order": "ascending edition hash",
+    "gamma_subchain_order": "lowest parent hash then highest parent hash then merge entry",
+    "merge_entry_is_not_an_extra_business_consumption": true,
+    "network_participates": false,
+    "provider_cas_participates": false
+  },
+  "resolution": {
+    "cases": [
+      {
+        "id": "covering-delegate",
+        "actor": "grantee",
+        "covers_every_touched_sid": true,
+        "chain_count": 1,
+        "expected": "accepted"
+      },
+      {
+        "id": "owner-last-resort",
+        "actor": "owner",
+        "covers_every_touched_sid": true,
+        "chain_count": 0,
+        "expected": "accepted"
+      },
+      {
+        "id": "delegate-outside-one-perimeter",
+        "actor": "grantee",
+        "covers_every_touched_sid": false,
+        "chain_count": 1,
+        "expected": "refused",
+        "visible_state_digest": "sha256:330ddb6b66a2b68eb483224b77d652f258202763094ee302b5cf4e3eba0176e5"
+      },
+      {
+        "id": "two-partial-resolution-chains",
+        "actor": "grantee",
+        "covers_every_touched_sid": true,
+        "chain_count": 2,
+        "expected": "refused",
+        "visible_state_digest": "sha256:330ddb6b66a2b68eb483224b77d652f258202763094ee302b5cf4e3eba0176e5"
+      },
+      {
+        "id": "unresolved-fork",
+        "actor": "none",
+        "covers_every_touched_sid": false,
+        "chain_count": 0,
+        "expected": "no canonical branch",
+        "visible_state_digest": "sha256:330ddb6b66a2b68eb483224b77d652f258202763094ee302b5cf4e3eba0176e5"
+      }
+    ],
+    "losing_write_is_surfaced_not_replayed": true,
+    "refusal_changes_canonical_bytes": false
+  },
+  "counter_recomposition": {
+    "left_occurrences": [
+      {
+        "operation_ref": "op-common-action",
+        "kind": "action"
+      },
+      {
+        "operation_ref": "op-left-action",
+        "kind": "action"
+      },
+      {
+        "operation_ref": "op-left-mutation",
+        "kind": "mutation"
+      },
+      {
+        "operation_ref": "op-left-grant",
+        "kind": "grant"
+      }
+    ],
+    "right_occurrences": [
+      {
+        "operation_ref": "op-common-action",
+        "kind": "action"
+      },
+      {
+        "operation_ref": "op-right-action",
+        "kind": "action"
+      },
+      {
+        "operation_ref": "op-right-mutation",
+        "kind": "mutation"
+      },
+      {
+        "operation_ref": "op-right-grant",
+        "kind": "grant"
+      }
+    ],
+    "unique_occurrence_count": 7,
+    "expected_counts": {
+      "actions": 3,
+      "mutations": 2,
+      "consumptions": 7,
+      "direct_children": 2
+    },
+    "shared_prefix_counted_once": true,
+    "branch_occurrence_omitted": false,
+    "branch_occurrence_double_counted": false
+  },
+  "fresh_store": {
+    "objects": {
+      "manifest.json": "{\"height\":3}",
+      "manifests/3.json": "{\"height\":3}",
+      "changesets/a.json": "{\"changes\":[]}",
+      "evidence/b.json": "{\"items\":[]}",
+      "gamma/2026-07.jsonl": "{\"id\":\"merge\"}\n",
+      "e/circle/index.json": "{\"sections\":[]}"
+    },
+    "expected_cold_digest": "sha256:33f56462cf845ab6c3ef8ffe993de485dee5117923f332df9dbca889e8b76336",
+    "insertion_order_cases": [
+      {
+        "id": "order-1",
+        "insertion_order": [
+          "manifest.json",
+          "manifests/3.json",
+          "changesets/a.json",
+          "evidence/b.json",
+          "gamma/2026-07.jsonl",
+          "e/circle/index.json"
+        ],
+        "cold_digest": "sha256:33f56462cf845ab6c3ef8ffe993de485dee5117923f332df9dbca889e8b76336",
+        "expected": "accepted"
+      },
+      {
+        "id": "order-2",
+        "insertion_order": [
+          "e/circle/index.json",
+          "gamma/2026-07.jsonl",
+          "evidence/b.json",
+          "changesets/a.json",
+          "manifests/3.json",
+          "manifest.json"
+        ],
+        "cold_digest": "sha256:33f56462cf845ab6c3ef8ffe993de485dee5117923f332df9dbca889e8b76336",
+        "expected": "accepted"
+      },
+      {
+        "id": "order-3",
+        "insertion_order": [
+          "changesets/a.json",
+          "e/circle/index.json",
+          "evidence/b.json",
+          "gamma/2026-07.jsonl",
+          "manifest.json",
+          "manifests/3.json"
+        ],
+        "cold_digest": "sha256:33f56462cf845ab6c3ef8ffe993de485dee5117923f332df9dbca889e8b76336",
+        "expected": "accepted"
+      },
+      {
+        "id": "order-4",
+        "insertion_order": [
+          "manifests/3.json",
+          "manifest.json",
+          "gamma/2026-07.jsonl",
+          "evidence/b.json",
+          "e/circle/index.json",
+          "changesets/a.json"
+        ],
+        "cold_digest": "sha256:33f56462cf845ab6c3ef8ffe993de485dee5117923f332df9dbca889e8b76336",
+        "expected": "accepted"
+      },
+      {
+        "id": "order-5",
+        "insertion_order": [
+          "gamma/2026-07.jsonl",
+          "manifest.json",
+          "evidence/b.json",
+          "e/circle/index.json",
+          "manifests/3.json",
+          "changesets/a.json"
+        ],
+        "cold_digest": "sha256:33f56462cf845ab6c3ef8ffe993de485dee5117923f332df9dbca889e8b76336",
+        "expected": "accepted"
+      },
+      {
+        "id": "order-6",
+        "insertion_order": [
+          "changesets/a.json",
+          "e/circle/index.json",
+          "manifest.json",
+          "gamma/2026-07.jsonl",
+          "evidence/b.json",
+          "manifests/3.json"
+        ],
+        "cold_digest": "sha256:33f56462cf845ab6c3ef8ffe993de485dee5117923f332df9dbca889e8b76336",
+        "expected": "accepted"
+      }
+    ],
+    "producer_destroyed_before_verify": true,
+    "private_capabilities_absent_during_verify": true,
+    "network_participates": false,
+    "provider_cas_participates": false
+  },
+  "inventory": {
+    "merge_case_count": 5,
+    "authority_case_count": 4,
+    "resolution_case_count": 5,
+    "insertion_order_case_count": 6,
+    "future_owner": "CB13"
+  }
+}

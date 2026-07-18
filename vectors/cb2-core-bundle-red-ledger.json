@@ -154,6 +154,14 @@
       "generator_sha256": "dde29fc43a7244d2681d0ca090a6a3748255671d2528057f3d39110bd5ffd4ad",
       "consumer": "rust/crates/aithos-bundle/tests/cb2_bundle_structure_vault.rs",
       "consumer_sha256": "4d88c1d431286a137a8bc1e040c20067e5b78c523090ded71f49b430a7792dff"
+    },
+    "CB2-BUNDLE-CONCURRENCY-FINAL-1": {
+      "file": "vectors/cb2-bundle-concurrency-final.json",
+      "sha256": "6bf4dadde60b902ac114685c52abc1893f9eaa8b09dcc0bcd06876d31f6a83d1",
+      "generator": "vectors/gen-cb2-bundle-concurrency-final.py",
+      "generator_sha256": "0e892edeee1a17056ade6c7fa8c13cac01e9385ba6b9d6d59e5e0a645c044e30",
+      "consumer": "rust/crates/aithos-bundle/tests/cb2_bundle_concurrency_final.rs",
+      "consumer_sha256": "2d863c0144b425e01bedf890679f6f8c1b551f61ea06d28ba0a7e88397ef7f1e"
     }
   },
   "suite_observations": [
@@ -336,13 +344,24 @@
       "name": "Bundle structure/vault byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- --nocapture",
       "observed": "5 passed; vector/historical hashes, structural authority/consequences, effect-free failures, self privacy, revocation atomicity/time and isolated vault authority/line decisions are GREEN as generic diagnostics. Unified transactional CB10 APIs remain absent."
+    },
+    {
+      "name": "Bundle concurrency-final generator reproducibility",
+      "command": "python3 vectors/gen-cb2-bundle-concurrency-final.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-bundle-concurrency-final.json; the independent pure-data oracle covers 5 merge/conflict, 4 one-actor authority, 5 resolution and 6 insertion-order cases plus unique-occurrence action/mutation/consumption/direct-child recomposition."
+    },
+    {
+      "name": "Bundle concurrency-final byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_concurrency_final -- --nocapture",
+      "observed": "5 passed; vector/historical hashes, disjoint/conflict decisions, single-chain authority, effect-free fork resolution, semantic counter union and insertion-order-independent fresh-store digest are GREEN as generic diagnostics. Complete draft2 keyless CB13 merge/cold APIs remain absent."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 87,
-    "COMPILE-RED-PRELIMINAIRE": 31,
-    "total": 152
+    "PREEXISTING-GREEN": 92,
+    "COMPILE-RED-PRELIMINAIRE": 33,
+    "total": 159
   },
   "entries": [
     {
@@ -2874,6 +2893,127 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- cb2_bundle_vault_isolation_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB10",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB13-CONCURRENCY-FINAL-VECTOR-HASH",
+      "test_id": "cb2_bundle_concurrency_vector_hash_is_stable_preexisting_green",
+      "decision": "CB13 independent local concurrency/final oracle integrity",
+      "scenario": "The merge, fork, counter and insertion-order qualification vector remains byte-stable.",
+      "vector_ref": "CB2-BUNDLE-CONCURRENCY-FINAL-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_concurrency_final -- cb2_bundle_concurrency_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "fa4f74f515843e7473008d3fb19c8fd11d9cacd9",
+      "expected_reason": "The vector file SHA-256 is 6bf4dadde60b902ac114685c52abc1893f9eaa8b09dcc0bcd06876d31f6a83d1.",
+      "observed_reason": "The exact bytes match the independently generated pure-data oracle.",
+      "owner": "CB13",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB13-CONCURRENCY-HISTORICAL-HASHES",
+      "test_id": "cb2_bundle_concurrency_historical_hashes_preexisting_green",
+      "decision": "CB13 additive historical non-regression",
+      "scenario": "I1, H2, D7, Gamma-v2, K1-C and all prior Bundle oracle bytes remain unchanged.",
+      "vector_ref": "CB2-BUNDLE-CONCURRENCY-FINAL-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_concurrency_final -- cb2_bundle_concurrency_historical_hashes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "fa4f74f515843e7473008d3fb19c8fd11d9cacd9",
+      "expected_reason": "All eight selected historical vector hashes remain exact.",
+      "observed_reason": "No historical concurrency, root, counter, Gamma, carrier or Bundle-boundary byte is reinterpreted.",
+      "owner": "CB13",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB13-MERGE-CONFLICT-AUTHORITY-ORACLE",
+      "test_id": "cb2_bundle_merge_conflict_and_authority_decisions_preexisting_green",
+      "decision": "Deterministic disjoint merge, same-SID conflict and one fully covering actor",
+      "scenario": "Disjoint changes merge in stable SID/parent/subchain order; overlap conflicts; a grantee uses exactly one chain covering every changed SID or owner acts locally.",
+      "vector_ref": "CB2-BUNDLE-CONCURRENCY-FINAL-1",
+      "vector_slice": "merge",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_concurrency_final -- cb2_bundle_merge_conflict_and_authority_decisions_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "fa4f74f515843e7473008d3fb19c8fd11d9cacd9",
+      "expected_reason": "Three disjoint/delete cases accept, two overlap cases conflict, one covering chain and owner accept, and partial or multi-chain authority refuses without Provider CAS.",
+      "observed_reason": "Separate Rust set/authority functions reproduce every pure merge and authority decision.",
+      "owner": "CB13",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB13-RESOLUTION-COUNTER-ORACLE",
+      "test_id": "cb2_bundle_resolution_and_counter_recomposition_preexisting_green",
+      "decision": "Nearest-manager resolution and unique-occurrence counter recomposition",
+      "scenario": "Owner or one covering delegate resolves; outside or multi-chain attempts preserve canonical bytes; fresh replay unions the shared prefix and both branches exactly once.",
+      "vector_ref": "CB2-BUNDLE-CONCURRENCY-FINAL-1",
+      "vector_slice": "resolution and counter_recomposition",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_concurrency_final -- cb2_bundle_resolution_and_counter_recomposition_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "fa4f74f515843e7473008d3fb19c8fd11d9cacd9",
+      "expected_reason": "Two resolution cases accept, two refuse, unresolved has no canonical branch, and seven unique occurrences yield 3 actions, 2 mutations, 7 consumptions and 2 direct children.",
+      "observed_reason": "Generic actor/chain checks and an operation-ref set union reproduce the independent outcomes without omission or double count.",
+      "owner": "CB13",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB13-FRESH-STORE-ORDER-ORACLE",
+      "test_id": "cb2_bundle_fresh_store_order_and_api_inventory_preliminary",
+      "decision": "Fresh-store keyless verification is independent of opaque object insertion order",
+      "scenario": "After producer destruction and capability removal, all six permutations of the complete local package yield the same cold digest without network or Provider CAS.",
+      "vector_ref": "CB2-BUNDLE-CONCURRENCY-FINAL-1",
+      "vector_slice": "fresh_store",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_concurrency_final -- cb2_bundle_fresh_store_order_and_api_inventory_preliminary --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "fa4f74f515843e7473008d3fb19c8fd11d9cacd9",
+      "expected_reason": "Every insertion order is an exact permutation and yields the same JCS/SHA-256 object-map digest with private capabilities absent.",
+      "observed_reason": "Generic JCS and set checks reproduce all six cases; the same passing test inventories the missing draft2 keyless merge/cold APIs and is not protocol GREEN.",
+      "owner": "CB13",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB13-DRAFT2-MERGE-RESOLUTION-API-GATE",
+      "test_id": null,
+      "decision": "Complete draft2 owner/grantee merge and fork resolution through Core verdicts and Bundle transaction",
+      "scenario": "Core decides disjointness, conflict and fully covering actor/chain; Bundle publishes deterministic changeset/evidence/Gamma/manifest or preserves every canonical byte on refusal.",
+      "vector_ref": "CB2-BUNDLE-CONCURRENCY-FINAL-1",
+      "vector_slice": "merge and resolution",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "All merge, authority and resolution cases execute with exact draft2 carriers, one local linearization, same append/cold verdict and no owner fallback or Provider CAS.",
+      "observed_reason": "At observation SHA fa4f74f, historical edition_merge/resolve_fork and draft1 manifest fields exist, but no draft2 K1-C merge package, pure Core semantic disjointness verdict or transactional keyless cold merge surface exists.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "fa4f74f515843e7473008d3fb19c8fd11d9cacd9",
+        "source_command": "rg -n 'edition_merge|resolve_fork|authorized_via|changeset_ref|evidence_ref|cold_merge' rust/crates/aithos-bundle/src",
+        "source_observed": "Historical merge/resolution exists; draft2 carrier assembly, pure Core full-change authority and atomic fresh-store merge replay do not.",
+        "inventory_test_id": "cb2_bundle_fresh_store_order_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_concurrency_final -- cb2_bundle_fresh_store_order_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB13",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB13-COUNTER-COLD-ORDER-API-GATE",
+      "test_id": null,
+      "decision": "Semantic counter recomposition and insertion-order-independent keyless cold verification",
+      "scenario": "Fresh-store replay unions branch occurrences once, rebuilds every counter and accepts the complete package in any opaque object insertion order after private capability removal.",
+      "vector_ref": "CB2-BUNDLE-CONCURRENCY-FINAL-1",
+      "vector_slice": "counter_recomposition and fresh_store",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "The exact action/mutation/consumption/direct-child totals and all six insertion orders cold-verify identically; missing, duplicate or substituted occurrences fail closed.",
+      "observed_reason": "At observation SHA fa4f74f, historical merge replay does not expose the complete D7/K1-C semantic recomposition and keyless package verifier required to prove these final-gate properties.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "fa4f74f515843e7473008d3fb19c8fd11d9cacd9",
+        "source_command": "rg -n 'recompose_semantic_counts|cold_merge_from_keyless_store|verify_insertion_order_independence|DelegatedCount' rust/crates/aithos-bundle/src rust/crates/aithos-core/src",
+        "source_observed": "No complete semantic branch-counter recomposition or insertion-order-independent keyless merge verifier exists.",
+        "inventory_test_id": "cb2_bundle_fresh_store_order_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_concurrency_final -- cb2_bundle_fresh_store_order_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB13",
       "status": "COMPILE-RED-PRELIMINAIRE"
     }
   ]

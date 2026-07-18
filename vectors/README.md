@@ -240,3 +240,14 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`ebaf4871a233f1f4631f1ec21c63a3cec68fd0829c6a9dddfe3d6d9aa4179f5d`);
   Rust consumer: `aithos-bundle/tests/cb2_bundle_structure_vault.rs`
   (`4d88c1d431286a137a8bc1e040c20067e5b78c523090ded71f49b430a7792dff`).
+- `CB2-BUNDLE-CONCURRENCY-FINAL-1`: pure-data CB13 oracle covering five
+  merge/conflict decisions, four single-actor authority cases, five fork
+  resolution outcomes, semantic action/mutation/total/direct-child
+  recomposition and six fresh-store insertion orders. It preserves eight
+  historical vector hashes and excludes network and Provider CAS. Generator:
+  `gen-cb2-bundle-concurrency-final.py`
+  (`0e892edeee1a17056ade6c7fa8c13cac01e9385ba6b9d6d59e5e0a645c044e30`);
+  vector: `cb2-bundle-concurrency-final.json`
+  (`6bf4dadde60b902ac114685c52abc1893f9eaa8b09dcc0bcd06876d31f6a83d1`);
+  Rust consumer: `aithos-bundle/tests/cb2_bundle_concurrency_final.rs`
+  (`2d863c0144b425e01bedf890679f6f8c1b551f61ea06d28ba0a7e88397ef7f1e`).
