@@ -2609,26 +2609,26 @@
     },
     {
       "id": "CB2-CB11-K1C-TYPED-CARRIER-API-GATE",
-      "test_id": null,
+      "test_id": "cb11_k1c_all_32_semantic_defects_are_typed_invalid_operation",
       "decision": "Typed changeset, evidence, authorship and presentation validation",
       "scenario": "Core validates exact carrier form, state consequences, last-writer attribution, signatures, evidence correlation, D7 and all 32 semantic defects through one pure verdict.",
       "vector_ref": "CB2-K1-C-DRAFT2-CARRIERS-1",
       "vector_slice": "positive.changeset, evidence, delegated_counts_fixture, gamma_query and InvalidOperation negative_cases",
-      "command": null,
-      "red_sha": null,
-      "green_sha": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb11_k1c_carriers -- --nocapture",
+      "red_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
+      "green_sha": "4e318b5fa9ca2f65c13ae0f3a54616fcfc58b9dd",
       "expected_reason": "The coherent carrier candidate validates and every one of the 32 form, omission, invention, order, signature, correlation, query, private-material, reference, path or file-pin defects returns Error::InvalidOperation(String).",
-      "observed_reason": "At observation SHA 2f1a645, Core has no typed K1-C carrier tables, last-writer replay validator or Error::InvalidOperation variant.",
+      "observed_reason": "CB11 GREEN at 4e318b5fa9ca2f65c13ae0f3a54616fcfc58b9dd: Core derives the five-row commitment-only changeset from parent/candidate Store bytes and last-writer causes, verifies one actor and one complete chain, validates the closed authorship/session/receipt/catalog/presentation evidence set, D7, publication/reference/path/pin links and accepts the coherent oracle candidate. All 32 frozen semantic mono-defects return Error::InvalidOperation without trusting a caller-asserted changeset; the independent vector hash remains 2e75e9af30ba0207bd01a6f347cac1a263f816a7ae0fb3d583f75beabef2badc.",
       "evidence": {
-        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "kind": "compile RED followed by typed vector-driven Core GREEN",
         "observation_sha": "2f1a645ce734a06fb43c03605f45cac4cd313e7b",
         "source_command": "rg -n 'Changeset|EvidenceSet|Authorship|GammaPresentation|InvalidOperation' rust/crates/aithos-core/src",
-        "source_observed": "No matching K1-C carrier type, validator or approved InvalidOperation variant exists.",
+        "source_observed": "The observation had no K1-C carrier module. The GREEN target exercises derive_changeset, verify_normal_edition_actor and verify_k1c_carriers over the complete positive and 32-case semantic inventory.",
         "inventory_test_id": "cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary",
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB11",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB12-K1C-BUNDLE-ASSEMBLY-COLD-GATE",
