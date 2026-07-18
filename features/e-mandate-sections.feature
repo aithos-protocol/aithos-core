@@ -10,28 +10,24 @@ Feature: Section-precise mandates — the id= selector
 
   Rule: id= grants exactly one section — certificate AND key
 
-    @wip
     Scenario: A section grant reads that section and nothing else
       Given a published bundle with circle sections "note1" and "note2" in folder "projets"
       When the owner grants the agent read on section "note1" by id
       Then the agent reads "note1" with its own keypair
       But "note2" stays out of the agent's reach
 
-    @wip
     Scenario: A self section opens by id without opening the zone
       Given self sections "consignes" and "marges"
       When the owner grants the agent read on self section "consignes" by id
       Then the agent reads "consignes" with its own keypair
       But "marges" stays out of the agent's reach
 
-    @wip
     Scenario: An id= grant carries the write verbs too
       Given a published bundle with circle section "brouillon" in folder "projets"
       When the owner grants the agent edit on section "brouillon" by id
       Then the agent rewrites "brouillon" with its own keypair
       But the agent cannot create a sibling section in "projets"
 
-    @wip
     Scenario: A self write is enforceable by id — the sealed structure stays sealed
       Given self sections "consignes" and "marges"
       When the owner grants the agent edit on self section "consignes" by id
@@ -49,7 +45,6 @@ Feature: Section-precise mandates — the id= selector
       When the agent delegates read on a section of "projets" by id
       Then the helper's chain is rejected
 
-    @wip
     Scenario: A whole-zone parent covers an id= child
       Given an agent granted read on circle with issue depth 1
       When the agent delegates read on circle section "note1" by id
@@ -128,15 +123,14 @@ Feature: Section-precise mandates — the id= selector
 
   Rule: A self creation is zone-wide or bound to a preallocated opaque SID
 
-    @wip
     Scenario Outline: Self create authority reveals no structure
       Given an agent granted "<authority>" in self
-      When the agent creates an opaque self section with "<candidate SID>"
+      When the agent creates an opaque self section with "<candidate_sid>"
       Then the create verdict is "<verdict>"
       And its proof reveals no name, path, title, tags, body or folder relation
 
       Examples:
-        | authority                    | candidate SID          | verdict |
+        | authority                    | candidate_sid          | verdict |
         | append.self                  | fresh opaque SID       | allowed |
         | write.self                   | fresh opaque SID       | allowed |
         | append.self#id=preallocated  | preallocated SID       | allowed |

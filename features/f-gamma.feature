@@ -198,7 +198,6 @@ Feature: The gamma log
         | owner entry signed by a different owner key      |
         | delegated entry signed without leaf possession   |
 
-    @wip
     Scenario: A log link and signature never substitute for semantic verification
       Given a Gamma chain whose hashes, order and signatures all verify
       But one delegated mutation is outside its mandate perimeter
@@ -208,7 +207,6 @@ Feature: The gamma log
 
   Rule: One typed operation occurrence has one cross-view commitment
 
-    @wip
     Scenario Outline: K1-B selects one closed operation-facts family
       Given a W1 projection for operation kind "<kind>"
       When its operation member is encoded
@@ -228,7 +226,6 @@ Feature: The gamma log
         | rotate      | key or protected-state rotation         |
         | publication | normal, merge or resolution publication |
 
-    @wip
     Scenario Outline: The K1-B operation wrapper is fail-closed
       Given a candidate W1 operation wrapper with "<defect>"
       When Core validates its closed form before commitment comparison
@@ -255,7 +252,6 @@ Feature: The gamma log
       And facts_ref.digest is lowercase SHA-256 of "aithos-core/v1/operation-facts", NUL and RFC8785-JCS of F
       And null, an extra member or a different selected family is refused
 
-    @wip
     Scenario Outline: K1.1-B state presence has one exact closed shape
       Given a logical operation state is "<state>"
       When its K1.1-B state fact is projected
@@ -268,7 +264,6 @@ Feature: The gamma log
         | absent  | state           | forbidden                                   |
         | present | state,state_ref | exact profile and lowercase SHA-256 digest |
 
-    @wip
     Scenario: K1.1-B commits the exact protected current object set
       Given one present logical state with affected canonical store objects
       When its state-fact document S is encoded
@@ -297,7 +292,6 @@ Feature: The gamma log
         | extra object member                     |
         | state digest mismatch                   |
 
-    @wip
     Scenario Outline: K1.2-R-B selects one exact closed read variant
       Given a read facts object in domain "<domain>"
       When Core validates its selected member table
@@ -310,7 +304,6 @@ Feature: The gamma log
         | gamma        | domain,source_head,request_digest               |
         | vault-config | domain,connector,record_key,source_edition      |
 
-    @wip
     Scenario: K1.2-R-B binds an exact source without a circular carrier digest
       Given one signed source manifest and one canonical read.gamma query string Q
       When their read facts are committed
@@ -320,7 +313,6 @@ Feature: The gamma log
       And Q uses canonical selector order dir,id,tag,kind,action,since,until
       And no signature, operation_ref or presentation carrier digest enters request_digest
 
-    @wip
     Scenario Outline: K1.2-R-B creates an occurrence only for opposable read evidence
       Given an authorized "<read>" with no signed read evidence
       When the local read completes
@@ -351,7 +343,6 @@ Feature: The gamma log
         | mismatched vault record-key commitment      |
         | clear display path or vault record name     |
 
-    @wip
     Scenario Outline: K1.2-M-B selects one exact closed mutation variant
       Given a mutation facts object in domain "<domain>" with verb "<verb>"
       When Core validates its selected member table
@@ -366,7 +357,6 @@ Feature: The gamma log
         | structure    | move          | domain,verb,zone,node_kind,sid,source,destination,before,after            |
         | vault-config | any registered | domain,verb,connector,record_key,before,after                             |
 
-    @wip
     Scenario Outline: K1.2-M-B fixes every mutation state transition
       Given a closed mutation facts object for "<family verb>"
       When Core validates its before and after states
@@ -382,7 +372,6 @@ Feature: The gamma log
         | structure rename or move       | present | present |
         | vault-config edit              | present | present |
 
-    @wip
     Scenario: K1.2-M-B structural coordinates are exact and non-null
       Given a structural mutation with canonical target SID and parent SID arrays
       When its source and destination applicability is checked
@@ -392,7 +381,6 @@ Feature: The gamma log
       And each array is root-to-leaf, duplicate-free and excludes the target SID
       And cross-zone, descendant destination and unknown node-kind candidates are refused
 
-    @wip
     Scenario: K1.2-M-B vault and self facts disclose no protected coordinate
       Given one vault-config mutation and one self mutation
       When their public W1 projections and protected facts are separated
@@ -420,7 +408,6 @@ Feature: The gamma log
         | mismatched vault record-key commitment      |
         | clear display path or vault record name     |
 
-    @wip
     Scenario Outline: K1.2-AI-B selects one exact closed pre-effect family
       Given a "<kind>" facts object
       When Core validates its selected member table
@@ -432,7 +419,6 @@ Feature: The gamma log
         | action    | connector,action,catalog_ref,args_hash,budget,purpose      |
         | inference | provider,model,request_digest,budget,purpose                |
 
-    @wip
     Scenario: K1.2-AI-B binds action arguments and one approved catalog reference
       Given exact connector action arguments and one approved catalog reference
       When the action facts are committed before effect
@@ -441,7 +427,6 @@ Feature: The gamma log
       And the exact action and catalog digest bind the derived class without duplicating it
       And neither a catalog signature nor owner approval is accepted as the other proof
 
-    @wip
     Scenario: K1.2-AI-B binds exact private inference request bytes without args_hash
       Given exact private provider request-body bytes fixed before an inference
       When the inference facts are committed
@@ -449,7 +434,6 @@ Feature: The gamma log
       And provider and model are independently bound as exact non-empty identifiers
       And transport credentials, request plaintext and args_hash are absent
 
-    @wip
     Scenario Outline: K1.2-AI-B makes budget and purpose applicability explicit
       Given effective mandates where "<fact>" is "<applicability>"
       When action or inference facts are projected
@@ -480,7 +464,6 @@ Feature: The gamma log
         | wrong purpose applicability variant          |
         | tokens or a usage receipt before effect      |
 
-    @wip
     Scenario Outline: K1.2-GRRP-B selects exact grant and revoke facts
       Given a "<kind>" operation targeting one complete signed mandate
       When Core validates its facts before commitment
@@ -492,7 +475,6 @@ Feature: The gamma log
         | grant  | mandate_id,certificate_digest          |
         | revoke | mandate_id,certificate_digest,reason   |
 
-    @wip
     Scenario Outline: K1.2-GRRP-B represents a revocation reason without optional wire
       Given the native revoke entry carries "<native reason>"
       When its closed reason fact is projected
@@ -504,7 +486,6 @@ Feature: The gamma log
         | absent        | state=absent               |
         | device_lost   | state=present,text exact   |
 
-    @wip
     Scenario Outline: K1.2-GRRP-B selects one standalone rotation domain
       Given a standalone rotation in "<domain>"
       When Core validates its closed target and state transition
@@ -518,7 +499,6 @@ Feature: The gamma log
         | vault       | domain,connector,mode,before,after                   |
         | identity    | domain,previous_did,next_did,transition_digest,before,after |
 
-    @wip
     Scenario Outline: A derived rotation never creates a second occurrence
       Given a rotation is a deterministic consequence of "<parent operation>"
       When the parent state and changeset are committed
@@ -531,7 +511,6 @@ Feature: The gamma log
         | structural move       |
         | vault mutation        |
 
-    @wip
     Scenario Outline: K1.2-GRRP-B selects one exact publication table
       Given a publication in mode "<mode>"
       When Core validates its facts
@@ -544,7 +523,6 @@ Feature: The gamma log
         | merge      | exactly two sorted distinct     | mode,height,predecessors,changeset_ref,contained_operations    |
         | resolution | exactly two sorted distinct     | mode,height,predecessors,winner,changeset_ref,contained_operations |
 
-    @wip
     Scenario: Publication facts are acyclic and derived
       Given a derived changeset with contained operation references in causal order
       When the publication operation is committed
@@ -570,7 +548,6 @@ Feature: The gamma log
         | omitted or duplicate contained operation     |
         | publication self-reference                   |
 
-    @wip
     Scenario: Append-time and public evidence identify the same operation occurrence
       Given one fresh typed operation occurrence
       When its append-time, Gamma, authorship and edition views are projected
@@ -578,20 +555,17 @@ Feature: The gamma log
       And changing any applicable authority fact changes that commitment
       And no private operation argument appears in public commitment material
 
-    @wip
     Scenario: Identical effects remain distinct occurrences
       Given two typed operation occurrences with identical effects and distinct occurrence anchors
       When their operation commitments are derived
       Then the commitments differ
 
-    @wip
     Scenario: Cross-view evidence does not create another logical occurrence
       Given the applicable Gamma, authorship and edition views of one typed operation occurrence
       When semantic replay correlates their operation commitments
       Then all evidence refers to exactly one logical occurrence
       And no additional occurrence is inferred from the number of evidence views
 
-    @wip
     Scenario: Historical evidence is never retrofitted with an operation commitment
       Given historical protocol evidence predating operation commitments
       When it is verified under its declared historical protocol version
@@ -609,7 +583,6 @@ Feature: The gamma log
 
   Rule: A session-bound occurrence proves both keys without gaining authority
 
-    @wip
     Scenario: SC1 has one closed certificate and digest preimage
       Given a session-bound leaf mandate and one short-lived ephemeral key
       When the leaf certifies that session under SC1
@@ -618,7 +591,6 @@ Feature: The gamma log
       And authority.session pins the complete signed certificate digest
       And the interval is non-empty, inside the leaf mandate and contains operation.at
 
-    @wip
     Scenario: The session proof signs the exact operation reference
       Given one valid SC1 certificate and canonical operation_ref
       When the leaf native signature and session proof are validated
@@ -743,7 +715,6 @@ Feature: The gamma log
 
   Rule: Append-time and cold-time share one replay front door
 
-    @wip
     Scenario Outline: The same candidate and prefix produce the same typed verdict
       Given identical public facts for "<case>"
       When the candidate is checked before append and after export to a fresh store
@@ -758,7 +729,6 @@ Feature: The gamma log
         | exhausted action counter              |
         | missing public obligation receipt     |
 
-    @wip
     Scenario: Active revocations are derived only from verified historical entries
       Given a hash-linked Gamma file containing a forged revocation entry
       When cold replay reconstructs active revocations

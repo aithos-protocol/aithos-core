@@ -151,14 +151,12 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
 
   Rule: Roots prove committed bytes but never authorize them
 
-    @wip
     Scenario: A valid root over an unauthorized mutation is still refused
       Given an edition whose Gamma roots and inclusion proofs recompute exactly
       But one proven mutation is outside its actor's SID perimeter
       When the fresh-store verifier performs semantic replay
       Then the edition is rejected despite the valid roots
 
-    @wip
     Scenario: Append-time and cold-time rebuild identical semantic counts
       Given one accepted mixed history of reads, actions, inferences, mutations, config mutations, grants, revocations, publications and merges
       When counters are computed before the next append and from a fresh-store replay

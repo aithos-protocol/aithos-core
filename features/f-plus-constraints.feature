@@ -336,7 +336,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
 
   Rule: Mandate constraint semantics are versioned without rewriting history
 
-    @wip
     Scenario Outline: max_children omission is interpreted only by a homogeneous version
       Given a "<parent version>" parent mandate with max_children 4
       When it mints a "<child version>" chain leaf with "<child constraint>"
@@ -349,7 +348,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
         | draft.1        | draft.2       | max_children 4   | rejected |
         | draft.2        | draft.1       | max_children 4   | rejected |
 
-    @wip
     Scenario: Migration reissues a homogeneous chain and preserves historical bytes
       Given a valid homogeneous draft.1 chain whose certificate bytes are recorded
       When its authorities migrate the authority to draft.2
@@ -410,7 +408,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
 
   Rule: Every constraint family declares its operation applicability
 
-    @wip
     Scenario Outline: The pure verdict follows the constraint applicability matrix
       Given a grantee mandate carrying "<constraint family>"
       When it attempts canonical operation "<operation>"
@@ -449,7 +446,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
       Then Gamma records the owner mutation
       But no mandate, constraint or delegated counter is consumed
 
-    @wip
     Scenario: Append and cold replay use the same applicability decisions
       Given a delegated consumption with all constraint facts injected
       When Core evaluates it before effect and from a fresh-store historical replay

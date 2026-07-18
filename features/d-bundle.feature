@@ -127,19 +127,18 @@ Feature: Bundle and editions
 
   Rule: Local capabilities and paths stay narrow
 
-    @wip
     Scenario Outline: A bundle operation uses only its narrow opaque cryptographic capability
       Given one Ethos-and-actor session backed by a purpose-bound opaque "<capability>" capability
-      When Bundle submits the typed "<protocol object>" that needs "<capability>"
-      Then "<observable result>"
-      And using that capability for "<mismatched object>" is refused
+      When Bundle submits the typed "<protocol_object>" that needs "<capability>"
+      Then "<observable_result>"
+      And using that capability for "<mismatched_object>" is refused
       And arbitrary bytes or a mismatched Ethos, actor, purpose, node, version or recipient are refused
       And a capability for another protocol artifact class cannot substitute
       And no universal sign, open or wrap capability is exposed
       And no seed or private key is accepted or returned by the bundle operation
 
       Examples:
-        | capability | protocol object                         | mismatched object                       | observable result                                |
+        | capability | protocol_object                         | mismatched_object                       | observable_result                                |
         | sign       | domain-tagged edition manifest          | Gamma entry                             | the signature verifies against the public key    |
         | sign       | domain-tagged Gamma entry               | edition manifest                        | the signature verifies against the public key    |
         | open       | node-and-version-bound sealed body      | body from a sibling node or version      | the expected plaintext is recovered only locally |

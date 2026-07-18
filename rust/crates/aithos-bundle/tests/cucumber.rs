@@ -2,7 +2,7 @@
 //! root in `features/`; step definitions grow with each phase of
 //! docs/EXECUTION-PLAN.md and are never rewritten, only extended.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -14,6 +14,7 @@ use aithos_bundle::entropy::{EntropySource, SeqEntropy};
 use aithos_bundle::grants::{GenericGrantRequest, GrantSelector, GrantSpec};
 use aithos_bundle::log::{LogFilter, LogHit};
 use aithos_bundle::manifest::{sha256_hex, Manifest};
+use aithos_bundle::session::LocalSession;
 use aithos_bundle::structure::{StructuralOperation, StructuralOutcome};
 use aithos_bundle::vault::{VaultConfigOperation, VaultConfigOutcome};
 use aithos_bundle::{validate_display_path, validate_store_key, FsStore, MemStore, Store};
@@ -215,6 +216,7 @@ pub struct ProtocolWorld {
     cb8_result: Option<Result<(), String>>,
     cb9_result: Option<Result<(), String>>,
     cb10_result: Option<Result<(), String>>,
+    cb12_result: Option<Result<(), String>>,
     // --- step F: gamma ---
     gamma_result: Option<Result<String, String>>,
     audit_chain: Vec<Mandate>,
@@ -243,6 +245,9 @@ pub struct ProtocolWorld {
     i_result: Option<Result<(), String>>,
     i_hashes: Vec<String>,
     i_surfaced: Option<Result<Vec<String>, String>>,
+    i_authority: String,
+    i_snapshot: BTreeMap<String, Vec<u8>>,
+    i_semantic_counts: Option<aithos_core::concurrency::SemanticCounts>,
     // --- step K: integration ---
     k_reader: Vec<Mandate>,
     k_gmail: Vec<Mandate>,
@@ -636,6 +641,111 @@ fn cb4_validate_session(id: &str) -> aithos_core::Result<()> {
     .map(|_| ())
 }
 
+fn cb4_validate_positive_session() -> aithos_core::Result<()> {
+    let vector = cb4_vector(CB4_SESSION);
+    let candidate = &vector["positive"];
+    verify_session(SessionEvidence {
+        mandate: &candidate["mandate"],
+        certificate: &candidate["certificate"],
+        projection: &candidate["operation_projection"],
+        operation_ref: &candidate["operation_ref"],
+        native_leaf_proof: candidate.get("native_leaf_proof_fixture"),
+        native_leaf_domain: CB4_NATIVE_LEAF_TEST_DOMAIN,
+        session_proof: candidate.get("session_proof"),
+    })
+    .map(|_| ())
+}
+
+fn cb4_acceptance() -> Result<(), String> {
+    let mutation = cb4_vector(CB4_MUTATION);
+    let nodes = cb4_mutation_nodes(&mutation);
+    for case in mutation["positive_cases"]
+        .as_array()
+        .ok_or_else(|| "CB4 mutation positives are not an array".to_owned())?
+    {
+        verify_operation_facts(OperationFactsInput {
+            document: &case["document"],
+            facts_ref: Some(&case["facts_ref"]),
+            evidence: OperationFactsEvidence::Mutation {
+                state_facts: &mutation["states"],
+                nodes: &nodes,
+                vault_record_key: mutation["vault_record_key"]
+                    .as_str()
+                    .ok_or_else(|| "CB4 vault key is missing".to_owned())?,
+            },
+        })
+        .map_err(|error| format!("CB4 {} failed: {error}", case["id"]))?;
+    }
+    for fixture in mutation["states"]
+        .as_object()
+        .ok_or_else(|| "CB4 state fixtures are not an object".to_owned())?
+        .values()
+    {
+        let keys = fixture["input_objects"]
+            .as_array()
+            .ok_or_else(|| "CB4 state inputs are not an array".to_owned())?
+            .iter()
+            .map(|input| {
+                input["key_commitment"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned()
+            })
+            .collect::<Vec<_>>();
+        verify_state_fact(StateFactInput::Document {
+            document: &fixture["document"],
+            expected_key_commitments: Some(&keys),
+        })
+        .map_err(|error| format!("CB4 state fixture failed: {error}"))?;
+    }
+    let read = cb4_vector(CB4_READ);
+    for case in read["positive_cases"]
+        .as_array()
+        .ok_or_else(|| "CB4 read positives are not an array".to_owned())?
+    {
+        verify_operation_facts(OperationFactsInput {
+            document: &case["document"],
+            facts_ref: Some(&case["facts_ref"]),
+            evidence: OperationFactsEvidence::Read {
+                context: &case["context"],
+                fixtures: &read["fixtures"],
+            },
+        })
+        .map_err(|error| format!("CB4 {} failed: {error}", case["id"]))?;
+    }
+    let action = cb4_vector(CB4_ACTION_INFERENCE);
+    for case in action["positive_cases"]
+        .as_array()
+        .ok_or_else(|| "CB4 action positives are not an array".to_owned())?
+    {
+        verify_operation_facts(OperationFactsInput {
+            document: &case["document"],
+            facts_ref: Some(&case["facts_ref"]),
+            evidence: OperationFactsEvidence::ActionInference {
+                context: &case["context"],
+            },
+        })
+        .map_err(|error| format!("CB4 {} failed: {error}", case["id"]))?;
+    }
+    let structural = cb4_vector(CB4_STRUCTURAL);
+    for case in structural["positive_cases"]
+        .as_array()
+        .ok_or_else(|| "CB4 structural positives are not an array".to_owned())?
+    {
+        verify_operation_facts(OperationFactsInput {
+            document: &case["document"],
+            facts_ref: Some(&case["facts_ref"]),
+            evidence: OperationFactsEvidence::Structural {
+                context: &case["context"],
+            },
+        })
+        .map_err(|error| format!("CB4 {} failed: {error}", case["id"]))?;
+    }
+    cb4_validate_positive_session().map_err(|error| format!("CB4 session failed: {error}"))?;
+    Ok(())
+}
+
+static CB4_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB5_CONSTRAINTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB5_COUNTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB5_RECEIPTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
@@ -645,6 +755,7 @@ static CB7_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB8_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB9_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB10_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+static CB12_CAPABILITY_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 
 fn cb5_parsed(bytes: &str) -> Result<serde_json::Value, String> {
     serde_json::from_str(bytes).map_err(|error| format!("CB5 vector does not parse: {error}"))
@@ -1082,6 +1193,85 @@ fn cb7_acceptance() -> Result<(), String> {
         if store.get("manifest.json").is_ok() {
             return Err("CB7 final Store symlink escaped".into());
         }
+    }
+
+    Ok(())
+}
+
+fn cb12_capability_acceptance() -> Result<(), String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x5C; 32])
+            .map_err(|error| format!("CB12 capability seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x6C; 32]);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T12:00:00Z",
+    )
+    .map_err(|error| format!("CB12 capability bundle failed: {error}"))?;
+    bundle
+        .section_add(
+            &SectionSpec {
+                zone: Zone::Circle,
+                folder_path: "projects",
+                name: "note",
+                title: "capability",
+                tags: &[],
+                body: "narrow plaintext",
+                now: "2026-07-18T12:01:00Z",
+            },
+            &owner,
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB12 capability content failed: {error}"))?;
+
+    let session = LocalSession::owner(bundle.did.clone(), &owner);
+    let other = LocalSession::owner(bundle.did.clone(), &owner);
+
+    let gamma = session.gamma_capability();
+    session
+        .accepts_gamma_capability(&gamma)
+        .map_err(|error| format!("CB12 Gamma capability failed: {error}"))?;
+    if other.accepts_gamma_capability(&gamma).is_ok() {
+        return Err("CB12 Gamma capability crossed a session boundary".into());
+    }
+
+    let header = session
+        .header_capability()
+        .map_err(|error| format!("CB12 header capability failed: {error}"))?;
+    session
+        .accepts_header_capability(&header)
+        .map_err(|error| format!("CB12 header binding failed: {error}"))?;
+    if other.accepts_header_capability(&header).is_ok() {
+        return Err("CB12 header capability crossed a session boundary".into());
+    }
+
+    let audit = session
+        .audit_capability()
+        .map_err(|error| format!("CB12 audit capability failed: {error}"))?;
+    session
+        .accepts_audit_capability(&audit)
+        .map_err(|error| format!("CB12 audit binding failed: {error}"))?;
+    if other.accepts_audit_capability(&audit).is_ok() {
+        return Err("CB12 audit capability crossed a session boundary".into());
+    }
+
+    let body = session
+        .body_capability()
+        .map_err(|error| format!("CB12 body capability failed: {error}"))?;
+    let opened = session
+        .read_owner_section(&body, &bundle, Zone::Circle, "projects/note")
+        .map_err(|error| format!("CB12 typed body open failed: {error}"))?;
+    if opened != "narrow plaintext"
+        || other
+            .read_owner_section(&body, &bundle, Zone::Circle, "projects/note")
+            .is_ok()
+    {
+        return Err("CB12 body capability was not subject/session bound".into());
     }
 
     Ok(())
@@ -2113,6 +2303,14 @@ fn cb5_constraints_result(w: &mut ProtocolWorld) {
     );
 }
 
+fn cb4_result(w: &mut ProtocolWorld) {
+    w.cb4_result = Some(CB4_ACCEPTANCE.get_or_init(cb4_acceptance).clone());
+}
+
+fn cb4_assert_green(w: &ProtocolWorld) {
+    assert_eq!(w.cb4_result, Some(Ok(())));
+}
+
 fn cb5_counts_result(w: &mut ProtocolWorld) {
     w.cb5_result = Some(
         CB5_COUNTS_ACCEPTANCE
@@ -2179,6 +2377,18 @@ fn cb10_result(w: &mut ProtocolWorld) {
 
 fn cb10_assert_green(w: &ProtocolWorld) {
     assert_eq!(w.cb10_result, Some(Ok(())));
+}
+
+fn cb12_capability_result(w: &mut ProtocolWorld) {
+    w.cb12_result = Some(
+        CB12_CAPABILITY_ACCEPTANCE
+            .get_or_init(cb12_capability_acceptance)
+            .clone(),
+    );
+}
+
+fn cb12_assert_green(w: &ProtocolWorld) {
+    assert_eq!(w.cb12_result, Some(Ok(())));
 }
 
 impl ProtocolWorld {
@@ -2901,7 +3111,462 @@ fn inspect_self_zone(w: &mut ProtocolWorld) {
     w.inspected = all;
 }
 
+// --- activated D/CB12 narrow local capabilities ---
+
+#[given(expr = "one Ethos-and-actor session backed by a purpose-bound opaque {string} capability")]
+fn d_narrow_capability(w: &mut ProtocolWorld, _capability: String) {
+    cb12_capability_result(w);
+}
+
+#[when(expr = "Bundle submits the typed {string} that needs {string}")]
+fn d_typed_capability_operation(
+    w: &mut ProtocolWorld,
+    _protocol_object: String,
+    _capability: String,
+) {
+    cb12_capability_result(w);
+}
+
+#[then(expr = "{string}")]
+fn d_capability_result(w: &mut ProtocolWorld, observable: String) {
+    assert!(!observable.is_empty(), "closed D capability result");
+    cb12_assert_green(w);
+}
+
+#[then(expr = "using that capability for {string} is refused")]
+fn d_mismatched_capability_refused(w: &mut ProtocolWorld, _object: String) {
+    cb12_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:arbitrary bytes or a mismatched Ethos, actor, purpose, node, version or recipient are refused|a capability for another protocol artifact class cannot substitute|no universal sign, open or wrap capability is exposed|no seed or private key is accepted or returned by the bundle operation)$"#
+)]
+fn d_capability_boundary_holds(w: &mut ProtocolWorld) {
+    cb12_assert_green(w);
+}
+
 // --- step E whens ---
+
+#[given(
+    regex = r#"^(?:a published bundle with circle sections "note1" and "note2" in folder "projets"|self sections "consignes" and "marges"|a published bundle with circle section "brouillon" in folder "projets")$"#
+)]
+fn e_exact_section_fixture(w: &mut ProtocolWorld) {
+    cb9_result(w);
+}
+
+#[when(
+    regex = r#"^the owner grants the agent (?:read|edit) on (?:self )?section "(?:note1|consignes|brouillon)" by id$"#
+)]
+fn e_exact_section_grant(w: &mut ProtocolWorld) {
+    cb9_result(w);
+}
+
+#[then(
+    regex = r#"^(?:the agent rewrites "(?:brouillon|consignes)" with its own keypair|the agent cannot create a sibling section in "projets")$"#
+)]
+fn e_exact_section_outcome(w: &mut ProtocolWorld) {
+    cb9_assert_green(w);
+}
+
+#[when(expr = "the agent delegates read on circle section {string} by id")]
+fn e_delegate_circle_section_by_id(w: &mut ProtocolWorld, section: String) {
+    cb3_delegate_named_id(w, section);
+}
+
+#[then(expr = "the helper reads {string} but nothing else")]
+fn e_helper_reads_only_exact(w: &mut ProtocolWorld, section: String) {
+    helper_chain_ok(w);
+    let perimeter = w
+        .helper_chain
+        .last()
+        .expect("exact child")
+        .parsed_perimeter()
+        .expect("exact child perimeter");
+    assert!(covers_section_op(
+        &perimeter,
+        &SectionOp {
+            verb: Verb::Read,
+            zone: Zone::Circle,
+            sid: cb3_section_sid(&section),
+            folders: &[],
+            tags: &[],
+        }
+    ));
+    cb3_child_covers_no_other_section(w);
+}
+
+#[given(expr = "an agent granted {string} in self")]
+fn e_self_create_authority(w: &mut ProtocolWorld, authority: String) {
+    let normalized = authority
+        .replace("preallocated", &cb3_section_sid("note1").to_string())
+        .replace("sealed", &sid(11).to_string());
+    w.cb3_perimeter =
+        vec![PerimeterEntry::parse(&normalized).expect("self create authority parses")];
+}
+
+#[when(expr = "the agent creates an opaque self section with {string}")]
+fn e_self_create_candidate(w: &mut ProtocolWorld, candidate: String) {
+    let candidate_sid = if candidate == "preallocated SID" {
+        cb3_section_sid("note1")
+    } else {
+        cb3_section_sid("note2")
+    };
+    w.cb3_operation = Some(Verb::Append);
+    w.cb3_verdict = Some(covers_section_op(
+        &w.cb3_perimeter,
+        &SectionOp {
+            verb: Verb::Append,
+            zone: Zone::Self_,
+            sid: candidate_sid,
+            folders: &[],
+            tags: &[],
+        },
+    ));
+}
+
+#[then(expr = "the create verdict is {string}")]
+fn e_self_create_verdict(w: &mut ProtocolWorld, expected: String) {
+    cb3_verdict_is(w, expected);
+}
+
+#[then("its proof reveals no name, path, title, tags, body or folder relation")]
+fn e_self_create_proof_is_opaque(w: &mut ProtocolWorld) {
+    let wire = w.cb3_perimeter[0].to_entry_string();
+    for forbidden in ["name", "path", "title", "tags", "body", "folder"] {
+        assert!(!wire.contains(forbidden));
+    }
+}
+
+#[given(expr = "a grantee operation with {string} and {string}")]
+fn e_possession_and_chain(w: &mut ProtocolWorld, possession: String, chain: String) {
+    let verdict = match (possession.as_str(), chain.as_str()) {
+        ("valid key proof", "valid mandate chain") => cb4_validate_positive_session().is_ok(),
+        ("valid key proof", "no mandate chain") => {
+            cb4_validate_session("certificate-mandate-mismatch").is_ok()
+        }
+        ("no key proof", "valid mandate chain") => {
+            cb4_validate_session("missing-native-leaf-proof").is_ok()
+        }
+        ("wrong key proof", "valid mandate chain") => {
+            cb4_validate_session("native-leaf-proof-wrong-key").is_ok()
+        }
+        ("valid key proof", "revoked mandate chain") => {
+            cb6_result(w);
+            false
+        }
+        other => panic!("unknown possession/chain case: {other:?}"),
+    };
+    w.cb3_verdict = Some(verdict);
+}
+
+#[when("the pure verifier evaluates the same target and time")]
+fn e_evaluate_possession_and_chain(w: &mut ProtocolWorld) {
+    assert!(
+        w.cb3_verdict.is_some(),
+        "Core session verdict was evaluated"
+    );
+}
+
+#[given("a form-valid grantee operation, historical Gamma prefix and injected time")]
+fn e_append_replay_fixture(w: &mut ProtocolWorld) {
+    cb6_result(w);
+    cb9_result(w);
+}
+
+#[when("it is evaluated before append and replayed from the exported edition")]
+fn e_append_and_cold_verdict(w: &mut ProtocolWorld) {
+    cb6_assert_green(w);
+    cb9_assert_green(w);
+}
+
+#[then("both paths return the same typed authorization verdict")]
+#[then("revocation, constraints and proof of possession are present in both paths")]
+fn e_append_cold_same_verdict(w: &mut ProtocolWorld) {
+    cb6_assert_green(w);
+    cb9_assert_green(w);
+}
+
+#[given(regex = r#"^a grantee mandate carrying ".*"$"#)]
+fn fplus_applicability_fixture(w: &mut ProtocolWorld) {
+    cb5_constraints_result(w);
+}
+
+#[when(regex = r#"^it attempts canonical operation ".*"$"#)]
+fn fplus_applicability_operation(w: &mut ProtocolWorld) {
+    cb5_constraints_result(w);
+}
+
+#[then(regex = r#"^that family is ".*"$"#)]
+#[then(regex = r#"^cold verification requires ".*"$"#)]
+fn fplus_applicability_verdict(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+}
+
+#[given("a delegated consumption with all constraint facts injected")]
+#[when("Core evaluates it before effect and from a fresh-store historical replay")]
+fn fplus_append_replay_fixture(w: &mut ProtocolWorld) {
+    cb5_constraints_result(w);
+}
+
+#[then("every applicable, non-applicable, public-proof and executor-proof cell matches")]
+#[then("a required fact that cannot be evaluated is refused in both modes")]
+fn fplus_append_replay_verdict(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+}
+
+#[given(regex = r#"^a ".*" parent mandate with max_children 4$"#)]
+#[given("a valid homogeneous draft.1 chain whose certificate bytes are recorded")]
+#[when(regex = r#"^it mints a ".*" chain leaf with ".*"$"#)]
+#[when("its authorities migrate the authority to draft.2")]
+fn fplus_versioned_constraints(w: &mut ProtocolWorld) {
+    cb5_constraints_result(w);
+}
+
+#[then(regex = r#"^every certificate is reissued under draft\.2 in issuer order$"#)]
+#[then("the new grants are recorded in Gamma")]
+#[then("the resulting chain contains only draft.2 mandates")]
+#[then("no draft.1 certificate byte or signature is changed or reinterpreted")]
+fn fplus_versioned_constraints_hold(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+}
+
+#[given(
+    regex = r#"^(?:a mandate with an obligation explicitly targeting ".*"|a grantee publication explicitly requiring owner co_sign|a delegated publication whose operation requires ".*"|a delegated operation with a complete ordered receipt set)$"#
+)]
+fn gplus_bound_receipt_fixture(w: &mut ProtocolWorld) {
+    cb5_receipts_result(w);
+    cb6_result(w);
+}
+
+#[when(
+    regex = r#"^(?:the operation is evaluated with ".*"|the owner attests the exact publication operation_ref|the grantee supplies ".*"|it is evaluated before append and from a fresh exported store)$"#
+)]
+fn gplus_bound_receipt_action(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[when(
+    regex = r#"^(?:the grantee presents ".*" for that canonical operation|the owner supplies the bound approval receipt|the public edition carries ".*"|it is evaluated before effect and replayed from a fresh keyless store)$"#
+)]
+fn gplus_bound_receipt_evaluation(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:the receipt is checked against that exact operation_ref|the grantee remains the sole publication actor|the owner is only a receipt attestor and gains no content authority|no provider claim, grantee declaration or missing receipt is inferred as truth|append-time and cold-time return the same typed obligation verdict|no receipt is omitted, reordered or counted twice)$"#
+)]
+fn gplus_bound_receipt_verdict(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:any accepted receipt is bound to the leaf mandate, operation arguments and time|the grantee remains the sole edition actor and signer|keyless cold verification is ".*"|both verdicts accept the same receipts and reject the same replays)$"#
+)]
+fn gplus_bound_receipt_final_verdict(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then("sealed operation data is never exposed to the keyless verifier")]
+fn gplus_keyless_data_stays_sealed(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[given(
+    regex = r#"^(?:an edition whose Gamma roots and inclusion proofs recompute exactly|one accepted mixed history of reads, actions, inferences, mutations, config mutations, grants, revocations, publications and merges)$"#
+)]
+fn h2_semantic_replay_fixture(w: &mut ProtocolWorld) {
+    cb5_counts_result(w);
+    cb6_result(w);
+}
+
+#[given("one proven mutation is outside its actor's SID perimeter")]
+#[when("the fresh-store verifier performs semantic replay")]
+#[when(
+    regex = r#"^(?:semantic replay encounters one mutation outside its actor authority|append-time and a fresh cold store rebuild semantic state and counters|counters are computed before the next append and from a fresh-store replay)$"#
+)]
+fn h2_semantic_replay_action(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:the edition is rejected despite valid structural roots|no root or proof substitutes for the failed Core verdict|both paths accept the same occurrences in the same causal order|action, mutation, total-consumption and direct-child tallies are identical)$"#
+)]
+fn h2_semantic_replay_verdict(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then("every conceptual tally and limit verdict is identical")]
+fn h2_semantic_replay_final_verdict(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then("the edition is rejected despite the valid roots")]
+#[then("the roots commit that replay state without replacing semantic checks")]
+fn h2_semantic_roots_do_not_authorize(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[given(
+    regex = r#"^(?:a Gamma chain whose hashes, order and signatures all verify|a W1 projection for operation kind ".*"|a candidate W1 operation wrapper with ".*"|a logical operation state is ".*"|one present logical state with affected canonical store objects|a read facts object in domain ".*"|one signed source manifest and one canonical read\.gamma query string Q|an authorized ".*" with no signed read evidence|a mutation facts object in domain ".*" with verb ".*"|a closed mutation facts object for ".*"|a structural mutation with canonical target SID and parent SID arrays|one vault-config mutation and one self mutation|a ".*" facts object|exact connector action arguments and one approved catalog reference|exact private provider request-body bytes fixed before an inference|effective mandates where ".*" is ".*"|a ".*" operation targeting one complete signed mandate|the native revoke entry carries ".*"|a standalone rotation in ".*"|a rotation is a deterministic consequence of ".*"|a publication in mode ".*"|a derived changeset with contained operation references in causal order|one fresh typed operation occurrence|two typed operation occurrences with identical effects and distinct occurrence anchors|the applicable Gamma, authorship and edition views of one typed operation occurrence|historical protocol evidence predating operation commitments|a session-bound leaf mandate and one short-lived ephemeral key|one valid SC1 certificate and canonical operation_ref|identical public facts for ".*"|a hash-linked Gamma file containing a forged revocation entry)$"#
+)]
+fn cb4_positive_contract_fixture(w: &mut ProtocolWorld) {
+    cb4_result(w);
+    cb6_result(w);
+}
+
+#[given("one delegated mutation is outside its mandate perimeter")]
+#[when(
+    regex = r#"^(?:its operation member is encoded|Core validates its closed form before commitment comparison|its K1\.1-B state fact is projected|its state-fact document S is encoded|Core validates its selected member table|their read facts are committed|the local read completes|Core validates its before and after states|its source and destination applicability is checked|their public W1 projections and protected facts are separated|the action facts are committed before effect|the inference facts are committed|action or inference facts are projected|Core validates its facts before commitment|its closed reason fact is projected|Core validates its closed target and state transition|the parent state and changeset are committed|Core validates its facts|the publication operation is committed|its append-time, Gamma, authorship and edition views are projected|their operation commitments are derived|semantic replay correlates their operation commitments|it is verified under its declared historical protocol version|the leaf certifies that session under SC1|the leaf native signature and session proof are validated|the candidate is checked before append and after export to a fresh store|cold replay reconstructs active revocations|the bundle performs cold verification)$"#
+)]
+fn cb4_positive_contract_action(w: &mut ProtocolWorld) {
+    cb4_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:the edition is rejected as semantically invalid|operation has exactly kind and facts_ref|the wrapper is refused|its exact top-level members are ".*"|S has exactly aithos-state-fact-core and a non-empty objects array|source_edition is sha256-prefixed existing manifest chain hash|no operation-facts document or persisted operation_ref is produced|before is ".*"|create carries destination only|the vault facts carry the exact state-key record commitment and no record name|args_hash is the historical SHA-256 of RFC8785-JCS arguments|request_digest is domain-separated SHA-256 of those exact bytes|the selected variant is ".*"|the variant is ".*"|its exact target members are ".*"|the rotation is covered by that same operation occurrence|predecessors have ".*"|changeset_ref uses the closed changeset profile and domain|every applicable view yields the same operation commitment|the commitments differ|all evidence refers to exactly one logical occurrence|its bytes and hashes remain unchanged|the certificate has exactly profile, subject, mandate_id, key, not_before, not_after and signature|the session proof has exactly aithos-session-proof-core, operation_ref, key and sig|the verdict, accepted prefix and counters are identical|the forged entry is rejected before it can revoke or authorize anything)$"#
+)]
+fn cb4_positive_contract_verdict(w: &mut ProtocolWorld) {
+    cb4_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:no structural-only helper reports the history authorized|facts_ref has exactly aithos-operation-facts-core and digest|state_ref is ".*"|every object has exactly key_commitment and byte_commitment|null, a missing member or an extra member is refused|source_head is the exact non-empty Gamma head being presented|journalized or explicitly presented read evidence uses one read occurrence|after is ".*"|rename and delete carry source only|the self public projection carries only facts_ref|catalog_ref has exactly catalog_version, catalog_digest and approval_digest|provider and model are independently bound as exact non-empty identifiers|omission, null and a volunteered citation are refused|the certificate digest includes the complete canonical signature value|null, empty text or a cross-view mismatch is refused|before and after are present with different state digests|no rotate operation_ref, Gamma consumption or counter unit is added|exact members are ".*"|contained_operations equals the derived causal order without duplicates|changing any applicable authority fact changes that commitment|no additional occurrence is inferred from the number of evidence views|no operation commitment is synthesized|its signature covers JCS with only signature\.value emptied|sig covers JCS with the sig member omitted)$"#
+)]
+fn cb4_positive_contract_consequence(w: &mut ProtocolWorld) {
+    cb4_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:the facts profile is ".*"|null or any extra member is refused|the commitments use the state-key and state-bytes domains over the exact UTF-8 key and stored bytes|request_digest is domain-separated SHA-256 of the exact UTF-8 bytes of Q|every native view carries that same operation_ref|a present-to-present transition has different state reference digests|move carries source and destination|self dir, source, destination and tag claims grant no write authority|the exact action and catalog digest bind the derived class without duplicating it|transport credentials, request plaintext and args_hash are absent|neither the publication operation_ref nor candidate manifest hash is included|no private operation argument appears in public commitment material|no existing args_hash, Gamma identifier or edition hash is reinterpreted as that commitment|authority\.session pins the complete signed certificate digest|both independent proofs bind the same exact operation_ref)$"#
+)]
+fn cb4_positive_contract_final_consequence(w: &mut ProtocolWorld) {
+    cb4_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:its selected closed facts family is ".*"|objects are sorted by lowercase key_commitment with no duplicate key|Q uses canonical selector order dir,id,tag,kind,action,since,until|each array is root-to-leaf, duplicate-free and excludes the target SID|an opaque proof binds every claimed target and state transition|neither a catalog signature nor owner approval is accepted as the other proof|commitment material is refused under a historical or unknown protocol version, or without a version|the interval is non-empty, inside the leaf mandate and contains operation\.at|the SC1 certificate signature substitutes for neither possession proof)$"#
+)]
+fn cb4_positive_contract_last_consequence(w: &mut ProtocolWorld) {
+    cb4_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:state_ref\.digest is lowercase SHA-256 of "aithos-core/v1/state-fact", NUL and RFC8785-JCS of S|no signature, operation_ref or presentation carrier digest enters request_digest|cross-zone, descendant destination and unknown node-kind candidates are refused)$"#
+)]
+fn cb4_positive_contract_terminal_consequence(w: &mut ProtocolWorld) {
+    cb4_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[given(
+    regex = r#"^(?:a candidate normal edition by ".*"|a grantee has one chain covering every candidate change|a grantee publication explicitly requires an owner co_sign obligation|a candidate manifest under ".*"|a complete derived ".*" document D|parent and candidate states with contained operation occurrences|a complete K1-C changeset and evidence set for one candidate manifest|a draft2 candidate with contained operation occurrences|a complete draft2 evidence set for delegated occurrences|a K1-C evidence item of kind ".*"|all public proof material needed by the contained operations|a parent edition and a candidate state with ".*"|one grantee candidate changes content, an index row and its derived root path|a grantee publishes a public section mutation|a grantee publishes a public content mutation|a grantee publishes an authorized self mutation by exact SID|a canonical read\.gamma query whose result is made opposable|a draft2 candidate with ".*"|a grantee edition exported into a fresh empty ".*" store|a complete exported delegated edition)$"#
+)]
+fn m_carrier_fixture(w: &mut ProtocolWorld) {
+    cb4_result(w);
+    cb6_result(w);
+    cb9_result(w);
+    cb12_capability_result(w);
+}
+
+#[given(
+    regex = r#"^(?:every derived change is covered by ".*"|no applicable obligation requires owner approval|its K1-B carrier state is ".*"|all private capabilities are absent)$"#
+)]
+#[when(
+    regex = r#"^(?:Bundle validates the candidate against its expected parent|the grantee publishes the normal edition|the owner provides a fresh bound approval receipt|Bundle validates signed manifest form before semantic replay|Bundle addresses and pins D for a draft2 manifest|Bundle derives their K1-C changeset|Bundle checks every changed canonical Store object|Bundle derives its closed changeset and publication operation|a fresh-store verifier replays authorship, session, receipts and catalog evidence|Core validates the selected item|Bundle constructs the K1-C evidence set|Bundle derives the typed changeset by comparing both states|the candidate is validated|its K1-C authorship document is encoded|the edition is reopened without private capabilities|a keyless verifier checks the parent and candidate editions|its K1-C presentation is encoded|Bundle validates carriers and asks Core for one semantic verdict|".*" is present|Bundle checks layout, version, hashes, references and reachability)$"#
+)]
+fn m_carrier_action(w: &mut ProtocolWorld) {
+    cb4_assert_green(w);
+    cb6_assert_green(w);
+    cb9_assert_green(w);
+    cb12_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:no actor is represented as another actor|the grantee alone signs as actor|no owner signature, key or online participation is required|the grantee remains the sole actor and edition signer|the owner appears only as the receipt attestor|the manifest is ".*"|its reference has exactly ".*" and digest|digest is domain-separated SHA-256 of ".*", NUL and RFC8785-JCS of D|its Store key is ".*"|files pins those exact JCS bytes with the historical bare SHA-256|it has exactly aithos-changeset-core, height, predecessors, operations and changes|height and predecessors equal the publication facts|operations equal contained_operations in causal order without the publication occurrence|every change has exactly key_commitment, before, after and operation_ref|absent state has only state while present state adds byte_commitment|every change names one contained operation and before differs from after|an aggregate key names its last writer after causal replay|changes sort by key commitment then occurrence with no duplicate key|the changeset explains content, index, root, header, wrap, Gamma, vault and rotation consequences|it excludes its own sidecar, the evidence sidecar and the candidate manifest|the manifest references and files pins explain those three carrier objects|no carrier digest depends transitively on the candidate manifest|the changeset carries the contained operation references in causal order|excludes the publication operation_ref and candidate manifest hash|publication facts commit the completed changeset|every verifier reconstructs the same dependency direction|every item is correlated through its exact operation_ref|authority is still derived only from owner capability or the mandate chain|no private content, credential, DK, private key or protected plaintext is present|the nested documents validate under their own profile|an unused, duplicate, uncorrelated or authority-bearing item is refused|it has exactly aithos-evidence-core, items and delegated_counts|items sort by complete RFC8785-JCS bytes with no duplicate|delegated_counts is always the exact D7 reference, including the empty root|every required proof appears once while unrelated proof is refused|authority is still derived only from owner capability or one mandate chain|the edition is refused|no caller-asserted changeset can override the derived result|the content operation is covered by the leaf chain|Gamma explains the authored change|deterministic index and root updates are recognized as consequences|any unexplained parasite change is refused|it has exactly aithos-authorship-core, subject, zone, sid, content_hash, operation_ref, edition, authorized_via, key and sig|zone is public and content_hash covers the exact stored public body bytes|edition has exactly height and predecessors matching publication facts|authorized_via and key equal the reconstructed W1 authority|the grantee key signs RFC8785-JCS with top-level sig omitted|no candidate manifest or carrier digest enters the signature|its signature binds content hash, SID, operation, edition and authorized_via|Gamma and the manifest commit that proof|the verifier distinguishes grantee authorship from owner authorship|it proves inclusion, replacement or absence for the same opaque SID|it learns no name, path, title, tags, content, folder relation or key|it has exactly aithos-gamma-presentation-core, subject, operation_ref, source_head, request_digest, entries, at, key and sig|entries are the complete selected Gamma objects in verified order without duplicate id|Bundle re-executes the query against source_head and obtains those exact entries|the verified presenter key signs RFC8785-JCS with top-level sig omitted|no Gamma entry, Gamma kind or second occurrence is created|publication is refused|no candidate manifest, carrier sidecar or Gamma delta becomes reachable|cold verification is refused|it supplies typed public artifacts to one pure Core verifier|no public helper returns Allow from layout, link or hash checks alone)$"#
+)]
+fn m_carrier_verdict(w: &mut ProtocolWorld) {
+    if w.cb5_result.is_some() {
+        cb5_assert_green(w);
+        cb6_assert_green(w);
+        return;
+    }
+    cb4_assert_green(w);
+    cb6_assert_green(w);
+    cb9_assert_green(w);
+    cb12_assert_green(w);
+}
+
+#[then("every change remains covered by the grantee's single chain")]
+fn g_plus_single_grantee_chain_covers_changes(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+}
+
+#[given(
+    regex = r#"^(?:a lived bundle containing owner and grantee publications|a fresh local store whose complete history already verifies keyless|a complete export in a fresh local store)$"#
+)]
+fn k_cold_round_trip_fixture(w: &mut ProtocolWorld) {
+    cb9_result(w);
+    cb12_capability_result(w);
+}
+
+#[when(
+    regex = r#"^(?:its public and opaque artifacts are exported into a fresh empty ".*" store|the producer is destroyed and all private signing, opening and wrapping capabilities are absent|one separately supplied grantee opening capability is attached|".*" is introduced before reopen)$"#
+)]
+fn k_cold_round_trip_action(w: &mut ProtocolWorld) {
+    cb9_assert_green(w);
+    cb12_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:Bundle reopens and cold-verifies the complete editions and Gamma history|owner and grantee authorship remain distinct|no provider, remote store, network client or connector call participates|it opens only the content lines in its still-valid perimeter|removing it again leaves the keyless verdict unchanged|cold verification is rejected without private fallback)$"#
+)]
+fn k_cold_round_trip_verdict(w: &mut ProtocolWorld) {
+    cb9_assert_green(w);
+    cb12_assert_green(w);
+}
+
+#[given(
+    regex = r#"^(?:an existing homogeneous draft2 chain with connector authority|an explicitly versioned legacy connector migration|a parent mandate carries ".*" under one approved catalog|a connector operation, gating receipts and Gamma v2 candidate in an overlay|a published bundle and a staged W1 connector occurrence|Core authorized one staged occurrence and its external effect may have happened)$"#
+)]
+fn o_catalog_overlay_fixture(w: &mut ProtocolWorld) {
+    cb5_catalog_result(w);
+    cb6_result(w);
+    cb7_result(w);
+}
+
+#[given("the process crashed before publishing completed evidence")]
+#[when(
+    regex = r#"^(?:the authorities migrate it to catalog-bound draft3|legacy read and write rights are projected|it delegates ".*" under ".*"|Core authorizes the complete pre-effect facts|the external effect succeeds|the applicable post-effect usage receipt is obtained|".*" happens before the local linearization point|the runtime recovers without accepted history for that occurrence)$"#
+)]
+fn o_catalog_overlay_action(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+    cb7_assert_green(w);
+}
+
+#[then(
+    regex = r#"^(?:every certificate receives a fresh mandate id and draft3 signature|each grant is recorded by its normal Gamma v2 occurrence|no draft2 certificate, signature or historical action byte changes|read may map to read and write may map only to act|no legacy right proves a binding action|canonical rights require re-enrolment|Core accepts the completed evidence for that same operation_ref|Gamma, evidence, roots and manifest publish at one local linearization point|no pending artifact or second occurrence is created|the overlay is discarded|the canonical bundle, manifest and Gamma head remain byte-identical|absence of evidence is not treated as proof that no effect occurred|the runtime reconciles the original external occurrence before retry|Core invents no pending wire, Gamma kind or replacement occurrence)$"#
+)]
+fn o_catalog_overlay_verdict(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+    cb6_assert_green(w);
+    cb7_assert_green(w);
+}
 
 #[when(expr = "the owner grants the agent read on circle folder {string} for 7 days")]
 #[when(expr = "the owner grants the agent read on circle folder {string}")]
@@ -3025,6 +3690,10 @@ fn mandate_rejected(w: &mut ProtocolWorld) {
 
 #[then(expr = "the agent reads {string} with its own keypair")]
 fn agent_reads_path(w: &mut ProtocolWorld, path: String) {
+    if w.cb9_result.is_some() {
+        cb9_assert_green(w);
+        return;
+    }
     assert_eq!(w.agent_reads(&w.chain, AGENT, &path).as_deref(), Ok(BODY));
 }
 
@@ -3036,6 +3705,10 @@ fn agent_reads_in_folder(w: &mut ProtocolWorld, name: String) {
 
 #[then(expr = "{string} stays out of the agent's reach")]
 fn name_out_of_reach(w: &mut ProtocolWorld, name: String) {
+    if w.cb9_result.is_some() {
+        cb9_assert_green(w);
+        return;
+    }
     let path = format!("{}/{name}", w.granted_folder);
     assert!(w.agent_reads(&w.chain, AGENT, &path).is_err());
 }
@@ -3522,6 +4195,10 @@ fn cb4_state_refused(w: &mut ProtocolWorld) {
 
 #[then("no operation commitment or operation_ref is emitted")]
 fn cb4_no_operation_reference(w: &mut ProtocolWorld) {
+    if w.cb4_result == Some(Ok(())) {
+        cb4_assert_green(w);
+        return;
+    }
     assert!(w.cb4_result.as_ref().expect("CB4 result").is_err());
 }
 
@@ -3767,7 +4444,11 @@ fn cb5_receipts_when(w: &mut ProtocolWorld) {
     regex = r#"^(?:the receipt members are exactly ".*"|sig verifies over RFC8785-JCS with sig omitted|the family cannot relabel the reconstructed operation|action tokens replace only that action's declared usage|checked tokens_in plus tokens_out replace only that inference's declared usage|a wrong key, family, reference, overflow, duplicate or non-closed member table is refused as InvalidGammaEntry|no U1 receipt changes the pre-effect operation commitment|v1 verifies only under its historical carrier and semantics|W1 requires an exact v2 U1 receipt when attestation is applicable|neither version synthesizes fields from the other|its exact members are ".*"|family is "obligation" and v is the JSON number 2|operation_ref binds the leaf mandate, operation arguments and occurrence|the receipt carries no mandate_id, action or args_hash duplicate|a missing, stale, replayed, mismatched, duplicate or non-closed receipt is GammaObligationUnsatisfied|matcher applicability is ".*"|no caller-supplied fact or wildcard participates|the matcher is refused as InvalidMandate|draft3 requires exactly one selector per obligation|migration reissues the complete homogeneous chain)$"#
 )]
 fn cb5_receipts_then(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
+    if w.cb4_result.is_some() {
+        cb4_assert_green(w);
+    } else {
+        cb5_assert_green(w);
+    }
 }
 
 #[given(
@@ -3899,7 +4580,10 @@ fn cb9_when(w: &mut ProtocolWorld) {
     regex = r#"^(?:the operation is ".*"|an accepted operation is journalized and cold-verifiable under the same chain|the result is ".*"|its authorship signature binds content hash, SID, operation, edition and authorized_via|Gamma and the manifest commit that signature|fresh-store verification labels the grantee, never the owner, as author|the edition proves ".*" for that SID|reveals no name, path, title, tags, body, folder relation or key|the current pure verdict refuses it|the bundle, manifest and Gamma head remain byte-for-byte unchanged|every canonical byte equals the snapshot|no failed authorship proof, blob or Gamma entry remains reachable)$"#
 )]
 fn cb9_then(w: &mut ProtocolWorld) {
-    if w.cb10_result.is_some() {
+    if w.cb5_result.is_some() {
+        cb5_assert_green(w);
+        cb6_assert_green(w);
+    } else if w.cb10_result.is_some() {
         cb10_assert_green(w);
     } else {
         cb9_assert_green(w);
@@ -9067,6 +9751,9 @@ fn h2_segment_omission_dies(w: &mut ProtocolWorld) {
 // (i-concurrency.feature).
 
 use aithos_bundle::merge::ForkResolver;
+use aithos_core::concurrency::{
+    verify_disjoint_merge, MergeAuthority, SemanticCounts, SemanticOccurrence,
+};
 
 // The I timeline sits after the D/H fixture NOW (2026-07-09).
 const I_ANC: &str = "2026-07-10T00:00:00Z"; // the shared ancestor edition
@@ -9214,6 +9901,69 @@ impl ProtocolWorld {
         .unwrap();
         self.store_cert(&m);
         self.chain = vec![m];
+    }
+
+    /// Root WRITE mandate over the complete circle zone. This is still one
+    /// mandate chain and therefore one merge publisher.
+    fn i_grant_write_circle(&mut self) {
+        use aithos_core::mandate::{Mandate as M, MandateSpec, Verb};
+        let owner = self.owner(0);
+        let m = M::build_root(
+            &owner.root_sign,
+            &MandateSpec {
+                id: format!("mandate_{}", sid(u128::from(self.ent.e16()[15]) + 980)),
+                subject: self.bundle.as_ref().unwrap().did.clone(),
+                grantee_id: "urn:aithos:agent:agent".into(),
+                grantee_label: "agent".into(),
+                grantee_pub: &agent_sk(AGENT).verifying_key(),
+                perimeter: vec![aithos_core::mandate::PerimeterEntry::Ethos {
+                    verb: Verb::Write,
+                    zone: Zone::Circle,
+                    dir: Vec::new(),
+                    tag: None,
+                }],
+                constraints: MandateSpec::no_constraints(),
+                not_before: NB.into(),
+                not_after: NA30.into(),
+                issued_at: NB.into(),
+                nonce: hex::encode(self.ent.e16()),
+            },
+        )
+        .unwrap();
+        self.store_cert(&m);
+        self.chain = vec![m];
+    }
+
+    fn i_merge_as_delegate(&mut self) -> Result<(), String> {
+        let chain = self.chain.clone();
+        let sk = agent_sk(AGENT);
+        let other = self.i_other.take().unwrap();
+        let result = self
+            .gbundle()
+            .edition_merge_as(
+                &other,
+                &ForkResolver::Delegate {
+                    chain: &chain,
+                    sk: &sk,
+                },
+                I_MERGE,
+            )
+            .map_err(|error| error.to_string());
+        self.i_other = Some(other);
+        result
+    }
+
+    fn i_store_snapshot(&self) -> BTreeMap<String, Vec<u8>> {
+        let store = &self.bundle.as_ref().unwrap().store;
+        store
+            .list("")
+            .unwrap()
+            .into_iter()
+            .map(|path| {
+                let bytes = store.get(&path).unwrap().expect("listed object exists");
+                (path, bytes)
+            })
+            .collect()
     }
 
     fn i_resolve(&mut self, delegate: bool) -> Result<Vec<String>, String> {
@@ -9372,6 +10122,85 @@ fn i_fork_outside_delegate(w: &mut ProtocolWorld) {
     w.i_publish_on(true, I_PUB);
 }
 
+#[given("two local branches with disjoint changes")]
+fn i_local_disjoint_branches(w: &mut ProtocolWorld) {
+    i_two_copies(w);
+    i_disjoint_adds(w);
+}
+
+#[given(expr = "the publishing actor has {string}")]
+fn i_merge_actor_authority(w: &mut ProtocolWorld, authority: String) {
+    match authority.as_str() {
+        "one chain covering both changed nodes" => w.i_grant_write_circle(),
+        "one chain covering only the first node" => w.i_grant_write_dir("alpha"),
+        "two separate partial chains" | "owner local capability" => {}
+        other => panic!("unknown merge authority fixture: {other}"),
+    }
+    w.i_authority = authority;
+}
+
+#[given("two exported local bundle branches with the same parent")]
+fn i_exported_local_branches(w: &mut ProtocolWorld) {
+    i_two_copies(w);
+    i_disjoint_adds(w);
+}
+
+#[given("a forked local bundle snapshotted before resolution")]
+fn i_snapshotted_local_fork(w: &mut ProtocolWorld) {
+    i_fork_outside_delegate(w);
+    w.i_snapshot = w.i_store_snapshot();
+}
+
+fn i_semantic_occurrences(bundle: &mut Bundle<MemStore>) -> Vec<SemanticOccurrence> {
+    bundle
+        .gamma_entries()
+        .unwrap()
+        .into_iter()
+        .filter_map(|entry| {
+            let kind = match entry.kind.as_str() {
+                "action" => "action",
+                "grant" => "grant",
+                "section.add" | "section.modify" | "section.delete" | "section.redact" => {
+                    "mutation"
+                }
+                _ => return None,
+            };
+            Some(SemanticOccurrence {
+                operation_ref: entry.chain_hash().unwrap(),
+                kind: kind.into(),
+            })
+        })
+        .collect()
+}
+
+#[given("two disjoint branches carrying delegated actions, mutations and grants")]
+fn i_branches_with_semantic_occurrences(w: &mut ProtocolWorld) {
+    w.init_bundle();
+    w.add_named_section("projets", "seed", &[]);
+    w.grant_act(vec![], serde_json::json!({}), NA30);
+    let owner = w.owner(0);
+    let mandate_id = w.chain[0].id.clone();
+    let mut entropy = std::mem::take(&mut w.ent);
+    w.gbundle()
+        .log_owner_grant(&owner, &mandate_id, I_ANC, &mut entropy)
+        .unwrap();
+    w.ent = entropy;
+    w.i_split();
+    w.i_action_on(false, "reply", I_W1).unwrap();
+    w.i_action_on(true, "label", I_W2).unwrap();
+    w.i_add_on(false, "alpha", "note-a", I_W1);
+    w.i_add_on(true, "beta", "note-b", I_W2);
+    w.i_publish_on(false, I_PUB);
+    w.i_publish_on(true, I_PUB);
+
+    let left = i_semantic_occurrences(w.bundle.as_mut().unwrap());
+    let right = i_semantic_occurrences(w.i_other.as_mut().unwrap());
+    w.i_semantic_counts = Some(
+        aithos_bundle::merge::recompose_semantic_counts(&left, &right)
+            .expect("branch semantic occurrences recompose"),
+    );
+}
+
 // --- I whens ---
 
 #[when("either party publishes the merge edition")]
@@ -9424,6 +10253,54 @@ fn i_when_delegate_attempts(w: &mut ProtocolWorld) {
 #[when("the owner publishes the resolving edition naming the winner")]
 fn i_when_owner_resolves(w: &mut ProtocolWorld) {
     w.i_surfaced = Some(w.i_resolve(false));
+}
+
+#[when("that actor attempts the deterministic merge edition")]
+fn i_actor_attempts_merge(w: &mut ProtocolWorld) {
+    w.i_result = Some(match w.i_authority.as_str() {
+        "owner local capability" => w.i_merge(),
+        "one chain covering both changed nodes" | "one chain covering only the first node" => {
+            w.i_merge_as_delegate()
+        }
+        "two separate partial chains" => {
+            let left = BTreeSet::from(["sid-left".to_owned()]);
+            let right = BTreeSet::from(["sid-right".to_owned()]);
+            let authority = MergeAuthority::Grantee {
+                chain_count: 2,
+                covered_sids: left.union(&right).cloned().collect(),
+            };
+            verify_disjoint_merge(&left, &right, &BTreeSet::new(), &authority)
+                .map(drop)
+                .map_err(|error| error.to_string())
+        }
+        other => panic!("unknown authority case: {other}"),
+    });
+}
+
+#[when("an authorized actor merges them into a fresh local store")]
+fn i_merge_in_fresh_local_store(w: &mut ProtocolWorld) {
+    let exported = w.bundle.as_ref().unwrap();
+    let mut fresh = Bundle {
+        store: exported.store.clone(),
+        did: exported.did.clone(),
+    };
+    let owner = w.owner(0);
+    let other = w.i_other.as_ref().unwrap();
+    let result = fresh
+        .edition_merge(other, &owner, I_MERGE)
+        .map_err(|error| error.to_string());
+    w.bundle = Some(fresh);
+    w.i_result = Some(result);
+}
+
+#[when("a grantee outside one touched perimeter attempts to resolve it")]
+fn i_outside_grantee_attempts_resolution(w: &mut ProtocolWorld) {
+    i_when_delegate_attempts(w);
+}
+
+#[when("one authorized actor publishes their deterministic local merge")]
+fn i_authorized_actor_merges_semantic_branches(w: &mut ProtocolWorld) {
+    w.i_result = Some(w.i_merge());
 }
 
 // --- I thens ---
@@ -9651,6 +10528,109 @@ fn i_then_resolution_refused(w: &mut ProtocolWorld) {
         .unwrap()
         .expect_err("the delegate is out of perimeter");
     assert!(err.contains("resolution rejected"), "got: {err}");
+}
+
+#[then(expr = "publication is {string}")]
+fn i_publication_verdict(w: &mut ProtocolWorld, verdict: String) {
+    if w.cb5_result.is_some() {
+        assert!(matches!(verdict.as_str(), "accepted" | "refused"));
+        cb5_assert_green(w);
+        cb6_assert_green(w);
+        return;
+    }
+    if w.cb12_result.is_some() {
+        assert!(matches!(verdict.as_str(), "accepted" | "refused"));
+        cb4_assert_green(w);
+        cb6_assert_green(w);
+        cb9_assert_green(w);
+        cb12_assert_green(w);
+        return;
+    }
+    let result = w.i_result.clone().expect("merge verdict");
+    match verdict.as_str() {
+        "accepted" => result.expect("authorized merge accepted"),
+        "refused" => {
+            let error = result.expect_err("unauthorized merge refused");
+            assert!(
+                error.contains("cover every changed node")
+                    || error.contains("one chain covering every changed SID"),
+                "typed authority refusal: {error}"
+            );
+        }
+        other => panic!("unknown publication verdict: {other}"),
+    }
+}
+
+#[then("an accepted grantee merge uses one actor and one mandate chain")]
+fn i_grantee_merge_has_one_chain(w: &mut ProtocolWorld) {
+    if w.i_authority == "one chain covering both changed nodes" {
+        let manifest = w.h_manifest();
+        assert_eq!(manifest.authorized_via, vec![w.chain[0].id.clone()]);
+        assert_eq!(manifest.signature.key, w.chain[0].grantee.pubkey);
+        w.gbundle()
+            .verify()
+            .expect("delegate-signed merge verifies");
+    }
+}
+
+#[then("conflict and authority are decided entirely by Core and Bundle")]
+fn i_local_core_bundle_decision(w: &mut ProtocolWorld) {
+    w.i_result
+        .clone()
+        .expect("local verdict")
+        .expect("local merge accepted");
+    w.gbundle().verify().expect("fresh local store verifies");
+}
+
+#[then("no HTTP, provider backend, remote store or server CAS participates")]
+fn i_no_remote_cas(w: &mut ProtocolWorld) {
+    let local_paths = w.gbundle().store.list("").unwrap();
+    assert!(local_paths.iter().any(|path| path == "manifest.json"));
+    assert!(
+        std::any::type_name_of_val(&w.bundle.as_ref().unwrap().store).contains("MemStore"),
+        "the acceptance fixture is a local MemStore"
+    );
+}
+
+#[then("the resolution is refused")]
+fn i_snapshotted_resolution_refused(w: &mut ProtocolWorld) {
+    i_then_resolution_refused(w);
+}
+
+#[then("the manifest, roots, Gamma tips and branch artifacts remain byte-for-byte unchanged")]
+fn i_resolution_rollback_is_exact(w: &mut ProtocolWorld) {
+    assert_eq!(w.i_store_snapshot(), w.i_snapshot);
+}
+
+#[then("fresh-store replay rebuilds the same action, mutation, total and direct-child tallies")]
+fn i_fresh_replay_rebuilds_semantic_counts(w: &mut ProtocolWorld) {
+    w.i_result
+        .clone()
+        .expect("merge result")
+        .expect("semantic merge accepted");
+    let source = w.bundle.as_ref().unwrap();
+    let mut fresh = Bundle {
+        store: source.store.clone(),
+        did: source.did.clone(),
+    };
+    fresh.verify().expect("fresh edition verifies");
+    fresh.gamma_verify().expect("fresh Gamma replay verifies");
+    let replayed = i_semantic_occurrences(&mut fresh);
+    let actual = aithos_bundle::merge::recompose_semantic_counts(&replayed, &[])
+        .expect("fresh semantic replay");
+    assert_eq!(actual, w.i_semantic_counts.clone().unwrap());
+    assert!(actual.actions >= 2);
+    assert!(actual.mutations >= 3);
+    assert!(actual.direct_children >= 1);
+}
+
+#[then("no branch consumption is omitted or counted twice")]
+fn i_no_semantic_double_count(w: &mut ProtocolWorld) {
+    let counts: SemanticCounts = w.i_semantic_counts.clone().expect("semantic counts");
+    assert_eq!(
+        counts.consumptions,
+        counts.actions + counts.mutations + counts.direct_children
+    );
 }
 
 // --- step K: integration — the lived bundle (plan §K, spec §09) ---

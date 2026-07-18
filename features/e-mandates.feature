@@ -132,7 +132,6 @@ Feature: Mandates and the offline verifier
 
   Rule: Grantee authority always joins possession and chain
 
-    @wip
     Scenario Outline: Neither a key nor a certificate chain authorizes alone
       Given a grantee operation with "<possession>" and "<chain>"
       When the pure verifier evaluates the same target and time
@@ -146,7 +145,6 @@ Feature: Mandates and the offline verifier
         | wrong key proof   | valid mandate chain    | refused |
         | valid key proof   | revoked mandate chain  | refused |
 
-    @wip
     Scenario: Append-time and cold-time consume one mandate verdict
       Given a form-valid grantee operation, historical Gamma prefix and injected time
       When it is evaluated before append and replayed from the exported edition

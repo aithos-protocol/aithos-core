@@ -96,7 +96,6 @@ Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pas
 
   Rule: Local merge publication still has one fully covering actor
 
-    @wip
     Scenario Outline: A merge author must cover every derived change
       Given two local branches with disjoint changes
       And the publishing actor has "<authority>"
@@ -111,7 +110,6 @@ Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pas
         | two separate partial chains             | refused  |
         | owner local capability                  | accepted |
 
-    @wip
     Scenario: A local merge never simulates provider CAS
       Given two exported local bundle branches with the same parent
       When an authorized actor merges them into a fresh local store
@@ -120,14 +118,12 @@ Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pas
 
   Rule: Refused forks and accepted merges preserve replay state
 
-    @wip
     Scenario: A refused resolution changes no local canonical byte
       Given a forked local bundle snapshotted before resolution
       When a grantee outside one touched perimeter attempts to resolve it
       Then the resolution is refused
       And the manifest, roots, Gamma tips and branch artifacts remain byte-for-byte unchanged
 
-    @wip
     Scenario: A fresh store recomposes all counters across an accepted merge
       Given two disjoint branches carrying delegated actions, mutations and grants
       When one authorized actor publishes their deterministic local merge

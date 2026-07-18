@@ -213,7 +213,6 @@ Feature: Obligations — the general gate (spec 04.12)
 
   Rule: An explicitly targeted obligation gates every delegated consumption class
 
-    @wip
     Scenario Outline: A delegated operation commits only with its bound receipt
       Given a mandate with an obligation explicitly targeting "<operation>"
       When the grantee presents "<receipt state>" for that canonical operation
@@ -229,7 +228,6 @@ Feature: Obligations — the general gate (spec 04.12)
         | normal publication    | stale owner co_sign receipt      | refused  |
         | connector action      | replayed sibling receipt         | refused  |
 
-    @wip
     Scenario: A co-signed delegated publication still has one grantee actor
       Given a grantee publication explicitly requiring owner co_sign
       When the owner supplies the bound approval receipt
@@ -239,7 +237,6 @@ Feature: Obligations — the general gate (spec 04.12)
 
   Rule: Executor facts need public evidence for keyless acceptance
 
-    @wip
     Scenario Outline: A required tier-X truth cannot be asserted by the grantee
       Given a delegated publication whose operation requires "<executor fact>"
       When the public edition carries "<public evidence>"
@@ -252,7 +249,6 @@ Feature: Obligations — the general gate (spec 04.12)
         | spend_cap           | no acceptable public attestation     | refused  |
         | disclose_agency     | approved bound attestation           | accepted |
 
-    @wip
     Scenario: Receipt evaluation is identical before append and after export
       Given a delegated operation with a complete ordered receipt set
       When it is evaluated before effect and replayed from a fresh keyless store

@@ -41,7 +41,6 @@ Feature: Connector classes and isolated vault capabilities
         | draft.3 | a different digest with the same catalog version  | refused  |
         | draft.3 | the right pin under a mixed-version chain         | refused  |
 
-    @wip
     Scenario: Draft3 catalog migration reissues the complete chain
       Given an existing homogeneous draft2 chain with connector authority
       When the authorities migrate it to catalog-bound draft3
@@ -104,7 +103,6 @@ Feature: Connector classes and isolated vault capabilities
         | another manifest with the same version |
         | an unapproved newer version            |
 
-    @wip
     Scenario: Legacy migration never grants binding authority
       Given an explicitly versioned legacy connector migration
       When legacy read and write rights are projected
@@ -112,7 +110,6 @@ Feature: Connector classes and isolated vault capabilities
       And no legacy right proves a binding action
       And canonical rights require re-enrolment
 
-    @wip
     Scenario Outline: Delegation and execution use the same pinned catalog class
       Given a parent mandate carries "<parent authority>" under one approved catalog
       When it delegates "<child authority>" under "<child catalog>"
@@ -128,7 +125,6 @@ Feature: Connector classes and isolated vault capabilities
 
   Rule: External usage completes the staged occurrence before local publication
 
-    @wip
     Scenario: One W1 occurrence moves from authorized overlay to accepted history
       Given a connector operation, gating receipts and Gamma v2 candidate in an overlay
       When Core authorizes the complete pre-effect facts
@@ -138,7 +134,6 @@ Feature: Connector classes and isolated vault capabilities
       And Gamma, evidence, roots and manifest publish at one local linearization point
       And no pending artifact or second occurrence is created
 
-    @wip
     Scenario Outline: Failure before local publication changes no canonical byte
       Given a published bundle and a staged W1 connector occurrence
       When "<failure>" happens before the local linearization point
@@ -151,7 +146,6 @@ Feature: Connector classes and isolated vault capabilities
         | the external effect reports failure |
         | required usage evidence is invalid  |
 
-    @wip
     Scenario: A crash after the external effect forbids blind retry
       Given Core authorized one staged occurrence and its external effect may have happened
       But the process crashed before publishing completed evidence

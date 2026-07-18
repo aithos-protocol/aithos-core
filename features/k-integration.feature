@@ -155,7 +155,6 @@ Feature: Integration — one bundle lives the whole protocol (plan §K, spec §0
 
   Rule: Offline E2E means export into a genuinely fresh local store
 
-    @wip
     Scenario Outline: Owner and delegated history verify keyless after a fresh-store round trip
       Given a lived bundle containing owner and grantee publications
       When its public and opaque artifacts are exported into a fresh empty "<store>" store
@@ -169,14 +168,12 @@ Feature: Integration — one bundle lives the whole protocol (plan §K, spec §0
         | MemStore |
         | FsStore  |
 
-    @wip
     Scenario: Private capabilities are reintroduced only after keyless verification
       Given a fresh local store whose complete history already verifies keyless
       When one separately supplied grantee opening capability is attached
       Then it opens only the content lines in its still-valid perimeter
       And removing it again leaves the keyless verdict unchanged
 
-    @wip
     Scenario Outline: A missing or substituted public artifact fails the cold round trip
       Given a complete export in a fresh local store
       When "<artifact defect>" is introduced before reopen
