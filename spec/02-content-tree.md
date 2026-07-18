@@ -454,6 +454,20 @@ validation. Rejection or failure before that point leaves the canonical bundle
 byte-for-byte unchanged: no advanced manifest or Gamma head, partial index, header,
 wrap, blob, or orphan from the failed local mutation.
 
+**External effects (K1-B).** A connector action or inference stages its Gamma and
+evidence in that same non-canonical overlay, obtains pre-effect authorization,
+performs the external effect, adds post-effect usage evidence when applicable, and
+only then reaches the local linearization point (§08.1). The pre-effect check is
+permission to execute, not accepted-history admission. Final append-time acceptance
+and cold replay receive the same completed public facts and use the same Core
+semantics.
+
+If execution is refused or the external effect reports failure, the overlay is
+discarded and the canonical bundle stays byte-identical. If the process loses state
+after the external effect but before local commit, local atomicity cannot undo the
+remote fact: retry requires connector-side reconciliation of the original
+occurrence. No canonical `pending` object or inferred second occurrence is created.
+
 `MemStore` commits by atomically replacing its canonical state. `FsStore` prepares in
 recoverable staging physically outside the canonical bundle directory and uses a
 Store-local recoverable linearization mechanism. Any internal generation metadata,

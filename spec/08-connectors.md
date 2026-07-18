@@ -33,13 +33,37 @@ owner-approved catalog is pinned by new authority.
 > The exact draft3 catalog member and catalog/approval document tables remain
 > reserved; no draft3 certificate may be emitted before their vectors are approved.
 
-Whoever executes the action — an agent runtime or a tool host — verifies the
-presented chain and catalog proof, obtains the single pure Core verdict, honors
-tier-X constraints and required public evidence, writes the mandatory `action`
-Gamma entry, and only then performs the external effect (§07.4). A legacy `read`
-may migrate to `read`, and legacy `write` may map to `act` only under an explicit
-versioned migration contract. Legacy authority never proves `binding`; canonical
-rights require re-enrolment.
+> **K1-B external-effect sequence — human-validated on 2026-07-18.**
+
+For a new W1 connector action or inference, the runtime or tool host:
+
+1. builds the complete pre-effect operation, obligation evidence, and Gamma v2
+   candidate inside the Bundle overlay, allocating `operation_ref` before any
+   native evidence is signed;
+2. submits those public facts plus injected tier-X facts to the pure Core
+   pre-effect authorization check;
+3. only after that check allows execution, performs the external effect;
+4. obtains the post-effect usage receipt when applicable, completes the evidence
+   set, and submits the completed candidate to the same Core semantics;
+5. atomically publishes Gamma, evidence, roots, and manifest at the one local
+   linearization point.
+
+The staged Gamma candidate is not accepted history and is not visible through the
+canonical bundle before step 5. An authorization refusal or an external-effect
+failure discards the overlay and changes no canonical byte. No public `pending`
+state, extra Gamma kind, mutable entry, or second logical occurrence is introduced.
+
+An external system cannot participate in the Bundle's local atomic commit. A crash
+after the effect but before step 5 is therefore an honest reconciliation state:
+absence of accepted evidence does not prove that the effect did not occur, and the
+runtime MUST NOT retry blindly. It reconciles the external occurrence before either
+completing the original evidence set or surfacing an unresolved outcome. The exact
+runtime recovery API and connector-specific reconciliation mechanism are outside
+Core and remain separately gated.
+
+A legacy `read` may migrate to `read`, and legacy `write` may map to `act` only
+under an explicit versioned migration contract. Legacy authority never proves
+`binding`; canonical rights require re-enrolment.
 
 ## 8.2 The vault
 

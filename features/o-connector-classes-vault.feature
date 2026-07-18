@@ -109,6 +109,40 @@ Feature: Connector classes and isolated vault capabilities
         | act.x.mail.purchase | act.x.mail.purchase | identical pinned one  | accepted with inherited co_sign |
         | act.x.mail.*       | act.x.mail.list      | different catalog     | refused  |
 
+  Rule: External usage completes the staged occurrence before local publication
+
+    @wip
+    Scenario: One W1 occurrence moves from authorized overlay to accepted history
+      Given a connector operation, gating receipts and Gamma v2 candidate in an overlay
+      When Core authorizes the complete pre-effect facts
+      And the external effect succeeds
+      And the applicable post-effect usage receipt is obtained
+      Then Core accepts the completed evidence for that same operation_ref
+      And Gamma, evidence, roots and manifest publish at one local linearization point
+      And no pending artifact or second occurrence is created
+
+    @wip
+    Scenario Outline: Failure before local publication changes no canonical byte
+      Given a published bundle and a staged W1 connector occurrence
+      When "<failure>" happens before the local linearization point
+      Then the overlay is discarded
+      And the canonical bundle, manifest and Gamma head remain byte-identical
+
+      Examples:
+        | failure                              |
+        | pre-effect Core authorization refuses |
+        | the external effect reports failure |
+        | required usage evidence is invalid  |
+
+    @wip
+    Scenario: A crash after the external effect forbids blind retry
+      Given Core authorized one staged occurrence and its external effect may have happened
+      But the process crashed before publishing completed evidence
+      When the runtime recovers without accepted history for that occurrence
+      Then absence of evidence is not treated as proof that no effect occurred
+      And the runtime reconciles the original external occurrence before retry
+      And Core invents no pending wire, Gamma kind or replacement occurrence
+
   Rule: Config is a reserved exact capability outside business classes
 
     @wip
