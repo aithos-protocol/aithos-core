@@ -17,6 +17,7 @@
 //! - `gamma`   (todo)     → 07 (log entries, counting)
 //! - `merkle`  (todo)     → 02.10 (state roots, inclusion proofs)
 
+pub mod catalog;
 pub mod constraints;
 pub mod delegated_counts;
 pub mod derive;

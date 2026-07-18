@@ -53,6 +53,9 @@ pub enum Error {
     #[error("invalid delegated counts: {0}")]
     InvalidDelegatedCounts(String),
 
+    #[error("invalid connector catalog: {0}")]
+    InvalidCatalog(String),
+
     #[error("I3 violated — header without an owner line: {0}")]
     MissingOwnerLine(String),
 
