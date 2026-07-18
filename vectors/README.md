@@ -228,3 +228,15 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`30545958c170fda12e53817d3c5b7adb295432a4352e1abcbc7749fdd5c7eca0`);
   Rust consumer: `aithos-bundle/tests/cb2_bundle_authority_flows.rs`
   (`cc48562545ef028b8042860de4fdb842f3dfe1e1f9a5658862c9e41a12344cdb`).
+- `CB2-BUNDLE-STRUCTURE-VAULT-1`: pure-data CB10 oracle covering twenty-six
+  structural authority decisions, derived tag/move/subtree consequences, seven
+  structural failures, opaque self structure, six revocation failure boundaries,
+  forward-only replay, exact config CRUD, seven authority/line fences, isolated
+  vault rotation and secret-free evidence. It preserves eight historical vector
+  hashes, models no upstream effect and adds no wire or verb. Generator:
+  `gen-cb2-bundle-structure-vault.py`
+  (`dde29fc43a7244d2681d0ca090a6a3748255671d2528057f3d39110bd5ffd4ad`);
+  vector: `cb2-bundle-structure-vault.json`
+  (`ebaf4871a233f1f4631f1ec21c63a3cec68fd0829c6a9dddfe3d6d9aa4179f5d`);
+  Rust consumer: `aithos-bundle/tests/cb2_bundle_structure_vault.rs`
+  (`4d88c1d431286a137a8bc1e040c20067e5b78c523090ded71f49b430a7792dff`).

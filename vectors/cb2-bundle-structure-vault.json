@@ -1,0 +1,572 @@
+{
+  "vector": "CB2-BUNDLE-STRUCTURE-VAULT-1",
+  "description": "Independent pure-data CB10 oracle for structural authority, derived consequences, effect-free failures, opaque self structure, atomic revocation/rotation, exact connector config authority and isolated vault access. No upstream effect, signed wire or new verb is modeled.",
+  "historical_vector_sha256": {
+    "g1-revocation.json": "a568cc943b38c8b2fd146163244269d58f7d85f54247adda5dff948310ec8a00",
+    "g2-rotation.json": "be223ff1064bb297115f9da9ebbaf18a328c70b6af4f408ff529e1effe17eb49",
+    "cb2-operation-facts-mutation.json": "dc3a57de91ff50895b680111da4da981e1518ad2dcd638d862e63be9eb29b83d",
+    "cb2-operation-facts-structural.json": "1be1d239055e5a66f0c64d3ca2c2b00cd102bac44a7cd8c2147d16dce8d275e3",
+    "cb2-connector-catalog.json": "f73b35d29602217983c6401f06fbb49c73032a955d0ac14356d3a988181fe43c",
+    "cb2-draft2-carriers.json": "2e75e9af30ba0207bd01a6f347cac1a263f816a7ae0fb3d583f75beabef2badc",
+    "cb2-bundle-boundaries.json": "73149da64fbdc73bcfd81f8a3d11c83e9421e43f2053ad649bf0db0f585ee187",
+    "cb2-bundle-authority-flows.json": "30545958c170fda12e53817d3c5b7adb295432a4352e1abcbc7749fdd5c7eca0"
+  },
+  "initial_state": {
+    "manifest": "sha256:structure-vault-before",
+    "gamma_head": "sha256:gamma-before",
+    "circle_root": "sha256:circle-before",
+    "vault_root": "sha256:vault-before",
+    "mail_version": 4,
+    "calendar_version": 7
+  },
+  "initial_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+  "structural": {
+    "authority_cases": [
+      {
+        "id": "structural-01",
+        "operation": "list_read_folder",
+        "source_verb": "read",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-02",
+        "operation": "list_read_folder",
+        "source_verb": "edit",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-03",
+        "operation": "list_read_folder",
+        "source_verb": "append",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-04",
+        "operation": "list_read_folder",
+        "source_verb": "delete",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-05",
+        "operation": "list_read_folder",
+        "source_verb": "write",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-06",
+        "operation": "create_child_folder",
+        "source_verb": null,
+        "destination_verb": "read",
+        "complete_subtree": null,
+        "expected": "refused"
+      },
+      {
+        "id": "structural-07",
+        "operation": "create_child_folder",
+        "source_verb": null,
+        "destination_verb": "edit",
+        "complete_subtree": null,
+        "expected": "refused"
+      },
+      {
+        "id": "structural-08",
+        "operation": "create_child_folder",
+        "source_verb": null,
+        "destination_verb": "delete",
+        "complete_subtree": null,
+        "expected": "refused"
+      },
+      {
+        "id": "structural-09",
+        "operation": "create_child_folder",
+        "source_verb": null,
+        "destination_verb": "append",
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-10",
+        "operation": "create_child_folder",
+        "source_verb": null,
+        "destination_verb": "write",
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-11",
+        "operation": "rename_folder",
+        "source_verb": "read",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "refused"
+      },
+      {
+        "id": "structural-12",
+        "operation": "rename_folder",
+        "source_verb": "delete",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "refused"
+      },
+      {
+        "id": "structural-13",
+        "operation": "rename_folder",
+        "source_verb": "edit",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-14",
+        "operation": "rename_folder",
+        "source_verb": "append",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-15",
+        "operation": "rename_folder",
+        "source_verb": "write",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-16",
+        "operation": "delete_empty_folder",
+        "source_verb": "read",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "refused"
+      },
+      {
+        "id": "structural-17",
+        "operation": "delete_empty_folder",
+        "source_verb": "edit",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "refused"
+      },
+      {
+        "id": "structural-18",
+        "operation": "delete_empty_folder",
+        "source_verb": "append",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "refused"
+      },
+      {
+        "id": "structural-19",
+        "operation": "delete_empty_folder",
+        "source_verb": "delete",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-20",
+        "operation": "delete_empty_folder",
+        "source_verb": "write",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-21",
+        "operation": "move_folder",
+        "source_verb": "edit",
+        "destination_verb": "append",
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-22",
+        "operation": "move_folder",
+        "source_verb": "append",
+        "destination_verb": "write",
+        "complete_subtree": null,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-23",
+        "operation": "move_folder",
+        "source_verb": "delete",
+        "destination_verb": "append",
+        "complete_subtree": null,
+        "expected": "refused"
+      },
+      {
+        "id": "structural-24",
+        "operation": "move_folder",
+        "source_verb": "edit",
+        "destination_verb": null,
+        "complete_subtree": null,
+        "expected": "refused"
+      },
+      {
+        "id": "structural-25",
+        "operation": "delete_nonempty_folder",
+        "source_verb": "delete",
+        "destination_verb": null,
+        "complete_subtree": true,
+        "expected": "accepted"
+      },
+      {
+        "id": "structural-26",
+        "operation": "delete_nonempty_folder",
+        "source_verb": "delete",
+        "destination_verb": null,
+        "complete_subtree": false,
+        "expected": "refused"
+      }
+    ],
+    "covered_read_hides_siblings": true,
+    "derived_cases": [
+      {
+        "operation": "tag_edit",
+        "consequences": [
+          "section index row",
+          "removed tag wraps",
+          "added tag wraps",
+          "authorizing Gamma entry",
+          "zone root",
+          "manifest"
+        ],
+        "one_transaction": true
+      },
+      {
+        "operation": "move",
+        "consequences": [
+          "stable SID at destination",
+          "source index removal",
+          "destination index insertion",
+          "fresh boundary key version",
+          "survivor lines",
+          "destination up-link wrap",
+          "authorizing Gamma entry",
+          "roots",
+          "manifest"
+        ],
+        "old_parent_derives_future_key": false,
+        "one_transaction": true
+      },
+      {
+        "operation": "subtree_delete",
+        "consequences": [
+          "folder row",
+          "descendant rows",
+          "descendant blob reachability",
+          "descendant headers",
+          "tag consequences",
+          "authorizing Gamma entry",
+          "roots",
+          "manifest"
+        ],
+        "every_nonderived_removal_has_same_actor_chain": true,
+        "one_transaction": true
+      }
+    ],
+    "failure_cases": [
+      {
+        "failure": "destination outside the grantee perimeter",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808"
+      },
+      {
+        "failure": "move into the node's own descendant",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808"
+      },
+      {
+        "failure": "destination sibling name collision",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808"
+      },
+      {
+        "failure": "display path traversal outside the zone",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808"
+      },
+      {
+        "failure": "failure while rebuilding tag views",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808"
+      },
+      {
+        "failure": "failure while rotating or rewrapping",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808"
+      },
+      {
+        "failure": "failure before Gamma and manifest linearization",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808"
+      }
+    ],
+    "self_cases": [
+      {
+        "authority": "write.self",
+        "operation": "create opaque SID",
+        "expected": "accepted"
+      },
+      {
+        "authority": "edit.self#id=opaque-node",
+        "operation": "edit exact opaque SID",
+        "expected": "accepted"
+      },
+      {
+        "authority": "edit.self#dir=sealed",
+        "operation": "edit claimed descendant",
+        "expected": "refused"
+      },
+      {
+        "authority": "delete.self#tag=private",
+        "operation": "delete claimed tag match",
+        "expected": "refused"
+      }
+    ],
+    "new_wire_verb": false
+  },
+  "revocation": {
+    "success": {
+      "actor": "authorized manager",
+      "steps": [
+        "Core revocation verdict",
+        "fresh protected node key",
+        "survivor rewrap",
+        "protected body re-encryption",
+        "Gamma revoke occurrence",
+        "roots and manifest publication"
+      ],
+      "linearization_count": 1,
+      "revoked_line_opens_new_material": false,
+      "fresh_keyless_store_verifies": true
+    },
+    "failure_cases": [
+      {
+        "boundary": "revocation verdict",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      },
+      {
+        "boundary": "fresh node key generation",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      },
+      {
+        "boundary": "survivor rewrap",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      },
+      {
+        "boundary": "body re-encryption",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      },
+      {
+        "boundary": "Gamma append",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      },
+      {
+        "boundary": "before manifest and roots linearization",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      }
+    ],
+    "time_cases": [
+      {
+        "relative_time": "before revoked_at",
+        "expected": "accepted",
+        "state_source": "verified prior prefix"
+      },
+      {
+        "relative_time": "at or after revoked_at",
+        "expected": "refused",
+        "state_source": "verified prior prefix"
+      }
+    ]
+  },
+  "vault": {
+    "config_is_outside_business_classes": true,
+    "wildcard_covers_config": false,
+    "inferred_binding_or_cosign": false,
+    "crud_cases": [
+      {
+        "operation": "read",
+        "authority": "act.x.mail.config",
+        "line": "exact /x/mail line",
+        "expected": "accepted",
+        "external_mail_action_granted": false,
+        "one_transaction": false
+      },
+      {
+        "operation": "create",
+        "authority": "act.x.mail.config",
+        "line": "exact /x/mail line",
+        "expected": "accepted",
+        "external_mail_action_granted": false,
+        "one_transaction": true
+      },
+      {
+        "operation": "edit",
+        "authority": "act.x.mail.config",
+        "line": "exact /x/mail line",
+        "expected": "accepted",
+        "external_mail_action_granted": false,
+        "one_transaction": true
+      },
+      {
+        "operation": "delete",
+        "authority": "act.x.mail.config",
+        "line": "exact /x/mail line",
+        "expected": "accepted",
+        "external_mail_action_granted": false,
+        "one_transaction": true
+      }
+    ],
+    "access_cases": [
+      {
+        "authority": "act.x.mail.config",
+        "line": "exact /x/mail line",
+        "expected": "authorized and readable"
+      },
+      {
+        "authority": "act.x.mail.config",
+        "line": "no vault line",
+        "expected": "authorized but unreadable"
+      },
+      {
+        "authority": "act.x.mail.config",
+        "line": "generic /x root line",
+        "expected": "unreadable"
+      },
+      {
+        "authority": "act.x.mail.config",
+        "line": "/x/calendar line",
+        "expected": "unreadable"
+      },
+      {
+        "authority": "no config authority",
+        "line": "exact /x/mail line",
+        "expected": "refused as unauthorized"
+      },
+      {
+        "authority": "act.x.mail.*",
+        "line": "exact /x/mail line",
+        "expected": "refused as unauthorized"
+      },
+      {
+        "authority": "act.x.calendar.config",
+        "line": "/x/calendar line",
+        "expected": "cannot open /x/mail"
+      }
+    ],
+    "capability_substitution_cases": [
+      {
+        "held": "audit sealed action arguments",
+        "requested": "open /x/mail config",
+        "expected": "refused"
+      },
+      {
+        "held": "open /x/mail config",
+        "requested": "audit sealed action arguments",
+        "expected": "refused"
+      }
+    ],
+    "atomic_cases": [
+      {
+        "operation": "valid config edit",
+        "changed_connector": "mail",
+        "unchanged_connector": "calendar",
+        "credential_in_keyless_output": false,
+        "one_transaction": true
+      },
+      {
+        "operation": "recipient revocation and rotation",
+        "changed_connector": "mail",
+        "unchanged_connector": "calendar",
+        "credential_in_keyless_output": false,
+        "one_transaction": true
+      },
+      {
+        "operation": "local update after out-of-protocol upstream replacement",
+        "changed_connector": "mail",
+        "unchanged_connector": "calendar",
+        "credential_in_keyless_output": false,
+        "one_transaction": true
+      }
+    ],
+    "failure_cases": [
+      {
+        "defect": "missing exact config authority",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      },
+      {
+        "defect": "missing exact vault line",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      },
+      {
+        "defect": "cross-connector line",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      },
+      {
+        "defect": "applicable constraint or obligation fails",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      },
+      {
+        "defect": "injected failure before local commit",
+        "expected": "refused",
+        "visible_state_digest": "sha256:c1a4435516e0416fe48822030b1112e650bdaeee539b679987ccef5e63c21808",
+        "reachable_attempt_artifacts": []
+      }
+    ],
+    "public_forbidden": [
+      "credential",
+      "config plaintext",
+      "private key",
+      "DK"
+    ],
+    "normative_header_lines": "opaque and non-authorizing",
+    "network_participates": false,
+    "upstream_effect_is_modeled": false
+  },
+  "inventory": {
+    "structural_authority_case_count": 26,
+    "structural_derived_case_count": 3,
+    "structural_failure_case_count": 7,
+    "self_structure_case_count": 4,
+    "revocation_failure_case_count": 6,
+    "revocation_time_case_count": 2,
+    "vault_crud_case_count": 4,
+    "vault_access_case_count": 7,
+    "vault_atomic_case_count": 3,
+    "vault_failure_case_count": 5,
+    "future_owner": "CB10"
+  }
+}

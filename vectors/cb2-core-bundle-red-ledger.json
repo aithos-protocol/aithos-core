@@ -146,6 +146,14 @@
       "generator_sha256": "037f01cb6cd348f4afc52122105e90403eb71fdfb7de5290fd1513feae4ce392",
       "consumer": "rust/crates/aithos-bundle/tests/cb2_bundle_authority_flows.rs",
       "consumer_sha256": "cc48562545ef028b8042860de4fdb842f3dfe1e1f9a5658862c9e41a12344cdb"
+    },
+    "CB2-BUNDLE-STRUCTURE-VAULT-1": {
+      "file": "vectors/cb2-bundle-structure-vault.json",
+      "sha256": "ebaf4871a233f1f4631f1ec21c63a3cec68fd0829c6a9dddfe3d6d9aa4179f5d",
+      "generator": "vectors/gen-cb2-bundle-structure-vault.py",
+      "generator_sha256": "dde29fc43a7244d2681d0ca090a6a3748255671d2528057f3d39110bd5ffd4ad",
+      "consumer": "rust/crates/aithos-bundle/tests/cb2_bundle_structure_vault.rs",
+      "consumer_sha256": "4d88c1d431286a137a8bc1e040c20067e5b78c523090ded71f49b430a7792dff"
     }
   },
   "suite_observations": [
@@ -317,13 +325,24 @@
       "name": "Bundle authority-flow byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_authority_flows -- --nocapture",
       "observed": "5 passed; vector/historical hashes, owner parity, grantee verb/selector/zone decisions, grant delivery, authority/decryption fences, delegated evidence, atomic refusal and Gamma-read matrices are GREEN as generic diagnostics. Unified CB8/CB9 Bundle APIs and durable flows remain absent."
+    },
+    {
+      "name": "Bundle structure/vault generator reproducibility",
+      "command": "python3 vectors/gen-cb2-bundle-structure-vault.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-bundle-structure-vault.json; the independent pure-data oracle covers 26 structural authority, 3 derived-consequence, 7 structural-refusal, 4 self, 6 revocation-failure, 2 temporal, 4 config-CRUD, 7 vault-access, 3 vault-atomic and 5 vault-refusal decisions."
+    },
+    {
+      "name": "Bundle structure/vault byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- --nocapture",
+      "observed": "5 passed; vector/historical hashes, structural authority/consequences, effect-free failures, self privacy, revocation atomicity/time and isolated vault authority/line decisions are GREEN as generic diagnostics. Unified transactional CB10 APIs remain absent."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 82,
-    "COMPILE-RED-PRELIMINAIRE": 28,
-    "total": 144
+    "PREEXISTING-GREEN": 87,
+    "COMPILE-RED-PRELIMINAIRE": 31,
+    "total": 152
   },
   "entries": [
     {
@@ -2711,6 +2730,150 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_authority_flows -- cb2_bundle_delegated_evidence_atomicity_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB9",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB10-STRUCTURE-VAULT-VECTOR-HASH",
+      "test_id": "cb2_bundle_structure_vault_vector_hash_is_stable_preexisting_green",
+      "decision": "CB10 independent structure/revocation/vault oracle integrity",
+      "scenario": "The pure-data structural authority, revocation and isolated-vault qualification vector remains byte-stable.",
+      "vector_ref": "CB2-BUNDLE-STRUCTURE-VAULT-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- cb2_bundle_structure_vault_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "8a01d5f9186667f86f99810c9d34209bdd90c450",
+      "expected_reason": "The vector file SHA-256 is ebaf4871a233f1f4631f1ec21c63a3cec68fd0829c6a9dddfe3d6d9aa4179f5d.",
+      "observed_reason": "The exact bytes match the independently generated pure-data oracle.",
+      "owner": "CB10",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB10-STRUCTURE-VAULT-HISTORICAL-HASHES",
+      "test_id": "cb2_bundle_structure_vault_historical_hashes_preexisting_green",
+      "decision": "CB10 additive historical non-regression",
+      "scenario": "Historical revocation, rotation, K1.2, CAT1, K1-C and prior Bundle oracle bytes remain unchanged.",
+      "vector_ref": "CB2-BUNDLE-STRUCTURE-VAULT-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- cb2_bundle_structure_vault_historical_hashes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "8a01d5f9186667f86f99810c9d34209bdd90c450",
+      "expected_reason": "All eight selected historical vector hashes remain exact.",
+      "observed_reason": "No historical signed object, operation fact, catalog, carrier or Bundle decision is changed or reinterpreted.",
+      "owner": "CB10",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB10-STRUCTURAL-AUTHORITY-ATOMICITY-ORACLE",
+      "test_id": "cb2_bundle_structural_authority_and_atomic_consequences_preexisting_green",
+      "decision": "Existing verbs compose structural authority and every derived consequence shares one transaction",
+      "scenario": "Folder list/create/rename/delete/move decisions use read/edit/append/delete/write only; tag, move and subtree consequences commit together; refusals and sealed self structure fail closed.",
+      "vector_ref": "CB2-BUNDLE-STRUCTURE-VAULT-1",
+      "vector_slice": "structural",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- cb2_bundle_structural_authority_and_atomic_consequences_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "8a01d5f9186667f86f99810c9d34209bdd90c450",
+      "expected_reason": "Fifteen of twenty-six authority rows accept, three derived mutations enumerate complete consequences, seven failures preserve the old digest and self accepts only zone/exact-ID mutation.",
+      "observed_reason": "A separate Rust rule function and exact consequence/refusal checks reproduce the pure-data oracle.",
+      "owner": "CB10",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB10-REVOCATION-ROTATION-REOPEN-ORACLE",
+      "test_id": "cb2_bundle_revocation_rotation_reopen_preexisting_green",
+      "decision": "Revocation, rotation, survivor rewrap, body cut, Gamma and publication form one forward-only transaction",
+      "scenario": "A successful cut linearizes once and cold-verifies; failure at any of six boundaries exposes only the old generation; historical authority is evaluated against the verified prior prefix.",
+      "vector_ref": "CB2-BUNDLE-STRUCTURE-VAULT-1",
+      "vector_slice": "revocation",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- cb2_bundle_revocation_rotation_reopen_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "8a01d5f9186667f86f99810c9d34209bdd90c450",
+      "expected_reason": "The six-step cut has one linearization, every failure has zero reachable attempt artifact, pre-cut history remains accepted and at/after-cut authority is refused.",
+      "observed_reason": "Generic state and list checks reproduce all success, failure and temporal oracle decisions.",
+      "owner": "CB10",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB10-VAULT-ISOLATION-ORACLE",
+      "test_id": "cb2_bundle_vault_isolation_and_api_inventory_preliminary",
+      "decision": "Exact connector config authority and line, cryptographic separation, local atomicity and secret-free evidence",
+      "scenario": "Exact act.x.mail.config plus /x/mail line covers CRUD for mail only; wildcard, cross-line, missing authority or audit capability never opens config; no credential enters keyless output.",
+      "vector_ref": "CB2-BUNDLE-STRUCTURE-VAULT-1",
+      "vector_slice": "vault",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- cb2_bundle_vault_isolation_and_api_inventory_preliminary --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "8a01d5f9186667f86f99810c9d34209bdd90c450",
+      "expected_reason": "All four exact CRUD cases accept, all seven authority/line combinations retain their distinct outcome, capabilities never substitute, only mail changes and five defects preserve the old digest.",
+      "observed_reason": "Pure comparisons reproduce the oracle; the same passing test inventories historical e/x layout and missing exact CB10 vault APIs, so it is not durable protocol GREEN.",
+      "owner": "CB10",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB10-STRUCTURAL-TRANSACTION-API-GATE",
+      "test_id": null,
+      "decision": "Generic structural operation with composed authority, derived changeset and atomic reopen",
+      "scenario": "Folder reads, create, rename, tag edit, move and subtree delete derive every index/view/key/wrap/Gamma consequence under one actor chain and one CB7 transaction.",
+      "vector_ref": "CB2-BUNDLE-STRUCTURE-VAULT-1",
+      "vector_slice": "structural",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "All twenty-six authority rows and three complete consequence sets execute; every invalid topology, perimeter or injected failure leaves the old FsStore byte-identical after reopen.",
+      "observed_reason": "At observation SHA 8a01d5f, historical rename/move helpers exist but no generic structural front door, exact composed grantee verdict, complete derived changeset or transaction/reopen boundary exists.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "8a01d5f9186667f86f99810c9d34209bdd90c450",
+        "source_command": "rg -n 'rename_folder|move_folder|structural_operation|put_json' rust/crates/aithos-bundle/src",
+        "source_observed": "Historical rename/move helpers call put_json directly; no unified structural transaction and no public/self grantee structure surface exists.",
+        "inventory_test_id": "cb2_bundle_vault_isolation_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- cb2_bundle_vault_isolation_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB10",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB10-REVOCATION-ROTATION-TRANSACTION-GATE",
+      "test_id": null,
+      "decision": "Atomic incident cut and forward-only cold replay",
+      "scenario": "Core authorizes the manager and cut; Bundle rotates, rewraps, re-encrypts, appends Gamma and publishes once; failure exposes no partial revocation material and cold replay preserves pre-cut history.",
+      "vector_ref": "CB2-BUNDLE-STRUCTURE-VAULT-1",
+      "vector_slice": "revocation",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "The success path cold-verifies and all six failure boundaries reopen the exact old recipients, head and edition with no reachable attempt artifact.",
+      "observed_reason": "At observation SHA 8a01d5f, rotate_folder/move/revoke helpers mutate headers/indexes through direct put_json calls and do not expose one failure-injectable transaction/cold-replay façade.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "8a01d5f9186667f86f99810c9d34209bdd90c450",
+        "source_command": "rg -n 'rotate_folder|move_folder|revoke|put_json|cold' rust/crates/aithos-bundle/src/revoke.rs",
+        "source_observed": "Historical cut/rotation behavior exists but writes multiple canonical objects directly and lacks the approved all-or-nothing reopen surface.",
+        "inventory_test_id": "cb2_bundle_vault_isolation_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- cb2_bundle_vault_isolation_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB10",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB10-EXACT-CONNECTOR-VAULT-API-GATE",
+      "test_id": null,
+      "decision": "Exact /x/<connector> config CRUD with isolated typed capability and secret-free publication",
+      "scenario": "Bundle accepts exact config authority plus exact vault line, applies Core constraints, mutates only one connector transactionally and exposes only opaque committed evidence to keyless verification.",
+      "vector_ref": "CB2-BUNDLE-STRUCTURE-VAULT-1",
+      "vector_slice": "vault",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "All CRUD/access/capability/isolation/refusal cases hold; audit and config never substitute; no credential, plaintext, private key or DK reaches public artifacts or errors.",
+      "observed_reason": "At observation SHA 8a01d5f, Bundle retains a historical e/x root/header and vault hash but has no connector-local /x/<id> CRUD, exact authority/line façade or typed isolated config capability.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "8a01d5f9186667f86f99810c9d34209bdd90c450",
+        "source_command": "rg -n 'e/x|/x/|vault|config|open_vault_with_capability' rust/crates/aithos-bundle/src",
+        "source_observed": "Historical e/x root and vault root calculation exist; no exact connector vault object CRUD or approved capability boundary exists.",
+        "inventory_test_id": "cb2_bundle_vault_isolation_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_structure_vault -- cb2_bundle_vault_isolation_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB10",
       "status": "COMPILE-RED-PRELIMINAIRE"
     }
   ]
