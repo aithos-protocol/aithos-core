@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use aithos_bundle::bundle::{Bundle, SectionSpec, ZoneIndex};
+use aithos_bundle::bundle::{
+    Bundle, OwnerContentOperation, OwnerContentOutcome, SectionSpec, ZoneIndex,
+};
 use aithos_bundle::entropy::{EntropySource, SeqEntropy};
 use aithos_bundle::grants::GrantSpec;
 use aithos_bundle::log::{LogFilter, LogHit};
@@ -76,6 +78,8 @@ const CB6_GAMMA: &str = include_str!("../../../../vectors/cb2-gamma-v2-replay.js
 const CB6_COEXISTENCE: &str =
     include_str!("../../../../vectors/cb2-bundle-version-coexistence.json");
 const CB7_BOUNDARIES: &str = include_str!("../../../../vectors/cb2-bundle-boundaries.json");
+const CB8_AUTHORITY_FLOWS: &str =
+    include_str!("../../../../vectors/cb2-bundle-authority-flows.json");
 
 fn agent_sk(b: u8) -> SigningKey {
     SigningKey::from_bytes(&[b; 32])
@@ -202,6 +206,7 @@ pub struct ProtocolWorld {
     cb5_result: Option<Result<(), String>>,
     cb6_result: Option<Result<(), String>>,
     cb7_result: Option<Result<(), String>>,
+    cb8_result: Option<Result<(), String>>,
     // --- step F: gamma ---
     gamma_result: Option<Result<String, String>>,
     audit_chain: Vec<Mandate>,
@@ -629,6 +634,7 @@ static CB5_RECEIPTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB5_CATALOG_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB6_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB7_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+static CB8_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 
 fn cb5_parsed(bytes: &str) -> Result<serde_json::Value, String> {
     serde_json::from_str(bytes).map_err(|error| format!("CB5 vector does not parse: {error}"))
@@ -1068,6 +1074,145 @@ fn cb7_acceptance() -> Result<(), String> {
         }
     }
 
+    Ok(())
+}
+
+fn cb8_acceptance() -> Result<(), String> {
+    let vector: serde_json::Value = serde_json::from_str(CB8_AUTHORITY_FLOWS)
+        .map_err(|error| format!("CB8 authority-flow vector does not parse: {error}"))?;
+    let owner_cases = vector["owner_cases"]
+        .as_array()
+        .ok_or_else(|| "CB8 owner cases are not an array".to_owned())?;
+    if owner_cases.len() != 15 {
+        return Err("CB8 owner matrix is not the closed fifteen-case set".into());
+    }
+
+    for zone in [Zone::Public, Zone::Circle, Zone::Self_] {
+        let root = Cb7TempRoot::new(&format!("cb8-{}", zone.as_str()))?;
+        let seed = MasterSeed::from_slice(&[0x58; 32])
+            .map_err(|error| format!("CB8 owner seed failed: {error}"))?;
+        let owner = OwnerKeys::genesis(&seed);
+        let succession = succession_from_entropy([0x68; 32]);
+        let mut entropy = SeqEntropy::default();
+        let mut bundle = Bundle::init(
+            FsStore::new(root.path()),
+            &owner,
+            &succession.verifying_key(),
+            &mut entropy,
+            "2026-07-18T11:00:00Z",
+        )
+        .map_err(|error| format!("CB8 {} init failed: {error}", zone.as_str()))?;
+        bundle
+            .transaction(|bundle| {
+                bundle.section_add(
+                    &SectionSpec {
+                        zone,
+                        folder_path: "projects",
+                        name: "note",
+                        title: "existing",
+                        tags: &["toto".to_owned()],
+                        body: "before",
+                        now: "2026-07-18T11:01:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                )?;
+                bundle.publish(&owner, "2026-07-18T11:02:00Z")
+            })
+            .map_err(|error| format!("CB8 {} fixture failed: {error}", zone.as_str()))?;
+
+        for operation in ["list", "read", "create", "edit", "delete"] {
+            let case = owner_cases
+                .iter()
+                .find(|case| case["zone"] == zone.as_str() && case["operation"] == operation)
+                .ok_or_else(|| format!("CB8 missing owner case {}-{operation}", zone.as_str()))?;
+            let before = bundle
+                .gamma_entries()
+                .map_err(|error| format!("CB8 Gamma before failed: {error}"))?
+                .len();
+            let outcome = match operation {
+                "list" => bundle.owner_content_operation(
+                    zone,
+                    OwnerContentOperation::List,
+                    &owner,
+                    &mut entropy,
+                ),
+                "read" => bundle.owner_content_operation(
+                    zone,
+                    OwnerContentOperation::Read {
+                        display_path: "projects/note",
+                    },
+                    &owner,
+                    &mut entropy,
+                ),
+                "create" => bundle.owner_content_operation(
+                    zone,
+                    OwnerContentOperation::Create {
+                        folder_path: "projects",
+                        name: "new",
+                        title: "created",
+                        tags: &[],
+                        body: "created body",
+                        now: "2026-07-18T11:03:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                ),
+                "edit" => bundle.owner_content_operation(
+                    zone,
+                    OwnerContentOperation::Edit {
+                        display_path: "projects/note",
+                        body: "after",
+                        now: "2026-07-18T11:04:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                ),
+                "delete" => bundle.owner_content_operation(
+                    zone,
+                    OwnerContentOperation::Delete {
+                        display_path: "projects/note",
+                        now: "2026-07-18T11:05:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                ),
+                _ => unreachable!(),
+            }
+            .map_err(|error| format!("CB8 {}-{operation} failed: {error}", zone.as_str()))?;
+            if !matches!(
+                (operation, &outcome),
+                ("list", OwnerContentOutcome::Listed(_))
+                    | ("read", OwnerContentOutcome::Read(_))
+                    | ("create" | "edit" | "delete", OwnerContentOutcome::Mutated)
+            ) {
+                return Err(format!(
+                    "CB8 {}-{operation} returned {outcome:?}",
+                    zone.as_str()
+                ));
+            }
+            let after = bundle
+                .gamma_entries()
+                .map_err(|error| format!("CB8 Gamma after failed: {error}"))?
+                .len();
+            if after - before != usize::from(case["journalized"].as_bool().unwrap_or(false))
+                || case["mandate_required"] != false
+                || case["mandate_counter_delta"] != 0
+            {
+                return Err(format!(
+                    "CB8 {}-{operation} owner invariant drift",
+                    zone.as_str()
+                ));
+            }
+            drop(bundle);
+            bundle = Bundle::open(FsStore::new(root.path())).map_err(|error| {
+                format!("CB8 {}-{operation} reopen failed: {error}", zone.as_str())
+            })?;
+            bundle.verify().map_err(|error| {
+                format!("CB8 {}-{operation} verify failed: {error}", zone.as_str())
+            })?;
+        }
+    }
     Ok(())
 }
 
@@ -1580,6 +1725,14 @@ fn cb7_result(w: &mut ProtocolWorld) {
 
 fn cb7_assert_green(w: &ProtocolWorld) {
     assert_eq!(w.cb7_result, Some(Ok(())));
+}
+
+fn cb8_result(w: &mut ProtocolWorld) {
+    w.cb8_result = Some(CB8_ACCEPTANCE.get_or_init(cb8_acceptance).clone());
+}
+
+fn cb8_assert_green(w: &ProtocolWorld) {
+    assert_eq!(w.cb8_result, Some(Ok(())));
 }
 
 impl ProtocolWorld {
@@ -3257,6 +3410,27 @@ fn cb7_when(w: &mut ProtocolWorld) {
 )]
 fn cb7_then(w: &mut ProtocolWorld) {
     cb7_assert_green(w);
+}
+
+// -------------------------------------------------------- CB8 owner parity
+
+#[given(
+    regex = r#"^(?:an owner-local bundle session for zone ".*"|a published existing folder and section in that zone)$"#
+)]
+fn cb8_given(w: &mut ProtocolWorld) {
+    cb8_result(w);
+}
+
+#[when(regex = r#"^the owner performs ".*" through the common bundle operation$"#)]
+fn cb8_when(w: &mut ProtocolWorld) {
+    cb8_result(w);
+}
+
+#[then(
+    regex = r#"^(?:the operation succeeds from the narrow owner capability without a mandate|every mutation is journalized without consuming mandate counters|the resulting edition reopens and verifies from a fresh local store)$"#
+)]
+fn cb8_then(w: &mut ProtocolWorld) {
+    cb8_assert_green(w);
 }
 
 // ----------------------------------------------------------------- thens

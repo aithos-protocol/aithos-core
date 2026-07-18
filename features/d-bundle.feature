@@ -59,7 +59,6 @@ Feature: Bundle and editions
 
   Rule: Owner operations have durable parity across all three zones
 
-    @wip
     Scenario Outline: The local owner performs every content operation without a mandate
       Given an owner-local bundle session for zone "<zone>"
       And a published existing folder and section in that zone
