@@ -938,6 +938,178 @@ variant, purpose mismatch, action `request_digest`, inference `args_hash`, or an
 post-effect member fails closed as `Error::InvalidOperationFacts(String)` before
 an operation commitment is emitted.
 
+> **K1.2-GRRP-B closed grant, revoke, rotate, and publication facts —
+> human-validated on 2026-07-18.**
+
+When `operation.kind` is `grant`, the selected `facts` object has exactly:
+
+```json
+{
+  "mandate_id": "mandate_01J...",
+  "certificate_digest": "sha256:<64 lowercase hex>"
+}
+```
+
+`mandate_id` is the exact id embedded in the newly issued certificate.
+`certificate_digest` is the content address of the complete canonical signed
+certificate, including its signature value:
+
+```text
+certificate_digest =
+  "sha256:" ||
+  lowercase_hex(SHA-256(RFC8785-JCS(complete signed mandate)))
+```
+
+The digest binds version, subject, issuer, parent, grantee, perimeter,
+constraints, time, nonce, and signature without duplicating any as
+caller-controlled grant facts. The normal Gamma `grant` view targets the same
+`mandate_id`; a root grant and a sub-grant use this one family.
+
+When `operation.kind` is `revoke`, the selected `facts` object has exactly:
+
+```json
+{
+  "mandate_id": "mandate_01J...",
+  "certificate_digest": "sha256:<64 lowercase hex>",
+  "reason": {"state":"absent"}
+}
+```
+
+The optional historical clear reason is represented by one of two closed variants:
+
+```json
+{"state":"absent"}
+{"state":"present","text":"device_lost"}
+```
+
+`text` is a non-empty string and MUST equal the native Gamma reason. `null`, an
+empty string, an omitted state, or a reason present in only one view fails closed.
+The certificate digest selects the exact revoked authority rather than merely an id
+that might be paired with different bytes.
+
+When `operation.kind` is `rotate`, the selected `facts` object is one of four
+closed variants. An Ethos zone-root rotation has:
+
+```json
+{
+  "domain": "ethos-zone",
+  "zone": "circle",
+  "mode": "rotate",
+  "before": {"state":"present","state_ref":{"aithos-state-fact-core":"1.0.0-draft.1","digest":"sha256:<64 lowercase hex>"}},
+  "after": {"state":"present","state_ref":{"aithos-state-fact-core":"1.0.0-draft.1","digest":"sha256:<64 lowercase hex>"}}
+}
+```
+
+An Ethos node rotation adds the exact canonical target SID and changes `domain`:
+
+```json
+{
+  "domain": "ethos-node",
+  "zone": "circle",
+  "sid": "01J...",
+  "mode": "reencrypt",
+  "before": {"state":"present","state_ref":{"aithos-state-fact-core":"1.0.0-draft.1","digest":"sha256:<64 lowercase hex>"}},
+  "after": {"state":"present","state_ref":{"aithos-state-fact-core":"1.0.0-draft.1","digest":"sha256:<64 lowercase hex>"}}
+}
+```
+
+A connector-vault rotation has:
+
+```json
+{
+  "domain": "vault",
+  "connector": "mail",
+  "mode": "rotate",
+  "before": {"state":"present","state_ref":{"aithos-state-fact-core":"1.0.0-draft.1","digest":"sha256:<64 lowercase hex>"}},
+  "after": {"state":"present","state_ref":{"aithos-state-fact-core":"1.0.0-draft.1","digest":"sha256:<64 lowercase hex>"}}
+}
+```
+
+An identity-epoch rotation has:
+
+```json
+{
+  "domain": "identity",
+  "previous_did": "did:aithos:...",
+  "next_did": "did:aithos:...",
+  "transition_digest": "sha256:<64 lowercase hex>",
+  "before": {"state":"present","state_ref":{"aithos-state-fact-core":"1.0.0-draft.1","digest":"sha256:<64 lowercase hex>"}},
+  "after": {"state":"present","state_ref":{"aithos-state-fact-core":"1.0.0-draft.1","digest":"sha256:<64 lowercase hex>"}}
+}
+```
+
+`mode` is exactly `rotate` or `reencrypt`; `reencrypt` includes fresh-key rotation
+and rewriting the affected protected bodies. Both states are present and their
+digests differ. They commit every affected header, wrap, body, index, and identity
+object required by the selected mode. `transition_digest` content-addresses the
+complete signed succession transition, including its signature, and the embedded
+DIDs MUST equal `previous_did` and `next_did`.
+
+`rotate` denotes a standalone hygiene or epoch occurrence. A rotation performed as
+a deterministic consequence of `revoke`, structural `move`, vault mutation, or
+another already-committed operation is included in that operation's state and
+changeset; it MUST NOT allocate a second `rotate` occurrence, Gamma consumption, or
+counter unit.
+
+When `operation.kind` is `publication`, `facts.mode` selects one of three exact
+tables. A normal publication has:
+
+```json
+{
+  "mode": "normal",
+  "height": 2,
+  "predecessors": ["sha256:<64 lowercase hex>"],
+  "changeset_ref": {
+    "aithos-changeset-core": "1.0.0-draft.1",
+    "digest": "sha256:<64 lowercase hex>"
+  },
+  "contained_operations": [
+    {
+      "aithos-operation-core": "1.0.0-draft.1",
+      "occurrence": "op_<ULID>",
+      "commitment": "sha256:<64 lowercase hex>"
+    }
+  ]
+}
+```
+
+A merge uses the same five members with `mode:"merge"` and exactly two distinct
+predecessor manifest chain hashes sorted by ascending exact ASCII value. A
+resolution has exactly one additional member:
+
+```json
+"winner": "sha256:<one exact member of predecessors>"
+```
+
+For a normal genesis at height 1, `predecessors` is empty; every later normal
+publication has exactly one predecessor. Merge and resolution have height at least
+3 and exactly the two same-height competing parents. Each predecessor is the
+`sha256:`-prefixed existing manifest chain hash; no candidate manifest digest is an
+input.
+
+`changeset_ref` has exactly the two members shown. Its selected closed changeset
+document and sidecar path remain separately gated, but its digest is already fixed:
+
+```text
+changeset_ref.digest =
+  C("aithos-core/v1/changeset", RFC8785-JCS(derived changeset document))
+```
+
+`contained_operations` is the exact deterministic causal order produced by the
+derived changeset. Every entry is one closed W1 `operation_ref`; the array has no
+duplicate occurrence, excludes this publication occurrence, and contains neither a
+carrier digest nor a post-effect receipt. The publication commitment is therefore
+acyclic. A caller-provided order, omitted operation, unrelated operation, duplicate,
+wrong predecessor cardinality/order, winner outside the parent set, wrong height,
+or mismatched changeset reference fails closed.
+
+Every family above is protected by `facts_ref`; only references required by an
+approved native carrier become public. An unknown domain or mode, malformed
+identifier or digest, null, missing or extra member, certificate mismatch, invalid
+rotation transition, derived-rotation double occurrence, or publication mismatch
+fails as `Error::InvalidOperationFacts(String)` before commitment or canonical
+effect.
+
 A1 fixes the complete `authority` member set, absence rules, digest input, and
 reconstruction equalities above. K1-B fixes the complete `operation` and
 `facts_ref` member sets, the kind registry, and the family split above. K1.1-B fixes
@@ -950,9 +1122,12 @@ every mutation-family member set, its domain/verb/node registries, coordinate
 semantics, state-transition matrix, vault record-key binding, and failure rules.
 K1.2-AI-B fixes the action and inference member sets, the closed catalog reference,
 native action-argument hash reuse, private inference-request commitment, exact
-budget/purpose applicability variants, and pre-effect boundary. The other
-selected-family `facts` member tables, exact proof encodings and target-to-store-key
-derivations, changeset, catalog and approval document tables, SC1, receipt,
+budget/purpose applicability variants, and pre-effect boundary. K1.2-GRRP-B fixes
+the grant/revoke certificate binding, closed reason variants, standalone rotation
+domains and state transitions, derived-rotation non-duplication, and all three
+publication fact tables including predecessor, changeset-reference, and contained
+operation ordering. Exact proof encodings and target-to-store-key derivations, the
+changeset document table, catalog and approval document tables, SC1, receipt,
 authorship, presentation, and carrier bytes remain reserved until their own
 independent tables are human-validated. No producer may invent those remaining
 bytes or emit a completed operation commitment before then.

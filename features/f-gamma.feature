@@ -488,6 +488,97 @@ Feature: The gamma log
         | tokens or a usage receipt before effect      |
 
     @wip
+    Scenario Outline: K1.2-GRRP-B selects exact grant and revoke facts
+      Given a "<kind>" operation targeting one complete signed mandate
+      When Core validates its facts before commitment
+      Then its exact members are "<members>"
+      And the certificate digest includes the complete canonical signature value
+
+      Examples:
+        | kind   | members                                |
+        | grant  | mandate_id,certificate_digest          |
+        | revoke | mandate_id,certificate_digest,reason   |
+
+    @wip
+    Scenario Outline: K1.2-GRRP-B represents a revocation reason without optional wire
+      Given the native revoke entry carries "<native reason>"
+      When its closed reason fact is projected
+      Then the variant is "<variant>"
+      And null, empty text or a cross-view mismatch is refused
+
+      Examples:
+        | native reason | variant                    |
+        | absent        | state=absent               |
+        | device_lost   | state=present,text exact   |
+
+    @wip
+    Scenario Outline: K1.2-GRRP-B selects one standalone rotation domain
+      Given a standalone rotation in "<domain>"
+      When Core validates its closed target and state transition
+      Then its exact target members are "<target members>"
+      And before and after are present with different state digests
+
+      Examples:
+        | domain      | target members                                      |
+        | ethos-zone  | domain,zone,mode,before,after                        |
+        | ethos-node  | domain,zone,sid,mode,before,after                    |
+        | vault       | domain,connector,mode,before,after                   |
+        | identity    | domain,previous_did,next_did,transition_digest,before,after |
+
+    @wip
+    Scenario Outline: A derived rotation never creates a second occurrence
+      Given a rotation is a deterministic consequence of "<parent operation>"
+      When the parent state and changeset are committed
+      Then the rotation is covered by that same operation occurrence
+      And no rotate operation_ref, Gamma consumption or counter unit is added
+
+      Examples:
+        | parent operation      |
+        | revoke                |
+        | structural move       |
+        | vault mutation        |
+
+    @wip
+    Scenario Outline: K1.2-GRRP-B selects one exact publication table
+      Given a publication in mode "<mode>"
+      When Core validates its facts
+      Then predecessors have "<cardinality>"
+      And exact members are "<members>"
+
+      Examples:
+        | mode       | cardinality                     | members                                                       |
+        | normal     | zero at genesis otherwise one   | mode,height,predecessors,changeset_ref,contained_operations    |
+        | merge      | exactly two sorted distinct     | mode,height,predecessors,changeset_ref,contained_operations    |
+        | resolution | exactly two sorted distinct     | mode,height,predecessors,winner,changeset_ref,contained_operations |
+
+    @wip
+    Scenario: Publication facts are acyclic and derived
+      Given a derived changeset with contained operation references in causal order
+      When the publication operation is committed
+      Then changeset_ref uses the closed changeset profile and domain
+      And contained_operations equals the derived causal order without duplicates
+      But neither the publication operation_ref nor candidate manifest hash is included
+
+    @wip
+    Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
+      Given candidate grant, revoke, rotate or publication facts with "<defect>"
+      When Core validates the selected family
+      Then the facts are refused as InvalidOperationFacts
+      And no operation commitment, counter or canonical effect is emitted
+
+      Examples:
+        | defect                                      |
+        | mandate id and certificate mismatch         |
+        | revoke reason mismatch                       |
+        | unknown rotation domain or mode              |
+        | equal rotation state digests                 |
+        | derived rotation represented twice           |
+        | wrong predecessor cardinality or order       |
+        | resolution winner outside predecessors       |
+        | omitted or duplicate contained operation     |
+        | publication self-reference                   |
+
+    @wip
     Scenario: Append-time and public evidence identify the same operation occurrence
       Given one fresh typed operation occurrence
       When its append-time, Gamma, authorship and edition views are projected
