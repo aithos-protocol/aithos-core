@@ -21,14 +21,14 @@
   "gherkin_inventory": {
     "feature_file_count": 18,
     "declaration_count": 375,
-    "wip_occurrence_count": 155,
+    "wip_occurrence_count": 147,
     "active_cucumber": {
       "features": 15,
-      "rules": 69,
-      "scenarios": 290,
-      "steps": 1133
+      "rules": 71,
+      "scenarios": 345,
+      "steps": 1365
     },
-    "note": "The active runner excludes @wip. CB3 promoted exactly 10 declarations: the verb-lattice and closed-form outlines plus eight id-selector/containment declarations. The declaration inventory remains 375; 155 future-owned @wip declarations remain."
+    "note": "The active runner excludes @wip. CB3 promoted exactly 10 declarations. CB4 promoted exactly 8 operation/state/projection/session declarations, expanding to 55 active scenario instances. The declaration inventory remains 375; 147 future-owned @wip declarations remain."
   },
   "coverage_matrix": [
     {
@@ -488,13 +488,18 @@
       "name": "CB3 canonical mandate scopes final gate",
       "command": "Regenerate/check the CB2 mandate and max_children oracles; run cb3_mandate_scopes, cb2_mandate_contracts, cb2_max_children_versioning, cb2_bundle_version_coexistence, historical Core and full Bundle/Cucumber; then formatting, targeted and workspace Clippy, workspace tests classified against the ledger, and the WASM target with the isolated environment.",
       "observed": "Implementation 1af558a6e9b05082a43b067690ecbacbab103223: cb3_mandate_scopes 3/3, Bundle and Cucumber 15 features / 69 rules / 290 scenarios / 1133 steps, historical Core, formatting, both Clippy gates and WASM are GREEN. The mandate suite has only 7 registered CB5 failures; max_children has only its one registered CB5 omission failure; Bundle version coexistence is 4/4. @wip decreased exactly 165 to 155. All 52 CB3 IDs are VERT; only the 107 future-owned IDs remain open."
+    },
+    {
+      "name": "CB4 canonical operation layers final gate",
+      "command": "Check all six CB4 independent generators; run their six frozen CB2 consumers and cb4_operation_contracts, full active Cucumber, historical Core, full Bundle and workspace tests classified against the ledger; then formatting, targeted/workspace Clippy and the WASM target with the isolated environment.",
+      "observed": "Implementation a4741b57a599886c2ab2959d3f171585eb0e01a1: cb4_operation_contracts 7/7 exhaustively consumes 55 positive, 204 negative and 4 correlation vector cases; all six frozen generators and consumers are GREEN. Cucumber is 15 features / 71 rules / 345 scenarios / 1365 steps. Historical Core, formatting, both Clippy gates and WASM are GREEN. Full workspace replay outside the socket sandbox leaves exactly the 9 future ledger failures: 7 CB5 mandate constraints, 1 CB5 max_children omission and 1 future K1-C carrier gate. @wip decreased exactly 155 to 147. All 31 CB4 IDs are VERT; only the 76 future-owned IDs remain open. Verified SC1 remains an opaque possession/session-layer proof and cannot construct an authorization Allow."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 8,
-    "PREEXISTING-GREEN": 71,
-    "COMPILE-RED-PRELIMINAIRE": 28,
-    "VERT": 52,
+    "PREEXISTING-GREEN": 47,
+    "COMPILE-RED-PRELIMINAIRE": 21,
+    "VERT": 83,
     "total": 159
   },
   "entries": [
@@ -1578,11 +1583,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_mutation -- cb2_k1_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "43e8a0823027a1b9553e829fae399baeba47b739",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The vector file SHA-256 is dc3a57de91ff50895b680111da4da981e1518ad2dcd638d862e63be9eb29b83d.",
       "observed_reason": "The exact committed bytes have the expected SHA-256. This is an oracle-integrity check, not a typed semantic validation.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-HISTORICAL-VECTOR-HASHES",
@@ -1593,11 +1598,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_mutation -- cb2_k1_historical_vector_hashes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "43e8a0823027a1b9553e829fae399baeba47b739",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The four historical vector files retain their frozen whole-file SHA-256 values.",
       "observed_reason": "All four exact file hashes match; no historical vector was rewritten.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-STATE-COMMITMENT-BYTES",
@@ -1608,11 +1613,11 @@
       "vector_slice": "commitment_domains and states",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_mutation -- cb2_k1_state_commitment_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "43e8a0823027a1b9553e829fae399baeba47b739",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "Existing RFC8785-JCS and SHA-256 primitives reproduce every state-key, state-bytes and state-fact commitment byte for byte.",
       "observed_reason": "All 12 state fixtures match the independent Python oracle. The opaque cb2-fixture store-key inputs define neither Bundle layout nor target-to-store derivation.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-OPERATION-COMMITMENT-BYTES",
@@ -1623,22 +1628,22 @@
       "vector_slice": "positive_cases",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_mutation -- cb2_k1_operation_commitment_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "43e8a0823027a1b9553e829fae399baeba47b739",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "Existing RFC8785-JCS and SHA-256 primitives reproduce the exact envelope, member table, facts_ref and digest bytes for all 13 domain/verb cases.",
       "observed_reason": "All byte-level assertions match. This does not claim that Core has a typed closed-family validator.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-OPERATION-FACTS-API-GATE",
-      "test_id": null,
+      "test_id": "cb4_mutation_operation_facts_reach_the_typed_validator",
       "decision": "K1.1-B/K1.2-M-B typed operation-facts validation and approved public error",
       "scenario": "Core validates the closed operation-facts envelope and all mutation families before emitting a commitment.",
       "vector_ref": "CB2-K1-OPERATION-FACTS-MUTATION-1",
       "vector_slice": "positive_cases and negative_cases.operation_facts",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb4_operation_contracts -- cb4_mutation_operation_facts_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The 13 registered cases are accepted and each of the 23 mono-defect candidates returns Error::InvalidOperationFacts(String), with no commitment emitted.",
       "observed_reason": "At observation SHA 43e8a082, no public typed operation-facts validator or Error::InvalidOperationFacts variant exists; a semantic RED test cannot compile without inventing the future API shape.",
       "evidence": {
@@ -1650,18 +1655,18 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_mutation -- cb2_k1_closed_family_and_error_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB4",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-STATE-FACT-API-GATE",
-      "test_id": null,
+      "test_id": "cb4_state_facts_reach_the_typed_validator",
       "decision": "K1.1-B typed logical-state/state-fact validation and approved public error",
       "scenario": "Core validates closed logical-state references and exact protected object-set commitments before operation comparison.",
       "vector_ref": "CB2-K1-OPERATION-FACTS-MUTATION-1",
       "vector_slice": "states and negative_cases.state_facts",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb4_operation_contracts -- cb4_state_facts_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "Valid state fixtures are accepted and each of the 15 mono-defect candidates returns Error::InvalidStateFact(String), with no operation commitment emitted.",
       "observed_reason": "At observation SHA 43e8a082, no public typed state-fact validator or Error::InvalidStateFact variant exists; generic JCS/SHA success does not satisfy the semantic contract.",
       "evidence": {
@@ -1673,7 +1678,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_mutation -- cb2_k1_closed_family_and_error_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB4",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-READ-VECTOR-HASH",
@@ -1684,11 +1689,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_read -- cb2_k1_read_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "ca943ff30fa6f900a4cb3e52b9bad412a9a7d4a3",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The vector file SHA-256 is b8b4014b390fc3ebc65897f8b59d084da78c97137e9ad7f7703dbe5b0e0194db.",
       "observed_reason": "The exact committed bytes have the expected SHA-256. This is an oracle-integrity check, not typed semantic validation.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-READ-HISTORICAL-HASHES",
@@ -1699,11 +1704,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_read -- cb2_k1_read_historical_vector_hashes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "ca943ff30fa6f900a4cb3e52b9bad412a9a7d4a3",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The four historical vector files retain their frozen whole-file SHA-256 values.",
       "observed_reason": "All four exact file hashes match; no historical vector was rewritten.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-READ-SOURCE-COMMITMENTS",
@@ -1714,11 +1719,11 @@
       "vector_slice": "manifest_chain_hash_rule, gamma_query_rule and fixtures",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_read -- cb2_k1_read_source_commitment_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "ca943ff30fa6f900a4cb3e52b9bad412a9a7d4a3",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "Existing JCS/SHA-256 primitives reproduce the prefixed manifest chain hash, both canonical read.gamma request digests, and the vault state-key commitment byte for byte.",
       "observed_reason": "Every generic byte-level assertion matches the independent Python oracle; no presentation carrier, Bundle path, or semantic Allow is claimed.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-READ-OPERATION-BYTES",
@@ -1729,22 +1734,22 @@
       "vector_slice": "positive_cases",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_read -- cb2_k1_read_operation_commitment_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "ca943ff30fa6f900a4cb3e52b9bad412a9a7d4a3",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "Existing RFC8785-JCS and SHA-256 primitives reproduce the exact envelope, member table, facts_ref and digest bytes for all 6 read cases.",
       "observed_reason": "All byte-level assertions match. This does not claim that Core has a typed K1.2-R-B validator.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-READ-FACTS-API-GATE",
-      "test_id": null,
+      "test_id": "cb4_read_operation_facts_reach_the_typed_validator",
       "decision": "K1.2-R-B typed read-facts validation and approved public error",
       "scenario": "Core validates exact Ethos, Gamma-presentation and vault-config read facts against their native source evidence before commitment.",
       "vector_ref": "CB2-K1-OPERATION-FACTS-READ-1",
       "vector_slice": "positive_cases and negative_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb4_operation_contracts -- cb4_read_operation_facts_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The 6 registered read cases are accepted and each of the 21 mono-defect candidates returns Error::InvalidOperationFacts(String), with no commitment emitted.",
       "observed_reason": "At observation SHA ca943ff3, no public typed operation/read-facts validator or Error::InvalidOperationFacts variant exists; a semantic RED test cannot compile without inventing the future API shape.",
       "evidence": {
@@ -1756,7 +1761,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_read -- cb2_k1_read_closed_family_and_error_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB4",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-AI-VECTOR-HASH",
@@ -1767,11 +1772,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- cb2_k1_action_inference_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "da146f41371171187565a4532184c495765d056f",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The vector file SHA-256 is 4e1f319439ec4cc5faef2012a2a8aa198ba8d62fced2f330d2bbd13580c78b71.",
       "observed_reason": "The exact committed bytes have the expected SHA-256. This is an oracle-integrity check, not typed semantic validation.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-AI-HISTORICAL-HASHES",
@@ -1782,11 +1787,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- cb2_k1_action_inference_historical_hashes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "da146f41371171187565a4532184c495765d056f",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The four historical vector files retain their frozen whole-file SHA-256 values.",
       "observed_reason": "All four exact file hashes match; no historical vector was rewritten.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-AI-PREIMAGE-BYTES",
@@ -1797,11 +1802,11 @@
       "vector_slice": "fixtures and commitment_domains",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- cb2_k1_action_inference_preimage_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "da146f41371171187565a4532184c495765d056f",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "Existing JCS/SHA-256 primitives reproduce args_hash, inference-request and purpose commitments, and the two distinct complete-document content addresses.",
       "observed_reason": "Every generic byte-level assertion matches the independent Python oracle; the catalog documents are syntactic fixtures and no signed-table validity is claimed.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-AI-OPERATION-BYTES",
@@ -1812,22 +1817,22 @@
       "vector_slice": "positive_cases",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- cb2_k1_action_inference_operation_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "da146f41371171187565a4532184c495765d056f",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "Existing RFC8785-JCS and SHA-256 primitives reproduce the exact envelope, member tables, applicability variants, facts_ref and digest bytes for all 8 cases.",
       "observed_reason": "All byte-level assertions match. This does not claim that Core has a typed K1.2-AI-B validator.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-AI-FACTS-API-GATE",
-      "test_id": null,
+      "test_id": "cb4_action_inference_facts_reach_the_typed_validator",
       "decision": "K1.2-AI-B typed action/inference validation and approved public error",
       "scenario": "Core validates exact pre-effect action and inference facts against native inputs and applicability before an external effect.",
       "vector_ref": "CB2-K1-OPERATION-FACTS-ACTION-INFERENCE-1",
       "vector_slice": "positive_cases and negative_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb4_operation_contracts -- cb4_action_inference_facts_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The 8 registered cases are accepted and each of the 35 mono-defect candidates returns Error::InvalidOperationFacts(String), with no commitment or effect emitted.",
       "observed_reason": "At observation SHA da146f4, no public typed action/inference-facts validator or Error::InvalidOperationFacts variant exists; a semantic RED test cannot compile without inventing the future API shape.",
       "evidence": {
@@ -1839,7 +1844,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- cb2_k1_action_inference_closed_family_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB4",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-STRUCTURAL-VECTOR-HASH",
@@ -1850,11 +1855,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_structural -- cb2_k1_structural_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "e6059359ff2eac8256ba0f9a2e5f3e58dc4f5b78",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The vector file SHA-256 is 1be1d239055e5a66f0c64d3ca2c2b00cd102bac44a7cd8c2147d16dce8d275e3.",
       "observed_reason": "The exact vector bytes match the independent generator.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-STRUCTURAL-HISTORICAL-HASHES",
@@ -1865,11 +1870,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_structural -- cb2_k1_structural_historical_hashes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "e6059359ff2eac8256ba0f9a2e5f3e58dc4f5b78",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The four historical vector files retain their frozen whole-file SHA-256 values.",
       "observed_reason": "All four exact file hashes match; no historical vector was rewritten.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-STRUCTURAL-REFERENCE-PREIMAGES",
@@ -1880,11 +1885,11 @@
       "vector_slice": "fixtures and commitment_domains",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_structural -- cb2_k1_structural_reference_preimages_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "e6059359ff2eac8256ba0f9a2e5f3e58dc4f5b78",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "Existing JCS/SHA-256 primitives reproduce complete-certificate, state, succession-transition and changeset reference bytes.",
       "observed_reason": "All generic byte-level assertions match; the changeset document remains a syntactic fixture and no document-table validity is claimed.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-STRUCTURAL-OPERATION-BYTES",
@@ -1895,22 +1900,22 @@
       "vector_slice": "positive_cases",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_structural -- cb2_k1_structural_operation_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "e6059359ff2eac8256ba0f9a2e5f3e58dc4f5b78",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "Existing RFC8785-JCS and SHA-256 primitives reproduce the exact envelope, family variants, facts_ref and digest bytes for all 11 cases.",
       "observed_reason": "All byte-level assertions match. This does not claim a typed structural facts validator.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-K1-STRUCTURAL-FACTS-API-GATE",
-      "test_id": null,
+      "test_id": "cb4_structural_operation_facts_reach_the_typed_validator",
       "decision": "K1.2-GRRP-B typed structural facts validation and approved public error",
       "scenario": "Core validates exact grant, revoke, standalone rotate and publication facts before commitment.",
       "vector_ref": "CB2-K1-OPERATION-FACTS-STRUCTURAL-1",
       "vector_slice": "positive_cases and negative_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb4_operation_contracts -- cb4_structural_operation_facts_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The 11 registered cases are accepted and all 43 mono-defect candidates return Error::InvalidOperationFacts(String), with no commitment or effect emitted.",
       "observed_reason": "At observation SHA e605935, no public typed structural operation-facts validator or Error::InvalidOperationFacts variant exists.",
       "evidence": {
@@ -1922,7 +1927,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_structural -- cb2_k1_structural_closed_family_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB4",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-D7-VECTOR-HASH",
@@ -2024,11 +2029,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The vector file SHA-256 is 99bc175e0b4f07dece0afa828fff22be9be75d4b66f8b00fee3e7d427021e14c.",
       "observed_reason": "The exact vector bytes match the independent stdlib Python oracle.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-W1-PROJECTION-HISTORICAL-HASHES",
@@ -2039,11 +2044,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_historical_hashes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "All four source vector hashes remain exact.",
       "observed_reason": "The complete historical files match their frozen SHA-256 values; no operation_ref is synthesized into them.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-W1-CERTIFICATE-ADDRESS",
@@ -2054,11 +2059,11 @@
       "vector_slice": "fixtures.certificate, certificate_jcs and certificate_digest",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_certificate_address_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The complete signed certificate JCS hashes to sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055.",
       "observed_reason": "Existing generic canonicalization and SHA-256 reproduce the independent oracle bytes.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-W1-PROJECTION-BYTES",
@@ -2069,22 +2074,22 @@
       "vector_slice": "positive_cases",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_commitment_and_reference_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "All four closed projections, zero/one/two history-head cases, commitment domain and references match byte-for-byte; distinct occurrence anchors differ.",
       "observed_reason": "Existing generic JCS/SHA-256 reproduces every oracle byte. This does not claim typed projection or authority validation.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-W1-PROJECTION-API-GATE",
-      "test_id": null,
+      "test_id": "cb4_projection_reference_and_correlation_reach_the_typed_validator",
       "decision": "W1/A1/K1 typed projection, authority, reference and cross-view correlation",
       "scenario": "Core validates and reconstructs the complete canonical operation before effect and during replay with exact typed refusal.",
       "vector_ref": "CB2-W1-OPERATION-PROJECTION-1",
       "vector_slice": "positive_cases, negative_projection_cases, negative_reference_cases and correlation_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb4_operation_contracts -- cb4_projection_reference_and_correlation_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "All 4 positives validate, 28 projection defects plus 6 reference defects and equivocation return Error::InvalidOperation(String), and 4 selected-facts defects retain Error::InvalidOperationFacts(String).",
       "observed_reason": "At observation SHA cfb4eaa, Core has no public canonical-operation projection/reference validator and no Error::InvalidOperation variant.",
       "evidence": {
@@ -2096,7 +2101,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB4",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-SC1-VECTOR-HASH",
@@ -2107,11 +2112,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The vector file SHA-256 is 17553dd95f515e8045e17e8e46816b1d7e2007d4985eec0048fcac34197bef74.",
       "observed_reason": "The exact vector bytes match the independent Python cryptography oracle.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-SC1-HISTORICAL-HASHES",
@@ -2122,11 +2127,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_historical_hashes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "All three complete source vector hashes remain exact.",
       "observed_reason": "No historical certificate, projection or operation-facts vector is rewritten or reinterpreted.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-SC1-CERTIFICATE-BYTES",
@@ -2137,11 +2142,11 @@
       "vector_slice": "positive.mandate, certificate, certificate_preimage_jcs, certificate_jcs and certificate_digest",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_mandate_certificate_and_digest_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The certificate has the exact seven-member draft.1 table, is signed by the leaf long-term key with signature.value empty in the preimage, and its full signed JCS is SHA-256 addressed.",
       "observed_reason": "Existing JCS, multibase, SHA-256 and Ed25519 primitives reproduce and verify every oracle byte.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-SC1-DOUBLE-POSSESSION-BYTES",
@@ -2152,22 +2157,22 @@
       "vector_slice": "positive.operation_projection, operation_ref, native_leaf_proof_fixture and session_proof",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_operation_and_double_possession_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The complete certificate digest is embedded in authority.session, the operation commitment selects those exact bytes, and both Ed25519 proofs verify; the native proof remains explicitly test-only.",
       "observed_reason": "Existing generic primitives reproduce the operation reference and verify both possession signatures without promoting a new carrier.",
       "owner": "CB4",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-SC1-TYPED-API-GATE",
-      "test_id": null,
+      "test_id": "cb4_session_bundle_reaches_the_typed_validator",
       "decision": "SC1 typed certificate, interval, authority and proof validation",
       "scenario": "Core validates SC1 before effect and during replay, including exact closed tables, certificate binding and both required possessions.",
       "vector_ref": "CB2-SC1-SESSION-PROOF-1",
       "vector_slice": "positive and negative_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb4_operation_contracts -- cb4_session_bundle_reaches_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "a4741b57a599886c2ab2959d3f171585eb0e01a1",
       "expected_reason": "The positive bundle validates and all 29 structural, binding, interval, digest, operation or possession defects return Error::InvalidSession(String).",
       "observed_reason": "At observation SHA 2d0f479, Core has no public SC1 certificate/proof type, validator or Error::InvalidSession variant.",
       "evidence": {
@@ -2179,7 +2184,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB4",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-SC1-MAX-SESSIONS-GATE",
