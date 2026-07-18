@@ -88,7 +88,6 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
 
   Rule: Counter domains stay distinct under the versioned delegated-counts trie
 
-    @wip
     Scenario: D7-CB2 fixes the two signed limits and separate counter root
       Given a homogeneous draft3 mandate carrying max_mutations and max_consumptions
       When its accepted occurrences are committed for cold replay
@@ -98,7 +97,6 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
       And its leaves have only non-zero mutations and consumptions
       But historical gamma_counts_root and entries bytes are unchanged
 
-    @wip
     Scenario Outline: Each delegated consumption affects only its conceptual meters
       Given a mandate history containing one "<consumption>"
       When the verifier rebuilds action, Ethos-mutation and total-consumption tallies
@@ -120,7 +118,6 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
         | delegated fork resolution  | 0            | 0              | 1           |
         | owner Ethos mutation       | 0            | 0              | 0           |
 
-    @wip
     Scenario: New delegated counters do not rewrite historical committed bytes
       Given a historical edition and Gamma vector predating mutation and total meters
       When a verifier replays it under its historical protocol version
@@ -129,14 +126,12 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
       And old Gamma kinds, max_actions and count roots are never reinterpreted
       And new meter material under an old or unversioned schema, or under an unknown counter-schema version, fails closed
 
-    @wip
     Scenario: Invalid delegated counter evidence has one typed refusal
       Given delegated-counts material with an invalid shape, proof, tally or occurrence correlation
       When Core validates it at append time or during cold replay
       Then it is refused as InvalidDelegatedCounts
       And a malformed max_mutations or max_consumptions certificate is refused as InvalidMandate
 
-    @wip
     Scenario Outline: Publication authority counts once across all of its evidence
       Given a grantee "<operation>" contains two semantically distinct already-counted mutations
       And its publisher authority is evidenced by "<edition evidence>"

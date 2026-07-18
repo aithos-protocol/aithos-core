@@ -4,7 +4,6 @@ Feature: Connector classes and isolated vault capabilities
 
   Rule: An approved catalog is the sole source of action class
 
-    @wip
     Scenario: CAT1 closes the signed catalog table and content address
       Given a connector catalog with exact profile, connector, version, actions and signature
       When the catalog signer signs RFC8785-JCS with signature.value empty
@@ -13,7 +12,6 @@ Feature: Connector classes and isolated vault capabilities
       And catalog_digest addresses the complete signed catalog
       But malformed, duplicate, unsorted, unclassed or multiply classed actions are InvalidCatalog
 
-    @wip
     Scenario: CAT1 keeps catalog attestation and owner approval distinct
       Given one complete signed connector catalog
       When the owner content key approves its exact connector, version and digest
@@ -22,7 +20,6 @@ Feature: Connector classes and isolated vault capabilities
       But the catalog signer, owner root, grantee or a different subject cannot supply owner approval
       And neither complete signed document can substitute for the other
 
-    @wip
     Scenario: Draft3 catalog_pins is one exact non-droppable constraint
       Given a homogeneous draft3 mandate carrying connector business actions
       When its signed constraints are validated
@@ -30,7 +27,6 @@ Feature: Connector classes and isolated vault capabilities
       And every descendant copies the complete pin array byte-for-byte
       But draft1, draft2, a sidecar, a changed pin, an unrelated pin or a pin for only .config is InvalidMandate
 
-    @wip
     Scenario Outline: Catalog authority begins only with a homogeneous draft3 chain
       Given a connector mandate chain under "<profile>"
       When it presents "<catalog claim>" for a new W1 action occurrence
@@ -53,21 +49,18 @@ Feature: Connector classes and isolated vault capabilities
       And each grant is recorded by its normal Gamma v2 occurrence
       And no draft2 certificate, signature or historical action byte changes
 
-    @wip
     Scenario: Catalog attenuation never widens through a child or later sidecar
       Given a draft3 parent pins one approved connector catalog
       When a child or runtime presents a changed digest, version, class or action set
       Then the existing chain is refused for that catalog
       And only fresh homogeneous draft3 authority may approve the change
 
-    @wip
     Scenario: Catalog signer and owner approval are distinct proofs
       Given a signed, versioned and content-addressed connector catalog
       When the owner approves its exact digest and version
       Then a mandate and edition pin both catalog and approval evidence
       And a keyless verifier never treats catalog signature alone as owner approval
 
-    @wip
     Scenario Outline: Every catalog action has exactly one canonical class
       Given a signed connector catalog whose action has "<class assignment>"
       When the owner and a keyless verifier validate its form
@@ -83,7 +76,6 @@ Feature: Connector classes and isolated vault capabilities
         | one class outside registry | refused  |
         | duplicate identical class  | refused  |
 
-    @wip
     Scenario Outline: Wildcard and exact action rights follow the pinned class
       Given an approved catalog classes action "<action>" as "<class>"
       And a mandate carries "<authority>"
@@ -100,7 +92,6 @@ Feature: Connector classes and isolated vault capabilities
         | purchase | binding | act.x.mail.purchase | no owner co_sign    | refused  |
         | purchase | binding | act.x.mail.purchase | valid owner co_sign | accepted |
 
-    @wip
     Scenario Outline: Catalog drift never widens an existing mandate
       Given a mandate pins one approved connector catalog
       When runtime presents "<catalog change>"

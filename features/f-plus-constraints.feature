@@ -162,7 +162,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
 
   Rule: U1 usage receipt v2 binds post-effect usage to one W1 occurrence
 
-    @wip
     Scenario Outline: Each U1 family has one exact closed member table
       Given a W1 "<operation>" occurrence citing a profile that requires attestation
       When Core validates its U1 receipt with family "<family>"
@@ -175,7 +174,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
         | action    | usage.action    | v,family,operation_ref,model,tokens,sig                   |
         | inference | usage.inference | v,family,operation_ref,tokens_in,tokens_out,sig           |
 
-    @wip
     Scenario: U1 actual usage overrides only the matching declaration
       Given an action usage receipt signed by the cited profile attestation key
       And an inference usage receipt signed by the cited profile attestation key
@@ -185,7 +183,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
       But a wrong key, family, reference, overflow, duplicate or non-closed member table is refused as InvalidGammaEntry
       And no U1 receipt changes the pre-effect operation commitment
 
-    @wip
     Scenario: Historical usage receipts are never upgraded or downgraded
       Given byte-identical historical v1 usage receipts
       When W1 and historical evidence are verified
@@ -363,7 +360,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
 
   Rule: In draft.2 max_children is non-droppable and counts direct children only
 
-    @wip
     Scenario Outline: A child cannot widen its parent's max_children
       Given a draft.2 parent mandate with max_children 4 and issue depth 2
       When it mints a child with "<child constraint>"
@@ -377,7 +373,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
         | no max_children and can delegate    | rejected |
         | no max_children and is a chain leaf | rejected |
 
-    @wip
     Scenario: Grandchildren do not consume their grandparent's direct-child meter
       Given a draft.2 root mandate with max_children 3 and issue depth 2
       And its sole direct child has max_children 3 and issue depth 1
@@ -387,7 +382,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
 
   Rule: Root constraint form and forward-compatible extensions fail closed precisely
 
-    @wip
     Scenario Outline: Known and unknown root constraints have distinct structural outcomes
       Given a directly owner-issued mandate whose chain ends at that mandate
       When its constraints contain "<constraint case>"
@@ -400,7 +394,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
         | known malformed max_actions      | rejected            | rejected            |
         | unknown opaque quantum_cap       | preserved           | rejected            |
 
-    @wip
     Scenario Outline: An unknown leaf extension never becomes an implicit Allow
       Given a valid root-leaf mandate preserving unknown constraint "quantum_cap"
       And a current-version verifier receives "<claim>"
@@ -450,7 +443,6 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
         | log_reads                            | read presentation  | applicable           | signed Gamma read entry          |
         | log_reads                            | vault config read  | applicable           | signed read evidence             |
 
-    @wip
     Scenario: The owner is journalized but never consumes mandate constraints
       Given the same canonical mutation is available to an owner and a grantee
       When the owner performs it with a narrow local capability

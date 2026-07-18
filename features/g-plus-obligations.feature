@@ -165,7 +165,6 @@ Feature: Obligations — the general gate (spec 04.12)
 
   Rule: R2 binds one obligation discharge to one exact W1 occurrence
 
-    @wip
     Scenario Outline: R2 has two exact closed tables for optional WYSIWYS evidence
       Given an effective pinned obligation for one W1 operation
       When its R2 receipt has "<presentation state>"
@@ -178,7 +177,6 @@ Feature: Obligations — the general gate (spec 04.12)
         | no presented digest       | v,family,operation_ref,obligation,verdict,at,sig                          |
         | a strict presented digest | v,family,operation_ref,obligation,verdict,presented_digest,at,sig         |
 
-    @wip
     Scenario: R2 uses operation_ref instead of duplicating historical v1 facts
       Given one canonical operation whose authority, native facts and time are fixed
       When a pinned attestor signs its R2 obligation receipt
@@ -188,7 +186,6 @@ Feature: Obligations — the general gate (spec 04.12)
 
   Rule: Draft3 adds one closed matcher for non-action obligations
 
-    @wip
     Scenario Outline: The matcher selects one exact reconstructed operation tuple
       Given a homogeneous draft3 chain with applies_to_operation "<matcher>"
       When the grantee presents canonical operation "<operation>"
@@ -207,7 +204,6 @@ Feature: Obligations — the general gate (spec 04.12)
         | publication normal                     | normal publication         | applicable     |
         | mutation ethos edit                    | public content delete      | non-applicable |
 
-    @wip
     Scenario: The draft3 matcher cannot reinterpret historical authority
       Given byte-identical draft1 and draft2 obligation mandates
       When applies_to_operation is presented through a sidecar or mixed-version chain

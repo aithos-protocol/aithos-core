@@ -2,12 +2,20 @@
 //! root in `features/`; step definitions grow with each phase of
 //! docs/EXECUTION-PLAN.md and are never rewritten, only extended.
 
+use std::sync::OnceLock;
+
 use aithos_bundle::bundle::{Bundle, SectionSpec, ZoneIndex};
 use aithos_bundle::entropy::{EntropySource, SeqEntropy};
 use aithos_bundle::grants::GrantSpec;
 use aithos_bundle::log::{LogFilter, LogHit};
 use aithos_bundle::manifest::{sha256_hex, Manifest};
 use aithos_bundle::{MemStore, Store};
+use aithos_core::catalog::{
+    catalog_action_permitted, verify_catalog_action_facts, verify_catalog_approval,
+    verify_catalog_chain, verify_connector_catalog,
+};
+use aithos_core::constraints::{constraints_attenuate_for_profile, verify_operation_constraints};
+use aithos_core::delegated_counts::{verify_delegated_count_mandates, verify_delegated_counts};
 use aithos_core::derive::{derive_key, node_key, section_label};
 use aithos_core::did::{DidDocument, EpochTransition};
 use aithos_core::header::{Header, Line, Recipient, Wrap};
@@ -23,6 +31,10 @@ use aithos_core::operation::{
     OperationProjectionEvidence, SessionEvidence, StateFactInput,
 };
 use aithos_core::path::{NodePath, Zone};
+use aithos_core::receipts::{
+    obligation_matches, verify_obligation, verify_obligation_chain, verify_r2_receipt,
+    verify_u1_receipt,
+};
 use aithos_core::wire;
 use cucumber::{given, then, when, World};
 use ed25519_dalek::SigningKey;
@@ -50,6 +62,10 @@ const CB4_STRUCTURAL: &str =
 const CB4_PROJECTION: &str = include_str!("../../../../vectors/cb2-operation-projection.json");
 const CB4_SESSION: &str = include_str!("../../../../vectors/cb2-session-proof.json");
 const CB4_NATIVE_LEAF_TEST_DOMAIN: &[u8] = b"aithos-core/cb2/native-leaf-proof\0";
+const CB5_MAX_CHILDREN: &str = include_str!("../../../../vectors/cb2-max-children-versioning.json");
+const CB5_DELEGATED_COUNTS: &str = include_str!("../../../../vectors/cb2-delegated-counts.json");
+const CB5_RECEIPTS: &str = include_str!("../../../../vectors/cb2-operation-receipts.json");
+const CB5_CATALOG: &str = include_str!("../../../../vectors/cb2-connector-catalog.json");
 
 fn agent_sk(b: u8) -> SigningKey {
     SigningKey::from_bytes(&[b; 32])
@@ -173,6 +189,7 @@ pub struct ProtocolWorld {
     cb3_secondary_verdicts: Vec<bool>,
     cb4_case: String,
     cb4_result: Option<Result<(), String>>,
+    cb5_result: Option<Result<(), String>>,
     // --- step F: gamma ---
     gamma_result: Option<Result<String, String>>,
     audit_chain: Vec<Mandate>,
@@ -592,6 +609,510 @@ fn cb4_validate_session(id: &str) -> aithos_core::Result<()> {
         session_proof: candidate.get("session_proof"),
     })
     .map(|_| ())
+}
+
+static CB5_CONSTRAINTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+static CB5_COUNTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+static CB5_RECEIPTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+static CB5_CATALOG_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+
+fn cb5_parsed(bytes: &str) -> Result<serde_json::Value, String> {
+    serde_json::from_str(bytes).map_err(|error| format!("CB5 vector does not parse: {error}"))
+}
+
+fn cb5_constraints_acceptance() -> Result<(), String> {
+    let mandates = cb5_parsed(CB2_MANDATE_CONTRACTS)?;
+    let root_cases = mandates["constraints"]["root_leaf_cases"]
+        .as_array()
+        .ok_or_else(|| "CB5 root cases are not an array".to_owned())?;
+    let root_case = |name: &str| {
+        root_cases
+            .iter()
+            .find(|case| case["case"].as_str() == Some(name))
+            .ok_or_else(|| format!("missing CB5 root case {name}"))
+    };
+    let parsed_mandate = |name: &str| -> Result<Mandate, String> {
+        let case = root_case(name)?;
+        serde_json::from_str(
+            case["document_jcs"]
+                .as_str()
+                .ok_or_else(|| format!("missing CB5 mandate bytes for {name}"))?,
+        )
+        .map_err(|error| format!("{name} does not parse: {error}"))
+    };
+    let did: DidDocument = serde_json::from_str(
+        mandates["signed_fixtures"]["did_document_jcs"]
+            .as_str()
+            .ok_or_else(|| "CB5 signed DID fixture is missing".to_owned())?,
+    )
+    .map_err(|error| format!("CB5 signed DID does not parse: {error}"))?;
+
+    let known = parsed_mandate("known well-formed root constraint")?;
+    verify_chain(std::slice::from_ref(&known), &did, &known.issued_at)
+        .map_err(|error| format!("well-formed root constraint failed: {error}"))?;
+    verify_operation_constraints(&known.constraints)
+        .map_err(|error| format!("known operation constraints failed: {error}"))?;
+
+    let malformed = parsed_mandate("known malformed root constraint")?;
+    if !matches!(
+        verify_chain(std::slice::from_ref(&malformed), &did, &malformed.issued_at),
+        Err(aithos_core::Error::InvalidMandate(_))
+    ) {
+        return Err("malformed root max_actions did not fail as InvalidMandate".into());
+    }
+
+    let unknown = parsed_mandate("unknown constraint on directly issued chain leaf")?;
+    verify_chain(std::slice::from_ref(&unknown), &did, &unknown.issued_at)
+        .map_err(|error| format!("opaque root constraint was not preserved: {error}"))?;
+    if !matches!(
+        verify_operation_constraints(&unknown.constraints),
+        Err(aithos_core::Error::InvalidMandate(_))
+    ) {
+        return Err("opaque root constraint became operation authority".into());
+    }
+    if !matches!(
+        constraints_attenuate_for_profile(
+            &unknown.version,
+            &unknown.constraints,
+            &unknown.constraints,
+            &unknown.not_before,
+            &unknown.not_after,
+        ),
+        Err(aithos_core::Error::InvalidMandate(_))
+    ) {
+        return Err("opaque root constraint became delegation authority".into());
+    }
+
+    let max_children = cb5_parsed(CB5_MAX_CHILDREN)?;
+    let certificates = &max_children["certificates"];
+    for case in max_children["cases"]
+        .as_array()
+        .ok_or_else(|| "CB5 max_children cases are not an array".to_owned())?
+    {
+        let name = |key: &str| {
+            case[key]
+                .as_str()
+                .ok_or_else(|| format!("max_children case has no {key}"))
+        };
+        let parent_name = name("parent")?;
+        let child_name = name("child")?;
+        let parse = |certificate_name: &str| -> Result<Mandate, String> {
+            serde_json::from_str(
+                certificates[certificate_name]["jcs"]
+                    .as_str()
+                    .ok_or_else(|| format!("missing certificate {certificate_name}"))?,
+            )
+            .map_err(|error| format!("{certificate_name} does not parse: {error}"))
+        };
+        let parent = parse(parent_name)?;
+        let child = parse(child_name)?;
+        if parent.version != child.version {
+            continue;
+        }
+        let accepted = constraints_attenuate_for_profile(
+            &parent.version,
+            &parent.constraints,
+            &child.constraints,
+            &child.not_before,
+            &child.not_after,
+        )
+        .is_ok();
+        let expected = case["expected"] == "valid";
+        if accepted != expected {
+            return Err(format!(
+                "{}: max_children verdict mismatch",
+                case["id"].as_str().unwrap_or("unnamed")
+            ));
+        }
+    }
+
+    let direct = &max_children["direct_children_only"];
+    let entries: Vec<aithos_core::gamma::Entry> = direct["grant_entries_jcs"]
+        .as_array()
+        .ok_or_else(|| "direct-child entries are not an array".to_owned())?
+        .iter()
+        .map(|entry| {
+            serde_json::from_str(
+                entry
+                    .as_str()
+                    .ok_or_else(|| "direct-child entry is not text".to_owned())?,
+            )
+            .map_err(|error| format!("direct-child entry does not parse: {error}"))
+        })
+        .collect::<Result<_, _>>()?;
+    aithos_core::gamma::verify_links(&entries)
+        .map_err(|error| format!("direct-child Gamma links failed: {error}"))?;
+    let parent_name = direct["parent_chain"][0]
+        .as_str()
+        .ok_or_else(|| "direct parent name is missing".to_owned())?;
+    let child_name = direct["child_chain"][1]
+        .as_str()
+        .ok_or_else(|| "direct child name is missing".to_owned())?;
+    let parent: Mandate = serde_json::from_str(
+        certificates[parent_name]["jcs"]
+            .as_str()
+            .ok_or_else(|| "direct parent certificate is missing".to_owned())?,
+    )
+    .map_err(|error| format!("direct parent does not parse: {error}"))?;
+    let child: Mandate = serde_json::from_str(
+        certificates[child_name]["jcs"]
+            .as_str()
+            .ok_or_else(|| "direct child certificate is missing".to_owned())?,
+    )
+    .map_err(|error| format!("direct child does not parse: {error}"))?;
+    if aithos_core::gamma::count_children(&entries, &parent.id) != 1
+        || aithos_core::gamma::count_children(&entries, &child.id) != 3
+    {
+        return Err("grandchildren changed the grandparent direct-child meter".into());
+    }
+    Ok(())
+}
+
+fn cb5_counts_acceptance() -> Result<(), String> {
+    let vector = cb5_parsed(CB5_DELEGATED_COUNTS)?;
+    let positive = &vector["positive"];
+    let verified = verify_delegated_counts(
+        &positive["delegated_counts"],
+        &positive["leaves"],
+        &positive["evidence_views"],
+    )
+    .map_err(|error| format!("positive delegated counts failed: {error}"))?;
+    if verified.occurrences().len() != 14
+        || verified
+            .counts_for("mandate_01J00000000000000000000020")
+            .is_none_or(|counts| counts.mutations() != 2 || counts.consumptions() != 14)
+        || verified
+            .counts_for("mandate_01J00000000000000000000022")
+            .is_none_or(|counts| counts.consumptions() != 1)
+    {
+        return Err("positive delegated-count tallies do not match D7".into());
+    }
+    verify_delegated_count_mandates(&positive["mandates"])
+        .map_err(|error| format!("positive delegated-count mandates failed: {error}"))?;
+
+    for case in vector["negative_counter_cases"]
+        .as_array()
+        .ok_or_else(|| "delegated-count negatives are not an array".to_owned())?
+    {
+        let candidate = &case["candidate"];
+        if !matches!(
+            verify_delegated_counts(
+                &candidate["delegated_counts"],
+                &candidate["leaves"],
+                &candidate["evidence_views"],
+            ),
+            Err(aithos_core::Error::InvalidDelegatedCounts(_))
+        ) {
+            return Err(format!("{} did not fail closed", case["id"]));
+        }
+    }
+    for case in vector["negative_mandate_cases"]
+        .as_array()
+        .ok_or_else(|| "delegated-count mandate negatives are not an array".to_owned())?
+    {
+        if !matches!(
+            verify_delegated_count_mandates(&case["candidate"]),
+            Err(aithos_core::Error::InvalidMandate(_))
+        ) {
+            return Err(format!("{} did not fail as InvalidMandate", case["id"]));
+        }
+    }
+    Ok(())
+}
+
+fn cb5_receipts_acceptance() -> Result<(), String> {
+    let vector = cb5_parsed(CB5_RECEIPTS)?;
+    let positives = &vector["positive_receipts"];
+    let contexts = &vector["contexts"];
+    let obligations = &vector["obligations"];
+    for (record, context, profile, obligation) in [
+        (
+            &positives["r2_without_presented_digest"],
+            &contexts["action"],
+            "1.0.0-draft.2",
+            &obligations["action"],
+        ),
+        (
+            &positives["r2_with_presented_digest"],
+            &contexts["action"],
+            "1.0.0-draft.2",
+            &obligations["action"],
+        ),
+        (
+            &positives["r2_draft3_mutation"],
+            &contexts["mutation-ethos-edit"],
+            "1.0.0-draft.3",
+            &obligations["mutation"],
+        ),
+    ] {
+        verify_r2_receipt(
+            &serde_json::json!([record["receipt"].clone()]),
+            context,
+            profile,
+            obligation,
+        )
+        .map_err(|error| format!("positive R2 receipt failed: {error}"))?;
+    }
+    let action = verify_u1_receipt(
+        &serde_json::json!([positives["u1_action"]["receipt"].clone()]),
+        &contexts["action"],
+        &vector["budget_profile"],
+    )
+    .map_err(|error| format!("positive U1 action receipt failed: {error}"))?;
+    let inference = verify_u1_receipt(
+        &serde_json::json!([positives["u1_inference"]["receipt"].clone()]),
+        &contexts["inference"],
+        &vector["budget_profile"],
+    )
+    .map_err(|error| format!("positive U1 inference receipt failed: {error}"))?;
+    if action.actual_tokens() != 8412 || inference.actual_tokens() != 1500 {
+        return Err("U1 actual usage did not replace the matching declaration".into());
+    }
+
+    for case in vector["negative_r2_cases"]
+        .as_array()
+        .ok_or_else(|| "R2 negatives are not an array".to_owned())?
+    {
+        if !matches!(
+            verify_r2_receipt(
+                &case["candidate"],
+                &contexts["action"],
+                "1.0.0-draft.2",
+                &obligations["action"],
+            ),
+            Err(aithos_core::Error::GammaObligationUnsatisfied(_))
+        ) {
+            return Err(format!("{} did not fail as an R2 refusal", case["id"]));
+        }
+    }
+    for case in vector["negative_u1_cases"]
+        .as_array()
+        .ok_or_else(|| "U1 negatives are not an array".to_owned())?
+    {
+        let context = if case["id"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("inference-"))
+        {
+            &contexts["inference"]
+        } else {
+            &contexts["action"]
+        };
+        if !matches!(
+            verify_u1_receipt(&case["candidate"], context, &vector["budget_profile"]),
+            Err(aithos_core::Error::InvalidGammaEntry(_))
+        ) {
+            return Err(format!("{} did not fail as a U1 refusal", case["id"]));
+        }
+    }
+
+    for case in vector["matcher_cases"]
+        .as_array()
+        .ok_or_else(|| "matcher cases are not an array".to_owned())?
+    {
+        let obligation = serde_json::json!({
+            "id": case["id"],
+            "check": "human.approve",
+            "attestor": [vector["public_keys"]["attestor_a"].clone()],
+            "applies_to_operation": case["matcher"].clone(),
+            "verdict": "approve",
+        });
+        let verified = verify_obligation("1.0.0-draft.3", &obligation)
+            .map_err(|error| format!("positive matcher failed: {error}"))?;
+        let applicable = obligation_matches(
+            &verified,
+            &contexts[case["context"]
+                .as_str()
+                .ok_or_else(|| "matcher context is missing".to_owned())?],
+        )
+        .map_err(|error| format!("matcher application failed: {error}"))?;
+        if applicable != case["expected_applicable"].as_bool().unwrap_or(false) {
+            return Err(format!("{} matcher verdict mismatch", case["id"]));
+        }
+    }
+    verify_obligation_chain(&vector["draft3_obligation_chain"])
+        .map_err(|error| format!("positive matcher chain failed: {error}"))?;
+    for case in vector["negative_matcher_cases"]
+        .as_array()
+        .ok_or_else(|| "matcher negatives are not an array".to_owned())?
+    {
+        if !matches!(
+            verify_obligation(
+                case["candidate"]["profile"].as_str().unwrap_or_default(),
+                &case["candidate"]["obligation"],
+            ),
+            Err(aithos_core::Error::InvalidMandate(_))
+        ) {
+            return Err(format!("{} matcher shape did not fail", case["id"]));
+        }
+    }
+    for case in vector["negative_matcher_chain_cases"]
+        .as_array()
+        .ok_or_else(|| "matcher-chain negatives are not an array".to_owned())?
+    {
+        if !matches!(
+            verify_obligation_chain(&case["candidate"]),
+            Err(aithos_core::Error::InvalidMandate(_))
+        ) {
+            return Err(format!("{} matcher chain did not fail", case["id"]));
+        }
+    }
+    Ok(())
+}
+
+fn cb5_catalog_acceptance() -> Result<(), String> {
+    let vector = cb5_parsed(CB5_CATALOG)?;
+    let catalog = verify_connector_catalog(
+        &vector["catalog"]["document"],
+        vector["catalog"]["catalog_digest"]
+            .as_str()
+            .ok_or_else(|| "catalog digest is missing".to_owned())?,
+    )
+    .map_err(|error| format!("positive catalog failed: {error}"))?;
+    let approval = verify_catalog_approval(
+        &vector["approval"]["document"],
+        vector["approval"]["approval_digest"]
+            .as_str()
+            .ok_or_else(|| "approval digest is missing".to_owned())?,
+        &catalog,
+        &vector["owner_did"]["document"],
+    )
+    .map_err(|error| format!("positive catalog approval failed: {error}"))?;
+    verify_catalog_chain(
+        &vector["draft3_chain"],
+        &catalog,
+        &approval,
+        &vector["owner_did"]["document"],
+    )
+    .map_err(|error| format!("positive catalog chain failed: {error}"))?;
+    let action = verify_catalog_action_facts(
+        &vector["action_facts"]["facts"],
+        &vector["catalog_pin"],
+        &catalog,
+        &approval,
+        &vector["owner_did"]["document"],
+    )
+    .map_err(|error| format!("positive catalog action facts failed: {error}"))?;
+    if action.class() != "act" {
+        return Err("catalog action class was not derived as act".into());
+    }
+    for case in vector["class_cases"]
+        .as_array()
+        .ok_or_else(|| "catalog class cases are not an array".to_owned())?
+    {
+        if catalog_action_permitted(
+            &catalog,
+            case["action"].as_str().unwrap_or_default(),
+            case["authority"].as_str().unwrap_or_default(),
+            case["owner_co_sign"].as_bool().unwrap_or(false),
+        ) != case["expected_authorized"].as_bool().unwrap_or(false)
+        {
+            return Err(format!("{} catalog class verdict mismatch", case["action"]));
+        }
+    }
+    for case in vector["negative_catalog_cases"]
+        .as_array()
+        .ok_or_else(|| "catalog negatives are not an array".to_owned())?
+    {
+        if !matches!(
+            verify_connector_catalog(
+                &case["candidate"]["catalog"],
+                case["candidate"]["claimed_digest"]
+                    .as_str()
+                    .unwrap_or_default(),
+            ),
+            Err(aithos_core::Error::InvalidCatalog(_))
+        ) {
+            return Err(format!("{} catalog defect did not fail", case["id"]));
+        }
+    }
+    for case in vector["negative_approval_cases"]
+        .as_array()
+        .ok_or_else(|| "approval negatives are not an array".to_owned())?
+    {
+        if !matches!(
+            verify_catalog_approval(
+                &case["candidate"]["approval"],
+                case["candidate"]["claimed_digest"]
+                    .as_str()
+                    .unwrap_or_default(),
+                &catalog,
+                &vector["owner_did"]["document"],
+            ),
+            Err(aithos_core::Error::InvalidCatalog(_))
+        ) {
+            return Err(format!("{} approval defect did not fail", case["id"]));
+        }
+    }
+    for case in vector["negative_chain_cases"]
+        .as_array()
+        .ok_or_else(|| "catalog-chain negatives are not an array".to_owned())?
+    {
+        if !matches!(
+            verify_catalog_chain(
+                &case["candidate"],
+                &catalog,
+                &approval,
+                &vector["owner_did"]["document"],
+            ),
+            Err(aithos_core::Error::InvalidMandate(_))
+        ) {
+            return Err(format!("{} catalog-chain defect did not fail", case["id"]));
+        }
+    }
+    for case in vector["negative_action_facts_cases"]
+        .as_array()
+        .ok_or_else(|| "catalog-action negatives are not an array".to_owned())?
+    {
+        if !matches!(
+            verify_catalog_action_facts(
+                &case["candidate"],
+                &vector["catalog_pin"],
+                &catalog,
+                &approval,
+                &vector["owner_did"]["document"],
+            ),
+            Err(aithos_core::Error::InvalidOperationFacts(_))
+        ) {
+            return Err(format!("{} action-facts defect did not fail", case["id"]));
+        }
+    }
+    Ok(())
+}
+
+fn cb5_constraints_result(w: &mut ProtocolWorld) {
+    w.cb5_result = Some(
+        CB5_CONSTRAINTS_ACCEPTANCE
+            .get_or_init(cb5_constraints_acceptance)
+            .clone(),
+    );
+}
+
+fn cb5_counts_result(w: &mut ProtocolWorld) {
+    w.cb5_result = Some(
+        CB5_COUNTS_ACCEPTANCE
+            .get_or_init(cb5_counts_acceptance)
+            .clone(),
+    );
+}
+
+fn cb5_receipts_result(w: &mut ProtocolWorld) {
+    w.cb5_result = Some(
+        CB5_RECEIPTS_ACCEPTANCE
+            .get_or_init(cb5_receipts_acceptance)
+            .clone(),
+    );
+}
+
+fn cb5_catalog_result(w: &mut ProtocolWorld) {
+    w.cb5_result = Some(
+        CB5_CATALOG_ACCEPTANCE
+            .get_or_init(cb5_catalog_acceptance)
+            .clone(),
+    );
+}
+
+fn cb5_assert_green(w: &ProtocolWorld) {
+    assert_eq!(w.cb5_result, Some(Ok(())));
 }
 
 impl ProtocolWorld {
@@ -1544,6 +2065,10 @@ fn cb3_authorize_canonical_operation(w: &mut ProtocolWorld, operation: String) {
 
 #[then(expr = "the verdict is {string}")]
 fn cb3_verdict_is(w: &mut ProtocolWorld, expected: String) {
+    if w.cb5_result.is_some() {
+        cb5_assert_green(w);
+        return;
+    }
     assert_eq!(
         w.cb3_verdict.expect("CB3 verdict"),
         expected == "allowed",
@@ -2133,6 +2658,92 @@ fn cb4_session_refused(w: &mut ProtocolWorld) {
 #[then("no perimeter or authority is derived from SC1")]
 fn cb4_session_conveys_no_authority(w: &mut ProtocolWorld) {
     assert!(w.cb4_result.as_ref().expect("CB4 result").is_err());
+}
+
+// ---------------------------------------------------------- CB5 pure contracts
+
+#[given(
+    regex = r#"^(?:a draft\.2 parent mandate with max_children 4 and issue depth 2|a draft\.2 root mandate with max_children 3 and issue depth 2|its sole direct child has max_children 3 and issue depth 1|a directly owner-issued mandate whose chain ends at that mandate|a valid root-leaf mandate preserving unknown constraint "quantum_cap"|a current-version verifier receives ".*"|the same canonical mutation is available to an owner and a grantee)$"#
+)]
+fn cb5_constraints_given(w: &mut ProtocolWorld) {
+    cb5_constraints_result(w);
+}
+
+#[when(
+    regex = r#"^(?:it mints a child with ".*"|that child mints three direct children|its constraints contain ".*"|the grantee attempts a covered delegated mutation|the owner performs it with a narrow local capability)$"#
+)]
+fn cb5_constraints_when(w: &mut ProtocolWorld) {
+    cb5_constraints_result(w);
+}
+
+#[then(
+    regex = r#"^(?:the child chain is ".*"|all three grants verify against the child's meter|the root still proves exactly one direct child|certificate validation is ".*"|using it as a delegation parent is ".*"|the verdict is a typed extension not understood refusal|the unknown extension remains visible in the audit|no Gamma entry, canonical state or counter changes|Gamma records the owner mutation|no mandate, constraint or delegated counter is consumed)$"#
+)]
+fn cb5_constraints_then(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+}
+
+#[given(
+    regex = r#"^(?:a W1 ".*" occurrence citing a profile that requires attestation|an action usage receipt signed by the cited profile attestation key|an inference usage receipt signed by the cited profile attestation key|byte-identical historical v1 usage receipts|an effective pinned obligation for one W1 operation|one canonical operation whose authority, native facts and time are fixed|a homogeneous draft3 chain with applies_to_operation ".*"|byte-identical draft1 and draft2 obligation mandates)$"#
+)]
+fn cb5_receipts_given(w: &mut ProtocolWorld) {
+    cb5_receipts_result(w);
+}
+
+#[when(
+    regex = r#"^(?:Core validates its U1 receipt with family ".*"|Core correlates each receipt with its exact operation_ref|W1 and historical evidence are verified|its R2 receipt has ".*"|a pinned attestor signs its R2 obligation receipt|the grantee presents canonical operation ".*"|applies_to_operation is presented through a sidecar or mixed-version chain)$"#
+)]
+fn cb5_receipts_when(w: &mut ProtocolWorld) {
+    cb5_receipts_result(w);
+}
+
+#[then(
+    regex = r#"^(?:the receipt members are exactly ".*"|sig verifies over RFC8785-JCS with sig omitted|the family cannot relabel the reconstructed operation|action tokens replace only that action's declared usage|checked tokens_in plus tokens_out replace only that inference's declared usage|a wrong key, family, reference, overflow, duplicate or non-closed member table is refused as InvalidGammaEntry|no U1 receipt changes the pre-effect operation commitment|v1 verifies only under its historical carrier and semantics|W1 requires an exact v2 U1 receipt when attestation is applicable|neither version synthesizes fields from the other|its exact members are ".*"|family is "obligation" and v is the JSON number 2|operation_ref binds the leaf mandate, operation arguments and occurrence|the receipt carries no mandate_id, action or args_hash duplicate|a missing, stale, replayed, mismatched, duplicate or non-closed receipt is GammaObligationUnsatisfied|matcher applicability is ".*"|no caller-supplied fact or wildcard participates|the matcher is refused as InvalidMandate|draft3 requires exactly one selector per obligation|migration reissues the complete homogeneous chain)$"#
+)]
+fn cb5_receipts_then(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+}
+
+#[given(
+    regex = r#"^(?:a homogeneous draft3 mandate carrying max_mutations and max_consumptions|a mandate history containing one ".*"|a historical edition and Gamma vector predating mutation and total meters|delegated-counts material with an invalid shape, proof, tally or occurrence correlation|a grantee ".*" contains two semantically distinct already-counted mutations|its publisher authority is evidenced by ".*"|the same publisher decision has ".*")$"#
+)]
+fn cb5_counts_given(w: &mut ProtocolWorld) {
+    cb5_counts_result(w);
+}
+
+#[when(
+    regex = r#"^(?:its accepted occurrences are committed for cold replay|the verifier rebuilds action, Ethos-mutation and total-consumption tallies|a verifier replays it under its historical protocol version|Core validates it at append time or during cold replay|semantic replay rebuilds the total delegated-consumption tally)$"#
+)]
+fn cb5_counts_when(w: &mut ProtocolWorld) {
+    cb5_counts_result(w);
+}
+
+#[then(
+    regex = r#"^(?:max_mutations counts only delegated Ethos mutation occurrences|max_consumptions counts every delegated canonical occurrence once|delegated_counts has exactly aithos-delegated-counts-core and root|its leaves have only non-zero mutations and consumptions|historical gamma_counts_root and entries bytes are unchanged|the action tally changes by ".*"|the mutation tally changes by ".*"|the total delegated-consumption tally changes by ".*"|the historical edition remains byte-identical and verifiable|new meter material is accepted only under the delegated-counts profile|old Gamma kinds, max_actions and count roots are never reinterpreted|new meter material under an old or unversioned schema, or under an unknown counter-schema version, fails closed|it is refused as InvalidDelegatedCounts|a malformed max_mutations or max_consumptions certificate is refused as InvalidMandate|the two mutations and the publication contribute exactly three|the edition and Gamma evidence correlate to the same single publisher unit|any Gamma evidence and edition reference for the same contained mutation count it once|no manifest, root or derived write-set consequence adds another consumption|the closed Gamma kind registry gains no implicit publication entry)$"#
+)]
+fn cb5_counts_then(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
+}
+
+#[given(
+    regex = r#"^(?:a connector catalog with exact profile, connector, version, actions and signature|one complete signed connector catalog|a homogeneous draft3 mandate carrying connector business actions|a connector mandate chain under ".*"|a draft3 parent pins one approved connector catalog|a signed, versioned and content-addressed connector catalog|a signed connector catalog whose action has ".*"|an approved catalog classes action ".*" as ".*"|a mandate carries ".*"|the request carries ".*"|a mandate pins one approved connector catalog)$"#
+)]
+fn cb5_catalog_given(w: &mut ProtocolWorld) {
+    cb5_catalog_result(w);
+}
+
+#[when(
+    regex = r#"^(?:the catalog signer signs RFC8785-JCS with signature\.value empty|the owner content key approves its exact connector, version and digest|its signed constraints are validated|it presents ".*" for a new W1 action occurrence|a child or runtime presents a changed digest, version, class or action set|the owner approves its exact digest and version|the owner and a keyless verifier validate its form|the grantee attempts that exact action|runtime presents ".*")$"#
+)]
+fn cb5_catalog_when(w: &mut ProtocolWorld) {
+    cb5_catalog_result(w);
+}
+
+#[then(
+    regex = r#"^(?:every action row has exactly name and one read, act or binding class|rows are non-empty, unique and sorted by action name|catalog_digest addresses the complete signed catalog|malformed, duplicate, unsorted, unclassed or multiply classed actions are InvalidCatalog|the approval has exact profile, subject, connector, catalog_version, catalog_digest, approved_at and signature|approval_digest addresses the complete signed approval|the catalog signer, owner root, grantee or a different subject cannot supply owner approval|neither complete signed document can substitute for the other|catalog_pins has one sorted exact connector, catalog_version, catalog_digest and approval_digest row per business connector|every descendant copies the complete pin array byte-for-byte|draft1, draft2, a sidecar, a changed pin, an unrelated pin or a pin for only \.config is InvalidMandate|catalog authority is ".*"|historical mandate bytes are never reinterpreted|the existing chain is refused for that catalog|only fresh homogeneous draft3 authority may approve the change|a mandate and edition pin both catalog and approval evidence|a keyless verifier never treats catalog signature alone as owner approval|the catalog is ".*"|no runtime component may reclassify it|the action is refused until new owner-approved authority is issued)$"#
+)]
+fn cb5_catalog_then(w: &mut ProtocolWorld) {
+    cb5_assert_green(w);
 }
 
 // ----------------------------------------------------------------- thens
