@@ -37,3 +37,32 @@ of expected values.
 - Wire-format public keys: multibase base58btc over multicodec
   (`z6Mk…` ed25519-pub 0xed01, `z6LS…` x25519-pub 0xec01), `_multibase` suffix.
 - JSON that gets signed/hashed: RFC 8785 (JCS) canonical form.
+
+## CB2 qualification tranche (partial)
+
+These CB2 families are executable qualification oracles, not frozen promoted
+vectors yet. Their classified results are recorded one behavior per entry in
+`cb2-core-bundle-red-ledger.json` (`frozen: false`, `partial: true`).
+
+- `CB2-MANDATE-CONTRACTS`: historical E1/F1 byte stability, `id=` codec and
+  containment, form validation, constraints, and homogeneous-version links.
+  Generator: `gen-cb2-mandate-contracts.py`
+  (`c51b53600d8a01b388d568d32c89217a80885447999ae929a08e44e21b933a48`);
+  vector: `cb2-mandate-contracts.json`
+  (`771eef3b92314a5cc6a37882a35cc81cbbb2b4e0d4976c4d555a10ba05cf1e3e`);
+  Rust consumer: `aithos-core/tests/cb2_mandate_contracts.rs`.
+- `CB2-MC1`: versioned `max_children`, direct-child accounting, homogeneous
+  chains, and migration by complete reissuance. Generator:
+  `gen-cb2-max-children.py`
+  (`7f4c51ce86fced13811409a11e8a169a1ae29efac0069eeb20ffd28428a0085d`);
+  vector: `cb2-max-children-versioning.json`
+  (`b0f49be51b9ed2097234ad161f11a1b0af546e6ec4f8a99e1cc43c83eef5b1ec`);
+  Rust consumer: `aithos-core/tests/cb2_max_children_versioning.rs`.
+- `CB2-BUNDLE-VERSION-COEXISTENCE-1`: draft.1/draft.2 coexistence through a
+  real `FsStore`, cold reopen, and mixed-version rejection. Generator:
+  `gen-cb2-bundle-version-coexistence.py`
+  (`06fceb108b697f0d0ee9c95a78d237c2bd55dc544db6b2da9f9d6ddf26fdc530`);
+  vector: `cb2-bundle-version-coexistence.json`
+  (`61b53d0765c278a56adfa1b35bee99f5144d8ceeb78430be59aa50a8a519ba3c`);
+  Rust consumer:
+  `aithos-bundle/tests/cb2_bundle_version_coexistence.rs`.
