@@ -427,6 +427,67 @@ Feature: The gamma log
         | clear display path or vault record name     |
 
     @wip
+    Scenario Outline: K1.2-AI-B selects one exact closed pre-effect family
+      Given a "<kind>" facts object
+      When Core validates its selected member table
+      Then its exact members are "<members>"
+      And null, a missing member or an extra member is refused
+
+      Examples:
+        | kind      | members                                                   |
+        | action    | connector,action,catalog_ref,args_hash,budget,purpose      |
+        | inference | provider,model,request_digest,budget,purpose                |
+
+    @wip
+    Scenario: K1.2-AI-B binds action arguments and one approved catalog reference
+      Given exact connector action arguments and one approved catalog reference
+      When the action facts are committed before effect
+      Then args_hash is the historical SHA-256 of RFC8785-JCS arguments
+      And catalog_ref has exactly catalog_version, catalog_digest and approval_digest
+      And the exact action and catalog digest bind the derived class without duplicating it
+      And neither a catalog signature nor owner approval is accepted as the other proof
+
+    @wip
+    Scenario: K1.2-AI-B binds exact private inference request bytes without args_hash
+      Given exact private provider request-body bytes fixed before an inference
+      When the inference facts are committed
+      Then request_digest is domain-separated SHA-256 of those exact bytes
+      And provider and model are independently bound as exact non-empty identifiers
+      And transport credentials, request plaintext and args_hash are absent
+
+    @wip
+    Scenario Outline: K1.2-AI-B makes budget and purpose applicability explicit
+      Given effective mandates where "<fact>" is "<applicability>"
+      When action or inference facts are projected
+      Then the selected variant is "<variant>"
+      And omission, null and a volunteered citation are refused
+
+      Examples:
+        | fact    | applicability | variant                          |
+        | budget  | absent        | state=not-applicable             |
+        | budget  | present       | state=cited plus exact budget_ref |
+        | purpose | absent        | state=not-applicable             |
+        | purpose | present       | state=cited plus exact purpose_ref |
+
+    @wip
+    Scenario Outline: K1.2-AI-B facts fail closed before any external effect
+      Given candidate action or inference facts with "<defect>"
+      When Core validates them before operation commitment
+      Then the facts are refused as InvalidOperationFacts
+      And no operation commitment, operation_ref or external effect is emitted
+
+      Examples:
+        | defect                                      |
+        | malformed or mismatched catalog reference   |
+        | mismatched action arguments                  |
+        | mismatched inference request bytes           |
+        | action carrying request_digest               |
+        | inference carrying args_hash                 |
+        | wrong budget applicability variant           |
+        | wrong purpose applicability variant          |
+        | tokens or a usage receipt before effect      |
+
+    @wip
     Scenario: Append-time and public evidence identify the same operation occurrence
       Given one fresh typed operation occurrence
       When its append-time, Gamma, authorship and edition views are projected

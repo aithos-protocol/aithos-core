@@ -818,6 +818,126 @@ Only `facts_ref` is required in the public W1 projection. In `self`, `dir`,
 coordinates and never write authority by themselves: write authorization remains
 exact `id=` or zone-wide, and the opaque state proof binds the claimed transition.
 
+> **K1.2-AI-B closed action and inference facts — human-validated on
+> 2026-07-18.**
+
+When `operation.kind` is `action`, the selected `facts` object has exactly these
+six members:
+
+```json
+{
+  "connector": "mail",
+  "action": "send",
+  "catalog_ref": {
+    "catalog_version": "2026.07",
+    "catalog_digest": "sha256:<64 lowercase hex>",
+    "approval_digest": "sha256:<64 lowercase hex>"
+  },
+  "args_hash": "sha256:<64 lowercase hex>",
+  "budget": {
+    "state": "cited",
+    "budget_ref": "haiku"
+  },
+  "purpose": {
+    "state": "cited",
+    "purpose_ref": "sha256:<64 lowercase hex>"
+  }
+}
+```
+
+`connector` and `action` are the exact canonical identifiers presented to the
+approved catalog. `catalog_ref` is a closed three-member reference to the catalog
+version, the complete signed catalog document, and its distinct complete signed
+owner-approval document. Both digests are strict lowercase `sha256:` text. Their
+future document tables define how those complete canonical signed documents are
+verified; this reference does not treat either proof as the other and does not make
+mandate `draft.3` issuable by itself. The exact action and immutable catalog digest
+together bind its derived `read`, `act`, or `binding` class; the class is not
+duplicated as a caller-controlled fact.
+
+`args_hash` reuses the historical native action commitment byte-for-byte:
+
+```text
+args_hash =
+  "sha256:" ||
+  lowercase_hex(SHA-256(RFC8785-JCS(exact action argument object)))
+```
+
+It is not an occurrence identifier. The clear or sealed native arguments MUST
+recompute to that exact value, and the later Gamma action view carries the same
+value. K1.2 does not domain-separate, upgrade, or reinterpret historical
+`args_hash` bytes.
+
+When `operation.kind` is `inference`, the selected `facts` object has exactly these
+five members:
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-haiku",
+  "request_digest": "sha256:<64 lowercase hex>",
+  "budget": {
+    "state": "cited",
+    "budget_ref": "haiku"
+  },
+  "purpose": {
+    "state": "cited",
+    "purpose_ref": "sha256:<64 lowercase hex>"
+  }
+}
+```
+
+`provider` and `model` are the exact non-empty identifiers selected before the
+call. If `R` is the exact private provider request-body byte string fixed before
+the effect, excluding transport headers and credentials, then:
+
+```text
+request_digest =
+  C("aithos-core/v1/inference-request", R)
+```
+
+The runtime supplies `R` as an opaque byte string; Core does not normalize a
+provider schema, prompt, tool definition, or generation parameter. A changed byte
+changes the commitment. No request plaintext enters public evidence. An inference
+has no native action arguments and MUST NOT carry or synthesize `args_hash`.
+
+`budget` and `purpose` each select one of exactly two closed variants:
+
+```json
+{"state":"not-applicable"}
+```
+
+or:
+
+```json
+{"state":"cited","budget_ref":"haiku"}
+{"state":"cited","purpose_ref":"sha256:<64 lowercase hex>"}
+```
+
+The applicable cited member name is selected by the enclosing fact. If any
+effective mandate in the homogeneous chain carries `budgets`, `budget.state` MUST
+be `cited` and `budget_ref` is the exact non-empty historical profile id used by
+the native evidence; otherwise the only valid variant is `not-applicable`.
+Because `purpose` is inherited verbatim through a valid chain, one effective
+purpose exists or none does. Where it exists:
+
+```text
+purpose_ref =
+  C("aithos-core/v1/purpose", UTF8(exact effective purpose string))
+```
+
+and the cited variant is mandatory; otherwise only `not-applicable` is valid.
+`null`, an empty citation, a volunteered citation, or omission of an applicable
+citation fails closed.
+
+Actual `tokens`, `tokens_in`, `tokens_out`, usage receipts, obligation receipts,
+responses, and any digest derived from them are post-effect or carrier facts and
+are forbidden from both selected families. A missing or extra member, malformed
+digest, catalog mismatch, argument mismatch, request mismatch, wrong applicability
+variant, purpose mismatch, action `request_digest`, inference `args_hash`, or any
+post-effect member fails closed as `Error::InvalidOperationFacts(String)` before
+an operation commitment is emitted.
+
 A1 fixes the complete `authority` member set, absence rules, digest input, and
 reconstruction equalities above. K1-B fixes the complete `operation` and
 `facts_ref` member sets, the kind registry, and the family split above. K1.1-B fixes
@@ -828,11 +948,14 @@ source references, canonical Gamma request digest, signed-evidence occurrence
 boundary, vault record-key binding, privacy, and failure rules. K1.2-M-B fixes
 every mutation-family member set, its domain/verb/node registries, coordinate
 semantics, state-transition matrix, vault record-key binding, and failure rules.
-The other selected-family `facts` member tables, exact proof encodings and
-target-to-store-key derivations, changeset, catalog, SC1, receipt, authorship,
-presentation, and carrier bytes remain reserved until their own independent tables
-are human-validated. No producer may invent those remaining bytes or emit a
-completed operation commitment before then.
+K1.2-AI-B fixes the action and inference member sets, the closed catalog reference,
+native action-argument hash reuse, private inference-request commitment, exact
+budget/purpose applicability variants, and pre-effect boundary. The other
+selected-family `facts` member tables, exact proof encodings and target-to-store-key
+derivations, changeset, catalog and approval document tables, SC1, receipt,
+authorship, presentation, and carrier bytes remain reserved until their own
+independent tables are human-validated. No producer may invent those remaining
+bytes or emit a completed operation commitment before then.
 
 The public reference has exactly this shape:
 
