@@ -493,13 +493,18 @@
       "name": "CB4 canonical operation layers final gate",
       "command": "Check all six CB4 independent generators; run their six frozen CB2 consumers and cb4_operation_contracts, full active Cucumber, historical Core, full Bundle and workspace tests classified against the ledger; then formatting, targeted/workspace Clippy and the WASM target with the isolated environment.",
       "observed": "Implementation a4741b57a599886c2ab2959d3f171585eb0e01a1: cb4_operation_contracts 7/7 exhaustively consumes 55 positive, 204 negative and 4 correlation vector cases; all six frozen generators and consumers are GREEN. Cucumber is 15 features / 71 rules / 345 scenarios / 1365 steps. Historical Core, formatting, both Clippy gates and WASM are GREEN. Full workspace replay outside the socket sandbox leaves exactly the 9 future ledger failures: 7 CB5 mandate constraints, 1 CB5 max_children omission and 1 future K1-C carrier gate. @wip decreased exactly 155 to 147. All 31 CB4 IDs are VERT; only the 76 future-owned IDs remain open. Verified SC1 remains an opaque possession/session-layer proof and cannot construct an authorization Allow."
+    },
+    {
+      "name": "CB5 constraints, receipts, delegated counts and catalog final gate",
+      "command": "Check the independent max_children, operation-receipts and connector-catalog generators; run all frozen CB5 consumers plus cb5_constraint_contracts, cb5_evidence_contracts and cb5_catalog_contracts; run full active Cucumber, historical Core, full Bundle and workspace tests classified against the ledger; then formatting, targeted/workspace Clippy and the WASM target with the isolated environment.",
+      "observed": "Implementation through acceptance 115d5e688a843557b5d6d779705307af39dac956: all 34 CB5 IDs are VERT. The typed tests cover unknown-extension fail-closed, max_sessions, all D7 counters/mandates, all R2/U1 receipts and draft3 matchers, and all CAT1 documents/pins/classes. The reproducible max_children, receipts and catalog generators match their frozen hashes; the D7 frozen Rust consumer is GREEN while the local Python generator remains unavailable only because system Python lacks blake3. Cucumber is 16 features / 79 rules / 418 scenarios / 1704 steps, all GREEN; @wip decreased exactly 147 to 121 across 26 declarations. Historical Core, formatting, targeted/workspace Clippy and WASM are GREEN. Full Bundle/workspace replay leaves exactly the single future CB11 K1-C typed-carrier gate and no CB5 failure. Draft3 CB5 projections remain dedicated typed inputs and do not reinterpret historical draft1/draft2 mandate bytes; max_sessions counts injected verified active session keys without inventing a certificate lifecycle wire."
     }
   ],
   "status_counts": {
-    "RED-QUALIFIE": 8,
-    "PREEXISTING-GREEN": 47,
-    "COMPILE-RED-PRELIMINAIRE": 21,
-    "VERT": 83,
+    "RED-QUALIFIE": 0,
+    "PREEXISTING-GREEN": 29,
+    "COMPILE-RED-PRELIMINAIRE": 13,
+    "VERT": 117,
     "total": 159
   },
   "entries": [
@@ -702,11 +707,11 @@
       "vector_slice": "constraints.known_shape_matrix[all known families well-formed]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_known_link_constraint_shapes_well_formed_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "validate_link_constraints accepts the complete well-formed known-family object.",
       "observed_reason": "The public link validator returns Ok.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-LINK-CONSTRAINTS-OTHER-MALFORMED",
@@ -717,11 +722,11 @@
       "vector_slice": "constraints.known_shape_matrix[expected_shape_valid=false excluding malformed active_windows, fractional active_window, malformed obligations]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_known_link_constraint_other_malformed_forms_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "Every selected malformed known-family shape returns Error::InvalidMandate.",
       "observed_reason": "Every selected case returns the expected typed variant; the three excluded cases have distinct ledger entries.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-LINK-OBLIGATION-SHAPE",
@@ -732,11 +737,11 @@
       "vector_slice": "constraints.known_shape_matrix[malformed obligations]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_malformed_obligation_shape_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "validate_link_constraints returns Error::InvalidMandate.",
-      "observed_reason": "validate_link_constraints returns Ok for the malformed obligation.",
+      "observed_reason": "At RED SHA f95802e, validate_link_constraints returned Ok for the malformed obligation. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: the same frozen test now returns Error::InvalidMandate and the full CB5 acceptance gate is GREEN.",
       "owner": "CB5",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-LINK-ACTIVE-WINDOW-DURATION",
@@ -747,11 +752,11 @@
       "vector_slice": "constraints.known_shape_matrix[malformed active_windows]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_malformed_active_window_duration_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "validate_link_constraints returns Error::InvalidMandate.",
-      "observed_reason": "It returns Error::InvalidGammaEntry(\"bad duration: soon\"), the wrong public error variant.",
+      "observed_reason": "At RED SHA f95802e, the malformed duration returned the wrong public variant. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: the frozen test now returns Error::InvalidMandate.",
       "owner": "CB5",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-LINK-ACTIVE-WINDOW-FRACTION",
@@ -762,11 +767,11 @@
       "vector_slice": "constraints.known_shape_matrix[fractional active_window requires a future version]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_fractional_active_window_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "validate_link_constraints returns Error::InvalidMandate.",
-      "observed_reason": "It returns Error::InvalidGammaEntry(\"bad timestamp: 2026-07-01T00:00:00.1Z\"), the wrong public error variant.",
+      "observed_reason": "At RED SHA f95802e, the fractional instant returned the wrong public variant. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: the frozen test now returns Error::InvalidMandate.",
       "owner": "CB5",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-ROOT-CONSTRAINT-WELL-FORMED",
@@ -777,11 +782,11 @@
       "vector_slice": "constraints.root_leaf_cases[known well-formed root constraint]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_root_known_well_formed_constraint_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The directly issued root with well-formed max_actions verifies.",
       "observed_reason": "verify_chain returns Ok. This positive control does not claim that malformed roots are already validated.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-ROOT-MAX-ACTIONS-SHAPE",
@@ -792,11 +797,11 @@
       "vector_slice": "constraints.root_leaf_cases[known malformed root constraint]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_root_malformed_max_actions_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok because root constraints are not structurally validated.",
+      "observed_reason": "At RED SHA f95802e, verify_chain accepted the malformed root max_actions constraint. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: root form validation now returns Error::InvalidMandate.",
       "owner": "CB5",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-ROOT-MAX-CHILDREN-SHAPE",
@@ -807,11 +812,11 @@
       "vector_slice": "constraints.root_leaf_cases[known malformed root max_children]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_root_malformed_max_children_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok because root constraints are not structurally validated.",
+      "observed_reason": "At RED SHA f95802e, verify_chain accepted the malformed root max_children constraint. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: root form validation now returns Error::InvalidMandate.",
       "owner": "CB5",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-ROOT-LOG-READS-SHAPE",
@@ -822,11 +827,11 @@
       "vector_slice": "constraints.root_leaf_cases[known malformed root log_reads]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_root_malformed_log_reads_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok because root constraints are not structurally validated.",
+      "observed_reason": "At RED SHA f95802e, verify_chain accepted the malformed root log_reads constraint. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: root form validation now returns Error::InvalidMandate.",
       "owner": "CB5",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-ROOT-DOMAINS-SHAPE",
@@ -837,11 +842,11 @@
       "vector_slice": "constraints.root_leaf_cases[known malformed root domains]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_root_malformed_domains_rejected_red --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "verify_chain returns Error::InvalidMandate.",
-      "observed_reason": "verify_chain returns Ok because root constraints are not structurally validated.",
+      "observed_reason": "At RED SHA f95802e, verify_chain accepted the malformed root domains constraint. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: root form validation now returns Error::InvalidMandate.",
       "owner": "CB5",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-ROOT-UNKNOWN-PRESERVATION",
@@ -852,11 +857,11 @@
       "vector_slice": "constraints.root_leaf_cases[unknown constraint on directly issued chain leaf]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_root_unknown_leaf_structural_preservation_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The directly issued unknown extension remains byte-preserved and structurally valid.",
       "observed_reason": "verify_chain returns Ok and canonicalized constraints equal the preserved oracle bytes. No operation-level Allow is claimed.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-UNKNOWN-LINKS-FAIL-CLOSED",
@@ -867,24 +872,24 @@
       "vector_slice": "constraints.link_cases",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_mandate_contracts -- cb2_unknown_constraints_on_links_fail_closed_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "All three unknown-key link chains return Error::InvalidMandate.",
       "observed_reason": "All three chains fail with the expected typed variant.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-UNKNOWN-LEAF-NO-ALLOW-GATE",
-      "test_id": null,
+      "test_id": "cb5_unknown_leaf_extensions_fail_closed_for_operations",
       "decision": "T2 — an unknown leaf extension never becomes an implicit Allow",
       "scenario": "An unknown leaf extension never becomes an implicit Allow.",
       "vector_ref": "CB2-MANDATE-CONTRACTS",
       "vector_slice": "constraints.root_leaf_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb5_constraint_contracts -- cb5_unknown_leaf_extensions_fail_closed_for_operations --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "A public pure operation verdict returns a typed extension-not-understood refusal and proves no state, Gamma, or counter mutation.",
-      "observed_reason": "Current public APIs prove only root preservation and delegation-link failure; there is no operation-level verdict surface capable of this assertion.",
+      "observed_reason": "The preliminary inventory recorded no operation-side verdict. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: verify_operation_constraints preserves known forms but returns Error::InvalidMandate for the opaque leaf extension, using an opaque verified result and performing no stateful effect.",
       "evidence": {
         "kind": "bounded existing evidence",
         "ledger_refs": [
@@ -894,7 +899,7 @@
         "observed": "Neither referenced GREEN test exercises an operation or claims no side effect."
       },
       "owner": "CB5",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-T3-HISTORICAL-F1",
@@ -1418,11 +1423,11 @@
       "vector_slice": "cases[draft1_omission_historical,draft2_equal,draft2_reduced,draft2_wider]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_max_children_versioning -- cb2_preexisting_green_historical_and_numeric_attenuation_cases --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The four exact chain verdicts match the independent versioned matrix.",
       "observed_reason": "All four public verify_chain verdicts match. This proves the numeric law and historical case, not unsupported-version rejection.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-MC1-DRAFT2-OMISSION",
@@ -1433,11 +1438,11 @@
       "vector_slice": "cases[draft2_omission_delegating,draft2_omission_leaf]",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_max_children_versioning -- cb2_cb5_red_draft2_omission_cases --exact --nocapture",
       "red_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "Both draft.2 omission links return Error::InvalidMandate.",
-      "observed_reason": "verify_chain accepts both links; mismatches are [draft2_omission_delegating, draft2_omission_leaf].",
+      "observed_reason": "At RED SHA f95802e, verify_chain accepted both draft2 omission links. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: both delegating and leaf omission cases return Error::InvalidMandate while draft1 historical omission remains valid.",
       "owner": "CB5",
-      "status": "RED-QUALIFIE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-MC1-MIXED-VERSION-LINKS",
@@ -1493,11 +1498,11 @@
       "vector_slice": "direct_children_only",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_max_children_versioning -- cb2_direct_children_gamma_count_and_signatures_are_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "Signed Gamma grants verify; the root count remains 1 while the child count reaches 3.",
       "observed_reason": "All chains, links, signatures, targets, and progressive direct-child tallies match the oracle.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB3-MC1-MIGRATION-CORE-STRUCTURE",
@@ -1938,11 +1943,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "3806c17f81783722ed0c31216536c508928f11d2",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The vector file SHA-256 is c1edd459b00ff72f2693e54370a60d2c8b981c18ee10d213a4b26897ed2618f1.",
       "observed_reason": "The exact vector bytes match the independent Python/blake3 oracle.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-D7-HISTORICAL-H2",
@@ -1953,11 +1958,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_historical_h2_is_byte_identical_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "3806c17f81783722ed0c31216536c508928f11d2",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The frozen H2 vector/generator hashes and historical root remain exact.",
       "observed_reason": "The historical files retain SHA-256 c497b9b2... and 09a6e7b8..., and gamma_counts_root remains 2f233fb3... without D7 fields.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-D7-MERKLE-BYTES",
@@ -1968,24 +1973,24 @@
       "vector_slice": "positive.expected_counts, leaves, delegated_counts and proof_leaf_mandate",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_leaf_root_and_proof_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "3806c17f81783722ed0c31216536c508928f11d2",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "Three sorted leaves yield delegated_counts root 76c994189820980e587d3a8944a877074e52f3e4bae9b29ecbe427034443b777 and its proof replays.",
       "observed_reason": "Existing generic JCS, H_leaf, left-heavy mroot and v1 proof replay match every independent oracle byte.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-D7-COUNTER-API-GATE",
-      "test_id": null,
+      "test_id": "cb5_delegated_counts_reach_the_typed_validator",
       "decision": "D7 typed occurrence correlation, subtree tally and public counter error",
       "scenario": "Core validates canonical occurrence evidence, deduplicates views and rebuilds max_mutations/max_consumptions identically at append time and cold replay.",
       "vector_ref": "CB2-D7-DELEGATED-COUNTS-1",
       "vector_slice": "positive.evidence_views and negative_counter_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb5_evidence_contracts -- cb5_delegated_counts_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The positive history produces mutations=2/consumptions=14 for both ancestors and consumptions=1 for the child; all 36 malformed, mismatched or miscounted candidates return Error::InvalidDelegatedCounts(String).",
-      "observed_reason": "At observation SHA 3806c17, Core has no public delegated-count tally/verifier or Error::InvalidDelegatedCounts variant, so a semantic RED cannot compile without the CB5 skeleton.",
+      "observed_reason": "The preliminary inventory at 3806c17 had no typed API. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: verify_delegated_counts validates the positive 14-occurrence evidence, deduplicates correlated views, excludes owner/non-opposable evidence, rebuilds exact mutation/consumption tallies and rejects all 36 negative cases as Error::InvalidDelegatedCounts.",
       "evidence": {
         "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
         "observation_sha": "3806c17f81783722ed0c31216536c508928f11d2",
@@ -1995,20 +2000,20 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_occurrence_dedup_and_subtree_inventory_preexisting_green --exact --nocapture"
       },
       "owner": "CB5",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-D7-MANDATE-API-GATE",
-      "test_id": null,
+      "test_id": "cb5_delegated_count_mandates_reach_the_typed_validator",
       "decision": "D7 draft3 constraint structure, homogeneous migration and attenuation",
       "scenario": "Core accepts only unsigned, non-droppable and non-widening max_mutations/max_consumptions in a homogeneous draft3 chain.",
       "vector_ref": "CB2-D7-DELEGATED-COUNTS-1",
       "vector_slice": "positive.mandates and negative_mandate_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb5_evidence_contracts -- cb5_delegated_count_mandates_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The draft3 chain accepts zero and attenuation; all 13 old-profile, mixed, malformed, dropped, widened or wrongly linked candidates return Error::InvalidMandate(String).",
-      "observed_reason": "At observation SHA 3806c17, the Mandate constraint parser has no max_mutations/max_consumptions implementation and cannot distinguish the approved D7 table.",
+      "observed_reason": "The preliminary inventory at 3806c17 had no D7 mandate validator. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: the dedicated homogeneous draft3 projection accepts the positive chain and rejects all 13 malformed, dropped, widened or mixed-version candidates as Error::InvalidMandate.",
       "evidence": {
         "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
         "observation_sha": "3806c17f81783722ed0c31216536c508928f11d2",
@@ -2018,7 +2023,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB5",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB4-W1-PROJECTION-VECTOR-HASH",
@@ -2188,16 +2193,16 @@
     },
     {
       "id": "CB2-CB5-SC1-MAX-SESSIONS-GATE",
-      "test_id": null,
+      "test_id": "cb5_max_sessions_lifecycle_reaches_the_typed_validator",
       "decision": "SC1 max_sessions lifecycle and replay accounting",
       "scenario": "Core and Bundle count active session certificates canonically at issuance and cold replay without overloading the SC1 proof wire.",
       "vector_ref": "CB2-SC1-SESSION-PROOF-1",
       "vector_slice": "inventory.max_sessions_lifecycle_is_out_of_scope",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb5_evidence_contracts -- cb5_max_sessions_lifecycle_reaches_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "max_sessions remains an explicit lifecycle/counter obligation separate from certificate/proof byte conformance.",
-      "observed_reason": "At observation SHA 2d0f479, Core recognizes max_sessions as a generic constraint value but has no session-certificate lifecycle state, tally or replay enforcement.",
+      "observed_reason": "The preliminary inventory at 2d0f479 had no active-session tally. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: verify_max_sessions counts injected already-verified active session public keys canonically and rejects cap overflow or duplicates as Error::InvalidSession, without changing the frozen SC1 certificate/proof wire.",
       "evidence": {
         "kind": "source inventory, not protocol GREEN",
         "observation_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
@@ -2207,7 +2212,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB5",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-R2-U1-VECTOR-HASH",
@@ -2218,11 +2223,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The vector file SHA-256 is 2ce3d53bda43dc28ce599a8f7ec97d0050c3bf61b8f9ade4b51e8a74336ff22c.",
       "observed_reason": "The exact bytes match the independent Python cryptography oracle.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-R2-U1-HISTORICAL-HASHES",
@@ -2233,11 +2238,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_historical_v1_hashes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "All five complete historical vector hashes remain exact and v1 receipts retain their original profile.",
       "observed_reason": "No v1 receipt is upgraded, downgraded, supplied an operation_ref or otherwise reinterpreted.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-R2-U1-RECEIPT-BYTES",
@@ -2248,11 +2253,11 @@
       "vector_slice": "contexts, positive_receipts, obligations and budget_profile",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_projection_and_receipt_signature_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "Both R2 optional-presentation tables and both U1 usage tables sign JCS with sig omitted, reference the exact W1 occurrence, and yield actual totals 8412 and 1500.",
       "observed_reason": "Existing JCS, SHA-256, multibase and Ed25519 primitives reproduce every independent oracle byte; no receipt enters a pre-effect projection.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-R2-MATCHER-BYTES",
@@ -2263,24 +2268,24 @@
       "vector_slice": "matcher_cases and draft3_obligation_chain",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_matcher_and_attenuation_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "Eight exact tuples apply, one cross-family tuple does not, and the child retains its inherited obligation while adding one distinct gate.",
       "observed_reason": "Generic JSON equality reproduces the independent matcher matrix and additive chain bytes without claiming a typed draft3 validator.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-R2-U1-TYPED-API-GATE",
-      "test_id": null,
+      "test_id": "cb5_operation_bound_receipts_reach_typed_validators",
       "decision": "Typed operation-bound receipt validation and usage override",
       "scenario": "Core validates the selected R2/U1 closed family, exact signature authority, W1 correlation, freshness, replay and usage tally before append and cold replay.",
       "vector_ref": "CB2-R2-U1-OPERATION-RECEIPTS-1",
       "vector_slice": "positive_receipts, negative_r2_cases and negative_u1_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb5_evidence_contracts -- cb5_operation_bound_receipts_reach_typed_validators --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "Five positives validate; all 25 R2 defects return Error::GammaObligationUnsatisfied(String) and all 31 U1 defects return Error::InvalidGammaEntry(String).",
-      "observed_reason": "At observation SHA e7b3fed, Core only has historical v1 receipt validators and no receipt-v2 family type or operation_ref-aware verifier.",
+      "observed_reason": "The preliminary inventory at e7b3fed had no R2/U1 typed API. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: all five positives validate, U1 yields exact actual totals 8412/1500, all 25 R2 defects return Error::GammaObligationUnsatisfied and all 31 U1 defects return Error::InvalidGammaEntry.",
       "evidence": {
         "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
         "observation_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
@@ -2290,20 +2295,20 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB5",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-R2-MATCHER-API-GATE",
-      "test_id": null,
+      "test_id": "cb5_draft3_obligation_matchers_reach_the_typed_validator",
       "decision": "Typed homogeneous-draft3 non-action obligation matching",
       "scenario": "Core parses exactly one obligation selector, matches the closed K1.2 tuple and enforces additive inheritance without changing historical action matchers.",
       "vector_ref": "CB2-R2-U1-OPERATION-RECEIPTS-1",
       "vector_slice": "matcher_cases, draft3_obligation_chain, negative_matcher_cases and negative_matcher_chain_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb5_evidence_contracts -- cb5_draft3_obligation_matchers_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "All 9 matcher decisions hold and all 24 malformed, cross-version, dropped, altered or wrongly linked candidates return Error::InvalidMandate(String).",
-      "observed_reason": "At observation SHA e7b3fed, Core has no mandate draft3 obligation selector or typed match against reconstructed operation facts.",
+      "observed_reason": "The preliminary inventory at e7b3fed had no draft3 matcher API. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: all 9 exact reconstructed-operation decisions hold; the homogeneous positive chain validates; all 20 matcher-shape and 4 chain defects return Error::InvalidMandate without reinterpreting historical matchers.",
       "evidence": {
         "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
         "observation_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
@@ -2313,7 +2318,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB5",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-CAT1-VECTOR-HASH",
@@ -2324,11 +2329,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The vector file SHA-256 is f73b35d29602217983c6401f06fbb49c73032a955d0ac14356d3a988181fe43c.",
       "observed_reason": "The exact bytes match the independent Python cryptography oracle.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-CAT1-HISTORICAL-HASHES",
@@ -2339,11 +2344,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_historical_hashes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "All five complete source-vector hashes remain exact.",
       "observed_reason": "No historical syntactic catalog fixture, mandate, receipt, obligation or DID document is rewritten or reinterpreted.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-CAT1-SIGNED-DOCUMENT-BYTES",
@@ -2354,11 +2359,11 @@
       "vector_slice": "owner_did, catalog and approval",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_signed_documents_and_complete_digests_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "Each exact signed table verifies over JCS with signature.value empty, the approval uses the owner's #content key rather than the catalog signer, and each digest addresses the complete signed document.",
       "observed_reason": "Existing JCS, SHA-256, multibase and Ed25519 primitives reproduce every independent oracle byte and prove the two authorities are distinct.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-CAT1-PIN-CLASS-BYTES",
@@ -2369,24 +2374,24 @@
       "vector_slice": "catalog_pin, draft3_chain, action_facts and class_cases",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_pin_chain_facts_and_class_bytes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The exact four-member pin is inherited byte-identically; catalog_ref selects all three evidence coordinates; wildcard authorizes read/act only and exact binding additionally requires owner co_sign.",
       "observed_reason": "Generic JSON/JCS/SHA-256 operations reproduce the independent pin, reference and seven-row decision matrix without claiming a typed Core validator.",
       "owner": "CB5",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-CAT1-DOCUMENT-API-GATE",
-      "test_id": null,
+      "test_id": "cb5_catalog_documents_reach_the_typed_validator",
       "decision": "Typed signed connector catalog and owner-content approval validation",
       "scenario": "Core validates the two exact documents, their distinct Ed25519 authorities and their complete content addresses before accepting a pin.",
       "vector_ref": "CB2-CAT1-CONNECTOR-CATALOG-1",
       "vector_slice": "owner_did, catalog, approval, negative_catalog_cases and negative_approval_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb5_catalog_contracts -- cb5_catalog_documents_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The two positives validate; all 27 catalog and 22 approval defects return Error::InvalidCatalog(String).",
-      "observed_reason": "At observation SHA 035fb95, Core has no public ConnectorCatalog/CatalogApproval type, validator or Error::InvalidCatalog variant.",
+      "observed_reason": "The preliminary inventory at 035fb95 had no catalog document API. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: both exact signed documents validate under distinct authorities and complete digests; all 27 catalog and 22 approval defects return Error::InvalidCatalog.",
       "evidence": {
         "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
         "observation_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
@@ -2396,20 +2401,20 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB5",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB5-CAT1-PIN-ENFORCEMENT-API-GATE",
-      "test_id": null,
+      "test_id": "cb5_catalog_pins_and_classes_reach_the_typed_validator",
       "decision": "Typed draft3 catalog pin, K1.2 reference and class enforcement",
       "scenario": "Core verifies complete pin coverage and immutable inheritance, reconstructs the action class from the selected catalog, and applies binding co_sign before effect and during replay.",
       "vector_ref": "CB2-CAT1-CONNECTOR-CATALOG-1",
       "vector_slice": "catalog_pin, draft3_chain, action_facts, class_cases, negative_chain_cases and negative_action_facts_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb5_catalog_contracts -- cb5_catalog_pins_and_classes_reach_the_typed_validator --exact --nocapture",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "115d5e688a843557b5d6d779705307af39dac956",
       "expected_reason": "The positive chain and all 7 class decisions hold; 19 pin/chain defects return Error::InvalidMandate(String) and 8 reference/facts defects return Error::InvalidOperationFacts(String).",
-      "observed_reason": "At observation SHA 035fb95, Core has no typed catalog_pins constraint, catalog_ref resolver or catalog-derived action-class/co_sign enforcement.",
+      "observed_reason": "The preliminary inventory at 035fb95 had no typed pin/class API. CB5 GREEN at 115d5e688a843557b5d6d779705307af39dac956: the positive chain and action facts validate, all 7 class decisions hold, all 19 pin/chain defects return Error::InvalidMandate and all 8 action-facts defects return Error::InvalidOperationFacts.",
       "evidence": {
         "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
         "observation_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
@@ -2419,7 +2424,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB5",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB6-GAMMA-V2-VECTOR-HASH",
