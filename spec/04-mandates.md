@@ -1124,7 +1124,7 @@ publication has exactly one predecessor. Merge and resolution have height at lea
 input.
 
 `changeset_ref` has exactly the two members shown. Its selected closed changeset
-document and sidecar path remain separately gated, but its digest is already fixed:
+document and sidecar path are fixed by §2.6.3; its digest is:
 
 ```text
 changeset_ref.digest =
@@ -1162,12 +1162,13 @@ budget/purpose applicability variants, and pre-effect boundary. K1.2-GRRP-B fixe
 the grant/revoke certificate binding, closed reason variants, standalone rotation
 domains and state transitions, derived-rotation non-duplication, and all three
 publication fact tables including predecessor, changeset-reference, and contained
-operation ordering. Exact proof encodings and target-to-store-key derivations, the
-changeset document table, authorship, presentation, and carrier bytes remain
-reserved until their own independent tables are validated. Catalog and approval
-documents are fixed by §08.1, SC1 by §4.7, and R2/U1 receipts by §4.12.1; none may
-be substituted for a remaining reserved carrier. No producer may invent those
-remaining bytes or emit a completed operation commitment before then.
+operation ordering. K1-C fixes the changeset, evidence-set, public-authorship,
+signed-presentation and draft2 manifest carrier tables and paths in §2.6.3.
+Catalog and approval documents are fixed by §08.1, SC1 by §4.7, R2/U1 receipts by
+§4.12.1 and delegated counts by §7.10.1; none may substitute for another selected
+evidence item. Exact protected target-to-Store-key derivation remains a Bundle
+reconstruction concern and never becomes public wire. No producer may emit a
+completed carrier or manifest unless every applicable selected table validates.
 
 The public reference has exactly this shape:
 

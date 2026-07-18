@@ -54,6 +54,41 @@ Feature: Normal delegated editions
         | unknown | all three carriers present                           | refused  |
 
     @wip
+    Scenario Outline: Draft2 carrier references have one digest and one canonical sidecar key
+      Given a complete derived "<carrier>" document D
+      When Bundle addresses and pins D for a draft2 manifest
+      Then its reference has exactly "<profile member>" and digest
+      And digest is domain-separated SHA-256 of "<domain>", NUL and RFC8785-JCS of D
+      And its Store key is "<directory>/<digest suffix>.json"
+      And files pins those exact JCS bytes with the historical bare SHA-256
+
+      Examples:
+        | carrier   | profile member         | domain                     | directory  |
+        | changeset | aithos-changeset-core  | aithos-core/v1/changeset    | changesets |
+        | evidence  | aithos-evidence-core   | aithos-core/v1/evidence     | evidence   |
+
+    @wip
+    Scenario: A derived changeset has one closed commitment-only table
+      Given parent and candidate states with contained operation occurrences
+      When Bundle derives their K1-C changeset
+      Then it has exactly aithos-changeset-core, height, predecessors, operations and changes
+      And height and predecessors equal the publication facts
+      And operations equal contained_operations in causal order without the publication occurrence
+      And every change has exactly key_commitment, before, after and operation_ref
+      And absent state has only state while present state adds byte_commitment
+      And every change names one contained operation and before differs from after
+      And changes sort by key commitment then occurrence with no duplicate key
+
+    @wip
+    Scenario: Carrier objects are acyclic consequences rather than changeset rows
+      Given a complete K1-C changeset and evidence set for one candidate manifest
+      When Bundle checks every changed canonical Store object
+      Then the changeset explains content, index, root, header, wrap, Gamma, vault and rotation consequences
+      But it excludes its own sidecar, the evidence sidecar and the candidate manifest
+      And the manifest references and files pins explain those three carrier objects
+      And no carrier digest depends transitively on the candidate manifest
+
+    @wip
     Scenario: The publication reference and changeset are acyclic
       Given a draft2 candidate with contained operation occurrences
       When Bundle derives its closed changeset and publication operation
@@ -69,6 +104,32 @@ Feature: Normal delegated editions
       Then every item is correlated through its exact operation_ref
       And authority is still derived only from owner capability or the mandate chain
       And no private content, credential, DK, private key or protected plaintext is present
+
+    @wip
+    Scenario Outline: Every evidence item selects one exact nested proof table
+      Given a K1-C evidence item of kind "<kind>"
+      When Core validates the selected item
+      Then its exact members are "<members>"
+      And the nested documents validate under their own profile
+      And an unused, duplicate, uncorrelated or authority-bearing item is refused
+
+      Examples:
+        | kind         | members                |
+        | authorship   | kind,document          |
+        | session      | kind,certificate,proof |
+        | receipt      | kind,document          |
+        | catalog      | kind,catalog,approval  |
+        | presentation | kind,document          |
+
+    @wip
+    Scenario: The evidence set is closed, sorted and carries D7 without granting authority
+      Given all public proof material needed by the contained operations
+      When Bundle constructs the K1-C evidence set
+      Then it has exactly aithos-evidence-core, items and delegated_counts
+      And items sort by complete RFC8785-JCS bytes with no duplicate
+      And delegated_counts is always the exact D7 reference, including the empty root
+      And every required proof appears once while unrelated proof is refused
+      And authority is still derived only from owner capability or one mandate chain
 
     @wip
     Scenario Outline: A caller cannot omit or invent a change
@@ -97,6 +158,17 @@ Feature: Normal delegated editions
   Rule: Zone-specific proof survives a fresh-store cold replay
 
     @wip
+    Scenario: Public grantee authorship has one acyclic signed table
+      Given a grantee publishes a public section mutation
+      When its K1-C authorship document is encoded
+      Then it has exactly aithos-authorship-core, subject, zone, sid, content_hash, operation_ref, edition, authorized_via, key and sig
+      And zone is public and content_hash covers the exact stored public body bytes
+      And edition has exactly height and predecessors matching publication facts
+      And authorized_via and key equal the reconstructed W1 authority
+      And the grantee key signs RFC8785-JCS with top-level sig omitted
+      And no candidate manifest or carrier digest enters the signature
+
+    @wip
     Scenario: Public delegated authorship travels with the edition
       Given a grantee publishes a public content mutation
       Then its signature binds content hash, SID, operation, edition and authorized_via
@@ -110,6 +182,36 @@ Feature: Normal delegated editions
       When a keyless verifier checks the parent and candidate editions
       Then it proves inclusion, replacement or absence for the same opaque SID
       But it learns no name, path, title, tags, content, folder relation or key
+
+    @wip
+    Scenario: An opposable Gamma presentation has one signed result table
+      Given a canonical read.gamma query whose result is made opposable
+      When its K1-C presentation is encoded
+      Then it has exactly aithos-gamma-presentation-core, subject, operation_ref, source_head, request_digest, entries, at, key and sig
+      And entries are the complete selected Gamma objects in verified order without duplicate id
+      And Bundle re-executes the query against source_head and obtains those exact entries
+      And the verified presenter key signs RFC8785-JCS with top-level sig omitted
+      And no Gamma entry, Gamma kind or second occurrence is created
+
+    @wip
+    Scenario Outline: K1-C carrier defects fail closed before publication
+      Given a draft2 candidate with "<defect>"
+      When Bundle validates carriers and asks Core for one semantic verdict
+      Then publication is refused
+      And no candidate manifest, carrier sidecar or Gamma delta becomes reachable
+
+      Examples:
+        | defect                                      |
+        | malformed or mismatched carrier reference  |
+        | sidecar key or files pin mismatch           |
+        | unsorted or duplicate changes               |
+        | omitted or invented Store consequence       |
+        | operation absent from contained operations  |
+        | unsorted or duplicate evidence item         |
+        | authorship signed by a different actor      |
+        | presentation result different from query    |
+        | evidence item presented as authority        |
+        | private key or protected plaintext in evidence |
 
     @wip
     Scenario Outline: A fresh local store rejects incomplete delegated evidence

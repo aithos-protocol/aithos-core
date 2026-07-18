@@ -251,10 +251,208 @@ are forbidden.
 
 K1-B fixes these three manifest member names, their required/forbidden profile
 presence, the changeset/evidence separation, and the acyclic dependency direction.
-The exact `changeset_ref` and `evidence_ref` member sets, sidecar profiles, digest
-preimages, array ordering within equal causal positions, public authorship and
-presentation objects, and canonical sidecar paths remain reserved. No producer may
-emit a draft2 manifest until those tables and vectors are independently approved.
+
+### 2.6.3 Closed draft2 carrier tables
+
+> **K1-C carrier wire — human-gated contract review completed on
+> 2026-07-18.**
+
+The two content-addressed references are exact and non-null:
+
+```json
+"changeset_ref": {
+  "aithos-changeset-core": "1.0.0-draft.1",
+  "digest": "sha256:<64 lowercase hex>"
+},
+"evidence_ref": {
+  "aithos-evidence-core": "1.0.0-draft.1",
+  "digest": "sha256:<64 lowercase hex>"
+}
+```
+
+No extra member is permitted. Their digests are:
+
+```text
+changeset_ref.digest =
+  C("aithos-core/v1/changeset", RFC8785-JCS(changeset))
+
+evidence_ref.digest =
+  C("aithos-core/v1/evidence", RFC8785-JCS(evidence set))
+```
+
+where `C(domain, bytes)` is the domain-separated SHA-256 construction of §4.5.1.
+The canonical sidecar keys are respectively
+`changesets/<digest-suffix>.json` and `evidence/<digest-suffix>.json`, where
+`digest-suffix` is exactly the 64 lowercase hexadecimal characters after
+`sha256:`. The manifest `files` map also pins each exact sidecar JCS byte string
+under that key using its historical bare lowercase SHA-256 file hash. The
+domain-separated reference and the ordinary file pin are independent checks.
+
+The derived changeset has exactly:
+
+```json
+{
+  "aithos-changeset-core": "1.0.0-draft.1",
+  "height": 2,
+  "predecessors": ["sha256:<64 lowercase hex>"],
+  "operations": [
+    {
+      "aithos-operation-core": "1.0.0-draft.1",
+      "occurrence": "op_<ULID>",
+      "commitment": "sha256:<64 lowercase hex>"
+    }
+  ],
+  "changes": [
+    {
+      "key_commitment": "sha256:<64 lowercase hex>",
+      "before": {
+        "state": "present",
+        "byte_commitment": "sha256:<64 lowercase hex>"
+      },
+      "after": {"state": "absent"},
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "occurrence": "op_<ULID>",
+        "commitment": "sha256:<64 lowercase hex>"
+      }
+    }
+  ]
+}
+```
+
+The top-level table has exactly the five members shown. `height` and
+`predecessors` equal the publication facts. `operations` equals
+`contained_operations` in its already-fixed causal order, has no duplicate
+occurrence, and excludes the publication occurrence. Every change has exactly the
+four members shown. `before` and `after` each select one exact variant:
+`{"state":"absent"}` or
+`{"state":"present","byte_commitment":"sha256:<64 lowercase hex>"}`. They differ.
+`key_commitment` and `byte_commitment` reuse the K1.1-B `state-key` and
+`state-bytes` commitments over the exact canonical Store key and stored bytes.
+
+Changes sort by `(key_commitment, operation_ref.occurrence)` in ascending exact
+ASCII order; a key commitment occurs once. Each `operation_ref` is an exact member
+of `operations`. Deterministic index, root, wrap, header, Gamma, vault and rotation
+consequences name the occurrence that caused them rather than allocating another.
+The changeset is non-empty except at normal genesis. It excludes its own sidecar,
+the evidence sidecar and the candidate manifest: those three carrier objects are
+already pinned by the references and manifest signature, and including them would
+create a cycle.
+
+The public evidence set has exactly:
+
+```json
+{
+  "aithos-evidence-core": "1.0.0-draft.1",
+  "items": [],
+  "delegated_counts": {
+    "aithos-delegated-counts-core": "1.0.0-draft.1",
+    "root": "<64 lowercase hex>"
+  }
+}
+```
+
+`items` is an array sorted by RFC8785-JCS bytes of each complete item, with no
+duplicate JCS value. Every item selects exactly one of these closed tables:
+
+```jsonc
+{"kind":"authorship", "document": { /* public authorship below */ }}
+{"kind":"session", "certificate": { /* SC1 */ }, "proof": { /* SC1 proof */ }}
+{"kind":"receipt", "document": { /* one R2 or U1 receipt */ }}
+{"kind":"catalog", "catalog": { /* CAT1 */ }, "approval": { /* CAT1 approval */ }}
+{"kind":"presentation", "document": { /* signed Gamma presentation below */ }}
+```
+
+The selected nested document MUST validate under its own exact profile. A session
+pair has the same operation reference and keys; a receipt is included once per
+required operation-bound check; one catalog item may serve several action
+occurrences only when every K1.2 `catalog_ref` selects its complete catalog and
+approval digests. `delegated_counts` is the exact D7 reference of §7.10.1 and is
+always present, using the empty root when no delegated occurrence exists. Evidence
+proves facts only: it never adds authority, and an unused, uncorrelated or duplicate
+item invalidates the edition.
+
+Public delegated authorship has exactly:
+
+```json
+{
+  "aithos-authorship-core": "1.0.0-draft.1",
+  "subject": "did:aithos:…",
+  "zone": "public",
+  "sid": "01J…",
+  "content_hash": "sha256:<64 lowercase hex>",
+  "operation_ref": {
+    "aithos-operation-core": "1.0.0-draft.1",
+    "occurrence": "op_<ULID>",
+    "commitment": "sha256:<64 lowercase hex>"
+  },
+  "edition": {
+    "height": 2,
+    "predecessors": ["sha256:<64 lowercase hex>"]
+  },
+  "authorized_via": [
+    {
+      "id": "mandate_…",
+      "certificate_digest": "sha256:<64 lowercase hex>"
+    }
+  ],
+  "key": "z6Mk…",
+  "sig": "<128 lowercase hex>"
+}
+```
+
+The table has exactly the ten members shown. It is emitted only for a grantee
+mutation of a public section. `content_hash` is SHA-256 of the exact stored public
+body bytes; `sid`, subject, operation reference, edition height/predecessors,
+`authorized_via` and key equal the reconstructed operation/publication facts and
+W1 authority. The grantee key signs RFC8785-JCS of the object with top-level `sig`
+omitted. The object contains no candidate manifest or carrier digest, so the
+manifest may commit it without a cycle. Owner public signatures remain their
+historical content proof; circle authorship remains inside the sealed blob and
+Gamma; self has no public authorship document.
+
+An opposable Gamma query uses this exact signed presentation:
+
+```json
+{
+  "aithos-gamma-presentation-core": "1.0.0-draft.1",
+  "subject": "did:aithos:…",
+  "operation_ref": {
+    "aithos-operation-core": "1.0.0-draft.1",
+    "occurrence": "op_<ULID>",
+    "commitment": "sha256:<64 lowercase hex>"
+  },
+  "source_head": "sha256:<64 lowercase hex>",
+  "request_digest": "sha256:<64 lowercase hex>",
+  "entries": [],
+  "at": "2026-07-18T12:00:00Z",
+  "key": "z6Mk…",
+  "sig": "<128 lowercase hex>"
+}
+```
+
+The table has exactly the nine members shown. `entries` contains the complete
+selected Gamma entry objects in their verified causal/segment order, with no
+duplicate Gamma id; empty is valid for an empty result. Bundle re-executes the
+canonical query against the history pinned by `source_head` and requires the exact
+same entries. Subject, source head, request digest and `at` equal the K1.2-R-B facts
+and W1 projection. The verified owner or grantee presentation key signs
+RFC8785-JCS with top-level `sig` omitted. This presentation allocates no Gamma kind
+or second occurrence.
+
+A draft2 manifest carries all three exact references at top level and its existing
+signature covers them with only `signature.value` emptied. The publication
+`operation_ref` is reconstructed only after the completed changeset fixes the
+publication's `changeset_ref`; it contains neither the evidence digest nor the
+candidate manifest. A draft1 manifest forbids all three references and every
+historical byte remains unchanged.
+
+Malformed carrier form, digest/path/file-pin mismatch, ordering or duplicate
+failure, omitted or invented change, unexplained item, authorship/presentation
+signature or cross-view mismatch returns `Error::InvalidOperation(String)`.
+Malformed signed manifest form or profile/presence returns the historical
+`Error::InvalidDidDocument(String)`. No carrier is accepted as authority and no
+failure emits or publishes a candidate manifest.
 
 ## 2.7 Gamma anchoring
 

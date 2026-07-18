@@ -297,9 +297,9 @@ to the Gamma log.
 
 If a query result is made opposable as an explicitly signed presentation, that
 presentation is one canonical read/presentation occurrence and its signed evidence
-carries the occurrence's `operation_ref`. The exact presentation carrier is outside
-this Gamma profile. Producing it does not create a `gamma.read` entry or turn the
-Gamma append into another occurrence.
+carries the occurrence's `operation_ref` under the exact K1-C table of §2.6.3.
+Producing it does not create a `gamma.read` entry or turn the Gamma append into
+another occurrence.
 
 ## 7.9 Inference metering, the kind registry, sealed args
 
@@ -480,8 +480,8 @@ The draft2 public evidence set therefore carries one closed reference:
 }
 ```
 
-The exact enclosing evidence-set table and sidecar path remain separately gated;
-the nested object above has exactly two non-null members. `root` is a bare
+The exact enclosing evidence-set table and sidecar path are fixed by §2.6.3; the
+nested object above has exactly two non-null members. `root` is a bare
 lowercase 32-byte SHA-256/Merkle hex value, consistent with existing root wire.
 
 One leaf exists per mandate whose verified subtree has a non-zero new count:
