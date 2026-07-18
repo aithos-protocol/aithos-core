@@ -346,7 +346,7 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
 
     @wip
     Scenario: Grandchildren do not consume their grandparent's direct-child meter
-      Given a draft.2 root mandate with max_children 1 and issue depth 2
+      Given a draft.2 root mandate with max_children 3 and issue depth 2
       And its sole direct child has max_children 3 and issue depth 1
       When that child mints three direct children
       Then all three grants verify against the child's meter
