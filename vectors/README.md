@@ -141,3 +141,14 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`99bc175e0b4f07dece0afa828fff22be9be75d4b66f8b00fee3e7d427021e14c`);
   Rust consumer: `aithos-core/tests/cb2_operation_projection.rs`
   (`06ddf1066172e8b129515425eceefc9460f3d70c713d2a09fc0e74067e553972`).
+- `CB2-SC1-SESSION-PROOF-1`: real signed draft2 `session_bind` mandate,
+  complete leaf-signed SC1 certificate and digest, session-bound W1 projection,
+  exact session proof, and explicit long-term/session double possession. The
+  native leaf proof is a test-only diagnostic fixture, not a promoted carrier;
+  `max_sessions` lifecycle remains separately gated. All 29 mono-defect
+  candidates require `InvalidSession`. Generator: `gen-cb2-session-proof.py`
+  (`37f8fde6cd69e8ed05d9bb0b2414e676694e2c3a614ff2ad06eaa134259784a6`);
+  vector: `cb2-session-proof.json`
+  (`17553dd95f515e8045e17e8e46816b1d7e2007d4985eec0048fcac34197bef74`);
+  Rust consumer: `aithos-core/tests/cb2_session_proof.rs`
+  (`03df1111aa1945e27684bf29a55e8ca7772617f5ab350baaa738dd302eda1b8e`).

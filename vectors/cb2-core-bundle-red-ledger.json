@@ -6,9 +6,9 @@
   "as_of": "2026-07-18",
   "baseline": {
     "git_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-    "observation_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
+    "observation_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
     "index_was_empty": true,
-    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection without SC1, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
+    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection, SC1 session certificate/proof bytes, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
   },
   "command_context": {
     "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core/rust",
@@ -90,6 +90,14 @@
       "generator_sha256": "79e2872527d360e9856ef60eed90190179566381c934906bc553e0e52ad239ed",
       "consumer": "rust/crates/aithos-core/tests/cb2_operation_projection.rs",
       "consumer_sha256": "06ddf1066172e8b129515425eceefc9460f3d70c713d2a09fc0e74067e553972"
+    },
+    "CB2-SC1-SESSION-PROOF-1": {
+      "file": "vectors/cb2-session-proof.json",
+      "sha256": "17553dd95f515e8045e17e8e46816b1d7e2007d4985eec0048fcac34197bef74",
+      "generator": "vectors/gen-cb2-session-proof.py",
+      "generator_sha256": "37f8fde6cd69e8ed05d9bb0b2414e676694e2c3a614ff2ad06eaa134259784a6",
+      "consumer": "rust/crates/aithos-core/tests/cb2_session_proof.rs",
+      "consumer_sha256": "03df1111aa1945e27684bf29a55e8ca7772617f5ab350baaa738dd302eda1b8e"
     }
   },
   "suite_observations": [
@@ -184,13 +192,24 @@
       "name": "W1 operation-projection byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- --nocapture",
       "observed": "5 passed; vector and historical hashes, full-certificate address, projection JCS, operation commitment, exact reference bytes and case inventories are GREEN. Typed W1 validation and InvalidOperation remain absent."
+    },
+    {
+      "name": "SC1 session-proof generator reproducibility",
+      "command": "PYTHONPYCACHEPREFIX=/private/tmp/aithos-cb2-pycache python3 vectors/gen-cb2-session-proof.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-session-proof.json; the independent cryptography oracle verifies a real mandate, complete SC1 certificate/digest, session-bound projection, both possession proofs and 29 exact InvalidSession negatives."
+    },
+    {
+      "name": "SC1 session-proof byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- --nocapture",
+      "observed": "5 passed; vector and historical hashes, mandate/certificate Ed25519 signatures, complete certificate digest, session-bound operation commitment and both possession signatures are GREEN. Typed SC1 validation, InvalidSession and max_sessions lifecycle remain absent."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 51,
-    "COMPILE-RED-PRELIMINAIRE": 14,
-    "total": 99
+    "PREEXISTING-GREEN": 55,
+    "COMPILE-RED-PRELIMINAIRE": 16,
+    "total": 105
   },
   "entries": [
     {
@@ -1791,6 +1810,112 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB4",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB4-SC1-VECTOR-HASH",
+      "test_id": "cb2_sc1_vector_hash_is_stable_preexisting_green",
+      "decision": "SC1 independent oracle integrity",
+      "scenario": "The complete SC1 qualification vector bytes remain frozen within the partial CB2 tranche.",
+      "vector_ref": "CB2-SC1-SESSION-PROOF-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+      "expected_reason": "The vector file SHA-256 is 17553dd95f515e8045e17e8e46816b1d7e2007d4985eec0048fcac34197bef74.",
+      "observed_reason": "The exact vector bytes match the independent Python cryptography oracle.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-SC1-HISTORICAL-HASHES",
+      "test_id": "cb2_sc1_historical_hashes_preexisting_green",
+      "decision": "SC1 additive historical non-regression",
+      "scenario": "E1 and the selected W1/K1.2 vectors remain byte-identical while SC1 is added.",
+      "vector_ref": "CB2-SC1-SESSION-PROOF-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_historical_hashes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+      "expected_reason": "All three complete source vector hashes remain exact.",
+      "observed_reason": "No historical certificate, projection or operation-facts vector is rewritten or reinterpreted.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-SC1-CERTIFICATE-BYTES",
+      "test_id": "cb2_sc1_mandate_certificate_and_digest_bytes_preexisting_green",
+      "decision": "SC1 exact signed certificate and content address",
+      "scenario": "Generic Core primitives reproduce the real root-signed mandate, leaf-signed closed SC1 certificate, complete JCS and digest.",
+      "vector_ref": "CB2-SC1-SESSION-PROOF-1",
+      "vector_slice": "positive.mandate, certificate, certificate_preimage_jcs, certificate_jcs and certificate_digest",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_mandate_certificate_and_digest_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+      "expected_reason": "The certificate has the exact seven-member draft.1 table, is signed by the leaf long-term key with signature.value empty in the preimage, and its full signed JCS is SHA-256 addressed.",
+      "observed_reason": "Existing JCS, multibase, SHA-256 and Ed25519 primitives reproduce and verify every oracle byte.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-SC1-DOUBLE-POSSESSION-BYTES",
+      "test_id": "cb2_sc1_operation_and_double_possession_bytes_preexisting_green",
+      "decision": "SC1 session-bound W1 reference and long-term/session possession",
+      "scenario": "The signed certificate digest selects the W1 projection and both the leaf and session keys prove possession over its exact operation_ref.",
+      "vector_ref": "CB2-SC1-SESSION-PROOF-1",
+      "vector_slice": "positive.operation_projection, operation_ref, native_leaf_proof_fixture and session_proof",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_operation_and_double_possession_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+      "expected_reason": "The complete certificate digest is embedded in authority.session, the operation commitment selects those exact bytes, and both Ed25519 proofs verify; the native proof remains explicitly test-only.",
+      "observed_reason": "Existing generic primitives reproduce the operation reference and verify both possession signatures without promoting a new carrier.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-SC1-TYPED-API-GATE",
+      "test_id": null,
+      "decision": "SC1 typed certificate, interval, authority and proof validation",
+      "scenario": "Core validates SC1 before effect and during replay, including exact closed tables, certificate binding and both required possessions.",
+      "vector_ref": "CB2-SC1-SESSION-PROOF-1",
+      "vector_slice": "positive and negative_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "The positive bundle validates and all 29 structural, binding, interval, digest, operation or possession defects return Error::InvalidSession(String).",
+      "observed_reason": "At observation SHA 2d0f479, Core has no public SC1 certificate/proof type, validator or Error::InvalidSession variant.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+        "source_command": "rg -n 'SessionCertificate|SessionProof|InvalidSession|aithos-session-core|aithos-session-proof-core' rust/crates/aithos-core/src",
+        "source_observed": "No matching public SC1 wire type, validator or approved error variant.",
+        "inventory_test_id": "cb2_sc1_closed_negative_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB4",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB5-SC1-MAX-SESSIONS-GATE",
+      "test_id": null,
+      "decision": "SC1 max_sessions lifecycle and replay accounting",
+      "scenario": "Core and Bundle count active session certificates canonically at issuance and cold replay without overloading the SC1 proof wire.",
+      "vector_ref": "CB2-SC1-SESSION-PROOF-1",
+      "vector_slice": "inventory.max_sessions_lifecycle_is_out_of_scope",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "max_sessions remains an explicit lifecycle/counter obligation separate from certificate/proof byte conformance.",
+      "observed_reason": "At observation SHA 2d0f479, Core recognizes max_sessions as a generic constraint value but has no session-certificate lifecycle state, tally or replay enforcement.",
+      "evidence": {
+        "kind": "source inventory, not protocol GREEN",
+        "observation_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+        "source_command": "rg -n 'max_sessions|SessionCertificate|session certificate' rust/crates/aithos-core/src rust/crates/aithos-bundle/src",
+        "source_observed": "Generic constraint syntax/attenuation hooks exist; no certificate lifecycle, active-session counter or replay validator exists.",
+        "inventory_test_id": "cb2_sc1_closed_negative_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB5",
       "status": "COMPILE-RED-PRELIMINAIRE"
     }
   ]
