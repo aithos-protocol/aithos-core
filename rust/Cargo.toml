@@ -6,6 +6,7 @@ members = [
     "crates/aithos-cli",
     "crates/aithos-wasm",
     "crates/aithos-gateway",
+    "crates/aithos-provider",
 ]
 
 [workspace.package]
@@ -54,6 +55,33 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 axum = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde_yaml = "0.9"
+
+# provider service (piste P, lot P1 — INFRA-PROVIDER annexes A/B/C)
+base64 = "0.22"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+aws-config = "1"
+aws-sdk-dynamodb = "1"
+tower = "0.5"
+
+# relay passthrough (piste P, lot P6 jalon M2 — INFRA-PROVIDER annexe B):
+# the tunnel door terminates its OWN TLS (rustls/ring — no aws-lc C build on
+# the hot path), yamux multiplexes the pod tunnel, tokio-util bridges the
+# yamux futures-io streams to tokio. rcgen mints test/dev certificates.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls-pemfile = "2"
+yamux = "0.13"
+tokio-util = { version = "0.7", features = ["compat"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem", "crypto"] }
+# TCP keepalive on the pod tunnel socket, both sides (redline B.3, M2:
+# EOF detection + TCP keepalive; applicative PING = draft.2)
+socket2 = "0.5"
+# delegated ACME DNS-01 (annexe B.5): the store writes the challenge TXT
+aws-sdk-route53 = "1"
+# pod-stub ACME mode (dev/e2e only, feature pod-stub): the CLIENT half of
+# B.5 — obtains its own public cert, the key never leaves the pod (A3)
+instant-acme = { version = "0.7", default-features = false, features = ["hyper-rustls", "ring"] }
 
 # internal
 aithos-core = { path = "crates/aithos-core" }

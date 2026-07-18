@@ -1,0 +1,10 @@
+{
+  "tenants": [],
+  "tunnels": [
+    {
+      "gateway_pub": "z6MksPykuQeYh4zgthFRFBExrgo1dwFWWenY2TEJ9SvT9jn1",
+      "tenant": "acme",
+      "hostname": "demo.mcp.aithos.fr"
+    }
+  ]
+}

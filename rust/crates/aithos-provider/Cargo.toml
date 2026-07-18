@@ -1,0 +1,105 @@
+[package]
+name = "aithos-provider"
+version.workspace = true
+edition.workspace = true
+description = "Aithos provider services (piste P): the store, the relay and the witness — moves bytes and verifies signatures, never holds a client secret, never decides"
+
+[dependencies]
+# the trust engine, consumed as a library — the provider verifies with the
+# same primitives the clients sign with (aithos-core stays pure: no I/O)
+aithos-core = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_jcs = { workspace = true }
+thiserror = { workspace = true }
+hex = { workspace = true }
+blake3 = { workspace = true }
+ed25519-dalek = { workspace = true }
+base64 = { workspace = true }
+
+# service runtime (INFRA-PROVIDER §7: axum always hot on Fargate);
+# `signal` powers the graceful drain behind the ALB; `io-util` powers the
+# relay's line-framed tunnel handshake (annexe B.2); `net`/`time`/`rt`/`macros`
+# power the M2 passthrough (public door, keepalive, per-connection tasks)
+tokio = { workspace = true, features = ["signal", "io-util", "net", "time", "rt-multi-thread", "macros"] }
+axum = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# anti-rejeu A.2#6 — nonce reservation table (DynamoDB TTL)
+aws-config = { workspace = true }
+aws-sdk-dynamodb = { workspace = true }
+# delegated ACME DNS-01 (annexe B.5): the store poses/retires the challenge
+# TXT in the mcp zone — the ONLY Route 53 write the task role allows
+aws-sdk-route53 = { workspace = true }
+# TCP keepalive on the pod tunnel socket (redline B.3: M2 = EOF detection
+# + TCP keepalive; applicative PING = draft.2)
+socket2 = { workspace = true }
+
+# relay passthrough (annexe B, jalon M2): tunnel-door TLS termination
+# (rustls/ring — no aws-lc C build on the hot path), yamux multiplexing,
+# tokio bridge for yamux's futures-io streams
+rustls = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+yamux = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+cucumber = { workspace = true }
+futures = { workspace = true }
+tower = { workspace = true, features = ["util"] }
+# rustls only in the dev graph: the deployed-endpoint replay speaks HTTPS
+reqwest = { workspace = true, features = ["rustls-tls"] }
+assert_cmd = { workspace = true }
+tempfile = { workspace = true }
+# the cucumber relay harness and the pod-stub mint self-signed certs
+rcgen = { workspace = true }
+
+# BDD acceptance harnesses — one per lot, features live in tests/features/<lot>/
+# (rituel: BDD avant le code).
+[[test]]
+name = "cucumber"
+harness = false
+
+[[test]]
+name = "cucumber_tunnel"
+harness = false
+
+[[test]]
+name = "cucumber_relay"
+harness = false
+
+[[bin]]
+name = "aithos-store-api"
+path = "src/bin/store_api.rs"
+
+[[bin]]
+name = "aithos-relay"
+path = "src/bin/relay.rs"
+
+# dev/e2e only: a stand-in MCP pod that dials the relay, registers (B.2),
+# runs the yamux server side, and terminates its OWN public TLS — the
+# "reachable MCP" of the M2 joignabilité gate. Never deployed as a provider
+# service (the pod is the CLIENT's, A3); it is the demo's far end.
+[[bin]]
+name = "aithos-pod-stub"
+path = "src/bin/pod_stub.rs"
+required-features = ["pod-stub"]
+
+[features]
+# keeps the dev/e2e pod-stub (and its rcgen + ACME-client dep pull) out of
+# the default provider build; CI/e2e enables it explicitly.
+pod-stub = ["dep:rcgen", "dep:instant-acme"]
+
+[dependencies.rcgen]
+workspace = true
+optional = true
+
+# the CLIENT half of annexe B.5 (dev/e2e only): the pod obtains its own
+# public cert via the delegated DNS-01 — the private key never leaves it
+[dependencies.instant-acme]
+workspace = true
+optional = true

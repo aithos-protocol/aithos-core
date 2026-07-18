@@ -11,7 +11,9 @@ promotion (spec §09.2).
    `PyNaCl` + `base58`) so the Rust reference is cross-checked, never
    self-certifying. The generator used is named in `description`.
 2. **One file per vector family**, named `<id>-<slug>.json` (`a1-genesis`,
-   `b2-derivation`, …), ids matching docs/EXECUTION-PLAN.md steps.
+   `b2-derivation`, …), ids matching docs/EXECUTION-PLAN.md steps — or a
+   piste handoff's lots for prefixed families (`p*` = provider wire, lot P0
+   of docs/HANDOFF-PROVIDER-AWS.md, normative annexes of INFRA-PROVIDER.md).
 3. **Frozen once green.** A merged vector never changes; a spec change that
    would alter one requires a new vector id and an explicit spec redline.
 

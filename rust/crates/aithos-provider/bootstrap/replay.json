@@ -1,0 +1,21 @@
+{
+  "tenants": [
+    {
+      "tenant": "acme",
+      "suspended": false,
+      "dids": [
+        {
+          "did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+          "did_json": "{\"aithos-did-core\":\"1.0.0-draft.1\",\"bundle\":[\"https://store.aithos.fr/t/acme/did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"],\"id\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"keys\":{\"content\":\"z6MkvjGUmbjYidM8w69f146SuTEvYKMhsBWEjPXi9FybqWNk\",\"kex\":\"z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS\",\"root\":\"z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"succession\":\"z6Mkv1o2GEgtXjFdEMfLtupcKhGRydM8V7VHzii7Uh4aHoqH\"},\"revocations\":\"gamma/gamma.jsonl\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"de1fe685191721fabaec29ae0ee8907b7d5574ffbf5c6d90e28dea42dd24f4872999a6ecdf40ec19bfdf2c0e9cfe510d6959021e0e437277d3798937205ff509\"}}"
+        }
+      ]
+    }
+  ],
+  "tunnels": [
+    {
+      "gateway_pub": "z6MksPykuQeYh4zgthFRFBExrgo1dwFWWenY2TEJ9SvT9jn1",
+      "tenant": "acme",
+      "hostname": "demo.mcp.aithos.fr"
+    }
+  ]
+}

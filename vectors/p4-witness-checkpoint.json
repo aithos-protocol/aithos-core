@@ -1,0 +1,74 @@
+{
+  "vector": "P4",
+  "description": "Witness checkpoint (INFRA-PROVIDER annexe C, contrat C3, lot P0). Checkpoint = JCS-signed observation; manifest_hash = sha256: + the observed manifest's chain hash (JCS, signature.value=\"\") — the very value a successor pins as prev_hash; gamma_head copied from the manifest. Feed line = the exact signed JCS bytes. Daily root = left-heavy mroot over H_leaf(line) with dedicated domains aithos-witness/v1/mk-leaf|mk-node, lines sorted by JCS byte order, all DIDs of the UTC day. Equivocation rule: two valid checkpoints, same did, same edition_height, different manifest_hash = portable proof; same manifest_hash re-observed (heartbeat) is freshness, never a fault. Manifests are P2's m1/m2/m2b. Generated independently (Python blake3 + PyNaCl).",
+  "witness_sk_hex": "7777777777777777777777777777777777777777777777777777777777777777",
+  "witness_key": "z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar",
+  "checkpoints": {
+    "ck1_jcs": "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":1,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188\",\"observed_at\":\"2026-07-16T11:05:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"7f3a52dbbca6356c5aade5ebd9b45986336b36a8fd73c7b00f2702b6e79684c2b5e5f76ffc60c54362988e55d2ca8433f2c696cd9b9c4feedddfa29955b42a0b\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}",
+    "ck2_jcs": "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9\",\"observed_at\":\"2026-07-16T11:35:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"143749d1a10e22041017b91a17a0c98b5afcce13b8aefcf57bfefeee7fe2263b6e8ca29bdeec322f9a723d982a5178e40ac8991217edfa60913ff214628fcc0d\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}",
+    "ck2b_jcs": "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:8b74417d0d5a0ae676ab389260e141c302ee6576530df7d97f15758eb4ac4e3e\",\"observed_at\":\"2026-07-16T11:40:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"b4f419a39db8739f25a08168230b30ed237505f4575eab9717f84eda209191edc3cad00cea573bd6a6448d691346a820ec13fb56ebb6838baa74aaf077401d04\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}",
+    "ck_heartbeat_jcs": "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9\",\"observed_at\":\"2026-07-17T00:00:05Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"584650b4cc640ce82f642bf5caeed83d3fdaea6cb0d25ee32faf7a7b1175c45101f4315a2e0858b3fbf6fa45d1241748e8b9cec90b511d65dfc7f7aac77f330e\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}"
+  },
+  "feed": {
+    "path": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr.jsonl",
+    "lines_2026-07-16": [
+      "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":1,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188\",\"observed_at\":\"2026-07-16T11:05:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"7f3a52dbbca6356c5aade5ebd9b45986336b36a8fd73c7b00f2702b6e79684c2b5e5f76ffc60c54362988e55d2ca8433f2c696cd9b9c4feedddfa29955b42a0b\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}",
+      "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9\",\"observed_at\":\"2026-07-16T11:35:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"143749d1a10e22041017b91a17a0c98b5afcce13b8aefcf57bfefeee7fe2263b6e8ca29bdeec322f9a723d982a5178e40ac8991217edfa60913ff214628fcc0d\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}",
+      "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:8b74417d0d5a0ae676ab389260e141c302ee6576530df7d97f15758eb4ac4e3e\",\"observed_at\":\"2026-07-16T11:40:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"b4f419a39db8739f25a08168230b30ed237505f4575eab9717f84eda209191edc3cad00cea573bd6a6448d691346a820ec13fb56ebb6838baa74aaf077401d04\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}"
+    ],
+    "line_2026-07-17": "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9\",\"observed_at\":\"2026-07-17T00:00:05Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"584650b4cc640ce82f642bf5caeed83d3fdaea6cb0d25ee32faf7a7b1175c45101f4315a2e0858b3fbf6fa45d1241748e8b9cec90b511d65dfc7f7aac77f330e\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}"
+  },
+  "daily_root": {
+    "doc": {
+      "aithos-witness-root": "1.0.0-draft.1",
+      "date": "2026-07-16",
+      "n": 3,
+      "root": "eeb44d4d7a61a269e391b2218e6ab905c0ff77de7b8dc0392d891b154f9495d5",
+      "signature": {
+        "alg": "ed25519",
+        "value": "acd080f65401d49d62dc552ea0111c203f0f3fd3c87e26a1f0ad6119786a38f580b866bbfae7d2e0f2b700315abe7aa2f81ba6b67e2a59dfb7fe820b4e70d00f"
+      },
+      "witness_key": "z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar"
+    },
+    "leaf_order": [
+      "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":1,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188\",\"observed_at\":\"2026-07-16T11:05:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"7f3a52dbbca6356c5aade5ebd9b45986336b36a8fd73c7b00f2702b6e79684c2b5e5f76ffc60c54362988e55d2ca8433f2c696cd9b9c4feedddfa29955b42a0b\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}",
+      "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9\",\"observed_at\":\"2026-07-16T11:35:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"143749d1a10e22041017b91a17a0c98b5afcce13b8aefcf57bfefeee7fe2263b6e8ca29bdeec322f9a723d982a5178e40ac8991217edfa60913ff214628fcc0d\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}",
+      "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:8b74417d0d5a0ae676ab389260e141c302ee6576530df7d97f15758eb4ac4e3e\",\"observed_at\":\"2026-07-16T11:40:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"b4f419a39db8739f25a08168230b30ed237505f4575eab9717f84eda209191edc3cad00cea573bd6a6448d691346a820ec13fb56ebb6838baa74aaf077401d04\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}"
+    ]
+  },
+  "equivocation_cases": [
+    {
+      "name": "equivocation_proven",
+      "pair": [
+        "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9\",\"observed_at\":\"2026-07-16T11:35:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"143749d1a10e22041017b91a17a0c98b5afcce13b8aefcf57bfefeee7fe2263b6e8ca29bdeec322f9a723d982a5178e40ac8991217edfa60913ff214628fcc0d\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}",
+        "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:8b74417d0d5a0ae676ab389260e141c302ee6576530df7d97f15758eb4ac4e3e\",\"observed_at\":\"2026-07-16T11:40:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"b4f419a39db8739f25a08168230b30ed237505f4575eab9717f84eda209191edc3cad00cea573bd6a6448d691346a820ec13fb56ebb6838baa74aaf077401d04\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}"
+      ],
+      "expect": {
+        "equivocation": true
+      },
+      "note": "same did, same height 2, different manifest_hash: the signed pair alone is the proof (annexe C.4)"
+    },
+    {
+      "name": "heartbeat_not_equivocation",
+      "pair": [
+        "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9\",\"observed_at\":\"2026-07-16T11:35:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"143749d1a10e22041017b91a17a0c98b5afcce13b8aefcf57bfefeee7fe2263b6e8ca29bdeec322f9a723d982a5178e40ac8991217edfa60913ff214628fcc0d\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}",
+        "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9\",\"observed_at\":\"2026-07-17T00:00:05Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"584650b4cc640ce82f642bf5caeed83d3fdaea6cb0d25ee32faf7a7b1175c45101f4315a2e0858b3fbf6fa45d1241748e8b9cec90b511d65dfc7f7aac77f330e\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}"
+      ],
+      "expect": {
+        "equivocation": false
+      },
+      "note": "same manifest_hash re-observed later = freshness"
+    },
+    {
+      "name": "different_heights_not_equivocation",
+      "pair": [
+        "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":1,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188\",\"observed_at\":\"2026-07-16T11:05:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"7f3a52dbbca6356c5aade5ebd9b45986336b36a8fd73c7b00f2702b6e79684c2b5e5f76ffc60c54362988e55d2ca8433f2c696cd9b9c4feedddfa29955b42a0b\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}",
+        "{\"aithos-witness\":\"1.0.0-draft.1\",\"did\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"edition_height\":2,\"gamma_head\":\"\",\"manifest_hash\":\"sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9\",\"observed_at\":\"2026-07-16T11:35:00Z\",\"signature\":{\"alg\":\"ed25519\",\"value\":\"143749d1a10e22041017b91a17a0c98b5afcce13b8aefcf57bfefeee7fe2263b6e8ca29bdeec322f9a723d982a5178e40ac8991217edfa60913ff214628fcc0d\"},\"witness_key\":\"z6MkswFb62xmEDrqnknM3TP112AiH6A5YETp7gc2Qz4Wqkar\"}"
+      ],
+      "expect": {
+        "equivocation": false
+      },
+      "note": "heights differ: a chain, not a fork"
+    }
+  ]
+}

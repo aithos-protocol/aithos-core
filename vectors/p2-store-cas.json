@@ -1,0 +1,136 @@
+{
+  "vector": "P2",
+  "description": "The two hot heads under CAS (INFRA-PROVIDER annexe A.5, contrat C1, lot P0). manifest.json: head = sha256:<chain hash> (JCS with signature.value=\"\" — the very value a successor pins as prev_hash); gamma: head = sha256:<sha256 of last entry JCS> (the value the next entry carries as prev). If-Head grammar: sha256:<64 hex> | none. Mandatory on publish and append; mismatch answers 409 + current head; missing answers 428. Real #root-signed manifests, real grantee-signed entries. m2b is the equivocation twin consumed by P4. Generated independently (Python blake3 + PyNaCl), anchored on committed A1 + G1.",
+  "tenant": "acme",
+  "did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+  "manifests": {
+    "m1_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-16T11:00:00Z\",\"height\":1,\"prev_hash\":\"\"},\"files\":{\"did.json\":\"4d4294adeae2d0695b6efd92d9c1812fe9bdc94a61ff1fbf858f8d9ccebf23a0\"},\"gamma_head\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"2ecf9a23a163413a9f4af2ca311d9872cc75fa5bd4f087cbb114149f29d48c0a77157c7e35712a858ef9eab3df0e58c30f0aef5ddd64c362994f7a90c3c1cc04\"}}",
+    "m1_chain_hash": "8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188",
+    "m2_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-16T11:30:00Z\",\"height\":2,\"prev_hash\":\"8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188\"},\"files\":{\"did.json\":\"4d4294adeae2d0695b6efd92d9c1812fe9bdc94a61ff1fbf858f8d9ccebf23a0\",\"e/public/hello.md\":\"9e8b62f81ea5c66fa06ee53da032751386b37702153070c0e14dd1d316282fa7\"},\"gamma_head\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"d263f85f1a74edde71021d1a9306354ec0bb4189bbd55c935a71889fd2ce68cbb76778cdbcad3da64ec343bdd8d9f2c4e560d84357c1a5d77c5e296e5134eb08\"}}",
+    "m2_chain_hash": "5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9",
+    "m2b_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-16T11:30:00Z\",\"height\":2,\"prev_hash\":\"8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188\"},\"files\":{\"did.json\":\"4d4294adeae2d0695b6efd92d9c1812fe9bdc94a61ff1fbf858f8d9ccebf23a0\",\"e/public/hello.md\":\"e2199102848667560b96f4cfc70a79cd1a61e2bbdad6c153ef010efa75b57dd7\"},\"gamma_head\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"0b8c739cbd19c0b094df90ebbe94edd5508d2a219bbf43b7a31948de49b480d38245dfa762b70032a4c4a1105c29a667807a3bc1a8302c787dfe692a73640308\"}}",
+    "m2b_chain_hash": "8b74417d0d5a0ae676ab389260e141c302ee6576530df7d97f15758eb4ac4e3e",
+    "m2x_prev_mismatch_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-16T11:30:00Z\",\"height\":2,\"prev_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\"},\"files\":{\"did.json\":\"4d4294adeae2d0695b6efd92d9c1812fe9bdc94a61ff1fbf858f8d9ccebf23a0\"},\"gamma_head\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"aa475e8097013c78ce38fe514f38b30d8ef033d7c5b9f323215df9cb01e976302aae9df018642f0a4d8f403994bc9232b04e03c11a7468e5d3b2ebcca57e3706\"}}"
+  },
+  "manifest_cases": [
+    {
+      "name": "genesis_publish",
+      "state_head": null,
+      "if_head": "none",
+      "body_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-16T11:00:00Z\",\"height\":1,\"prev_hash\":\"\"},\"files\":{\"did.json\":\"4d4294adeae2d0695b6efd92d9c1812fe9bdc94a61ff1fbf858f8d9ccebf23a0\"},\"gamma_head\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"2ecf9a23a163413a9f4af2ca311d9872cc75fa5bd4f087cbb114149f29d48c0a77157c7e35712a858ef9eab3df0e58c30f0aef5ddd64c362994f7a90c3c1cc04\"}}",
+      "expect": {
+        "status": "accept",
+        "new_head": "sha256:8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188",
+        "new_height": 1
+      },
+      "note": "If-Head: none + height 1 + prev_hash \"\" (annexe A.5)"
+    },
+    {
+      "name": "publish_ok",
+      "state_head": "sha256:8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188",
+      "if_head": "sha256:8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188",
+      "body_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-16T11:30:00Z\",\"height\":2,\"prev_hash\":\"8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188\"},\"files\":{\"did.json\":\"4d4294adeae2d0695b6efd92d9c1812fe9bdc94a61ff1fbf858f8d9ccebf23a0\",\"e/public/hello.md\":\"9e8b62f81ea5c66fa06ee53da032751386b37702153070c0e14dd1d316282fa7\"},\"gamma_head\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"d263f85f1a74edde71021d1a9306354ec0bb4189bbd55c935a71889fd2ce68cbb76778cdbcad3da64ec343bdd8d9f2c4e560d84357c1a5d77c5e296e5134eb08\"}}",
+      "expect": {
+        "status": "accept",
+        "new_head": "sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9",
+        "new_height": 2
+      },
+      "note": "If-Head equals the stored chain hash; prev_hash matches"
+    },
+    {
+      "name": "publish_cas_stale",
+      "state_head": "sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9",
+      "if_head": "sha256:8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188",
+      "body_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-16T11:30:00Z\",\"height\":2,\"prev_hash\":\"8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188\"},\"files\":{\"did.json\":\"4d4294adeae2d0695b6efd92d9c1812fe9bdc94a61ff1fbf858f8d9ccebf23a0\",\"e/public/hello.md\":\"e2199102848667560b96f4cfc70a79cd1a61e2bbdad6c153ef010efa75b57dd7\"},\"gamma_head\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"0b8c739cbd19c0b094df90ebbe94edd5508d2a219bbf43b7a31948de49b480d38245dfa762b70032a4c4a1105c29a667807a3bc1a8302c787dfe692a73640308\"}}",
+      "expect": {
+        "status": 409,
+        "error": "cas_mismatch",
+        "head": "sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9",
+        "height": 2
+      },
+      "note": "the loser gets the current head back and rebases (02.6); the store never arbitrates"
+    },
+    {
+      "name": "publish_cas_required",
+      "state_head": "sha256:5fb52511652be4712c7d7b760fc54d5dc5e4d42868b0603096d31bbb3f365de9",
+      "if_head": null,
+      "body_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-16T11:30:00Z\",\"height\":2,\"prev_hash\":\"8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188\"},\"files\":{\"did.json\":\"4d4294adeae2d0695b6efd92d9c1812fe9bdc94a61ff1fbf858f8d9ccebf23a0\",\"e/public/hello.md\":\"9e8b62f81ea5c66fa06ee53da032751386b37702153070c0e14dd1d316282fa7\"},\"gamma_head\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"d263f85f1a74edde71021d1a9306354ec0bb4189bbd55c935a71889fd2ce68cbb76778cdbcad3da64ec343bdd8d9f2c4e560d84357c1a5d77c5e296e5134eb08\"}}",
+      "expect": {
+        "status": 428,
+        "error": "cas_required"
+      },
+      "note": "CAS is mandatory on manifest.json: no silent overwrite"
+    },
+    {
+      "name": "publish_prev_hash_mismatch",
+      "state_head": "sha256:8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188",
+      "if_head": "sha256:8cea98e70bb8b19f94f0fb4ea127b7b66990d121a067e0553b0c5b0d6be93188",
+      "body_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-16T11:30:00Z\",\"height\":2,\"prev_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\"},\"files\":{\"did.json\":\"4d4294adeae2d0695b6efd92d9c1812fe9bdc94a61ff1fbf858f8d9ccebf23a0\"},\"gamma_head\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"aa475e8097013c78ce38fe514f38b30d8ef033d7c5b9f323215df9cb01e976302aae9df018642f0a4d8f403994bc9232b04e03c11a7468e5d3b2ebcca57e3706\"}}",
+      "expect": {
+        "status": 400,
+        "error": "artifact_invalid",
+        "reason": "prev_hash_mismatch"
+      },
+      "note": "If-Head right but the artifact does not chain (A.4)"
+    }
+  ],
+  "gamma_cases": [
+    {
+      "name": "append_genesis",
+      "state_head": null,
+      "if_head": "none",
+      "entry_jcs": "{\"at\":\"2026-07-16T12:00:00Z\",\"id\":\"gamma_0000000000000000000000P0G1\",\"kind\":\"grant\",\"payload\":{},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#content\",\"value\":\"4a89d969cc35a5f82fceb61ae8d81c43095d71e2526bd1bdd007405334bba0bfed038541895d4a2cd7b5806ca53731e7e862b81b57101e9f97c18120e14e6d0a\"},\"target\":\"mandate_0000000000000000000000P0M1\",\"v\":1}",
+      "expect": {
+        "status": "accept",
+        "new_head": "sha256:cdb027e43237b4897ee7458ad743b2e607079be887a323ff4c8647135cb86bc4"
+      },
+      "note": "empty log: If-Head none + prev \"\""
+    },
+    {
+      "name": "append_ok",
+      "state_head": "sha256:cdb027e43237b4897ee7458ad743b2e607079be887a323ff4c8647135cb86bc4",
+      "if_head": "sha256:cdb027e43237b4897ee7458ad743b2e607079be887a323ff4c8647135cb86bc4",
+      "entry_jcs": "{\"at\":\"2026-07-16T12:05:00Z\",\"authorized_by\":\"mandate_0000000000000000000000P0M1\",\"authorized_via\":[\"mandate_0000000000000000000000P0M1\"],\"id\":\"gamma_0000000000000000000000P0A2\",\"kind\":\"action\",\"payload\":{\"action\":\"reply\",\"args_hash\":\"sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\"},\"prev\":\"sha256:cdb027e43237b4897ee7458ad743b2e607079be887a323ff4c8647135cb86bc4\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkghLt1e8m1fmANsdJJco3aCLV8Xnigr5UWwC3u5iZFPd3\",\"value\":\"1a8a24bd91d790ef4546a2584d092deb15931762af23b472821e4d67ea6f96427aee04ee509ae6d40400b8462749009a04a9465fd016baf110b4ccfc2ee9e802\"},\"target\":\"x.gmail\",\"v\":1}",
+      "expect": {
+        "status": "accept",
+        "new_head": "sha256:e35aa4d7646cb351fd871a8cdf2d26de4b381e9988a5f4bc14baeacd7ec843af"
+      },
+      "note": "prev == If-Head == stored head; grantee-signed action, chain covers act.x.gmail.reply"
+    },
+    {
+      "name": "append_cas_stale",
+      "state_head": "sha256:e35aa4d7646cb351fd871a8cdf2d26de4b381e9988a5f4bc14baeacd7ec843af",
+      "if_head": "sha256:cdb027e43237b4897ee7458ad743b2e607079be887a323ff4c8647135cb86bc4",
+      "entry_jcs": "{\"at\":\"2026-07-16T12:06:00Z\",\"authorized_by\":\"mandate_0000000000000000000000P0M1\",\"authorized_via\":[\"mandate_0000000000000000000000P0M1\"],\"id\":\"gamma_0000000000000000000000P0A4\",\"kind\":\"action\",\"payload\":{\"action\":\"reply\",\"args_hash\":\"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"},\"prev\":\"sha256:cdb027e43237b4897ee7458ad743b2e607079be887a323ff4c8647135cb86bc4\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkghLt1e8m1fmANsdJJco3aCLV8Xnigr5UWwC3u5iZFPd3\",\"value\":\"fe7976ba0ee8c9e92773d9d37bce95230667ce1ed247e5f6d58c61d3bec42f727528061ebf885bd406f887d1059d00219d8e14e4860de4bb3193daf3bc4c760c\"},\"target\":\"x.gmail\",\"v\":1}",
+      "expect": {
+        "status": 409,
+        "error": "cas_mismatch",
+        "head": "sha256:e35aa4d7646cb351fd871a8cdf2d26de4b381e9988a5f4bc14baeacd7ec843af"
+      },
+      "note": "concurrent writer lost the race: 409 + current head, client re-chains and retries"
+    },
+    {
+      "name": "append_cas_required",
+      "state_head": "sha256:e35aa4d7646cb351fd871a8cdf2d26de4b381e9988a5f4bc14baeacd7ec843af",
+      "if_head": null,
+      "entry_jcs": "{\"at\":\"2026-07-16T12:06:00Z\",\"authorized_by\":\"mandate_0000000000000000000000P0M1\",\"authorized_via\":[\"mandate_0000000000000000000000P0M1\"],\"id\":\"gamma_0000000000000000000000P0A4\",\"kind\":\"action\",\"payload\":{\"action\":\"reply\",\"args_hash\":\"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"},\"prev\":\"sha256:cdb027e43237b4897ee7458ad743b2e607079be887a323ff4c8647135cb86bc4\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkghLt1e8m1fmANsdJJco3aCLV8Xnigr5UWwC3u5iZFPd3\",\"value\":\"fe7976ba0ee8c9e92773d9d37bce95230667ce1ed247e5f6d58c61d3bec42f727528061ebf885bd406f887d1059d00219d8e14e4860de4bb3193daf3bc4c760c\"},\"target\":\"x.gmail\",\"v\":1}",
+      "expect": {
+        "status": 428,
+        "error": "cas_required"
+      },
+      "note": "CAS is mandatory on gamma append"
+    },
+    {
+      "name": "append_bad_entry_signature",
+      "state_head": "sha256:cdb027e43237b4897ee7458ad743b2e607079be887a323ff4c8647135cb86bc4",
+      "if_head": "sha256:cdb027e43237b4897ee7458ad743b2e607079be887a323ff4c8647135cb86bc4",
+      "entry_jcs": "{\"at\":\"2026-07-16T12:05:00Z\",\"authorized_by\":\"mandate_0000000000000000000000P0M1\",\"authorized_via\":[\"mandate_0000000000000000000000P0M1\"],\"id\":\"gamma_0000000000000000000000P0A2\",\"kind\":\"action\",\"payload\":{\"action\":\"reply\",\"args_hash\":\"sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\"},\"prev\":\"sha256:cdb027e43237b4897ee7458ad743b2e607079be887a323ff4c8647135cb86bc4\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkghLt1e8m1fmANsdJJco3aCLV8Xnigr5UWwC3u5iZFPd3\",\"value\":\"1a8a24bd91d790ef4546a2584d092deb15931762af23b472821e4d67ea6f96427aee04ee509ae6d40400b8462749009a04a9465fd016baf110b4ccfc2ee9e800\"},\"target\":\"x.gmail\",\"v\":1}",
+      "expect": {
+        "status": 400,
+        "error": "artifact_invalid",
+        "reason": "entry_signature"
+      },
+      "note": "CAS passes, the entry itself fails verification (A.4): the server verifies like a verifier, never repairs"
+    }
+  ]
+}
