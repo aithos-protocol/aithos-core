@@ -318,7 +318,7 @@ impl<S: Store> Bundle<S> {
                 .map_err(io_err)?
                 .ok_or_else(|| Error::SealRejected(format!("listed file vanished: {path}")))?;
             match self.store.get(&path).map_err(io_err)? {
-                None => self.store.put(&path, &their_bytes).map_err(io_err)?,
+                None => self.write_object(&path, &their_bytes)?,
                 Some(my_bytes) if my_bytes == their_bytes => {}
                 Some(_) => {
                     return Err(Error::MergeRejected(format!(
@@ -372,15 +372,15 @@ impl<S: Store> Bundle<S> {
                     other.store.get(slot).map_err(io_err)?.ok_or_else(|| {
                         Error::MergeRejected(format!("missing parent file: {slot}"))
                     })?;
-                self.store.put(&alt, &hi_bytes).map_err(io_err)?;
+                self.write_object(&alt, &hi_bytes)?;
             } else {
                 let my_bytes = self.get(slot)?;
-                self.store.put(&alt, &my_bytes).map_err(io_err)?;
+                self.write_object(&alt, &my_bytes)?;
                 let lo_bytes =
                     other.store.get(slot).map_err(io_err)?.ok_or_else(|| {
                         Error::MergeRejected(format!("missing parent file: {slot}"))
                     })?;
-                self.store.put(slot, &lo_bytes).map_err(io_err)?;
+                self.write_object(slot, &lo_bytes)?;
             }
         }
 
@@ -420,7 +420,7 @@ impl<S: Store> Bundle<S> {
                 bytes.extend_from_slice(line);
                 bytes.push(b'\n');
             }
-            self.store.put(seg, &bytes).map_err(io_err)?;
+            self.write_object(seg, &bytes)?;
         }
         if head_lo != head_hi {
             // The log really forked: re-join it. Deterministic id — both
@@ -456,7 +456,7 @@ impl<S: Store> Bundle<S> {
             let mut bytes = self.store.get(&seg).map_err(io_err)?.unwrap_or_default();
             bytes.extend_from_slice(aithos_core::jcs::canonicalize(&entry)?.as_bytes());
             bytes.push(b'\n');
-            self.store.put(&seg, &bytes).map_err(io_err)?;
+            self.write_object(&seg, &bytes)?;
         }
         // Fail-closed self-check: the merged log must verify through the
         // join before anything is signed.
@@ -520,17 +520,13 @@ impl<S: Store> Bundle<S> {
             .get(&format!("manifests/{height}.json"))
             .map_err(io_err)?
             .ok_or_else(|| Error::MergeRejected("the losing branch lacks its manifest".into()))?;
-        self.store
-            .put(&format!("manifests/{height}-alt.json"), &loser_manifest)
-            .map_err(io_err)?;
+        self.write_object(&format!("manifests/{height}-alt.json"), &loser_manifest)?;
         let loser_tree = loser
             .store
             .get(&format!("manifests/tree-{height}.json"))
             .map_err(io_err)?
             .ok_or_else(|| Error::MergeRejected("the losing branch lacks its tree".into()))?;
-        self.store
-            .put(&format!("manifests/tree-{height}-alt.json"), &loser_tree)
-            .map_err(io_err)?;
+        self.write_object(&format!("manifests/tree-{height}-alt.json"), &loser_tree)?;
 
         // The resolving edition extends the winner — content unchanged.
         let win_hash = mine.chain_hash()?;

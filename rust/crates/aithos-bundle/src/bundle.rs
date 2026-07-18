@@ -6,7 +6,7 @@
 
 use crate::entropy::EntropySource;
 use crate::manifest::{sha256_hex, Manifest};
-use crate::Store;
+use crate::{validate_display_path, validate_store_key, Store};
 use aithos_core::derive::node_key;
 use aithos_core::did::DidDocument;
 use aithos_core::error::{Error, Result};
@@ -168,6 +168,28 @@ fn owner_content_sig(
 impl<S: Store> Bundle<S> {
     // ------------------------------------------------------------- io
 
+    pub(crate) fn gate_display_path(path: &str, allow_empty: bool) -> Result<()> {
+        if allow_empty && path.is_empty() {
+            return Ok(());
+        }
+        validate_display_path(path).map_err(io_err)
+    }
+
+    pub(crate) fn gate_display_name(name: &str) -> Result<()> {
+        validate_display_path(name).map_err(io_err)?;
+        if name.contains('/') {
+            return Err(Error::InvalidPath(format!(
+                "a display name cannot contain '/': {name}"
+            )));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn write_object(&mut self, path: &str, bytes: &[u8]) -> Result<()> {
+        validate_store_key(path).map_err(io_err)?;
+        self.store.put(path, bytes).map_err(io_err)
+    }
+
     pub(crate) fn get(&self, path: &str) -> Result<Vec<u8>> {
         self.store
             .get(path)
@@ -183,7 +205,30 @@ impl<S: Store> Bundle<S> {
     pub(crate) fn put_json<T: Serialize>(&mut self, path: &str, value: &T) -> Result<()> {
         let bytes = serde_json::to_vec_pretty(value)
             .map_err(|e| Error::SealRejected(format!("{path}: {e}")))?;
-        self.store.put(path, &bytes).map_err(io_err)
+        self.write_object(path, &bytes)
+    }
+
+    /// Execute one complete mutation (candidate objects plus its signed
+    /// publication) against an isolated Store overlay.
+    ///
+    /// The closure sees its staged writes. They become canonical together
+    /// only after it returns `Ok`; every refusal drops the entire overlay.
+    pub fn transaction<T>(&mut self, mutation: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        self.store.begin_transaction().map_err(io_err)?;
+        match mutation(self) {
+            Ok(value) => {
+                if let Err(error) = self.store.commit_transaction() {
+                    let _ = self.store.rollback_transaction();
+                    Err(io_err(error))
+                } else {
+                    Ok(value)
+                }
+            }
+            Err(error) => {
+                self.store.rollback_transaction().map_err(io_err)?;
+                Err(error)
+            }
+        }
     }
 
     pub(crate) fn put_blob(
@@ -212,7 +257,7 @@ impl<S: Store> Bundle<S> {
         let c = blob_seal(key, plaintext, &nonce, &aad);
         let mut file_bytes = nonce.to_vec();
         file_bytes.extend_from_slice(&c);
-        self.store.put(file, &file_bytes).map_err(io_err)?;
+        self.write_object(file, &file_bytes)?;
         Ok(sha256_hex(&file_bytes))
     }
 
@@ -256,58 +301,75 @@ impl<S: Store> Bundle<S> {
             store,
             did: doc.id.clone(),
         };
-        bundle.put_json("did.json", &doc)?;
-
-        // Encrypted zone roots: random DK sealed to the owner (I3).
-        for zone in [Zone::Circle, Zone::Self_] {
-            let dk = ent.e32();
-            let node = format!("/e/{}", zone.as_str());
-            let header = Header::build(
-                &bundle.did.clone(),
-                &node,
-                &dk,
-                &[Recipient::owner(owner.owner_kex_pub())],
-                &[ent.e32()],
-                &[ent.e24()],
-            )?;
-            bundle.put_json(&format!("e/{}/header.json", zone.as_str()), &header)?;
-        }
-        // Vault root (§08.2): audit keys for sealed action args live here.
-        {
-            let dk = ent.e32();
-            let header = Header::build(
-                &bundle.did.clone(),
-                "/x",
-                &dk,
-                &[Recipient::owner(owner.owner_kex_pub())],
-                &[ent.e32()],
-                &[ent.e24()],
-            )?;
-            bundle.put_json("e/x/header.json", &header)?;
-        }
-
-        bundle.put_json("e/public/index.json", &ZoneIndex::default())?;
-        bundle.put_json("e/circle/index.json", &ZoneIndex::default())?;
-        bundle.put_json("e/self/index.json", &SelfIndex::default())?;
-
-        // Sealed, empty self root descriptor (§02.8).
-        let self_dk = bundle.zone_dk(Zone::Self_, owner)?;
-        let root_key = aithos_core::derive::derive_key("aithos-core/v1/self-root", &self_dk);
-        let desc = Descriptor {
-            kind: "folder".to_owned(),
-            name: String::new(),
-            children: vec![],
+        let transactional = match bundle.store.begin_transaction() {
+            Ok(()) => true,
+            Err(error) if error.kind() == std::io::ErrorKind::Unsupported => false,
+            Err(error) => return Err(io_err(error)),
         };
-        let node = NodePath::zone_root(Zone::Self_);
-        let pt = jcs::canonical_bytes(&desc)?;
-        bundle.put_blob("e/self/root.enc", &root_key, &node, &pt, ent)?;
+        let initialized = (|| -> Result<()> {
+            bundle.put_json("did.json", &doc)?;
 
-        bundle.publish_at(owner, now, 1)?;
+            // Encrypted zone roots: random DK sealed to the owner (I3).
+            for zone in [Zone::Circle, Zone::Self_] {
+                let dk = ent.e32();
+                let node = format!("/e/{}", zone.as_str());
+                let header = Header::build(
+                    &bundle.did.clone(),
+                    &node,
+                    &dk,
+                    &[Recipient::owner(owner.owner_kex_pub())],
+                    &[ent.e32()],
+                    &[ent.e24()],
+                )?;
+                bundle.put_json(&format!("e/{}/header.json", zone.as_str()), &header)?;
+            }
+            // Vault root (§08.2): audit keys for sealed action args live here.
+            {
+                let dk = ent.e32();
+                let header = Header::build(
+                    &bundle.did.clone(),
+                    "/x",
+                    &dk,
+                    &[Recipient::owner(owner.owner_kex_pub())],
+                    &[ent.e32()],
+                    &[ent.e24()],
+                )?;
+                bundle.put_json("e/x/header.json", &header)?;
+            }
+
+            bundle.put_json("e/public/index.json", &ZoneIndex::default())?;
+            bundle.put_json("e/circle/index.json", &ZoneIndex::default())?;
+            bundle.put_json("e/self/index.json", &SelfIndex::default())?;
+
+            // Sealed, empty self root descriptor (§02.8).
+            let self_dk = bundle.zone_dk(Zone::Self_, owner)?;
+            let root_key = aithos_core::derive::derive_key("aithos-core/v1/self-root", &self_dk);
+            let desc = Descriptor {
+                kind: "folder".to_owned(),
+                name: String::new(),
+                children: vec![],
+            };
+            let node = NodePath::zone_root(Zone::Self_);
+            let pt = jcs::canonical_bytes(&desc)?;
+            bundle.put_blob("e/self/root.enc", &root_key, &node, &pt, ent)?;
+
+            bundle.publish_at(owner, now, 1)
+        })();
+        if let Err(error) = initialized {
+            if transactional {
+                bundle.store.rollback_transaction().map_err(io_err)?;
+            }
+            return Err(error);
+        }
+        if transactional {
+            bundle.store.commit_transaction().map_err(io_err)?;
+        }
         Ok(bundle)
     }
 
     /// Open an existing bundle: the DID document names the subject.
-    pub fn open(store: S) -> Result<Self> {
+    pub fn open(mut store: S) -> Result<Self> {
+        store.recover_transaction().map_err(io_err)?;
         let doc: DidDocument = serde_json::from_slice(
             &store
                 .get("did.json")
@@ -403,6 +465,7 @@ impl<S: Store> Bundle<S> {
         owner: &OwnerKeys,
         ent: &mut dyn EntropySource,
     ) -> Result<Vec<Sid>> {
+        Self::gate_display_path(display_path, true)?;
         match zone {
             Zone::Self_ => self.ensure_self_folder(display_path, owner, ent),
             _ => {
@@ -454,6 +517,8 @@ impl<S: Store> Bundle<S> {
             body,
             now,
         } = *spec;
+        Self::gate_display_path(folder_path, true)?;
+        Self::gate_display_name(name)?;
         let display_path = if folder_path.is_empty() {
             name.to_owned()
         } else {
@@ -464,7 +529,7 @@ impl<S: Store> Bundle<S> {
                 let sid = Self::new_sid(ent);
                 let folders = self.ensure_folder(zone, folder_path, owner, ent)?;
                 let file = format!("e/public/{display_path}.md");
-                self.store.put(&file, body.as_bytes()).map_err(io_err)?;
+                self.write_object(&file, body.as_bytes())?;
                 let sig = owner_content_sig(owner, zone, &display_path, &sid.to_string(), body)?;
                 let index_path = "e/public/index.json";
                 let mut index: ZoneIndex = self.get_json(index_path)?;
@@ -677,6 +742,7 @@ impl<S: Store> Bundle<S> {
         owner: &OwnerKeys,
         ent: &mut dyn EntropySource,
     ) -> Result<Vec<Sid>> {
+        Self::gate_display_path(display_path, true)?;
         let self_dk = self.zone_dk(Zone::Self_, owner)?;
         let mut chain: Vec<Sid> = Vec::new();
         for seg in display_path.split('/').filter(|s| !s.is_empty()) {
@@ -783,6 +849,7 @@ impl<S: Store> Bundle<S> {
     /// authorization decision. `self` is intentionally unsupported because
     /// resolving that zone requires owner decryption.
     pub fn resolve_clear(&self, zone: Zone, display_path: &str) -> Result<(SectionRow, Vec<Sid>)> {
+        Self::gate_display_path(display_path, false)?;
         let index: ZoneIndex = self.get_json(&format!("e/{}/index.json", zone.as_str()))?;
         let mut segs: Vec<&str> = display_path.split('/').filter(|s| !s.is_empty()).collect();
         let name = segs
@@ -853,6 +920,7 @@ impl<S: Store> Bundle<S> {
     /// Keyless public read (§02.1): resolve through the clear index, read the
     /// markdown file, check its hash against the pinned index row.
     pub fn public_read(store: &S, display_path: &str) -> Result<String> {
+        Self::gate_display_path(display_path, false)?;
         let index: ZoneIndex = serde_json::from_slice(
             &store
                 .get("e/public/index.json")
@@ -883,6 +951,7 @@ impl<S: Store> Bundle<S> {
         display_path: &str,
         owner_kex: &StaticSecret,
     ) -> Result<(Vec<Sid>, Sid)> {
+        Self::gate_display_path(display_path, false)?;
         let self_dk = self.zone_dk_with_owner_kex(Zone::Self_, owner_kex)?;
         let mut segs: Vec<&str> = display_path.split('/').filter(|s| !s.is_empty()).collect();
         let name = segs
@@ -1053,6 +1122,8 @@ impl<S: Store> Bundle<S> {
         owner: &OwnerKeys,
         ent: &mut dyn EntropySource,
     ) -> Result<()> {
+        Self::gate_display_path(display_path, false)?;
+        Self::gate_display_name(new_name)?;
         match zone {
             Zone::Self_ => {
                 let chain = self.ensure_self_folder(display_path, owner, ent)?;
@@ -1112,9 +1183,7 @@ impl<S: Store> Bundle<S> {
         // edition — a future disjoint merge 3-ways against them as base.
         for zone in ["public", "circle", "self"] {
             let bytes = self.get(&format!("e/{zone}/index.json"))?;
-            self.store
-                .put(&format!("manifests/index-{zone}-{height}.json"), &bytes)
-                .map_err(io_err)?;
+            self.write_object(&format!("manifests/index-{zone}-{height}.json"), &bytes)?;
         }
         let files = self.all_pinned_files(height)?;
         let gamma_head = self.gamma_head()?;

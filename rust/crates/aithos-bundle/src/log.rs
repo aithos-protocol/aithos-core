@@ -170,7 +170,7 @@ impl<S: Store> Bundle<S> {
         let mut bytes = self.store.get(&seg).map_err(io_err)?.unwrap_or_default();
         bytes.extend_from_slice(aithos_core::jcs::canonicalize(entry)?.as_bytes());
         bytes.push(b'\n');
-        self.store.put(&seg, &bytes).map_err(io_err)
+        self.write_object(&seg, &bytes)
     }
 
     pub(crate) fn next_gamma_id(&self, ent: &mut dyn EntropySource) -> String {

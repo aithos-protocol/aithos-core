@@ -430,18 +430,6 @@ fn cb2_bundle_capability_keyless_and_api_inventory_preliminary() {
     for method in ["fn get(", "fn put(", "fn list("] {
         assert!(BUNDLE_LIB_SOURCE.contains(method), "{method}");
     }
-    for absent in [
-        "fn begin_transaction(",
-        "fn commit_transaction(",
-        "fn recover_transaction(",
-        "fn validate_store_key(",
-    ] {
-        assert!(!BUNDLE_LIB_SOURCE.contains(absent), "{absent}");
-    }
-    assert!(BUNDLE_LIB_SOURCE.contains("self.root.join(path)"));
-    assert!(BUNDLE_SOURCE.contains("self.store.put("));
-    assert!(LOG_SOURCE.contains("self.store.put("));
-    assert!(MERGE_SOURCE.contains("self.store.put("));
     assert!(BUNDLE_SOURCE.contains("&OwnerKeys"));
     assert!(BUNDLE_SOURCE.contains("&StaticSecret"));
     for absent in [
@@ -452,4 +440,26 @@ fn cb2_bundle_capability_keyless_and_api_inventory_preliminary() {
     ] {
         assert!(!BUNDLE_SOURCE.contains(absent), "{absent}");
     }
+}
+
+#[test]
+fn cb2_cb7_bundle_transaction_confinement_api_gate() {
+    for present in [
+        "fn begin_transaction(",
+        "fn commit_transaction(",
+        "fn rollback_transaction(",
+        "fn recover_transaction(",
+        "pub fn validate_store_key(",
+        "pub fn validate_display_path(",
+        "struct FsTransaction",
+        ".aithos-current",
+    ] {
+        assert!(BUNDLE_LIB_SOURCE.contains(present), "{present}");
+    }
+    assert!(BUNDLE_SOURCE.contains("pub fn transaction<"));
+    assert!(BUNDLE_SOURCE.contains("fn write_object("));
+    assert_eq!(BUNDLE_SOURCE.matches("self.store.put(").count(), 1);
+    assert!(!LOG_SOURCE.contains("self.store.put("));
+    assert!(!MERGE_SOURCE.contains("self.store.put("));
+    assert!(!BUNDLE_LIB_SOURCE.contains("self.root.join(path)"));
 }
