@@ -9,7 +9,7 @@ use aithos_core::derive::node_key;
 use aithos_core::error::{Error, Result};
 use aithos_core::gamma::{
     self, check_action_append, check_grant_append, delegated_entry, open_body, owner_entry,
-    seal_body, verify_delegated_entry, verify_links, Body, Entry, EntrySpec, Kind,
+    seal_body, verify_delegated_entry, Body, Entry, EntrySpec, Kind,
 };
 use aithos_core::ids::Sid;
 use aithos_core::keys::{grantee_kex_secret, OwnerKeys};
@@ -611,37 +611,28 @@ impl<S: Store> Bundle<S> {
     // ---------------------------------------------------------- verifying
 
     /// Full offline log verification: link integrity + every signature
-    /// (owner entries under the DID keys, delegated entries against their
-    /// stored certificate chains).
+    /// and semantic admission against each exact accepted prefix. Bundle only
+    /// loads the carriers; Core owns the one append/cold replay verdict.
     pub fn gamma_verify(&self) -> Result<()> {
         let doc = self.did_doc()?;
         let entries = self.gamma_entries()?;
-        verify_links(&entries)?;
-        for e in &entries {
-            match &e.authorized_via {
-                None => gamma::verify_owner_entry(e, &doc)?,
-                Some(via) => {
-                    let chain: Vec<Mandate> = via
-                        .iter()
-                        .map(|id| self.get_json(&format!("certs/{id}.json")))
-                        .collect::<Result<_>>()?;
-                    verify_delegated_entry(e, &chain, &doc)?;
-                    // A delegated `revoke` entry must also carry authority
-                    // over its target (§06.4) — a forged revocation never
-                    // survives verification.
-                    if e.kind == "revoke" {
-                        if let Some(target) = &e.target {
-                            let target_chain = self.cert_chain(target)?;
-                            aithos_core::revocation::check_revoke_authority(
-                                Some(&chain),
-                                &target_chain,
-                            )?;
-                        }
-                    }
-                }
+        let mut certificates = BTreeMap::new();
+        for path in self.store.list("certs/").map_err(io_err)? {
+            if !path.ends_with(".json") {
+                continue;
+            }
+            let mandate: Mandate = self.get_json(&path)?;
+            if certificates.insert(mandate.id.clone(), mandate).is_some() {
+                return Err(Error::InvalidMandate(
+                    "duplicate certificate id in Bundle store".into(),
+                ));
             }
         }
-        Ok(())
+        let mut replay = aithos_core::gamma_replay::GammaReplayState::new(doc, certificates);
+        for entry in &entries {
+            replay.admit(entry)?;
+        }
+        replay.finish()
     }
 
     // ------------------------------------------------------------ reading

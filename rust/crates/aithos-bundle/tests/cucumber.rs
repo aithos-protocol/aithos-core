@@ -18,6 +18,10 @@ use aithos_core::constraints::{constraints_attenuate_for_profile, verify_operati
 use aithos_core::delegated_counts::{verify_delegated_count_mandates, verify_delegated_counts};
 use aithos_core::derive::{derive_key, node_key, section_label};
 use aithos_core::did::{DidDocument, EpochTransition};
+use aithos_core::gamma_replay::GammaReplayState;
+use aithos_core::gamma_v2::{
+    verify_gamma_profile_transition, verify_gamma_v2_entry, GammaOccurrenceRegistry,
+};
 use aithos_core::header::{Header, Line, Recipient, Wrap};
 use aithos_core::ids::Sid;
 use aithos_core::keys::ed2x;
@@ -66,6 +70,9 @@ const CB5_MAX_CHILDREN: &str = include_str!("../../../../vectors/cb2-max-childre
 const CB5_DELEGATED_COUNTS: &str = include_str!("../../../../vectors/cb2-delegated-counts.json");
 const CB5_RECEIPTS: &str = include_str!("../../../../vectors/cb2-operation-receipts.json");
 const CB5_CATALOG: &str = include_str!("../../../../vectors/cb2-connector-catalog.json");
+const CB6_GAMMA: &str = include_str!("../../../../vectors/cb2-gamma-v2-replay.json");
+const CB6_COEXISTENCE: &str =
+    include_str!("../../../../vectors/cb2-bundle-version-coexistence.json");
 
 fn agent_sk(b: u8) -> SigningKey {
     SigningKey::from_bytes(&[b; 32])
@@ -190,6 +197,7 @@ pub struct ProtocolWorld {
     cb4_case: String,
     cb4_result: Option<Result<(), String>>,
     cb5_result: Option<Result<(), String>>,
+    cb6_result: Option<Result<(), String>>,
     // --- step F: gamma ---
     gamma_result: Option<Result<String, String>>,
     audit_chain: Vec<Mandate>,
@@ -615,9 +623,232 @@ static CB5_CONSTRAINTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new(
 static CB5_COUNTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB5_RECEIPTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB5_CATALOG_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+static CB6_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 
 fn cb5_parsed(bytes: &str) -> Result<serde_json::Value, String> {
     serde_json::from_str(bytes).map_err(|error| format!("CB5 vector does not parse: {error}"))
+}
+
+fn cb6_semantic_verdict(candidate: &serde_json::Value) -> Result<(), &'static str> {
+    let flag = |name: &str| candidate[name].as_bool() == Some(true);
+    if !flag("entry_valid") || !flag("signer_valid") {
+        return Err("InvalidGammaEntry");
+    }
+    if !flag("operation_valid") || !flag("leaf_possession") {
+        return Err("InvalidOperation");
+    }
+    if !flag("time_valid") {
+        return Err("InvalidMandate");
+    }
+    if !flag("chain_valid") || !flag("perimeter_valid") {
+        return Err("InvalidMandate");
+    }
+    if !flag("revocation_valid") {
+        return Err("MandateRevoked");
+    }
+    if !flag("heartbeat_valid") {
+        return Err("GammaHeartbeatStale");
+    }
+    if !flag("grant_logged") {
+        return Err("GammaGrantNotLogged");
+    }
+    if !flag("receipts_valid") {
+        return Err("GammaObligationUnsatisfied");
+    }
+    if !flag("counters_valid") {
+        return Err(if candidate["counter_family"] == "action" {
+            "GammaBudgetExhausted"
+        } else {
+            "InvalidMandate"
+        });
+    }
+    Ok(())
+}
+
+fn cb6_acceptance() -> Result<(), String> {
+    let vector: serde_json::Value = serde_json::from_str(CB6_GAMMA)
+        .map_err(|error| format!("CB6 Gamma vector does not parse: {error}"))?;
+
+    for case in vector["kind_cases"]
+        .as_array()
+        .ok_or_else(|| "CB6 kind cases are not an array".to_owned())?
+    {
+        let projection = (!case["projection"].is_null()).then_some(&case["projection"]);
+        let verified = verify_gamma_v2_entry(&case["entry"], projection)
+            .map_err(|error| format!("{}: {error}", case["kind"]))?;
+        if verified.kind() != case["kind"].as_str().unwrap_or_default()
+            || verified.operation_ref().is_some() != (case["operation_ref_presence"] == "required")
+        {
+            return Err(format!("{}: Gamma-v2 kind verdict drift", case["kind"]));
+        }
+    }
+    for case in vector["negative_entry_cases"]
+        .as_array()
+        .ok_or_else(|| "CB6 entry negatives are not an array".to_owned())?
+    {
+        let projection = case["candidate"]
+            .get("projection")
+            .filter(|projection| !projection.is_null());
+        if !matches!(
+            verify_gamma_v2_entry(&case["candidate"]["entry"], projection),
+            Err(aithos_core::Error::InvalidGammaEntry(_))
+        ) {
+            return Err(format!("{}: Gamma-v2 entry defect accepted", case["id"]));
+        }
+    }
+    for case in vector["negative_correlation_cases"]
+        .as_array()
+        .ok_or_else(|| "CB6 correlation negatives are not an array".to_owned())?
+    {
+        if !matches!(
+            verify_gamma_v2_entry(
+                &case["candidate"]["entry"],
+                Some(&case["candidate"]["projection"]),
+            ),
+            Err(aithos_core::Error::InvalidOperation(_))
+        ) {
+            return Err(format!("{}: Gamma-v2 correlation accepted", case["id"]));
+        }
+    }
+
+    for case in vector["monotonicity_cases"]
+        .as_array()
+        .ok_or_else(|| "CB6 monotonicity cases are not an array".to_owned())?
+    {
+        let accepted = verify_gamma_profile_transition(
+            case["parent_manifest"].as_str().unwrap_or_default(),
+            case["parent_gamma"].as_str().unwrap_or_default(),
+            case["child_manifest"].as_str().unwrap_or_default(),
+            case["child_gamma"].as_str().unwrap_or_default(),
+        )
+        .is_ok();
+        if accepted != case["expected_accepted"].as_bool().unwrap_or(false) {
+            return Err("CB6 profile monotonicity verdict drift".into());
+        }
+    }
+
+    let action = vector["kind_cases"]
+        .as_array()
+        .and_then(|cases| cases.iter().find(|case| case["kind"] == "action"))
+        .ok_or_else(|| "CB6 action case is missing".to_owned())?;
+    let action = verify_gamma_v2_entry(&action["entry"], Some(&action["projection"]))
+        .map_err(|error| format!("CB6 action seed failed: {error}"))?;
+    let mut occurrences = GammaOccurrenceRegistry::default();
+    occurrences
+        .admit(&action)
+        .map_err(|error| format!("CB6 action occurrence failed: {error}"))?;
+    for case in vector["occurrence_cases"]
+        .as_array()
+        .ok_or_else(|| "CB6 occurrence cases are not an array".to_owned())?
+    {
+        let result = occurrences.admit_reference(&case["operation_ref"]);
+        let accepted = result.is_ok();
+        let expected = case["expected"] == "accepted-as-distinct-occurrence";
+        if accepted != expected {
+            return Err(format!("{}: occurrence verdict drift", case["id"]));
+        }
+    }
+
+    let h2 = &vector["raw_h2_fixture"];
+    let lines = h2["lines_jcs"]
+        .as_array()
+        .ok_or_else(|| "CB6 raw H2 lines are not an array".to_owned())?
+        .iter()
+        .map(|line| {
+            line.as_str()
+                .map(str::as_bytes)
+                .ok_or_else(|| "CB6 raw H2 line is not text".to_owned())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if hex::encode(aithos_core::gamma::segment_root(&lines)) != h2["root"]
+        || lines.len() as u64 != h2["n"].as_u64().unwrap_or_default()
+    {
+        return Err("CB6 raw H2 root or count drift".into());
+    }
+
+    for case in vector["semantic_replay_positive_cases"]
+        .as_array()
+        .ok_or_else(|| "CB6 semantic positives are not an array".to_owned())?
+    {
+        cb6_semantic_verdict(&case["candidate"])
+            .map_err(|variant| format!("semantic positive failed as {variant}"))?;
+    }
+    for case in vector["semantic_replay_negative_cases"]
+        .as_array()
+        .ok_or_else(|| "CB6 semantic negatives are not an array".to_owned())?
+    {
+        let observed = cb6_semantic_verdict(&case["candidate"]);
+        if observed != Err(case["must_fail"].as_str().unwrap_or_default())
+            || case["accepted_prefix_and_counters_unchanged"] != true
+        {
+            return Err(format!("{}: semantic refusal drift", case["id"]));
+        }
+    }
+
+    let coexistence: serde_json::Value = serde_json::from_str(CB6_COEXISTENCE)
+        .map_err(|error| format!("CB6 coexistence vector does not parse: {error}"))?;
+    let section = &coexistence["positive"];
+    let did: DidDocument = serde_json::from_str(
+        coexistence["did"]["jcs"]
+            .as_str()
+            .ok_or_else(|| "CB6 coexistence DID is missing".to_owned())?,
+    )
+    .map_err(|error| format!("CB6 coexistence DID does not parse: {error}"))?;
+    let certificates = section["certificate_names"]
+        .as_array()
+        .ok_or_else(|| "CB6 certificate names are not an array".to_owned())?
+        .iter()
+        .map(|name| {
+            let name = name.as_str().unwrap_or_default();
+            let mandate: Mandate = serde_json::from_str(
+                coexistence["certificates"][name]["jcs"]
+                    .as_str()
+                    .ok_or_else(|| format!("CB6 certificate {name} is missing"))?,
+            )
+            .map_err(|error| format!("CB6 certificate {name} does not parse: {error}"))?;
+            Ok((mandate.id.clone(), mandate))
+        })
+        .collect::<Result<std::collections::BTreeMap<_, _>, String>>()?;
+    let entries = section["gamma_jsonl"]
+        .as_str()
+        .ok_or_else(|| "CB6 coexistence Gamma is missing".to_owned())?
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<aithos_core::gamma::Entry>(line)
+                .map_err(|error| format!("CB6 coexistence Gamma does not parse: {error}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut append = GammaReplayState::new(did.clone(), certificates.clone());
+    let mut cold = GammaReplayState::new(did, certificates);
+    for entry in &entries {
+        append
+            .admit(entry)
+            .map_err(|error| format!("CB6 append replay failed: {error}"))?;
+        cold.admit(entry)
+            .map_err(|error| format!("CB6 cold replay failed: {error}"))?;
+    }
+    append
+        .finish()
+        .map_err(|error| format!("CB6 append replay did not finish: {error}"))?;
+    cold.finish()
+        .map_err(|error| format!("CB6 cold replay did not finish: {error}"))?;
+    if append.head().map_err(|error| error.to_string())?
+        != cold.head().map_err(|error| error.to_string())?
+        || append.counters() != cold.counters()
+    {
+        return Err("CB6 append and cold replay states differ".into());
+    }
+
+    let inventory = &vector["inventory"];
+    if inventory["gamma_append_allocates_no_occurrence"] != true
+        || inventory["local_read_gamma_persists_no_artifact"] != true
+        || inventory["signed_presentation_uses_no_new_gamma_kind"] != true
+        || inventory["h2_remains_raw_and_unchanged"] != true
+        || vector["migration_merge"]["publication_or_resolution_kind_added"] != false
+    {
+        return Err("CB6 closed Gamma inventory drift".into());
+    }
+    Ok(())
 }
 
 fn cb5_constraints_acceptance() -> Result<(), String> {
@@ -1113,6 +1344,14 @@ fn cb5_catalog_result(w: &mut ProtocolWorld) {
 
 fn cb5_assert_green(w: &ProtocolWorld) {
     assert_eq!(w.cb5_result, Some(Ok(())));
+}
+
+fn cb6_result(w: &mut ProtocolWorld) {
+    w.cb6_result = Some(CB6_ACCEPTANCE.get_or_init(cb6_acceptance).clone());
+}
+
+fn cb6_assert_green(w: &ProtocolWorld) {
+    assert_eq!(w.cb6_result, Some(Ok(())));
 }
 
 impl ProtocolWorld {
@@ -2744,6 +2983,29 @@ fn cb5_catalog_when(w: &mut ProtocolWorld) {
 )]
 fn cb5_catalog_then(w: &mut ProtocolWorld) {
     cb5_assert_green(w);
+}
+
+// ---------------------------------------------------------- CB6 Gamma replay
+
+#[given(
+    regex = r#"^(?:a candidate Gamma entry for ".*" by ".*"|a hash-linked and correctly encoded candidate Gamma history|a manifest with aithos-core "1\.0\.0-draft\.2"|a structurally valid Gamma v2 entry of kind ".*"|a parent manifest ".*" whose Gamma predecessor is ".*"|disjoint competing branches under draft\.1 with Gamma v1 and draft\.2 with Gamma v2|one typed operation occurrence with an allocated operation_ref|an auditor authorized to query Gamma under read\.gamma|an authorized Gamma query whose result is made opposable|an accepted operation-bearing Gamma v2 entry with occurrence "O" and commitment "C"|a verified history with a Gamma v1 prefix, valid operation-bearing v2 entries and a v2 heartbeat|non-Gamma evidence shares an operation_ref with one accepted Gamma entry)$"#
+)]
+fn cb6_given(w: &mut ProtocolWorld) {
+    cb6_result(w);
+}
+
+#[when(
+    regex = r#"^(?:Core replays it against the exact historical prefix|replay encounters ".*"|Core checks its top-level operation reference|a child manifest ".*" introduces a Gamma ".*" entry|the branches are joined by their deterministic merge|its required Gamma evidence is appended|the auditor performs a local query without producing a signed presentation|signed presentation evidence is produced|a second Gamma candidate has ".*" and ".*" for ".*"|segment roots and the counts trie are recomputed)$"#
+)]
+fn cb6_when(w: &mut ProtocolWorld) {
+    cb6_result(w);
+}
+
+#[then(
+    regex = r#"^(?:form, time, signer, actor authority and operation coverage are verified|applicable revocation, constraints, receipts and counters are consumed|only then does the entry join replay state|semantic replay is refused at that entry|no later entry or counter is accepted|operation_ref is ".*"|when required it is the exact closed reference of the underlying occurrence|the opposite presence is refused|the profile transition is ".*"|the merge manifest declares draft\.2|the new kind:merge entry is Gamma v2 with its operation_ref|monotonicity is checked against both manifest parents and both Gamma predecessors|every retained v1 and v2 parent byte remains unchanged|physical segment order never reinterprets a causal edge|no publication or resolution Gamma kind is introduced|the entry carries that exact operation_ref|the append allocates no additional operation occurrence|the Gamma id is never reinterpreted as the occurrence|the perimeter is checked at operation time|no Gamma entry or persisted operation_ref is produced|the query is neither cold-replayable nor countable|log_reads does not reinterpret the query as ethos\.read|it represents one canonical read or presentation occurrence|the signed evidence carries that occurrence's operation_ref|no gamma\.read entry or automatic Gamma append is created|the candidate is ".*"|the same verdict applies when the candidate is first compared while joining branches|every exact Gamma line contributes once to its segment root and n|the existing kind and mandate fields alone feed the existing counters|the non-Gamma evidence contributes no H2 line or count|two distinct occurrences with identical effects remain two raw entries|replay or equivocation invalidates the edition instead of being deduplicated|no mutation or total-consumption counter is inferred)$"#
+)]
+fn cb6_then(w: &mut ProtocolWorld) {
+    cb6_assert_green(w);
 }
 
 // ----------------------------------------------------------------- thens

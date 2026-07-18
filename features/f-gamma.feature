@@ -160,7 +160,6 @@ Feature: The gamma log
 
   Rule: Gamma replays every protocol consumption semantically
 
-    @wip
     Scenario Outline: Each canonical operation is authorized before its entry joins history
       Given a candidate Gamma entry for "<operation class>" by "<actor>"
       When Core replays it against the exact historical prefix
@@ -180,7 +179,6 @@ Feature: The gamma log
         | scoped revocation    | grantee |
         | disjoint merge kind:merge | grantee |
 
-    @wip
     Scenario Outline: A structurally valid entry with invalid semantics is refused
       Given a hash-linked and correctly encoded candidate Gamma history
       When replay encounters "<semantic defect>"
@@ -649,7 +647,6 @@ Feature: The gamma log
 
   Rule: Gamma v2 is a monotone operation-evidence profile
 
-    @wip
     Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
       Given a manifest with aithos-core "1.0.0-draft.2"
       And a structurally valid Gamma v2 entry of kind "<kind>"
@@ -673,7 +670,6 @@ Feature: The gamma log
         | merge          | required  |
         | heartbeat      | forbidden |
 
-    @wip
     Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
       Given a parent manifest "<parent manifest>" whose Gamma predecessor is "<parent gamma>"
       When a child manifest "<child manifest>" introduces a Gamma "<child gamma>" entry
@@ -690,7 +686,6 @@ Feature: The gamma log
         | unknown         | v1           | draft.2        | v2          | refused  |
         | draft.1         | unknown      | draft.2        | v2          | refused  |
 
-    @wip
     Scenario: A mixed-profile fork migrates at its draft2 merge
       Given disjoint competing branches under draft.1 with Gamma v1 and draft.2 with Gamma v2
       When the branches are joined by their deterministic merge
@@ -701,7 +696,6 @@ Feature: The gamma log
       And physical segment order never reinterprets a causal edge
       And no publication or resolution Gamma kind is introduced
 
-    @wip
     Scenario: Gamma append is evidence rather than another operation
       Given one typed operation occurrence with an allocated operation_ref
       When its required Gamma evidence is appended
@@ -709,7 +703,6 @@ Feature: The gamma log
       And the append allocates no additional operation occurrence
       And the Gamma id is never reinterpreted as the occurrence
 
-    @wip
     Scenario: A local read.gamma query leaves no protocol artifact
       Given an auditor authorized to query Gamma under read.gamma
       When the auditor performs a local query without producing a signed presentation
@@ -718,7 +711,6 @@ Feature: The gamma log
       And the query is neither cold-replayable nor countable
       And log_reads does not reinterpret the query as ethos.read
 
-    @wip
     Scenario: A signed read.gamma presentation is evidence without a new Gamma kind
       Given an authorized Gamma query whose result is made opposable
       When signed presentation evidence is produced
@@ -726,7 +718,6 @@ Feature: The gamma log
       And the signed evidence carries that occurrence's operation_ref
       But no gamma.read entry or automatic Gamma append is created
 
-    @wip
     Scenario Outline: Gamma occurrence reuse distinguishes replay from a new operation
       Given an accepted operation-bearing Gamma v2 entry with occurrence "O" and commitment "C"
       When a second Gamma candidate has "<occurrence>" and "<commitment>" for "<effect>"
@@ -739,7 +730,6 @@ Feature: The gamma log
         | O          | different  | any effect  | refused as equivocation before tally |
         | different  | different  | same effect | accepted as a distinct occurrence    |
 
-    @wip
     Scenario: H2 roots tally raw Gamma lines and never deduplicate operation references
       Given a verified history with a Gamma v1 prefix, valid operation-bearing v2 entries and a v2 heartbeat
       And non-Gamma evidence shares an operation_ref with one accepted Gamma entry
