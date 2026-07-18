@@ -160,6 +160,39 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
       When the agent replays that receipt on a new action
       Then the action is refused
 
+  Rule: U1 usage receipt v2 binds post-effect usage to one W1 occurrence
+
+    @wip
+    Scenario Outline: Each U1 family has one exact closed member table
+      Given a W1 "<operation>" occurrence citing a profile that requires attestation
+      When Core validates its U1 receipt with family "<family>"
+      Then the receipt members are exactly "<members>"
+      And sig verifies over RFC8785-JCS with sig omitted
+      And the family cannot relabel the reconstructed operation
+
+      Examples:
+        | operation | family          | members                                                  |
+        | action    | usage.action    | v,family,operation_ref,model,tokens,sig                   |
+        | inference | usage.inference | v,family,operation_ref,tokens_in,tokens_out,sig           |
+
+    @wip
+    Scenario: U1 actual usage overrides only the matching declaration
+      Given an action usage receipt signed by the cited profile attestation key
+      And an inference usage receipt signed by the cited profile attestation key
+      When Core correlates each receipt with its exact operation_ref
+      Then action tokens replace only that action's declared usage
+      And checked tokens_in plus tokens_out replace only that inference's declared usage
+      But a wrong key, family, reference, overflow, duplicate or non-closed member table is refused as InvalidGammaEntry
+      And no U1 receipt changes the pre-effect operation commitment
+
+    @wip
+    Scenario: Historical usage receipts are never upgraded or downgraded
+      Given byte-identical historical v1 usage receipts
+      When W1 and historical evidence are verified
+      Then v1 verifies only under its historical carrier and semantics
+      And W1 requires an exact v2 U1 receipt when attestation is applicable
+      And neither version synthesizes fields from the other
+
   Rule: Every inference is metered, never transcribed
 
     Scenario: An inference entry carries counters, never content

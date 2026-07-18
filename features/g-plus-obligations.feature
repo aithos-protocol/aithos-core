@@ -10,6 +10,9 @@ Feature: Obligations — the general gate (spec 04.12)
   The receipt binds {obligation, mandate_id, action, args_hash, verdict,
   presented_digest?, at} — mandate_id is the entry's authorized_by, so a
   receipt never transfers across mandates, actions, or args.
+  That shape is historical v1. A W1 operation uses R2 v2, whose exact
+  operation_ref replaces the duplicated mandate/action/args tuple and binds one
+  receipt to one occurrence without changing historical bytes.
 
   Rule: A guardrail obligation gates in-scope actions on a pass verdict
 
@@ -159,6 +162,58 @@ Feature: Obligations — the general gate (spec 04.12)
       Given a head mandate requiring human approval on publish
       When a sub-mandate is minted with the same obligation loosened to 1 hour
       Then the chain is refused at verification time
+
+  Rule: R2 binds one obligation discharge to one exact W1 occurrence
+
+    @wip
+    Scenario Outline: R2 has two exact closed tables for optional WYSIWYS evidence
+      Given an effective pinned obligation for one W1 operation
+      When its R2 receipt has "<presentation state>"
+      Then its exact members are "<members>"
+      And family is "obligation" and v is the JSON number 2
+      And sig verifies over RFC8785-JCS with sig omitted
+
+      Examples:
+        | presentation state        | members                                                                  |
+        | no presented digest       | v,family,operation_ref,obligation,verdict,at,sig                          |
+        | a strict presented digest | v,family,operation_ref,obligation,verdict,presented_digest,at,sig         |
+
+    @wip
+    Scenario: R2 uses operation_ref instead of duplicating historical v1 facts
+      Given one canonical operation whose authority, native facts and time are fixed
+      When a pinned attestor signs its R2 obligation receipt
+      Then operation_ref binds the leaf mandate, operation arguments and occurrence
+      And the receipt carries no mandate_id, action or args_hash duplicate
+      But a missing, stale, replayed, mismatched, duplicate or non-closed receipt is GammaObligationUnsatisfied
+
+  Rule: Draft3 adds one closed matcher for non-action obligations
+
+    @wip
+    Scenario Outline: The matcher selects one exact reconstructed operation tuple
+      Given a homogeneous draft3 chain with applies_to_operation "<matcher>"
+      When the grantee presents canonical operation "<operation>"
+      Then matcher applicability is "<verdict>"
+      And no caller-supplied fact or wildcard participates
+
+      Examples:
+        | matcher                                | operation                  | verdict        |
+        | read ethos                             | public content read        | applicable     |
+        | mutation ethos edit                    | public content edit        | applicable     |
+        | mutation structure move                | structural move            | applicable     |
+        | inference                              | inference                  | applicable     |
+        | grant                                  | sub-grant                  | applicable     |
+        | revoke                                 | revocation                 | applicable     |
+        | rotate vault                           | connector vault rotation   | applicable     |
+        | publication normal                     | normal publication         | applicable     |
+        | mutation ethos edit                    | public content delete      | non-applicable |
+
+    @wip
+    Scenario: The draft3 matcher cannot reinterpret historical authority
+      Given byte-identical draft1 and draft2 obligation mandates
+      When applies_to_operation is presented through a sidecar or mixed-version chain
+      Then the matcher is refused as InvalidMandate
+      And draft3 requires exactly one selector per obligation
+      And migration reissues the complete homogeneous chain
 
   Rule: An explicitly targeted obligation gates every delegated consumption class
 

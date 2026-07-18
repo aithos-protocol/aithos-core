@@ -1164,10 +1164,12 @@ the grant/revoke certificate binding, closed reason variants, standalone rotatio
 domains and state transitions, derived-rotation non-duplication, and all three
 publication fact tables including predecessor, changeset-reference, and contained
 operation ordering. Exact proof encodings and target-to-store-key derivations, the
-changeset document table, catalog and approval document tables, SC1, receipt,
-authorship, presentation, and carrier bytes remain reserved until their own
-independent tables are human-validated. No producer may invent those remaining
-bytes or emit a completed operation commitment before then.
+changeset document table, catalog and approval document tables, authorship,
+presentation, and carrier bytes remain reserved until their own independent tables
+are validated. SC1 is fixed by §4.7 and the R2/U1 receipt tables are fixed by
+§4.12.1; neither may be substituted for a remaining reserved carrier. No producer
+may invent those remaining bytes or emit a completed operation commitment before
+then.
 
 The public reference has exactly this shape:
 
@@ -1473,10 +1475,10 @@ entry carrying the same hash, model, and usage facts, subject to every other
 applicable rule. Historical verification preserves that limitation.
 
 U1 defines two closed usage-receipt v2 families: one for an `action` occurrence and
-one for an `inference` occurrence. The applicable family is determined by the
-independently reconstructed operation; a receipt cannot relabel one family as the
-other. Both follow the common `v`, `operation_ref`, `sig`, signature, closure, and
-downgrade rules of §4.12.1.
+one for an `inference` occurrence. Their exact tables are in §4.12.1. The
+applicable family is determined by the independently reconstructed operation; a
+receipt cannot relabel one family as the other. Both follow the common `v`,
+`operation_ref`, `sig`, signature, closure, and downgrade rules of §4.12.1.
 
 Actual usage is learned after the effect. The action family binds its post-effect
 usage to the already-fixed action occurrence; the inference family binds its
@@ -1489,9 +1491,8 @@ receipt, or other artifact merely to make an inference fit the action family.
 
 Under U1, `require_attestation: true` rejects a final accepted evidence set without
 the applicable valid usage receipt. Where that receipt is valid, its actual usage
-overrides the corresponding declaration for tallying. The exact remaining members
-of the action and inference families are reserved for the closed receipt member
-table; no implementation may infer them from v1.
+overrides the corresponding declaration for tallying. No implementation may infer
+a U1 member from v1 or copy an action-family member into the inference family.
 
 Usage receipts meter post-effect usage. Pre-effect gating receipts — guardrail,
 approval, and `counter_sign` — are obligations (§4.12).
@@ -1517,10 +1518,10 @@ matcher. W1 supplies a common operation identity and R2 binds a receipt to that
 identity; neither defines how an obligation declaration matches a mutation, grant,
 revoke, vault-config operation, publication, or any other non-action operation.
 
-A closed non-action matcher is reserved for mandate `draft.3`. A `draft.2`
+A closed non-action matcher belongs only to mandate `draft.3`. A `draft.2`
 declaration cannot become applicable to a non-action operation merely because the
-candidate carries an `operation_ref` or a receipt with `v: 2`. A later `draft.3`
-matcher MUST NOT reinterpret existing `draft.1` or `draft.2` mandate bytes.
+candidate carries an `operation_ref` or a receipt with `v: 2`. The draft3 matcher
+MUST NOT reinterpret existing `draft.1` or `draft.2` mandate bytes.
 
 ```jsonc
 "obligations": [
@@ -1531,6 +1532,44 @@ matcher MUST NOT reinterpret existing `draft.1` or `draft.2` mandate bytes.
     "verdict": "approve",                 // required value
     "max_age": "5m" } ]                   // optional receipt freshness vs entry.at
 ```
+
+> **R2-M-B closed non-action obligation matcher — reviewed under the delegated
+> protocol ritual on 2026-07-18.**
+
+In a homogeneous mandate `draft.3` chain, every obligation contains exactly one
+selector: the historical connector-action string `applies_to`, or the new closed
+object `applies_to_operation`. Supplying both, neither, `null`, or an unknown
+selector member fails as `Error::InvalidMandate(String)`. Draft1 and draft2 reject
+`applies_to_operation`; their historical `applies_to` bytes and matching semantics
+are unchanged.
+
+`applies_to_operation` selects one exact tuple from the independently validated
+K1.2 facts. Its closed variants are:
+
+```jsonc
+{"kind":"read","domain":"ethos|gamma|vault-config"}
+{"kind":"mutation","domain":"ethos|structure|vault-config","verb":"<registered verb>"}
+{"kind":"inference"}
+{"kind":"grant"}
+{"kind":"revoke"}
+{"kind":"rotate","domain":"ethos-zone|ethos-node|vault|identity"}
+{"kind":"publication","mode":"normal|merge|resolution"}
+```
+
+The vertical bars above enumerate alternatives; they are not wire characters.
+`mutation` uses the exact domain/verb matrix of K1.2-M-B: `ethos` admits
+`create|edit|delete|redact`, `structure` admits
+`create|rename|delete|move`, and `vault-config` admits `create|edit|delete`.
+The matcher has no wildcard, prefix, omitted discriminator, or caller-supplied
+native fact. It matches only when its complete tuple equals the reconstructed
+operation facts. Connector actions continue to use `applies_to`; a draft3
+`applies_to_operation` with `kind:"action"` is invalid. `kind:"inference"` is the
+closed non-action selector for an inference occurrence.
+
+An inherited obligation, including its selector, remains byte-identical through
+delegation; a child may add a distinct obligation but cannot drop, alter, widen, or
+replace one. Introducing draft3 requires complete homogeneous reissuance and never
+changes a historical certificate or receipt.
 
 The **receipt** rides in the action entry (`checks: [...]`, §07.4):
 
@@ -1587,9 +1626,89 @@ occurrence. Under mandate `draft.2`, R2 can discharge only an obligation selecte
 the existing connector-action matcher. It does not define or imply a non-action
 matcher.
 
+Its two closed member tables differ only by the optional WYSIWYS digest:
+
+```jsonc
+{
+  "v": 2,
+  "family": "obligation",
+  "operation_ref": {
+    "aithos-operation-core": "1.0.0-draft.1",
+    "occurrence": "op_<ULID>",
+    "commitment": "sha256:<64 lowercase hex>"
+  },
+  "obligation": "publish-approval",
+  "verdict": "approve",
+  "at": "2026-07-18T12:00:00Z",
+  "sig": "<128 lowercase hex>"
+}
+```
+
+When WYSIWYS material was shown, the one additional member is:
+
+```json
+"presented_digest": "sha256:<64 lowercase hex>"
+```
+
+`family` is exactly `obligation`. `obligation` is the exact non-empty id of the
+selected effective obligation, `verdict` is its exact required non-empty value,
+and `at` is a canonical RFC3339 UTC instant with `Z`. The receipt verifies under
+one key in that obligation's pinned `attestor` set. If `max_age` is present, the
+absolute difference between this `at` and the W1 projection's `at` is at most the
+declared duration. `presented_digest`, when present, is strict lowercase
+`sha256:` text; omission and presence are distinct signed objects, while `null` is
+never valid.
+
+The operation commitment already binds `authorized_by`, the selected action or
+non-action facts, arguments or state commitments, and operation time. R2 therefore
+does not duplicate historical v1 `mandate_id`, `action`, or `args_hash` members:
+changing any of those facts reconstructs a different `operation_ref` and breaks
+the receipt. One effective obligation is discharged by exactly one valid R2
+receipt for that operation. Missing, duplicate, wrong-attestor, stale, mismatched,
+malformed, or surplus evidence fails as
+`Error::GammaObligationUnsatisfied(String)`.
+
 U1 defines the two closed post-effect usage-receipt v2 families of §4.11.1:
 `action` and `inference`. Their actual usage is signed against the already-fixed
 `operation_ref` and never enters or changes the pre-effect operation commitment.
+
+The action usage family has exactly:
+
+```jsonc
+{
+  "v": 2,
+  "family": "usage.action",
+  "operation_ref": { /* exact W1 operation_ref */ },
+  "model": "claude-haiku",
+  "tokens": 8412,
+  "sig": "<128 lowercase hex>"
+}
+```
+
+The inference usage family has exactly:
+
+```jsonc
+{
+  "v": 2,
+  "family": "usage.inference",
+  "operation_ref": { /* exact W1 operation_ref */ },
+  "tokens_in": 1200,
+  "tokens_out": 300,
+  "sig": "<128 lowercase hex>"
+}
+```
+
+`family` is the exact literal shown and MUST equal the reconstructed operation
+kind. For `usage.action`, `model` is a non-empty actual model identifier and
+`tokens` is a JSON unsigned 64-bit integer. For `usage.inference`, `tokens_in` and
+`tokens_out` are JSON unsigned 64-bit integers and their checked sum MUST fit in
+`u64`; provider and model are already bound by the inference operation and are not
+duplicated. The selected budget profile's exact `attestation_key` verifies `sig`.
+The receipt's actual `tokens`, or checked `tokens_in + tokens_out`, replaces only
+the corresponding declared usage for tallying; it cannot change the cited profile
+or any pre-effect fact. Missing required usage evidence, wrong
+family/key/reference, overflow, malformed scalar, duplicate, null, missing, or
+extra member fails as `Error::InvalidGammaEntry(String)`.
 
 Receipt versions do not downgrade. Historical v1 receipts retain their exact bytes
 and verify only under their historical carrier/profile. A receipt required for a W1
@@ -1603,11 +1722,11 @@ occurrence is correlation, not another consumption. Reusing it for a second
 consuming occurrence, changing its `operation_ref`, or pairing it with facts that
 reconstruct a different operation is replay or mismatch and fails closed.
 
-The exact members beyond the approved common `v`, `operation_ref`, and `sig` remain
-reserved for the R2 obligation family and both U1 usage families. Until their closed
-member tables are human-validated and independently vectored, no producer may emit
-a complete receipt v2 and no implementation may borrow, omit, or invent members
-from the historical v1 action shape.
+R2/U1-B fixes all three family literals and member tables, optional-member rules,
+scalar forms, signing preimage, signature authority, operation correlation,
+freshness, usage override, replay, downgrade, and exact error boundary above. No
+implementation may borrow, omit, or invent members from the historical v1 action
+shape.
 
 **The attestor holds the logic; the protocol holds a signature.** `check` is opaque
 to the verifier — PII guardrail, policy engine, or a human tapping *approve* is
@@ -1690,9 +1809,9 @@ actor row below and never consumes these mandate constraints or counters.
 
 `*` Under mandate `draft.2`, an obligation applies only through the existing signed
 connector-action matcher. `operation_ref` correlates operation evidence and R2
-receipts; it is not itself a matcher. Non-action applicability is reserved for a
-closed mandate `draft.3` matcher and MUST NOT be inferred from current fields.
-Existing connector-action and v1 receipt bytes remain unchanged.
+receipts; it is not itself a matcher. Non-action applicability uses only the closed
+homogeneous mandate `draft.3` matcher of §4.12 and MUST NOT be inferred from
+current fields. Existing connector-action and v1 receipt bytes remain unchanged.
 
 `†` A private read that leaves no protocol artifact cannot be cold-replayed or
 metered by physics. A Bundle Ethos or config read API still checks the chain at
