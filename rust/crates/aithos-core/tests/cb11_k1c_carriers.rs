@@ -6,9 +6,7 @@ use aithos_core::Error;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-const VECTOR_BYTES: &[u8] = include_bytes!(
-    "../../../../vectors/cb2-draft2-carriers.json"
-);
+const VECTOR_BYTES: &[u8] = include_bytes!("../../../../vectors/cb2-draft2-carriers.json");
 
 fn vector() -> Value {
     serde_json::from_slice(VECTOR_BYTES).expect("CB2 K1-C vector parses")
@@ -110,7 +108,13 @@ fn context(vector: &Value) -> K1cVerificationContext {
             .expect("operation facts")
             .clone(),
         authority_documents: vec![positive["authority_certificate"]["document"].clone()],
+        publication_projection: positive["publication"]["projection"].clone(),
+        publication_facts: positive["publication"]["facts"].clone(),
         publication_ref: context["publication_ref"].clone(),
+        publication_at: context["publication_at"]
+            .as_str()
+            .expect("publication at")
+            .to_owned(),
         required_receipts,
         delegated_counts: context["delegated_counts"].clone(),
         gamma_source_head: context["source_head"]
@@ -164,8 +168,7 @@ fn cb11_k1c_all_32_semantic_defects_are_typed_invalid_operation() {
 
     for case in cases {
         let id = case["id"].as_str().expect("negative id");
-        let error = verify_k1c_carriers(&envelope(&case["candidate"]), &context)
-            .expect_err(id);
+        let error = verify_k1c_carriers(&envelope(&case["candidate"]), &context).expect_err(id);
         assert!(
             matches!(error, Error::InvalidOperation(_)),
             "{id}: {error:?}"

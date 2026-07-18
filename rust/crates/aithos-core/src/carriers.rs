@@ -30,7 +30,11 @@ fn invalid(detail: impl Into<String>) -> Error {
     Error::InvalidOperation(detail.into())
 }
 
-fn exact_object<'a>(value: &'a Value, keys: &[&str], label: &str) -> Result<&'a Map<String, Value>> {
+fn exact_object<'a>(
+    value: &'a Value,
+    keys: &[&str],
+    label: &str,
+) -> Result<&'a Map<String, Value>> {
     let object = value
         .as_object()
         .ok_or_else(|| invalid(format!("{label} is not an object")))?;
@@ -151,7 +155,6 @@ impl OperationRef {
         }
         Ok(())
     }
-
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -255,7 +258,9 @@ pub struct EvidenceSet {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "actor", rename_all = "lowercase")]
 pub enum K1cActor {
-    Owner { key: String },
+    Owner {
+        key: String,
+    },
     Grantee {
         key: String,
         authority_chain: Vec<Value>,
@@ -306,7 +311,10 @@ pub struct K1cVerificationContext {
     pub operation_projections: Vec<Value>,
     pub operation_facts: Vec<Value>,
     pub authority_documents: Vec<Value>,
+    pub publication_projection: Value,
+    pub publication_facts: Value,
     pub publication_ref: Value,
+    pub publication_at: String,
     pub required_receipts: Vec<Value>,
     pub delegated_counts: Value,
     pub gamma_source_head: String,
@@ -371,11 +379,11 @@ fn state_for(bytes: Option<&Vec<u8>>) -> StateValue {
 /// Derive the closed changeset from the two Store states. Caller-supplied
 /// change rows are never an input.
 pub fn derive_changeset(context: &K1cVerificationContext) -> Result<Changeset> {
-    if context.predecessors.iter().any(|value| {
-        !value
-            .as_str()
-            .is_some_and(is_prefixed_digest)
-    }) {
+    if context
+        .predecessors
+        .iter()
+        .any(|value| !value.as_str().is_some_and(is_prefixed_digest))
+    {
         return Err(invalid("publication predecessors are invalid"));
     }
 
@@ -405,10 +413,11 @@ pub fn derive_changeset(context: &K1cVerificationContext) -> Result<Changeset> {
         if before == after {
             continue;
         }
-        let cause = context
-            .change_causes
-            .get(&key)
-            .ok_or_else(|| invalid(format!("changed Store object has no operation cause: {key}")))?;
+        let cause = context.change_causes.get(&key).ok_or_else(|| {
+            invalid(format!(
+                "changed Store object has no operation cause: {key}"
+            ))
+        })?;
         let cause = operation_ref(cause, "change operation_ref")?;
         if !unique_operations.contains(&cause) {
             return Err(invalid(format!(
@@ -422,15 +431,23 @@ pub fn derive_changeset(context: &K1cVerificationContext) -> Result<Changeset> {
             operation_ref: cause,
         });
     }
-    if context.change_causes.keys().any(|key| {
-        context.parent_store.get(key) == context.candidate_store.get(key)
-    }) {
-        return Err(invalid("change cause names an unchanged or absent Store object"));
+    if context
+        .change_causes
+        .keys()
+        .any(|key| context.parent_store.get(key) == context.candidate_store.get(key))
+    {
+        return Err(invalid(
+            "change cause names an unchanged or absent Store object",
+        ));
     }
     changes.sort_by(|left, right| {
         left.key_commitment
             .cmp(&right.key_commitment)
-            .then_with(|| left.operation_ref.occurrence.cmp(&right.operation_ref.occurrence))
+            .then_with(|| {
+                left.operation_ref
+                    .occurrence
+                    .cmp(&right.operation_ref.occurrence)
+            })
     });
 
     Ok(Changeset {
@@ -446,10 +463,7 @@ pub fn derive_changeset(context: &K1cVerificationContext) -> Result<Changeset> {
     })
 }
 
-fn validate_changeset(
-    candidate: &Value,
-    context: &K1cVerificationContext,
-) -> Result<Changeset> {
+fn validate_changeset(candidate: &Value, context: &K1cVerificationContext) -> Result<Changeset> {
     let changeset: Changeset = serde_json::from_value(candidate.clone())
         .map_err(|error| invalid(format!("changeset form is invalid: {error}")))?;
     if changeset.profile != CHANGESET_PROFILE {
@@ -514,7 +528,9 @@ fn validate_authority(authority: &Value, actor: &K1cActor) -> Result<()> {
             let allowed = ["actor", "key", "authorized_by", "authorized_via", "session"];
             if authority.len() < 4
                 || authority.len() > 5
-                || authority.keys().any(|member| !allowed.contains(&member.as_str()))
+                || authority
+                    .keys()
+                    .any(|member| !allowed.contains(&member.as_str()))
                 || ["actor", "key", "authorized_by", "authorized_via"]
                     .iter()
                     .any(|member| !authority.contains_key(*member))
@@ -541,7 +557,9 @@ fn validate_authority_documents(context: &K1cVerificationContext) -> Result<()> 
     let references = context.actor.authority_chain();
     if references.is_empty() {
         if !context.authority_documents.is_empty() {
-            return Err(invalid("owner edition carries delegated authority documents"));
+            return Err(invalid(
+                "owner edition carries delegated authority documents",
+            ));
         }
         return Ok(());
     }
@@ -564,7 +582,10 @@ fn validate_authority_documents(context: &K1cVerificationContext) -> Result<()> 
             .ok_or_else(|| invalid("authority certificate id is invalid"))?;
         if reference["id"].as_str() != Some(id)
             || reference["certificate_digest"].as_str()
-                != Some(&sha256_prefixed(&canonical(document, "authority certificate")?))
+                != Some(&sha256_prefixed(&canonical(
+                    document,
+                    "authority certificate",
+                )?))
             || document_object["subject"].as_str() != Some(&context.subject)
         {
             return Err(invalid("authority certificate/reference mismatch"));
@@ -741,6 +762,71 @@ fn validate_operation_inventory(
     Ok(inventory)
 }
 
+fn validate_publication(
+    context: &K1cVerificationContext,
+    changeset_ref: &Value,
+) -> Result<OperationRef> {
+    let reference = operation_ref(&context.publication_ref, "publication operation_ref")?;
+    let projection = context
+        .publication_projection
+        .as_object()
+        .ok_or_else(|| invalid("publication projection is not an object"))?;
+    if projection["aithos-operation-core"] != OPERATION_PROFILE
+        || projection["occurrence"].as_str() != Some(&reference.occurrence)
+        || projection["subject"].as_str() != Some(&context.subject)
+        || projection["at"].as_str() != Some(&context.publication_at)
+        || projection["history_heads"] != Value::Array(context.predecessors.clone())
+    {
+        return Err(invalid("publication projection identity mismatch"));
+    }
+    validate_authority(&projection["authority"], &context.actor)?;
+    if commitment(
+        OPERATION_DOMAIN,
+        &canonical(&context.publication_projection, "publication projection")?,
+    ) != reference.commitment
+    {
+        return Err(invalid(
+            "publication operation_ref does not select its projection",
+        ));
+    }
+    let facts = context
+        .publication_facts
+        .as_object()
+        .ok_or_else(|| invalid("publication facts are not an object"))?;
+    if facts["aithos-operation-facts-core"] != OPERATION_PROFILE || facts["kind"] != "publication" {
+        return Err(invalid("publication facts profile or kind is invalid"));
+    }
+    let body = facts["facts"]
+        .as_object()
+        .ok_or_else(|| invalid("publication facts body is invalid"))?;
+    if body["mode"] != "normal"
+        || body["height"].as_u64() != Some(context.height)
+        || body["predecessors"] != Value::Array(context.predecessors.clone())
+        || body["changeset_ref"] != *changeset_ref
+        || body["contained_operations"] != Value::Array(context.contained_operations.clone())
+    {
+        return Err(invalid(
+            "publication facts differ from the closed changeset or contained operations",
+        ));
+    }
+    let expected_facts_ref = commitment(
+        OPERATION_FACTS_DOMAIN,
+        &canonical(&context.publication_facts, "publication facts")?,
+    );
+    let projected_facts_ref = projection["operation"]
+        .as_object()
+        .and_then(|operation| operation.get("facts_ref"))
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid("publication projection facts_ref is invalid"))?;
+    if projection["operation"]["kind"] != "publication"
+        || projected_facts_ref["aithos-operation-facts-core"] != OPERATION_PROFILE
+        || projected_facts_ref["digest"].as_str() != Some(&expected_facts_ref)
+    {
+        return Err(invalid("publication projection selects different facts"));
+    }
+    Ok(reference)
+}
+
 fn item_jcs(item: &EvidenceItem) -> Result<Vec<u8>> {
     let value =
         serde_json::to_value(item).map_err(|error| invalid(format!("evidence item: {error}")))?;
@@ -880,12 +966,7 @@ fn verify_session_item(
 
     let proof = exact_object(
         proof,
-        &[
-            "aithos-session-proof-core",
-            "operation_ref",
-            "key",
-            "sig",
-        ],
+        &["aithos-session-proof-core", "operation_ref", "key", "sig"],
         "session proof",
     )?;
     if proof["aithos-session-proof-core"] != OPERATION_PROFILE {
@@ -908,27 +989,18 @@ fn verify_session_item(
     let session_key = certificate_object["key"]
         .as_str()
         .ok_or_else(|| invalid("session certificate key is invalid"))?;
-    if proof["key"].as_str() != Some(session_key)
-        || session["key"].as_str() != Some(session_key)
-    {
+    if proof["key"].as_str() != Some(session_key) || session["key"].as_str() != Some(session_key) {
         return Err(invalid("session key correlation mismatch"));
     }
     let certificate_digest = sha256_prefixed(&canonical(certificate, "session certificate")?);
     if session["certificate_digest"].as_str() != Some(&certificate_digest) {
         return Err(invalid("session certificate digest mismatch"));
     }
-    verify_omitted_signature(
-        &Value::Object(proof.clone()),
-        session_key,
-        "session proof",
-    )?;
+    verify_omitted_signature(&Value::Object(proof.clone()), session_key, "session proof")?;
     Ok(reference)
 }
 
-fn verify_receipt_item(
-    document: &Value,
-    context: &K1cVerificationContext,
-) -> Result<OperationRef> {
+fn verify_receipt_item(document: &Value, context: &K1cVerificationContext) -> Result<OperationRef> {
     let document = exact_object(
         document,
         &[
@@ -1012,7 +1084,9 @@ fn verify_catalog_item(
         action_names.push(name);
     }
     if action_names.windows(2).any(|pair| pair[0] >= pair[1]) {
-        return Err(invalid("connector catalog actions are not sorted and unique"));
+        return Err(invalid(
+            "connector catalog actions are not sorted and unique",
+        ));
     }
     let catalog_signature = exact_object(
         &catalog_object["signature"],
@@ -1044,7 +1118,9 @@ fn verify_catalog_item(
         || approval_object["catalog_version"] != catalog_object["catalog_version"]
         || approval_object["catalog_digest"].as_str() != Some(&catalog_digest)
     {
-        return Err(invalid("catalog approval does not select the signed catalog"));
+        return Err(invalid(
+            "catalog approval does not select the signed catalog",
+        ));
     }
     crate::gamma::ts_epoch(
         approval_object["approved_at"]
@@ -1214,12 +1290,7 @@ fn validate_evidence(
                 }
             }
             EvidenceItem::Session { certificate, proof } => {
-                if !sessions.insert(verify_session_item(
-                    certificate,
-                    proof,
-                    context,
-                    inventory,
-                )?) {
+                if !sessions.insert(verify_session_item(certificate, proof, context, inventory)?) {
                     return Err(invalid("duplicate session evidence"));
                 }
             }
@@ -1229,16 +1300,12 @@ fn validate_evidence(
                 }
             }
             EvidenceItem::Catalog { catalog, approval } => {
-                if !catalogs.insert(verify_catalog_item(
-                    catalog, approval, context, inventory,
-                )?) {
+                if !catalogs.insert(verify_catalog_item(catalog, approval, context, inventory)?) {
                     return Err(invalid("duplicate catalog evidence"));
                 }
             }
             EvidenceItem::Presentation { document } => {
-                if !presentations.insert(verify_presentation_item(
-                    document, context, inventory,
-                )?) {
+                if !presentations.insert(verify_presentation_item(document, context, inventory)?) {
                     return Err(invalid("duplicate Gamma presentation evidence"));
                 }
             }
@@ -1310,7 +1377,7 @@ pub fn verify_k1c_carriers(
     let inventory = validate_operation_inventory(context)?;
     let evidence = validate_evidence(&envelope.evidence, context, &inventory)?;
 
-    let publication = operation_ref(&context.publication_ref, "publication operation_ref")?;
+    let publication = validate_publication(context, &envelope.changeset_ref)?;
     let carried_publication = operation_ref(&envelope.operation_ref, "manifest operation_ref")?;
     if carried_publication != publication {
         return Err(invalid(
@@ -1318,7 +1385,9 @@ pub fn verify_k1c_carriers(
         ));
     }
     if envelope.sidecars.len() != 2 {
-        return Err(invalid("candidate has an incomplete or extraneous carrier sidecar"));
+        return Err(invalid(
+            "candidate has an incomplete or extraneous carrier sidecar",
+        ));
     }
     verify_carrier_link(
         &envelope.changeset,
