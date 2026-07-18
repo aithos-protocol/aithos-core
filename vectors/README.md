@@ -128,3 +128,16 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`c1edd459b00ff72f2693e54370a60d2c8b981c18ee10d213a4b26897ed2618f1`);
   Rust consumer: `aithos-core/tests/cb2_delegated_counts.rs`
   (`c16647a46331a303706c4a7bef731d71b2ffa74fb6717a08e405746d41b37f72`).
+- `CB2-W1-OPERATION-PROJECTION-1`: complete owner/grantee W1/A1/K1
+  projections without SC1, full signed-certificate content addressing,
+  zero/one/two history heads, operation commitment and closed reference bytes,
+  distinct occurrence anchors, cross-view correlation/equivocation, 32
+  projection negatives and 6 reference negatives with the approved
+  `InvalidOperation` / `InvalidOperationFacts` boundary. SC1 certificate and
+  proof bytes remain explicitly outside this family. Generator:
+  `gen-cb2-operation-projection.py`
+  (`79e2872527d360e9856ef60eed90190179566381c934906bc553e0e52ad239ed`);
+  vector: `cb2-operation-projection.json`
+  (`99bc175e0b4f07dece0afa828fff22be9be75d4b66f8b00fee3e7d427021e14c`);
+  Rust consumer: `aithos-core/tests/cb2_operation_projection.rs`
+  (`06ddf1066172e8b129515425eceefc9460f3d70c713d2a09fc0e74067e553972`).

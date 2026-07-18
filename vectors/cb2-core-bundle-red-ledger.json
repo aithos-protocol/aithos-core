@@ -6,9 +6,9 @@
   "as_of": "2026-07-18",
   "baseline": {
     "git_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-    "observation_sha": "3806c17f81783722ed0c31216536c508928f11d2",
+    "observation_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
     "index_was_empty": true,
-    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
+    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection without SC1, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
   },
   "command_context": {
     "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core/rust",
@@ -82,6 +82,14 @@
       "generator_sha256": "285606cc3aa299091f058957414ce148ae0cfcbc0af4844bfdeb74d300311997",
       "consumer": "rust/crates/aithos-core/tests/cb2_delegated_counts.rs",
       "consumer_sha256": "c16647a46331a303706c4a7bef731d71b2ffa74fb6717a08e405746d41b37f72"
+    },
+    "CB2-W1-OPERATION-PROJECTION-1": {
+      "file": "vectors/cb2-operation-projection.json",
+      "sha256": "99bc175e0b4f07dece0afa828fff22be9be75d4b66f8b00fee3e7d427021e14c",
+      "generator": "vectors/gen-cb2-operation-projection.py",
+      "generator_sha256": "79e2872527d360e9856ef60eed90190179566381c934906bc553e0e52ad239ed",
+      "consumer": "rust/crates/aithos-core/tests/cb2_operation_projection.rs",
+      "consumer_sha256": "06ddf1066172e8b129515425eceefc9460f3d70c713d2a09fc0e74067e553972"
     }
   },
   "suite_observations": [
@@ -165,13 +173,24 @@
       "name": "D7 delegated-count byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- --nocapture",
       "observed": "5 passed; vector integrity, historical H2 hashes/root, generic JCS/Merkle leaves/root/proof, and closed case inventories are GREEN. The typed D7 verifier and public InvalidDelegatedCounts variant remain absent."
+    },
+    {
+      "name": "W1 operation-projection generator reproducibility",
+      "command": "python3 vectors/gen-cb2-operation-projection.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-operation-projection.json; the independent oracle accepts 4 complete owner/grantee projections, distinguishes occurrence anchors, rejects 32 projection and 6 reference defects with exact typed variants, and detects same-occurrence equivocation."
+    },
+    {
+      "name": "W1 operation-projection byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- --nocapture",
+      "observed": "5 passed; vector and historical hashes, full-certificate address, projection JCS, operation commitment, exact reference bytes and case inventories are GREEN. Typed W1 validation and InvalidOperation remain absent."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 47,
-    "COMPILE-RED-PRELIMINAIRE": 13,
-    "total": 94
+    "PREEXISTING-GREEN": 51,
+    "COMPILE-RED-PRELIMINAIRE": 14,
+    "total": 99
   },
   "entries": [
     {
@@ -1689,6 +1708,89 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB5",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB4-W1-PROJECTION-VECTOR-HASH",
+      "test_id": "cb2_w1_projection_vector_hash_is_stable_preexisting_green",
+      "decision": "W1/A1/K1 independent oracle integrity",
+      "scenario": "The complete operation-projection vector bytes remain frozen within the partial CB2 tranche.",
+      "vector_ref": "CB2-W1-OPERATION-PROJECTION-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
+      "expected_reason": "The vector file SHA-256 is 99bc175e0b4f07dece0afa828fff22be9be75d4b66f8b00fee3e7d427021e14c.",
+      "observed_reason": "The exact vector bytes match the independent stdlib Python oracle.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-W1-PROJECTION-HISTORICAL-HASHES",
+      "test_id": "cb2_w1_projection_historical_hashes_preexisting_green",
+      "decision": "W1 additive historical non-regression",
+      "scenario": "E1, F1 and the selected K1.2 fact vectors remain byte-identical.",
+      "vector_ref": "CB2-W1-OPERATION-PROJECTION-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_historical_hashes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
+      "expected_reason": "All four source vector hashes remain exact.",
+      "observed_reason": "The complete historical files match their frozen SHA-256 values; no operation_ref is synthesized into them.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-W1-CERTIFICATE-ADDRESS",
+      "test_id": "cb2_w1_projection_certificate_address_preexisting_green",
+      "decision": "A1 complete signed-certificate digest",
+      "scenario": "Generic Core JCS/SHA-256 reproduces the exact complete E1 certificate address used by authorized_via.",
+      "vector_ref": "CB2-W1-OPERATION-PROJECTION-1",
+      "vector_slice": "fixtures.certificate, certificate_jcs and certificate_digest",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_certificate_address_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
+      "expected_reason": "The complete signed certificate JCS hashes to sha256:abace8df9fc509923836310dd4d22693b2cb38159a43cb9a85f40d6e9bcc5055.",
+      "observed_reason": "Existing generic canonicalization and SHA-256 reproduce the independent oracle bytes.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-W1-PROJECTION-BYTES",
+      "test_id": "cb2_w1_projection_commitment_and_reference_bytes_preexisting_green",
+      "decision": "W1/A1/K1 closed projection, operation commitment and reference",
+      "scenario": "Generic Core primitives reproduce owner, grantee and merge projection JCS, commitment and operation_ref bytes.",
+      "vector_ref": "CB2-W1-OPERATION-PROJECTION-1",
+      "vector_slice": "positive_cases",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_commitment_and_reference_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
+      "expected_reason": "All four closed projections, zero/one/two history-head cases, commitment domain and references match byte-for-byte; distinct occurrence anchors differ.",
+      "observed_reason": "Existing generic JCS/SHA-256 reproduces every oracle byte. This does not claim typed projection or authority validation.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-W1-PROJECTION-API-GATE",
+      "test_id": null,
+      "decision": "W1/A1/K1 typed projection, authority, reference and cross-view correlation",
+      "scenario": "Core validates and reconstructs the complete canonical operation before effect and during replay with exact typed refusal.",
+      "vector_ref": "CB2-W1-OPERATION-PROJECTION-1",
+      "vector_slice": "positive_cases, negative_projection_cases, negative_reference_cases and correlation_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "All 4 positives validate, 28 projection defects plus 6 reference defects and equivocation return Error::InvalidOperation(String), and 4 selected-facts defects retain Error::InvalidOperationFacts(String).",
+      "observed_reason": "At observation SHA cfb4eaa, Core has no public canonical-operation projection/reference validator and no Error::InvalidOperation variant.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "cfb4eaaad334ed1449221c1d164acf1b34de148c",
+        "source_command": "rg -n 'OperationProjection|OperationRef|InvalidOperation|operation-commitment' rust/crates/aithos-core/src",
+        "source_observed": "No matching public W1 projection/reference type, validator or InvalidOperation variant.",
+        "inventory_test_id": "cb2_w1_projection_negative_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_projection -- cb2_w1_projection_negative_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB4",
       "status": "COMPILE-RED-PRELIMINAIRE"
     }
   ]
