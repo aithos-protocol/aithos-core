@@ -13,7 +13,7 @@ use crate::gamma::{
     self, check_action_append, check_grant_append, verify_delegated_entry, Entry, GammaCounters,
     Kind,
 };
-use crate::mandate::{covers_section_op, Mandate, SectionOp, Verb};
+use crate::mandate::{covers_op, covers_section_op, Mandate, Op, SectionOp, Verb};
 use crate::path::{Leaf, NodePath};
 use crate::revocation::{check_revoke_authority, Revocation};
 use crate::{Error, Result};
@@ -143,12 +143,13 @@ impl GammaReplayState {
         Ok((hash, timestamp, tips))
     }
 
-    fn verify_clear_mutation_perimeter(&self, entry: &Entry, chain: &[Mandate]) -> Result<()> {
+    fn verify_clear_content_perimeter(&self, entry: &Entry, chain: &[Mandate]) -> Result<()> {
         let kind = entry.kind()?;
         let verb = match kind {
             Kind::SectionAdd => Verb::Append,
             Kind::SectionModify => Verb::Edit,
             Kind::SectionDelete | Kind::SectionRedact => Verb::Delete,
+            Kind::EthosRead => Verb::Read,
             _ => return Ok(()),
         };
         let Some(target) = entry.target.as_deref() else {
@@ -158,11 +159,6 @@ impl GammaReplayState {
         };
         let node = NodePath::parse(target)
             .map_err(|error| Error::InvalidMandate(format!("invalid mutation target: {error}")))?;
-        let Leaf::Section(sid) = node.leaf else {
-            return Err(Error::InvalidMandate(
-                "Gamma mutation target is not a section".into(),
-            ));
-        };
         let tags = entry
             .payload
             .as_ref()
@@ -179,18 +175,32 @@ impl GammaReplayState {
         let leaf = chain
             .last()
             .ok_or_else(|| Error::InvalidMandate("empty delegated chain".into()))?;
-        if !covers_section_op(
-            &leaf.parsed_perimeter()?,
-            &SectionOp {
-                verb,
-                zone: node.zone,
-                sid,
-                folders: &node.folders,
-                tags: &tags,
-            },
-        ) {
+        let perimeter = leaf.parsed_perimeter()?;
+        let covered = match node.leaf {
+            Leaf::Section(sid) => covers_section_op(
+                &perimeter,
+                &SectionOp {
+                    verb,
+                    zone: node.zone,
+                    sid,
+                    folders: &node.folders,
+                    tags: &tags,
+                },
+            ),
+            Leaf::Folder if kind == Kind::EthosRead => covers_op(
+                &perimeter,
+                &Op {
+                    verb,
+                    zone: node.zone,
+                    folders: &node.folders,
+                    tags: &tags,
+                },
+            ),
+            _ => false,
+        };
+        if !covered {
             return Err(Error::InvalidMandate(format!(
-                "{}: mutation exceeds the leaf perimeter",
+                "{}: content operation exceeds the leaf perimeter",
                 leaf.id
             )));
         }
@@ -227,7 +237,7 @@ impl GammaReplayState {
                         return Err(Error::GammaGrantNotLogged(mandate.id.clone()));
                     }
                 }
-                self.verify_clear_mutation_perimeter(entry, &chain)?;
+                self.verify_clear_content_perimeter(entry, &chain)?;
                 Some(chain)
             }
         };

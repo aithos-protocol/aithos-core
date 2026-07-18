@@ -217,6 +217,17 @@ impl Entry {
             (true, None, Some(_)) if self.target.is_none() => Ok(()),
             // Mutation on public (no zone key, §07.3): clear, like structural.
             (true, Some(_), None) if self.target.is_some() && kind != Kind::EthosRead => Ok(()),
+            // A journalized public read/list is clear because public has no
+            // content key. Keyed-zone reads remain sealed.
+            (true, Some(_), None)
+                if kind == Kind::EthosRead
+                    && self
+                        .target
+                        .as_deref()
+                        .is_some_and(|target| target.starts_with("/e/public")) =>
+            {
+                Ok(())
+            }
             // Actions may add a sealed args body next to the clear payload
             // (§07.9.3); every other clear kind stays clear-only.
             (false, Some(_), Some(_)) if kind == Kind::Action => Ok(()),

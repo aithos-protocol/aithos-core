@@ -303,7 +303,6 @@ fn cb2_bundle_delegated_evidence_atomicity_and_api_inventory_preliminary() {
     assert!(BUNDLE_SOURCE.contains("&OwnerKeys"));
     for absent in [
         "pub fn content_operation(",
-        "pub fn grantee_content_operation(",
         "pub fn open_bundle_session(",
         "pub fn export_keyless(",
     ] {
@@ -312,6 +311,33 @@ fn cb2_bundle_delegated_evidence_atomicity_and_api_inventory_preliminary() {
                 && !GRANTS_SOURCE.contains(absent)
                 && !LOG_SOURCE.contains(absent),
             "{absent}"
+        );
+    }
+}
+
+#[test]
+fn cb2_cb9_delegated_content_gamma_cold_api_gate() {
+    for present in [
+        "pub enum GranteeTarget",
+        "pub enum GranteeContentOperation",
+        "pub enum GranteeContentOutcome",
+        "pub struct PublicAuthorship",
+    ] {
+        assert!(BUNDLE_SOURCE.contains(present), "{present}");
+    }
+    for present in [
+        "pub fn grantee_content_operation(",
+        "pub fn verify_public_authorship(",
+        "check_grantee_section(",
+        "verify_chain_revocable(",
+        "verify_operation_constraints(",
+        "log_delegated_mutation_with_key(",
+        "log_delegated_read(",
+        "self.transaction(",
+    ] {
+        assert!(
+            GRANTS_SOURCE.contains(present) || LOG_SOURCE.contains(present),
+            "{present}"
         );
     }
 }

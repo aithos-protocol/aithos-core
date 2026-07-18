@@ -50,6 +50,26 @@ pub struct SectionRow {
     /// Owner content signature (§02.11) — in the open for public rows only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sig: Option<String>,
+    /// Delegated public authorship. Owner-authored rows keep this absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorship: Option<PublicAuthorship>,
+}
+
+/// Signed authorship carried by a delegated public section.
+///
+/// The owner-content signature and this record are mutually exclusive:
+/// a grantee never imitates `#content`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicAuthorship {
+    pub subject: String,
+    pub zone: String,
+    pub sid: String,
+    pub content_hash: String,
+    pub operation_ref: String,
+    pub edition: u64,
+    pub authorized_via: Vec<String>,
+    pub key: String,
+    pub sig: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +81,17 @@ pub struct SelfIndex {
 pub struct SelfRow {
     pub sid: String,
     pub key_version: u64,
+    /// Opaque locator sealed under the exact section key. It contains only
+    /// the canonical SID node required as AEAD context and discloses no
+    /// structure to a keyless verifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access: Option<SelfAccess>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelfAccess {
+    pub n: String,
+    pub c: String,
 }
 
 /// Display-tree classification returned without exposing index rows.
@@ -79,25 +110,25 @@ pub struct TreeEntry {
 
 /// Sealed `self` folder descriptor (§02.8).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Descriptor {
-    kind: String,
-    name: String,
-    children: Vec<ChildRef>,
+pub(crate) struct Descriptor {
+    pub(crate) kind: String,
+    pub(crate) name: String,
+    pub(crate) children: Vec<ChildRef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ChildRef {
-    kind: String, // "d" | "s"
-    sid: String,
+pub(crate) struct ChildRef {
+    pub(crate) kind: String, // "d" | "s"
+    pub(crate) sid: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct SelfSection {
-    kind: String,
-    name: String,
-    title: String,
-    tags: Vec<String>,
-    md: String,
+pub(crate) struct SelfSection {
+    pub(crate) kind: String,
+    pub(crate) name: String,
+    pub(crate) title: String,
+    pub(crate) tags: Vec<String>,
+    pub(crate) md: String,
 }
 
 // ----------------------------------------------------------------- bundle
@@ -146,6 +177,56 @@ pub enum OwnerContentOperation<'a> {
 pub enum OwnerContentOutcome {
     Listed(Vec<TreeEntry>),
     Read(String),
+    Mutated,
+}
+
+/// Address supplied to a delegated content operation.
+#[derive(Debug, Clone, Copy)]
+pub enum GranteeTarget<'a> {
+    /// Display path for the clear public/circle indexes.
+    Display(&'a str),
+    /// Exact opaque section identifier.
+    Id(Sid),
+    /// Exact opaque folder SID chain, principally for `self` listing.
+    FolderIds(&'a [Sid]),
+}
+
+/// One CB9 delegated content operation.
+#[derive(Debug, Clone, Copy)]
+pub enum GranteeContentOperation<'a> {
+    List {
+        target: GranteeTarget<'a>,
+        now: &'a str,
+    },
+    Read {
+        target: GranteeTarget<'a>,
+        now: &'a str,
+    },
+    Create {
+        folder: GranteeTarget<'a>,
+        preallocated_sid: Option<Sid>,
+        name: &'a str,
+        title: &'a str,
+        tags: &'a [String],
+        body: &'a str,
+        now: &'a str,
+    },
+    Edit {
+        target: GranteeTarget<'a>,
+        body: &'a str,
+        now: &'a str,
+    },
+    Delete {
+        target: GranteeTarget<'a>,
+        now: &'a str,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GranteeContentOutcome {
+    Listed(Vec<TreeEntry>),
+    Read(String),
+    Created(Sid),
     Mutated,
 }
 
@@ -647,6 +728,7 @@ impl<S: Store> Bundle<S> {
                     blob_sha: sha256_hex(body.as_bytes()),
                     key_version: KV,
                     sig: Some(sig),
+                    authorship: None,
                 });
                 self.put_json(index_path, &index)?;
                 (
@@ -684,6 +766,7 @@ impl<S: Store> Bundle<S> {
                     blob_sha: sha.clone(),
                     key_version: kv,
                     sig: None,
+                    authorship: None,
                 });
                 self.put_json(index_path, &index)?;
                 (node, sha)
@@ -713,6 +796,7 @@ impl<S: Store> Bundle<S> {
                 index.blobs.push(SelfRow {
                     sid: sid.to_string(),
                     key_version: KV,
+                    access: None,
                 });
                 self.put_json("e/self/index.json", &index)?;
                 (node, sha)
@@ -756,6 +840,7 @@ impl<S: Store> Bundle<S> {
                     .ok_or_else(|| Error::InvalidPath(format!("no section {display_path}")))?;
                 entry.blob_sha = sha.clone();
                 entry.sig = Some(signature);
+                entry.authorship = None;
                 self.put_json("e/public/index.json", &index)?;
                 (node, sha)
             }
@@ -782,6 +867,7 @@ impl<S: Store> Bundle<S> {
                     .ok_or_else(|| Error::InvalidPath(format!("no section {display_path}")))?;
                 entry.blob_sha = sha.clone();
                 entry.key_version = kv;
+                entry.authorship = None;
                 self.put_json("e/circle/index.json", &index)?;
                 (node, sha)
             }
@@ -881,12 +967,17 @@ impl<S: Store> Bundle<S> {
         ))
     }
 
-    fn read_desc(&self, file: &str, key: &[u8; 32], node: &NodePath) -> Result<Descriptor> {
+    pub(crate) fn read_desc(
+        &self,
+        file: &str,
+        key: &[u8; 32],
+        node: &NodePath,
+    ) -> Result<Descriptor> {
         serde_json::from_slice(&self.open_blob(file, key, node)?)
             .map_err(|e| Error::SealRejected(format!("descriptor: {e}")))
     }
 
-    fn write_desc(
+    pub(crate) fn write_desc(
         &mut self,
         file: &str,
         key: &[u8; 32],
@@ -952,6 +1043,7 @@ impl<S: Store> Bundle<S> {
                     index.blobs.push(SelfRow {
                         sid: sid.to_string(),
                         key_version: KV,
+                        access: None,
                     });
                     self.put_json("e/self/index.json", &index)?;
                     desc.children.push(ChildRef {
@@ -1162,6 +1254,9 @@ impl<S: Store> Bundle<S> {
         let desc = self.read_desc(&file, &key, &node)?;
         for child in desc.children.iter().filter(|c| c.kind == "s") {
             let child_sid = Sid::parse(&child.sid)?;
+            if !self.self_sid_active(child_sid)? {
+                continue;
+            }
             let sn = NodePath::section(Zone::Self_, chain.clone(), child_sid);
             let sk = node_key(&self_dk, &sn);
             let pt = self.open_blob(&format!("e/self/blobs/{child_sid}.enc"), &sk, &sn)?;
@@ -1265,6 +1360,9 @@ impl<S: Store> Bundle<S> {
         let desc = self.read_desc(&file, &key, &node)?;
         for child in &desc.children {
             let child_sid = Sid::parse(&child.sid)?;
+            if !self.self_sid_active(child_sid)? {
+                continue;
+            }
             if child.kind == "d" {
                 let mut cc = chain.to_vec();
                 cc.push(child_sid);
@@ -1527,6 +1625,9 @@ impl<S: Store> Bundle<S> {
         let desc = self.read_desc(&file, &key, &node)?;
         for child in &desc.children {
             let child_sid = Sid::parse(&child.sid)?;
+            if !self.self_sid_active(child_sid)? {
+                continue;
+            }
             if child.kind == "d" {
                 let mut cc = chain.to_vec();
                 cc.push(child_sid);
@@ -1536,5 +1637,10 @@ impl<S: Store> Bundle<S> {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn self_sid_active(&self, sid: Sid) -> Result<bool> {
+        let index: SelfIndex = self.get_json("e/self/index.json")?;
+        Ok(index.blobs.iter().any(|row| row.sid == sid.to_string()))
     }
 }

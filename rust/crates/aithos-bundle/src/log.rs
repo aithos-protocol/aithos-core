@@ -2,7 +2,7 @@
 //! appends, owner-first querying. The chain is the truth; everything here
 //! reads files and delegates verdicts to aithos-core.
 
-use crate::bundle::{Bundle, ZoneIndex, KV};
+use crate::bundle::{Bundle, SelfIndex, ZoneIndex, KV};
 use crate::entropy::EntropySource;
 use crate::Store;
 use aithos_core::derive::node_key;
@@ -550,21 +550,58 @@ impl<S: Store> Bundle<S> {
         now: &str,
         ent: &mut dyn EntropySource,
     ) -> Result<Entry> {
-        let doc = self.did_doc()?;
-        let entries = self.gamma_entries()?;
         let leaf = chain
             .last()
             .ok_or_else(|| Error::InvalidGammaEntry("empty chain".to_owned()))?;
         let kex = grantee_kex_secret(agent_sk);
         let key = self.agent_node_key(&leaf.grantee.pubkey, &kex, node)?;
-        let body = aithos_core::gamma::seal_body(
-            &key,
-            &self.did,
-            &node.to_string(),
-            KV,
-            &payload,
-            &ent.e24(),
-        )?;
+        self.log_delegated_mutation_with_key(
+            chain,
+            agent_sk,
+            kind,
+            node,
+            Some(&key),
+            payload,
+            now,
+            ent,
+        )
+    }
+
+    /// CB9 mutation evidence with an already-proved physics key. `None`
+    /// denotes public content and therefore produces a clear target/payload.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn log_delegated_mutation_with_key(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        kind: Kind,
+        node: &NodePath,
+        key: Option<&[u8; 32]>,
+        payload: serde_json::Value,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<Entry> {
+        let doc = self.did_doc()?;
+        let entries = self.gamma_entries()?;
+        for mandate in chain {
+            aithos_core::constraints::verify_operation_constraints(&mandate.constraints)?;
+        }
+        let (target, clear_payload, body_enc) = if let Some(key) = key {
+            (
+                None,
+                None,
+                Some(aithos_core::gamma::seal_body(
+                    key,
+                    &self.did,
+                    &node.to_string(),
+                    KV,
+                    &payload,
+                    &ent.e24(),
+                )?),
+            )
+        } else {
+            (Some(node.to_string()), Some(payload), None)
+        };
         let via: Vec<String> = chain.iter().map(|m| m.id.clone()).collect();
         let entry = delegated_entry(
             EntrySpec {
@@ -573,11 +610,65 @@ impl<S: Store> Bundle<S> {
                 prevs: None,
                 at: now.to_owned(),
                 kind,
-                target: None,
-                payload: None,
-                body_enc: Some(body),
+                target,
+                payload: clear_payload,
+                body_enc,
             },
             via,
+            agent_sk,
+        )?;
+        verify_delegated_entry(&entry, chain, &doc)?;
+        self.gamma_append(&entry)?;
+        Ok(entry)
+    }
+
+    /// Journal one delegated list/read under the same chain. Keyed-zone
+    /// targets stay sealed; public targets are clear by definition.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn log_delegated_read(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        node: &NodePath,
+        key: Option<&[u8; 32]>,
+        operation: &str,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<Entry> {
+        let doc = self.did_doc()?;
+        let entries = self.gamma_entries()?;
+        for mandate in chain {
+            aithos_core::constraints::verify_operation_constraints(&mandate.constraints)?;
+        }
+        let payload = serde_json::json!({ "operation": operation });
+        let (target, clear_payload, body_enc) = if let Some(key) = key {
+            (
+                None,
+                None,
+                Some(seal_body(
+                    key,
+                    &self.did,
+                    &node.to_string(),
+                    KV,
+                    &payload,
+                    &ent.e24(),
+                )?),
+            )
+        } else {
+            (Some(node.to_string()), Some(payload), None)
+        };
+        let entry = delegated_entry(
+            EntrySpec {
+                id: self.next_gamma_id(ent),
+                prev: gamma::head(&entries)?,
+                prevs: None,
+                at: now.to_owned(),
+                kind: Kind::EthosRead,
+                target,
+                payload: clear_payload,
+                body_enc,
+            },
+            chain.iter().map(|mandate| mandate.id.clone()).collect(),
             agent_sk,
         )?;
         verify_delegated_entry(&entry, chain, &doc)?;
@@ -816,7 +907,10 @@ impl<S: Store> Bundle<S> {
         at: &str,
     ) -> Result<Vec<LogHit>> {
         let doc = self.did_doc()?;
-        aithos_core::mandate::verify_chain(chain, &doc, at)?;
+        aithos_core::mandate::verify_chain_revocable(chain, &doc, at, &self.active_revocations()?)?;
+        for mandate in chain {
+            aithos_core::constraints::verify_operation_constraints(&mandate.constraints)?;
+        }
         let leaf = chain.last().expect("non-empty chain");
         if !covers_gamma_query(&leaf.parsed_perimeter()?, query) {
             return Err(Error::InvalidMandate(format!(
@@ -833,6 +927,18 @@ impl<S: Store> Bundle<S> {
             if let Ok(key) = self.agent_node_key(&kid, &kex, &node) {
                 hints.insert(gamma::body_hint(&key), (node, key));
             }
+        }
+        let self_index: SelfIndex = self.get_json("e/self/index.json")?;
+        for row in self_index.blobs {
+            let sid = Sid::parse(&row.sid)?;
+            let opaque = NodePath::section(Zone::Self_, Vec::new(), sid);
+            let Ok(key) = self.agent_node_key(&kid, &kex, &opaque) else {
+                continue;
+            };
+            let Ok(node) = self.open_self_access(sid, &key) else {
+                continue;
+            };
+            hints.insert(gamma::body_hint(&key), (node, key));
         }
         let mut out = Vec::new();
         for e in self.gamma_entries()? {

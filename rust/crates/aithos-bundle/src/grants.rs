@@ -3,19 +3,29 @@
 //! dir&tag perimeters, builds the folder-local tag view with its wraps).
 //! Agents read with their single keypair; the verifier gates every access.
 
-use crate::bundle::{Bundle, FolderRow, ZoneIndex, KV};
+use crate::bundle::{
+    Bundle, ChildRef, Descriptor, FolderRow, GranteeContentOperation, GranteeContentOutcome,
+    GranteeTarget, PublicAuthorship, SelfAccess, SelfIndex, SelfRow, SelfSection, TreeEntry,
+    TreeEntryKind, ZoneIndex, KV,
+};
 use crate::entropy::EntropySource;
+use crate::manifest::{sha256_hex, Manifest};
 use crate::Store;
-use aithos_core::derive::node_key;
+use aithos_core::derive::{derive_key, node_key};
 use aithos_core::did::DidDocument;
 use aithos_core::error::{Error, Result};
 use aithos_core::header::{Header, Recipient, Wrap};
 use aithos_core::ids::Sid;
+use aithos_core::jcs;
 use aithos_core::keys::{grantee_kex_secret, OwnerKeys};
-use aithos_core::mandate::{verify_op, Mandate, MandateSpec, Op, PerimeterEntry, Verb};
+use aithos_core::mandate::{
+    covers_op, covers_section_op, verify_op, Mandate, MandateSpec, Op, PerimeterEntry, SectionOp,
+    Verb,
+};
 use aithos_core::path::{Leaf, NodePath, Zone};
+use aithos_core::seal::{blob_aad, blob_open, blob_seal};
 use aithos_core::wire;
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use std::collections::BTreeMap;
 
 fn io_err(error: std::io::Error) -> Error {
@@ -46,10 +56,12 @@ pub enum GrantSelector {
     },
     /// Owner-resolved display path; the signed perimeter carries only its SID.
     Id(String),
+    /// Preallocated opaque `self` SID. It carries no structural selector.
+    OpaqueId(Sid),
 }
 
 /// One generic grant request. Resolution and key delivery happen together.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum GenericGrantRequest {
     Ethos {
         verb: Verb,
@@ -60,6 +72,8 @@ pub enum GenericGrantRequest {
         connector: String,
         action: String,
     },
+    Gamma(aithos_core::mandate::GammaQuery),
+    Revoke,
 }
 
 impl GenericGrantRequest {
@@ -78,6 +92,16 @@ impl GenericGrantRequest {
             connector: connector.into(),
             action: action.into(),
         }
+    }
+
+    #[must_use]
+    pub fn gamma(query: aithos_core::mandate::GammaQuery) -> Self {
+        Self::Gamma(query)
+    }
+
+    #[must_use]
+    pub fn revoke() -> Self {
+        Self::Revoke
     }
 }
 
@@ -104,6 +128,13 @@ pub struct GrantDelivery {
 pub struct GenericGrantOutcome {
     pub mandate: Mandate,
     pub deliveries: Vec<GrantDelivery>,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedClearSection {
+    row: crate::bundle::SectionRow,
+    folders: Vec<Sid>,
+    display_path: String,
 }
 
 pub(crate) fn hdr_file(zone: Zone, node: &NodePath) -> String {
@@ -272,6 +303,58 @@ impl<S: Store> Bundle<S> {
         }
     }
 
+    fn put_self_access(
+        &mut self,
+        sid: Sid,
+        key: &[u8; 32],
+        actual_node: &NodePath,
+        ent: &mut dyn EntropySource,
+    ) -> Result<()> {
+        let opaque_node = NodePath::section(Zone::Self_, Vec::new(), sid);
+        let nonce = ent.e24();
+        let aad = blob_aad(&self.did, &opaque_node.to_string(), KV);
+        let ciphertext = blob_seal(key, actual_node.to_string().as_bytes(), &nonce, &aad);
+        let mut index: SelfIndex = self.get_json("e/self/index.json")?;
+        let row = index
+            .blobs
+            .iter_mut()
+            .find(|row| row.sid == sid.to_string())
+            .ok_or_else(|| Error::InvalidPath(format!("no self SID {sid}")))?;
+        row.access = Some(SelfAccess {
+            n: hex::encode(nonce),
+            c: hex::encode(ciphertext),
+        });
+        self.put_json("e/self/index.json", &index)
+    }
+
+    pub(crate) fn open_self_access(&self, sid: Sid, key: &[u8; 32]) -> Result<NodePath> {
+        let index: SelfIndex = self.get_json("e/self/index.json")?;
+        let access = index
+            .blobs
+            .iter()
+            .find(|row| row.sid == sid.to_string())
+            .and_then(|row| row.access.as_ref())
+            .ok_or_else(|| Error::SealRejected(format!("no exact self access for {sid}")))?;
+        let nonce: [u8; 24] = hex::decode(&access.n)
+            .ok()
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(|| Error::SealRejected("invalid self access nonce".into()))?;
+        let ciphertext = hex::decode(&access.c)
+            .map_err(|_| Error::SealRejected("invalid self access ciphertext".into()))?;
+        let opaque_node = NodePath::section(Zone::Self_, Vec::new(), sid);
+        let aad = blob_aad(&self.did, &opaque_node.to_string(), KV);
+        let plaintext = blob_open(key, &ciphertext, &nonce, &aad)?;
+        let target = std::str::from_utf8(&plaintext)
+            .map_err(|_| Error::SealRejected("self access target is not UTF-8".into()))?;
+        let node = NodePath::parse(target)?;
+        if node.zone != Zone::Self_ || node.leaf != Leaf::Section(sid) {
+            return Err(Error::SealRejected(
+                "self access target does not match its opaque SID".into(),
+            ));
+        }
+        Ok(node)
+    }
+
     fn deliver_exact_section(
         &mut self,
         owner: &OwnerKeys,
@@ -281,16 +364,35 @@ impl<S: Store> Bundle<S> {
         sid: Sid,
         ent: &mut dyn EntropySource,
     ) -> Result<NodePath> {
-        let node = NodePath::section(zone, folders.to_vec(), sid);
+        let actual_node = NodePath::section(zone, folders.to_vec(), sid);
         let key = match zone {
             Zone::Circle => self.owner_current_section_key(owner, folders, sid)?.1,
-            Zone::Self_ => node_key(&self.zone_dk(zone, owner)?, &node),
+            Zone::Self_ => node_key(&self.zone_dk(zone, owner)?, &actual_node),
             Zone::Public => {
                 return Err(Error::InvalidPath(
                     "public sections require no delivered key line".into(),
                 ));
             }
         };
+        let node = if zone == Zone::Self_ {
+            self.put_self_access(sid, &key, &actual_node, ent)?;
+            NodePath::section(zone, Vec::new(), sid)
+        } else {
+            actual_node
+        };
+        self.add_line_on(&node, &key, recipient, ent)?;
+        Ok(node)
+    }
+
+    fn deliver_preallocated_self(
+        &mut self,
+        owner: &OwnerKeys,
+        recipient: &Recipient,
+        sid: Sid,
+        ent: &mut dyn EntropySource,
+    ) -> Result<NodePath> {
+        let node = NodePath::section(Zone::Self_, Vec::new(), sid);
+        let key = node_key(&self.zone_dk(Zone::Self_, owner)?, &node);
         self.add_line_on(&node, &key, recipient, ent)?;
         Ok(node)
     }
@@ -345,6 +447,24 @@ impl<S: Store> Bundle<S> {
         let mut deliveries = Vec::new();
         for request in requests {
             let (entry, kind, node) = match request {
+                GenericGrantRequest::Gamma(query) => (
+                    PerimeterEntry::Gamma {
+                        dir: query.dir.clone(),
+                        id: query.id,
+                        tag: query.tag.clone(),
+                        kind: query.kind.clone(),
+                        action: query.action.clone(),
+                        since: query.since.clone(),
+                        until: query.until.clone(),
+                    },
+                    GrantLineKind::None,
+                    None,
+                ),
+                GenericGrantRequest::Revoke => (
+                    PerimeterEntry::Revoke { scope: None },
+                    GrantLineKind::None,
+                    None,
+                ),
                 GenericGrantRequest::Act { connector, action } => {
                     Self::gate_display_name(connector)?;
                     Self::gate_display_name(action)?;
@@ -455,6 +575,20 @@ impl<S: Store> Bundle<S> {
                             )?;
                             (entry, GrantLineKind::Section, Some(node.to_string()))
                         }
+                    }
+                    GrantSelector::OpaqueId(sid) => {
+                        if *zone != Zone::Self_ {
+                            return Err(Error::InvalidPath(
+                                "opaque preallocated ids are self-only".into(),
+                            ));
+                        }
+                        let entry = PerimeterEntry::EthosId {
+                            verb: *verb,
+                            zone: *zone,
+                            id: *sid,
+                        };
+                        let node = self.deliver_preallocated_self(owner, &recipient, *sid, ent)?;
+                        (entry, GrantLineKind::Section, Some(node.to_string()))
                     }
                 },
             };
@@ -972,6 +1106,7 @@ impl<S: Store> Bundle<S> {
             blob_sha: sha.clone(),
             key_version: kv,
             sig: None,
+            authorship: None,
         });
         self.put_json(index_path, &index)?;
         self.log_delegated_mutation(
@@ -1076,5 +1211,1086 @@ impl<S: Store> Bundle<S> {
             ent,
         )?;
         Ok(())
+    }
+
+    // ------------------------------------------ CB9 delegated content API
+
+    fn verify_current_grantee(
+        &self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        now: &str,
+    ) -> Result<Vec<PerimeterEntry>> {
+        let doc = self.did_doc()?;
+        aithos_core::mandate::verify_chain_revocable(
+            chain,
+            &doc,
+            now,
+            &self.active_revocations()?,
+        )?;
+        for mandate in chain {
+            aithos_core::constraints::verify_operation_constraints(&mandate.constraints)?;
+        }
+        let leaf = chain
+            .last()
+            .ok_or_else(|| Error::InvalidMandate("empty chain".into()))?;
+        if leaf.grantee_pub()? != agent_sk.verifying_key() {
+            return Err(Error::InvalidMandate(
+                "the operation key is not the leaf grantee key".into(),
+            ));
+        }
+        leaf.parsed_perimeter()
+    }
+
+    fn check_grantee_folder(
+        &self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        zone: Zone,
+        folders: &[Sid],
+        now: &str,
+    ) -> Result<()> {
+        let perimeter = self.verify_current_grantee(chain, agent_sk, now)?;
+        if !covers_op(
+            &perimeter,
+            &Op {
+                verb: Verb::Read,
+                zone,
+                folders,
+                tags: &[],
+            },
+        ) {
+            return Err(Error::InvalidMandate(
+                "list is not covered by the leaf perimeter".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn check_grantee_section(
+        &self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        verb: Verb,
+        zone: Zone,
+        sid: Sid,
+        folders: &[Sid],
+        tags: &[String],
+        now: &str,
+        mutation: bool,
+    ) -> Result<()> {
+        let perimeter = self.verify_current_grantee(chain, agent_sk, now)?;
+        let covered = covers_section_op(
+            &perimeter,
+            &SectionOp {
+                verb,
+                zone,
+                sid,
+                folders,
+                tags,
+            },
+        );
+        let self_operation = SectionOp {
+            verb,
+            zone,
+            sid,
+            folders,
+            tags,
+        };
+        let self_mutation_is_narrow = !mutation
+            || zone != Zone::Self_
+            || perimeter.iter().any(|entry| match entry {
+                PerimeterEntry::Ethos {
+                    zone: granted_zone,
+                    dir,
+                    tag,
+                    ..
+                } => {
+                    *granted_zone == Zone::Self_
+                        && dir.is_empty()
+                        && tag.is_none()
+                        && covers_section_op(std::slice::from_ref(entry), &self_operation)
+                }
+                PerimeterEntry::EthosId {
+                    zone: granted_zone,
+                    id,
+                    ..
+                } => {
+                    *granted_zone == Zone::Self_
+                        && *id == sid
+                        && covers_section_op(std::slice::from_ref(entry), &self_operation)
+                }
+                _ => false,
+            });
+        if !covered || !self_mutation_is_narrow {
+            return Err(Error::InvalidMandate(
+                "content operation is not covered by the leaf perimeter".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn resolved_clear_section(
+        &self,
+        zone: Zone,
+        target: GranteeTarget<'_>,
+    ) -> Result<ResolvedClearSection> {
+        if zone == Zone::Self_ {
+            return Err(Error::InvalidPath(
+                "self sections use an opaque id target".into(),
+            ));
+        }
+        match target {
+            GranteeTarget::Display(display_path) => {
+                let (row, folders) = self.resolve_clear(zone, display_path)?;
+                Ok(ResolvedClearSection {
+                    row,
+                    folders,
+                    display_path: display_path.to_owned(),
+                })
+            }
+            GranteeTarget::Id(sid) => {
+                let index: ZoneIndex = self.get_json(&format!("e/{}/index.json", zone.as_str()))?;
+                let row = index
+                    .sections
+                    .iter()
+                    .find(|row| row.sid == sid.to_string())
+                    .cloned()
+                    .ok_or_else(|| Error::InvalidPath(format!("no section SID {sid}")))?;
+                let mut reverse = Vec::new();
+                let mut cursor = row.folder_sid.clone();
+                while let Some(folder_sid) = cursor {
+                    let folder = index
+                        .folders
+                        .iter()
+                        .find(|folder| folder.sid == folder_sid)
+                        .ok_or_else(|| {
+                            Error::InvalidPath(format!("dangling folder SID {folder_sid}"))
+                        })?;
+                    reverse.push((Sid::parse(&folder.sid)?, folder.name.clone()));
+                    cursor = folder.parent_sid.clone();
+                }
+                reverse.reverse();
+                let folders = reverse.iter().map(|(sid, _)| *sid).collect::<Vec<_>>();
+                let mut names = reverse
+                    .into_iter()
+                    .map(|(_, name)| name)
+                    .collect::<Vec<_>>();
+                names.push(row.name.clone());
+                Ok(ResolvedClearSection {
+                    row,
+                    folders,
+                    display_path: names.join("/"),
+                })
+            }
+            GranteeTarget::FolderIds(_) => Err(Error::InvalidPath(
+                "a section target cannot be a folder chain".into(),
+            )),
+        }
+    }
+
+    fn resolved_clear_folder(
+        &self,
+        zone: Zone,
+        target: GranteeTarget<'_>,
+    ) -> Result<(Vec<Sid>, String)> {
+        match target {
+            GranteeTarget::Display(display) => {
+                Ok((self.resolve_folder(zone, display)?, display.to_owned()))
+            }
+            GranteeTarget::FolderIds(folders) => Ok((folders.to_vec(), String::new())),
+            GranteeTarget::Id(_) => Err(Error::InvalidPath(
+                "a folder target cannot be a section id".into(),
+            )),
+        }
+    }
+
+    fn clear_entries_below(&self, zone: Zone, display: &str) -> Result<Vec<TreeEntry>> {
+        let prefix = if display.is_empty() {
+            String::new()
+        } else {
+            format!("{display}/")
+        };
+        Ok(self
+            .clear_zone_entries(zone)?
+            .into_iter()
+            .filter_map(|mut entry| {
+                if display.is_empty() {
+                    return Some(entry);
+                }
+                if entry.path == display {
+                    return None;
+                }
+                let relative = entry.path.strip_prefix(&prefix)?.to_owned();
+                entry.path = relative;
+                Some(entry)
+            })
+            .collect())
+    }
+
+    fn self_descriptor_with_agent_key(
+        &self,
+        chain: &[Sid],
+        content_key: &[u8; 32],
+    ) -> Result<Descriptor> {
+        if chain.is_empty() {
+            let root_key = derive_key("aithos-core/v1/self-root", content_key);
+            self.read_desc(
+                "e/self/root.enc",
+                &root_key,
+                &NodePath::zone_root(Zone::Self_),
+            )
+        } else {
+            let node = NodePath::folder(Zone::Self_, chain.to_vec());
+            self.read_desc(
+                &format!(
+                    "e/self/blobs/{}.enc",
+                    chain.last().expect("non-empty chain")
+                ),
+                content_key,
+                &node,
+            )
+        }
+    }
+
+    fn self_list_with_agent_key(
+        &self,
+        chain: &[Sid],
+        content_key: &[u8; 32],
+        prefix: &str,
+        out: &mut Vec<TreeEntry>,
+    ) -> Result<()> {
+        let descriptor = self.self_descriptor_with_agent_key(chain, content_key)?;
+        for child in descriptor.children {
+            let sid = Sid::parse(&child.sid)?;
+            if !self.self_sid_active(sid)? {
+                continue;
+            }
+            if child.kind == "d" {
+                let relative = NodePath {
+                    zone: Zone::Self_,
+                    folders: vec![sid],
+                    leaf: Leaf::Folder,
+                };
+                let child_key = node_key(content_key, &relative);
+                let mut child_chain = chain.to_vec();
+                child_chain.push(sid);
+                let child_descriptor =
+                    self.self_descriptor_with_agent_key(&child_chain, &child_key)?;
+                let path = format!("{prefix}{}", child_descriptor.name);
+                out.push(TreeEntry {
+                    path: path.clone(),
+                    kind: TreeEntryKind::Folder,
+                });
+                self.self_list_with_agent_key(&child_chain, &child_key, &format!("{path}/"), out)?;
+            } else {
+                let relative = NodePath {
+                    zone: Zone::Self_,
+                    folders: Vec::new(),
+                    leaf: Leaf::Section(sid),
+                };
+                let section_key = node_key(content_key, &relative);
+                let node = NodePath::section(Zone::Self_, chain.to_vec(), sid);
+                let plaintext =
+                    self.open_blob(&format!("e/self/blobs/{sid}.enc"), &section_key, &node)?;
+                let section: SelfSection = serde_json::from_slice(&plaintext)
+                    .map_err(|error| Error::SealRejected(format!("self section: {error}")))?;
+                out.push(TreeEntry {
+                    path: format!("{prefix}{}", section.name),
+                    kind: TreeEntryKind::Section,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn find_self_with_zone_key(
+        &self,
+        wanted: Sid,
+        chain: &[Sid],
+        content_key: &[u8; 32],
+    ) -> Result<Option<(NodePath, [u8; 32])>> {
+        let descriptor = self.self_descriptor_with_agent_key(chain, content_key)?;
+        for child in descriptor.children {
+            let sid = Sid::parse(&child.sid)?;
+            if !self.self_sid_active(sid)? {
+                continue;
+            }
+            if child.kind == "s" {
+                let relative = NodePath {
+                    zone: Zone::Self_,
+                    folders: Vec::new(),
+                    leaf: Leaf::Section(sid),
+                };
+                let key = node_key(content_key, &relative);
+                if sid == wanted {
+                    return Ok(Some((
+                        NodePath::section(Zone::Self_, chain.to_vec(), sid),
+                        key,
+                    )));
+                }
+            } else {
+                let relative = NodePath {
+                    zone: Zone::Self_,
+                    folders: vec![sid],
+                    leaf: Leaf::Folder,
+                };
+                let key = node_key(content_key, &relative);
+                let mut child_chain = chain.to_vec();
+                child_chain.push(sid);
+                if let Some(found) = self.find_self_with_zone_key(wanted, &child_chain, &key)? {
+                    return Ok(Some(found));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    fn self_section_with_agent(
+        &self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        sid: Sid,
+    ) -> Result<(NodePath, [u8; 32])> {
+        let leaf = chain
+            .last()
+            .ok_or_else(|| Error::InvalidMandate("empty chain".into()))?;
+        let kid = &leaf.grantee.pubkey;
+        let kex = grantee_kex_secret(agent_sk);
+        let opaque = NodePath::section(Zone::Self_, Vec::new(), sid);
+        if let Ok(key) = self.agent_node_key(kid, &kex, &opaque) {
+            if let Ok(actual) = self.open_self_access(sid, &key) {
+                return Ok((actual, key));
+            }
+            if self.self_sid_active(sid)? {
+                return Ok((opaque, key));
+            }
+        }
+        let zone = NodePath::zone_root(Zone::Self_);
+        let zone_key = self.agent_node_key(kid, &kex, &zone)?;
+        self.find_self_with_zone_key(sid, &[], &zone_key)?
+            .ok_or_else(|| Error::SealRejected(format!("self SID {sid} is unreachable")))
+    }
+
+    fn sign_public_authorship(
+        &self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        sid: Sid,
+        content_hash: &str,
+    ) -> Result<PublicAuthorship> {
+        let latest: Manifest = self.get_json("manifest.json")?;
+        let via = chain
+            .iter()
+            .map(|mandate| mandate.id.clone())
+            .collect::<Vec<_>>();
+        let key = wire::ed25519_pub_to_multibase(&agent_sk.verifying_key().to_bytes());
+        let reference_seed = serde_json::json!({
+            "authorized_via": via,
+            "content_hash": content_hash,
+            "edition": latest.edition.height + 1,
+            "key": key,
+            "sid": sid.to_string(),
+            "subject": self.did,
+            "zone": "public",
+        });
+        let operation_ref = format!(
+            "sha256:{}",
+            sha256_hex(&jcs::canonical_bytes(&reference_seed)?)
+        );
+        let mut authorship = PublicAuthorship {
+            subject: self.did.clone(),
+            zone: "public".into(),
+            sid: sid.to_string(),
+            content_hash: content_hash.to_owned(),
+            operation_ref,
+            edition: latest.edition.height + 1,
+            authorized_via: chain.iter().map(|mandate| mandate.id.clone()).collect(),
+            key,
+            sig: String::new(),
+        };
+        authorship.sig = hex::encode(
+            agent_sk
+                .sign(&jcs::canonical_bytes(&authorship)?)
+                .to_bytes(),
+        );
+        Ok(authorship)
+    }
+
+    fn public_authorship_hash(authorship: &PublicAuthorship) -> Result<String> {
+        Ok(sha256_hex(&jcs::canonical_bytes(authorship)?))
+    }
+
+    /// Verify every delegated public authorship record against the pinned
+    /// edition, the leaf key and its matching delegated Gamma evidence.
+    pub fn verify_public_authorship(&self) -> Result<()> {
+        self.gamma_verify()?;
+        let latest: Manifest = self.get_json("manifest.json")?;
+        let index: ZoneIndex = self.get_json("e/public/index.json")?;
+        let entries = self.gamma_entries()?;
+        for row in index.sections.iter().filter(|row| row.authorship.is_some()) {
+            let authorship = row.authorship.as_ref().expect("filtered");
+            if row.sig.is_some()
+                || authorship.subject != self.did
+                || authorship.zone != "public"
+                || authorship.sid != row.sid
+                || authorship.content_hash != row.blob_sha
+                || authorship.edition != latest.edition.height
+                || authorship.authorized_via.is_empty()
+            {
+                return Err(Error::InvalidOperation(
+                    "delegated public authorship fields disagree".into(),
+                ));
+            }
+            let key_bytes = wire::multibase_to_ed25519_pub(&authorship.key)?;
+            let key = VerifyingKey::from_bytes(&key_bytes)
+                .map_err(|_| Error::InvalidOperation("invalid authorship key".into()))?;
+            let signature: [u8; 64] = hex::decode(&authorship.sig)
+                .ok()
+                .and_then(|bytes| bytes.try_into().ok())
+                .ok_or_else(|| Error::InvalidOperation("invalid authorship signature".into()))?;
+            let mut unsigned = authorship.clone();
+            unsigned.sig.clear();
+            key.verify(
+                &jcs::canonical_bytes(&unsigned)?,
+                &Signature::from_bytes(&signature),
+            )
+            .map_err(|_| {
+                Error::InvalidOperation("public authorship signature does not verify".into())
+            })?;
+            let commitment = Self::public_authorship_hash(authorship)?;
+            let evidence = entries.iter().find(|entry| {
+                entry
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("authorship"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some(commitment.as_str())
+            });
+            let evidence = evidence.ok_or_else(|| {
+                Error::InvalidOperation("public authorship is not committed by Gamma".into())
+            })?;
+            if evidence.authorized_via.as_ref() != Some(&authorship.authorized_via)
+                || evidence.signature.key != authorship.key
+            {
+                return Err(Error::InvalidOperation(
+                    "public authorship actor or chain disagrees with Gamma".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn grantee_create_clear(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        zone: Zone,
+        folder: GranteeTarget<'_>,
+        preallocated_sid: Option<Sid>,
+        name: &str,
+        title: &str,
+        tags: &[String],
+        body: &str,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<Sid> {
+        Self::gate_display_name(name)?;
+        let (folders, folder_display) = self.resolved_clear_folder(zone, folder)?;
+        let sid = preallocated_sid.unwrap_or_else(|| Self::new_sid(ent));
+        self.check_grantee_section(
+            chain,
+            agent_sk,
+            Verb::Append,
+            zone,
+            sid,
+            &folders,
+            tags,
+            now,
+            true,
+        )?;
+        let display_path = if folder_display.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{folder_display}/{name}")
+        };
+        let node = NodePath::section(zone, folders.clone(), sid);
+        match zone {
+            Zone::Public => {
+                let content_hash = sha256_hex(body.as_bytes());
+                let authorship =
+                    self.sign_public_authorship(chain, agent_sk, sid, &content_hash)?;
+                let authorship_hash = Self::public_authorship_hash(&authorship)?;
+                self.write_object(&format!("e/public/{display_path}.md"), body.as_bytes())?;
+                let mut index: ZoneIndex = self.get_json("e/public/index.json")?;
+                index.sections.push(crate::bundle::SectionRow {
+                    sid: sid.to_string(),
+                    name: name.to_owned(),
+                    folder_sid: folders.last().map(ToString::to_string),
+                    title: title.to_owned(),
+                    tags: tags.to_vec(),
+                    blob_sha: content_hash.clone(),
+                    key_version: KV,
+                    sig: None,
+                    authorship: Some(authorship),
+                });
+                self.put_json("e/public/index.json", &index)?;
+                self.log_delegated_mutation_with_key(
+                    chain,
+                    agent_sk,
+                    aithos_core::gamma::Kind::SectionAdd,
+                    &node,
+                    None,
+                    serde_json::json!({
+                        "authorship": authorship_hash,
+                        "blob_sha": content_hash,
+                        "name": name,
+                        "tags": tags,
+                    }),
+                    now,
+                    ent,
+                )?;
+            }
+            Zone::Circle => {
+                let leaf = chain.last().expect("current chain checked");
+                let kex = grantee_kex_secret(agent_sk);
+                let (version, key) =
+                    self.agent_current_section_key(&leaf.grantee.pubkey, &kex, &folders, sid)?;
+                let blob = serde_json::json!({ "md": body });
+                let hash = self.put_blob_v(
+                    &format!("e/circle/blobs/{sid}.enc"),
+                    &key,
+                    &node,
+                    version,
+                    &jcs::canonical_bytes(&blob)?,
+                    ent,
+                )?;
+                let mut index: ZoneIndex = self.get_json("e/circle/index.json")?;
+                index.sections.push(crate::bundle::SectionRow {
+                    sid: sid.to_string(),
+                    name: name.to_owned(),
+                    folder_sid: folders.last().map(ToString::to_string),
+                    title: title.to_owned(),
+                    tags: tags.to_vec(),
+                    blob_sha: hash.clone(),
+                    key_version: version,
+                    sig: None,
+                    authorship: None,
+                });
+                self.put_json("e/circle/index.json", &index)?;
+                self.log_delegated_mutation_with_key(
+                    chain,
+                    agent_sk,
+                    aithos_core::gamma::Kind::SectionAdd,
+                    &node,
+                    Some(&key),
+                    serde_json::json!({ "blob_sha": hash, "name": name, "tags": tags }),
+                    now,
+                    ent,
+                )?;
+            }
+            Zone::Self_ => unreachable!("clear create excludes self"),
+        }
+        Ok(sid)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn grantee_create_self(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        folder: GranteeTarget<'_>,
+        preallocated_sid: Option<Sid>,
+        name: &str,
+        title: &str,
+        tags: &[String],
+        body: &str,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<Sid> {
+        let folders = match folder {
+            GranteeTarget::FolderIds(folders) if folders.is_empty() => folders,
+            _ => {
+                return Err(Error::InvalidPath(
+                    "CB9 self creation is opaque and root-anchored".into(),
+                ));
+            }
+        };
+        let sid = preallocated_sid.unwrap_or_else(|| Self::new_sid(ent));
+        self.check_grantee_section(
+            chain,
+            agent_sk,
+            Verb::Append,
+            Zone::Self_,
+            sid,
+            folders,
+            tags,
+            now,
+            true,
+        )?;
+        let leaf = chain.last().expect("current chain checked");
+        let kex = grantee_kex_secret(agent_sk);
+        let node = NodePath::section(Zone::Self_, Vec::new(), sid);
+        let key = self.agent_node_key(&leaf.grantee.pubkey, &kex, &node)?;
+        let section = SelfSection {
+            kind: "section".into(),
+            name: name.to_owned(),
+            title: title.to_owned(),
+            tags: tags.to_vec(),
+            md: body.to_owned(),
+        };
+        let hash = self.put_blob(
+            &format!("e/self/blobs/{sid}.enc"),
+            &key,
+            &node,
+            &jcs::canonical_bytes(&section)?,
+            ent,
+        )?;
+        let mut index: SelfIndex = self.get_json("e/self/index.json")?;
+        if index.blobs.iter().any(|row| row.sid == sid.to_string()) {
+            return Err(Error::InvalidPath(format!("self SID {sid} already exists")));
+        }
+        index.blobs.push(SelfRow {
+            sid: sid.to_string(),
+            key_version: KV,
+            access: None,
+        });
+        self.put_json("e/self/index.json", &index)?;
+        let zone_node = NodePath::zone_root(Zone::Self_);
+        if let Ok(zone_key) = self.agent_node_key(&leaf.grantee.pubkey, &kex, &zone_node) {
+            let root_key = derive_key("aithos-core/v1/self-root", &zone_key);
+            let mut root = self.read_desc("e/self/root.enc", &root_key, &zone_node)?;
+            root.children.push(ChildRef {
+                kind: "s".into(),
+                sid: sid.to_string(),
+            });
+            self.write_desc("e/self/root.enc", &root_key, &zone_node, &root, ent)?;
+        }
+        self.log_delegated_mutation_with_key(
+            chain,
+            agent_sk,
+            aithos_core::gamma::Kind::SectionAdd,
+            &node,
+            Some(&key),
+            serde_json::json!({ "blob_sha": hash }),
+            now,
+            ent,
+        )?;
+        Ok(sid)
+    }
+
+    /// One operation path for delegated public/circle/self content.
+    ///
+    /// Every call rechecks the current chain, revocations and constraints.
+    /// Reads are journalized; mutations commit state and Gamma in one CB7
+    /// transaction. No owner key or owner-signature fallback is accepted.
+    pub fn grantee_content_operation(
+        &mut self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        zone: Zone,
+        operation: GranteeContentOperation<'_>,
+        ent: &mut dyn EntropySource,
+    ) -> Result<GranteeContentOutcome> {
+        self.transaction(|bundle| match operation {
+            GranteeContentOperation::List { target, now } => {
+                if zone == Zone::Self_ {
+                    let folders = match target {
+                        GranteeTarget::FolderIds(folders) => folders,
+                        _ => {
+                            return Err(Error::InvalidPath(
+                                "self listing needs an opaque folder chain".into(),
+                            ));
+                        }
+                    };
+                    bundle.check_grantee_folder(chain, agent_sk, zone, folders, now)?;
+                    let leaf = chain.last().expect("current chain checked");
+                    let kex = grantee_kex_secret(agent_sk);
+                    let node = NodePath::folder(zone, folders.to_vec());
+                    let content_key = bundle.agent_node_key(&leaf.grantee.pubkey, &kex, &node)?;
+                    let mut entries = Vec::new();
+                    bundle.self_list_with_agent_key(folders, &content_key, "", &mut entries)?;
+                    let log_key = if folders.is_empty() {
+                        derive_key("aithos-core/v1/self-root", &content_key)
+                    } else {
+                        content_key
+                    };
+                    bundle.log_delegated_read(
+                        chain,
+                        agent_sk,
+                        &node,
+                        Some(&log_key),
+                        "list",
+                        now,
+                        ent,
+                    )?;
+                    Ok(GranteeContentOutcome::Listed(entries))
+                } else {
+                    let (folders, display) = bundle.resolved_clear_folder(zone, target)?;
+                    bundle.check_grantee_folder(chain, agent_sk, zone, &folders, now)?;
+                    let node = NodePath::folder(zone, folders.clone());
+                    let key = if zone == Zone::Circle {
+                        let leaf = chain.last().expect("current chain checked");
+                        let kex = grantee_kex_secret(agent_sk);
+                        Some(bundle.agent_node_key(&leaf.grantee.pubkey, &kex, &node)?)
+                    } else {
+                        None
+                    };
+                    let entries = bundle.clear_entries_below(zone, &display)?;
+                    bundle.log_delegated_read(
+                        chain,
+                        agent_sk,
+                        &node,
+                        key.as_ref(),
+                        "list",
+                        now,
+                        ent,
+                    )?;
+                    Ok(GranteeContentOutcome::Listed(entries))
+                }
+            }
+            GranteeContentOperation::Read { target, now } => {
+                if zone == Zone::Self_ {
+                    let GranteeTarget::Id(sid) = target else {
+                        return Err(Error::InvalidPath(
+                            "self reads need an opaque section id".into(),
+                        ));
+                    };
+                    bundle.check_grantee_section(
+                        chain,
+                        agent_sk,
+                        Verb::Read,
+                        zone,
+                        sid,
+                        &[],
+                        &[],
+                        now,
+                        false,
+                    )?;
+                    let (node, key) = bundle.self_section_with_agent(chain, agent_sk, sid)?;
+                    let plaintext =
+                        bundle.open_blob(&format!("e/self/blobs/{sid}.enc"), &key, &node)?;
+                    let section: SelfSection = serde_json::from_slice(&plaintext)
+                        .map_err(|error| Error::SealRejected(format!("self section: {error}")))?;
+                    bundle.log_delegated_read(
+                        chain,
+                        agent_sk,
+                        &node,
+                        Some(&key),
+                        "read",
+                        now,
+                        ent,
+                    )?;
+                    Ok(GranteeContentOutcome::Read(section.md))
+                } else {
+                    let resolved = bundle.resolved_clear_section(zone, target)?;
+                    let sid = Sid::parse(&resolved.row.sid)?;
+                    bundle.check_grantee_section(
+                        chain,
+                        agent_sk,
+                        Verb::Read,
+                        zone,
+                        sid,
+                        &resolved.folders,
+                        &resolved.row.tags,
+                        now,
+                        false,
+                    )?;
+                    let node = NodePath::section(zone, resolved.folders.clone(), sid);
+                    let (body, key) = if zone == Zone::Public {
+                        (
+                            Bundle::<S>::public_read(&bundle.store, &resolved.display_path)?,
+                            None,
+                        )
+                    } else {
+                        let leaf = chain.last().expect("current chain checked");
+                        let kex = grantee_kex_secret(agent_sk);
+                        let key = bundle.agent_section_key(
+                            &leaf.grantee.pubkey,
+                            &kex,
+                            &resolved.folders,
+                            sid,
+                            resolved.row.key_version,
+                        )?;
+                        let plaintext = bundle.open_blob_v(
+                            &format!("e/circle/blobs/{sid}.enc"),
+                            &key,
+                            &node,
+                            resolved.row.key_version,
+                        )?;
+                        let value: serde_json::Value =
+                            serde_json::from_slice(&plaintext).map_err(|error| {
+                                Error::SealRejected(format!("circle blob: {error}"))
+                            })?;
+                        (
+                            value["md"].as_str().unwrap_or_default().to_owned(),
+                            Some(key),
+                        )
+                    };
+                    bundle.log_delegated_read(
+                        chain,
+                        agent_sk,
+                        &node,
+                        key.as_ref(),
+                        "read",
+                        now,
+                        ent,
+                    )?;
+                    Ok(GranteeContentOutcome::Read(body))
+                }
+            }
+            GranteeContentOperation::Create {
+                folder,
+                preallocated_sid,
+                name,
+                title,
+                tags,
+                body,
+                now,
+            } => {
+                let sid = if zone == Zone::Self_ {
+                    bundle.grantee_create_self(
+                        chain,
+                        agent_sk,
+                        folder,
+                        preallocated_sid,
+                        name,
+                        title,
+                        tags,
+                        body,
+                        now,
+                        ent,
+                    )?
+                } else {
+                    bundle.grantee_create_clear(
+                        chain,
+                        agent_sk,
+                        zone,
+                        folder,
+                        preallocated_sid,
+                        name,
+                        title,
+                        tags,
+                        body,
+                        now,
+                        ent,
+                    )?
+                };
+                Ok(GranteeContentOutcome::Created(sid))
+            }
+            GranteeContentOperation::Edit { target, body, now } => {
+                if zone == Zone::Self_ {
+                    let GranteeTarget::Id(sid) = target else {
+                        return Err(Error::InvalidPath(
+                            "self edits need an opaque section id".into(),
+                        ));
+                    };
+                    bundle.check_grantee_section(
+                        chain,
+                        agent_sk,
+                        Verb::Edit,
+                        zone,
+                        sid,
+                        &[],
+                        &[],
+                        now,
+                        true,
+                    )?;
+                    let (node, key) = bundle.self_section_with_agent(chain, agent_sk, sid)?;
+                    let plaintext =
+                        bundle.open_blob(&format!("e/self/blobs/{sid}.enc"), &key, &node)?;
+                    let mut section: SelfSection = serde_json::from_slice(&plaintext)
+                        .map_err(|error| Error::SealRejected(format!("self section: {error}")))?;
+                    section.md = body.to_owned();
+                    let hash = bundle.put_blob(
+                        &format!("e/self/blobs/{sid}.enc"),
+                        &key,
+                        &node,
+                        &jcs::canonical_bytes(&section)?,
+                        ent,
+                    )?;
+                    bundle.log_delegated_mutation_with_key(
+                        chain,
+                        agent_sk,
+                        aithos_core::gamma::Kind::SectionModify,
+                        &node,
+                        Some(&key),
+                        serde_json::json!({ "blob_sha": hash }),
+                        now,
+                        ent,
+                    )?;
+                } else {
+                    let resolved = bundle.resolved_clear_section(zone, target)?;
+                    let sid = Sid::parse(&resolved.row.sid)?;
+                    bundle.check_grantee_section(
+                        chain,
+                        agent_sk,
+                        Verb::Edit,
+                        zone,
+                        sid,
+                        &resolved.folders,
+                        &resolved.row.tags,
+                        now,
+                        true,
+                    )?;
+                    let node = NodePath::section(zone, resolved.folders.clone(), sid);
+                    if zone == Zone::Public {
+                        let content_hash = sha256_hex(body.as_bytes());
+                        let authorship =
+                            bundle.sign_public_authorship(chain, agent_sk, sid, &content_hash)?;
+                        let authorship_hash = Self::public_authorship_hash(&authorship)?;
+                        bundle.write_object(
+                            &format!("e/public/{}.md", resolved.display_path),
+                            body.as_bytes(),
+                        )?;
+                        let mut index: ZoneIndex = bundle.get_json("e/public/index.json")?;
+                        let row = index
+                            .sections
+                            .iter_mut()
+                            .find(|row| row.sid == sid.to_string())
+                            .ok_or_else(|| Error::InvalidPath(format!("no section SID {sid}")))?;
+                        row.blob_sha = content_hash.clone();
+                        row.sig = None;
+                        row.authorship = Some(authorship);
+                        bundle.put_json("e/public/index.json", &index)?;
+                        bundle.log_delegated_mutation_with_key(
+                            chain,
+                            agent_sk,
+                            aithos_core::gamma::Kind::SectionModify,
+                            &node,
+                            None,
+                            serde_json::json!({
+                                "authorship": authorship_hash,
+                                "blob_sha": content_hash,
+                                "tags": resolved.row.tags,
+                            }),
+                            now,
+                            ent,
+                        )?;
+                    } else {
+                        let leaf = chain.last().expect("current chain checked");
+                        let kex = grantee_kex_secret(agent_sk);
+                        let (version, key) = bundle.agent_current_section_key(
+                            &leaf.grantee.pubkey,
+                            &kex,
+                            &resolved.folders,
+                            sid,
+                        )?;
+                        let hash = bundle.put_blob_v(
+                            &format!("e/circle/blobs/{sid}.enc"),
+                            &key,
+                            &node,
+                            version,
+                            &jcs::canonical_bytes(&serde_json::json!({ "md": body }))?,
+                            ent,
+                        )?;
+                        let mut index: ZoneIndex = bundle.get_json("e/circle/index.json")?;
+                        let row = index
+                            .sections
+                            .iter_mut()
+                            .find(|row| row.sid == sid.to_string())
+                            .ok_or_else(|| Error::InvalidPath(format!("no section SID {sid}")))?;
+                        row.blob_sha = hash.clone();
+                        row.key_version = version;
+                        row.sig = None;
+                        row.authorship = None;
+                        bundle.put_json("e/circle/index.json", &index)?;
+                        bundle.log_delegated_mutation_with_key(
+                            chain,
+                            agent_sk,
+                            aithos_core::gamma::Kind::SectionModify,
+                            &node,
+                            Some(&key),
+                            serde_json::json!({
+                                "blob_sha": hash,
+                                "tags": resolved.row.tags,
+                            }),
+                            now,
+                            ent,
+                        )?;
+                    }
+                }
+                Ok(GranteeContentOutcome::Mutated)
+            }
+            GranteeContentOperation::Delete { target, now } => {
+                if zone == Zone::Self_ {
+                    let GranteeTarget::Id(sid) = target else {
+                        return Err(Error::InvalidPath(
+                            "self deletes need an opaque section id".into(),
+                        ));
+                    };
+                    bundle.check_grantee_section(
+                        chain,
+                        agent_sk,
+                        Verb::Delete,
+                        zone,
+                        sid,
+                        &[],
+                        &[],
+                        now,
+                        true,
+                    )?;
+                    let (node, key) = bundle.self_section_with_agent(chain, agent_sk, sid)?;
+                    let mut index: SelfIndex = bundle.get_json("e/self/index.json")?;
+                    index.blobs.retain(|row| row.sid != sid.to_string());
+                    bundle.put_json("e/self/index.json", &index)?;
+                    bundle.log_delegated_mutation_with_key(
+                        chain,
+                        agent_sk,
+                        aithos_core::gamma::Kind::SectionDelete,
+                        &node,
+                        Some(&key),
+                        serde_json::json!({}),
+                        now,
+                        ent,
+                    )?;
+                } else {
+                    let resolved = bundle.resolved_clear_section(zone, target)?;
+                    let sid = Sid::parse(&resolved.row.sid)?;
+                    bundle.check_grantee_section(
+                        chain,
+                        agent_sk,
+                        Verb::Delete,
+                        zone,
+                        sid,
+                        &resolved.folders,
+                        &resolved.row.tags,
+                        now,
+                        true,
+                    )?;
+                    let node = NodePath::section(zone, resolved.folders, sid);
+                    let key = if zone == Zone::Circle {
+                        let leaf = chain.last().expect("current chain checked");
+                        let kex = grantee_kex_secret(agent_sk);
+                        Some(bundle.agent_node_key(&leaf.grantee.pubkey, &kex, &node)?)
+                    } else {
+                        None
+                    };
+                    let index_path = format!("e/{}/index.json", zone.as_str());
+                    let mut index: ZoneIndex = bundle.get_json(&index_path)?;
+                    index.sections.retain(|row| row.sid != sid.to_string());
+                    bundle.put_json(&index_path, &index)?;
+                    if zone == Zone::Public {
+                        bundle.delete_object(&format!("e/public/{}.md", resolved.display_path))?;
+                    }
+                    bundle.log_delegated_mutation_with_key(
+                        chain,
+                        agent_sk,
+                        aithos_core::gamma::Kind::SectionDelete,
+                        &node,
+                        key.as_ref(),
+                        serde_json::json!({
+                            "name": resolved.row.name,
+                            "tags": resolved.row.tags,
+                        }),
+                        now,
+                        ent,
+                    )?;
+                }
+                Ok(GranteeContentOutcome::Mutated)
+            }
+        })
     }
 }
