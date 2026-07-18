@@ -293,6 +293,13 @@ new public sidecar. The later family-specific proof table MUST bind the opaque
 target to exactly that committed object set before any operation commitment can be
 produced.
 
+K1.2-M-B commits a `self` mutation's target SID and applicable parent SID arrays
+inside its protected operation-facts document, while the public projection carries
+only `facts_ref`. Those arrays remain factual private coordinates: they never make
+`dir=` or `tag=` verifier-checkable write authority in `self`. Keyless public
+verification receives only the exact opaque target/commitment proof required by
+the operation and reveals no parent relationship or display metadata.
+
 For a `self` folder delete or move, that opaque proof covers the exact set of
 affected commitments and the authority for each of them. Delete proves coverage and
 removal of every descendant commitment; move proves source edit authority,

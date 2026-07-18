@@ -545,16 +545,198 @@ public carrier are public. The selected K1.2 family binds the operation target t
 the exact expected store keys; opaque `self` and vault evidence proves their
 correspondence without disclosing those keys.
 
+> **K1.2-M-B closed mutation facts — human-validated on 2026-07-18.**
+
+When `operation.kind` is `mutation`, the selected `facts` object is exactly one of
+the following five closed variants. An Ethos section mutation always has these
+seven members:
+
+```json
+{
+  "domain": "ethos",
+  "verb": "edit",
+  "zone": "circle",
+  "sid": "01J...",
+  "dir": ["01J...", "01J..."],
+  "before": {
+    "state": "present",
+    "state_ref": {
+      "aithos-state-fact-core": "1.0.0-draft.1",
+      "digest": "sha256:<64 lowercase hex>"
+    }
+  },
+  "after": {
+    "state": "present",
+    "state_ref": {
+      "aithos-state-fact-core": "1.0.0-draft.1",
+      "digest": "sha256:<64 lowercase hex>"
+    }
+  }
+}
+```
+
+`verb` is exactly `create`, `edit`, `delete`, or `redact`; `zone` is exactly
+`public`, `circle`, or `self`; `sid` is the target section's canonical SID. `dir`
+is the canonical root-to-leaf SID array of the target's parent folders: for
+`create`, the requested destination parent; for every other verb, the current
+resolved parent. The empty array means the zone root. Display names, titles, tags,
+and body facts are not duplicated here: the applicable present state commits their
+exact stored representation.
+
+A structural `create` has exactly these eight members:
+
+```json
+{
+  "domain": "structure",
+  "verb": "create",
+  "zone": "circle",
+  "node_kind": "folder",
+  "sid": "01J...",
+  "destination": ["01J..."],
+  "before": {"state":"absent"},
+  "after": {
+    "state": "present",
+    "state_ref": {
+      "aithos-state-fact-core": "1.0.0-draft.1",
+      "digest": "sha256:<64 lowercase hex>"
+    }
+  }
+}
+```
+
+A structural `rename` or `delete` has exactly these eight members:
+
+```json
+{
+  "domain": "structure",
+  "verb": "rename",
+  "zone": "circle",
+  "node_kind": "folder",
+  "sid": "01J...",
+  "source": ["01J..."],
+  "before": {
+    "state": "present",
+    "state_ref": {
+      "aithos-state-fact-core": "1.0.0-draft.1",
+      "digest": "sha256:<64 lowercase hex>"
+    }
+  },
+  "after": {
+    "state": "present",
+    "state_ref": {
+      "aithos-state-fact-core": "1.0.0-draft.1",
+      "digest": "sha256:<64 lowercase hex>"
+    }
+  }
+}
+```
+
+A structural `move` has exactly these nine members:
+
+```json
+{
+  "domain": "structure",
+  "verb": "move",
+  "zone": "circle",
+  "node_kind": "folder",
+  "sid": "01J...",
+  "source": ["01J..."],
+  "destination": ["01J..."],
+  "before": {
+    "state": "present",
+    "state_ref": {
+      "aithos-state-fact-core": "1.0.0-draft.1",
+      "digest": "sha256:<64 lowercase hex>"
+    }
+  },
+  "after": {
+    "state": "present",
+    "state_ref": {
+      "aithos-state-fact-core": "1.0.0-draft.1",
+      "digest": "sha256:<64 lowercase hex>"
+    }
+  }
+}
+```
+
+For the structural family, `verb` is exactly `create`, `rename`, `delete`, or
+`move`. `node_kind` uses the existing `folder` or `section` literals. `create` and
+`delete` admit `folder` only; section creation and deletion use the Ethos family.
+`rename` and `move` admit either literal. `source` is the current parent-folder SID
+array; `destination` is the requested destination parent-folder SID array. The
+stable target `sid` is not repeated inside either array. Core reconstructs a
+folder's resolved target chain as `parent-array + sid`; a section's `sid` remains
+its exact `id=` coordinate under the parent array.
+
+A vault-config mutation has exactly these six members:
+
+```json
+{
+  "domain": "vault-config",
+  "verb": "edit",
+  "connector": "mail",
+  "record_key": "sha256:<64 lowercase hex>",
+  "before": {
+    "state": "present",
+    "state_ref": {
+      "aithos-state-fact-core": "1.0.0-draft.1",
+      "digest": "sha256:<64 lowercase hex>"
+    }
+  },
+  "after": {
+    "state": "present",
+    "state_ref": {
+      "aithos-state-fact-core": "1.0.0-draft.1",
+      "digest": "sha256:<64 lowercase hex>"
+    }
+  }
+}
+```
+
+Its `verb` is exactly `create`, `edit`, or `delete`. `connector` is the exact
+canonical connector identifier covered by the reserved `.config` capability.
+`record_key` is exactly the K1.1-B `key_commitment` of the affected record's
+canonical store key; the clear vault record name is forbidden. The commitment MUST
+occur in every applicable present state's `objects` array and MUST equal the
+independently derived affected key for an absent side of a create or delete.
+
+The state transition matrix is closed:
+
+| Family verb | `before` | `after` |
+|---|---|---|
+| every `create` | `absent` | `present` |
+| every `delete` | `present` | `absent` |
+| Ethos `edit` / `redact` | `present` | `present` |
+| structure `rename` / `move` | `present` | `present` |
+| vault-config `edit` | `present` | `present` |
+
+Every `present` to `present` transition MUST have different `state_ref.digest`
+values; a no-op is not a mutation occurrence. Each SID array contains canonical SID
+strings in root-to-leaf order, contains no duplicate SID, and excludes the target
+`sid`. `source` and `destination` are forbidden outside their exact variants;
+`null`, an unknown domain, verb, zone or node kind, a missing or extra member, a
+cross-zone structural move, a destination inside the moved node, an invalid state
+transition, or a mismatched record-key commitment fails closed before an operation
+commitment is emitted.
+
+The operation-facts document is protected according to its operation context.
+Only `facts_ref` is required in the public W1 projection. In `self`, `dir`,
+`source`, and `destination` are committed private facts, never public proof
+coordinates and never write authority by themselves: write authorization remains
+exact `id=` or zone-wide, and the opaque state proof binds the claimed transition.
+
 A1 fixes the complete `authority` member set, absence rules, digest input, and
 reconstruction equalities above. K1-B fixes the complete `operation` and
 `facts_ref` member sets, the kind registry, and the family split above. K1.1-B fixes
 the operation-facts envelope and digest, both logical-state variants, the state-fact
 envelope and object-entry table, all four digest domains, and the state-object
-ordering and privacy rules. The selected-family `facts` member tables, exact
-target-to-store-key derivations, changeset, catalog, SC1, receipt, authorship,
-presentation, and carrier bytes remain reserved until their own independent tables
-are human-validated. No producer may invent those remaining bytes or emit a
-completed operation commitment before then.
+ordering and privacy rules. K1.2-M-B additionally fixes every mutation-family
+member set, its domain/verb/node registries, coordinate semantics, state-transition
+matrix, vault record-key binding, and failure rules. The other selected-family
+`facts` member tables, exact proof encodings and target-to-store-key derivations,
+changeset, catalog, SC1, receipt, authorship, presentation, and carrier bytes remain
+reserved until their own independent tables are human-validated. No producer may
+invent those remaining bytes or emit a completed operation commitment before then.
 
 The public reference has exactly this shape:
 

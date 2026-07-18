@@ -302,6 +302,76 @@ Feature: The gamma log
         | state digest mismatch                   |
 
     @wip
+    Scenario Outline: K1.2-M-B selects one exact closed mutation variant
+      Given a mutation facts object in domain "<domain>" with verb "<verb>"
+      When Core validates its selected member table
+      Then its exact members are "<members>"
+      And null, a missing member or an extra member is refused
+
+      Examples:
+        | domain       | verb          | members                                                                  |
+        | ethos        | any registered | domain,verb,zone,sid,dir,before,after                                    |
+        | structure    | create        | domain,verb,zone,node_kind,sid,destination,before,after                   |
+        | structure    | rename/delete | domain,verb,zone,node_kind,sid,source,before,after                        |
+        | structure    | move          | domain,verb,zone,node_kind,sid,source,destination,before,after            |
+        | vault-config | any registered | domain,verb,connector,record_key,before,after                             |
+
+    @wip
+    Scenario Outline: K1.2-M-B fixes every mutation state transition
+      Given a closed mutation facts object for "<family verb>"
+      When Core validates its before and after states
+      Then before is "<before>"
+      And after is "<after>"
+      And a present-to-present transition has different state reference digests
+
+      Examples:
+        | family verb                    | before  | after   |
+        | every create                   | absent  | present |
+        | every delete                   | present | absent  |
+        | ethos edit or redact           | present | present |
+        | structure rename or move       | present | present |
+        | vault-config edit              | present | present |
+
+    @wip
+    Scenario: K1.2-M-B structural coordinates are exact and non-null
+      Given a structural mutation with canonical target SID and parent SID arrays
+      When its source and destination applicability is checked
+      Then create carries destination only
+      And rename and delete carry source only
+      And move carries source and destination
+      And each array is root-to-leaf, duplicate-free and excludes the target SID
+      And cross-zone, descendant destination and unknown node-kind candidates are refused
+
+    @wip
+    Scenario: K1.2-M-B vault and self facts disclose no protected coordinate
+      Given one vault-config mutation and one self mutation
+      When their public W1 projections and protected facts are separated
+      Then the vault facts carry the exact state-key record commitment and no record name
+      And the self public projection carries only facts_ref
+      And self dir, source, destination and tag claims grant no write authority
+      And an opaque proof binds every claimed target and state transition
+
+    @wip
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+      Given a candidate mutation facts object with "<defect>"
+      When Core validates its closed family
+      Then the mutation facts are refused
+      And no operation commitment or operation_ref is emitted
+
+      Examples:
+        | defect                                      |
+        | unknown domain                              |
+        | unknown verb for the selected domain        |
+        | unknown zone or node kind                   |
+        | null source or destination                  |
+        | source or destination on the wrong variant  |
+        | duplicate or non-canonical SID coordinate   |
+        | invalid before and after transition         |
+        | equal state digests for a mutation          |
+        | mismatched vault record-key commitment      |
+        | clear display path or vault record name     |
+
+    @wip
     Scenario: Append-time and public evidence identify the same operation occurrence
       Given one fresh typed operation occurrence
       When its append-time, Gamma, authorship and edition views are projected
