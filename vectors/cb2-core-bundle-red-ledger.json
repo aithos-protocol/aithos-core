@@ -6,9 +6,9 @@
   "as_of": "2026-07-18",
   "baseline": {
     "git_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-    "observation_sha": "035fb95b27d30148503d5d7a39d6e0ac27bf826b",
+    "observation_sha": "9b30ab504bba3e56c7fc63f47a637a0b7c9ec668",
     "index_was_empty": true,
-    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection, SC1 session certificate/proof bytes, R2/U1 receipts and draft3 obligation matcher, signed CAT1 connector catalog and owner approval bytes, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
+    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection, signed Gamma v2 operation evidence and semantic replay matrix, SC1 session certificate/proof bytes, R2/U1 receipts and draft3 obligation matcher, signed CAT1 connector catalog and owner approval bytes, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
   },
   "command_context": {
     "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core/rust",
@@ -114,6 +114,14 @@
       "generator_sha256": "4bd896da63a10ced75b263feadb711a7895125de8dec65786b51a3de3bec3ab0",
       "consumer": "rust/crates/aithos-core/tests/cb2_connector_catalog.rs",
       "consumer_sha256": "56ec7a150fccf9da9bdcaf365b9ea9cc33c116908e64c592195da437bb6e4a22"
+    },
+    "CB2-GAMMA-V2-SEMANTIC-REPLAY-1": {
+      "file": "vectors/cb2-gamma-v2-replay.json",
+      "sha256": "a3cc536ea452940af061ce421c238e08f0894923562b8c8193dbb8d8b853cd06",
+      "generator": "vectors/gen-cb2-gamma-v2-replay.py",
+      "generator_sha256": "558fa9320caf570363365222457bdf1acd9b059a0719445ac4c899ebfcbd3207",
+      "consumer": "rust/crates/aithos-core/tests/cb2_gamma_v2_replay.rs",
+      "consumer_sha256": "fa2593db199d6cbb2c68bfecd170f95f06826c7bfadd9744ce9aa48de6434e15"
     }
   },
   "suite_observations": [
@@ -241,13 +249,24 @@
       "name": "CAT1 connector-catalog byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- --nocapture",
       "observed": "5 passed; vector/historical hashes, owner DID, exact signed catalog and approval tables, complete digests, pin inheritance, K1.2 reference binding and closed class matrix are GREEN. Typed catalog/approval, pin and class-enforcement APIs remain absent."
+    },
+    {
+      "name": "Gamma-v2 semantic-replay generator reproducibility",
+      "command": "UV_CACHE_DIR=/private/tmp/aithos-cb2-uv-cache python3 vectors/gen-cb2-gamma-v2-replay.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-gamma-v2-replay.json; the independent cryptography/blake3 oracle verifies 12 signed kind cases, 8 monotone edges, mixed-profile merge, 3 occurrence decisions, raw H2 accounting and 9 semantic replay positives while rejecting 35 entry, 2 correlation and 10 semantic defects."
+    },
+    {
+      "name": "Gamma-v2 semantic-replay byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_gamma_v2_replay -- --nocapture",
+      "observed": "5 passed; vector/historical hashes, exact signed Gamma-v2 bytes, W1 commitments, causal monotonicity, migration merge, occurrence admission and raw H2 root/counts are GREEN. Typed Gamma-v2 admission and the pure semantic replay front door remain absent."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 63,
-    "COMPILE-RED-PRELIMINAIRE": 20,
-    "total": 117
+    "PREEXISTING-GREEN": 67,
+    "COMPILE-RED-PRELIMINAIRE": 22,
+    "total": 123
   },
   "entries": [
     {
@@ -2166,6 +2185,112 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_connector_catalog -- cb2_cat1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB5",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB6-GAMMA-V2-VECTOR-HASH",
+      "test_id": "cb2_gamma_v2_vector_hash_is_stable_preexisting_green",
+      "decision": "W1.1 Gamma-v2 independent oracle integrity",
+      "scenario": "The complete signed Gamma-v2 and semantic-replay qualification vector remains frozen within the partial CB2 tranche.",
+      "vector_ref": "CB2-GAMMA-V2-SEMANTIC-REPLAY-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_gamma_v2_replay -- cb2_gamma_v2_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "91496328bf132e3a6a8bc33bb14fa48215ca4fd1",
+      "expected_reason": "The vector file SHA-256 is a3cc536ea452940af061ce421c238e08f0894923562b8c8193dbb8d8b853cd06.",
+      "observed_reason": "The exact bytes match the independent Python cryptography/blake3 oracle.",
+      "owner": "CB6",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB6-GAMMA-V2-HISTORICAL-HASHES",
+      "test_id": "cb2_gamma_v2_historical_hashes_preexisting_green",
+      "decision": "W1.1 additive Gamma/H2 historical non-regression",
+      "scenario": "Gamma v1, counting, liveness, H2 and W1 projection vectors remain byte-identical while Gamma v2 is added.",
+      "vector_ref": "CB2-GAMMA-V2-SEMANTIC-REPLAY-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_gamma_v2_replay -- cb2_gamma_v2_historical_hashes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "91496328bf132e3a6a8bc33bb14fa48215ca4fd1",
+      "expected_reason": "All five complete historical vector hashes remain exact.",
+      "observed_reason": "No Gamma v1 line, H2 root/count proof or historical W1 projection is rewritten, upgraded or assigned a synthetic occurrence.",
+      "owner": "CB6",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB6-GAMMA-V2-SIGNED-KIND-BYTES",
+      "test_id": "cb2_gamma_v2_signed_kind_and_reference_bytes_preexisting_green",
+      "decision": "W1.1 signed top-level operation reference and closed kind registry",
+      "scenario": "Generic Core primitives reproduce one signed Gamma-v2 entry for every registered kind and its exact W1 reference when required.",
+      "vector_ref": "CB2-GAMMA-V2-SEMANTIC-REPLAY-1",
+      "vector_slice": "kind_cases, negative_entry_cases and negative_correlation_cases",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_gamma_v2_replay -- cb2_gamma_v2_signed_kind_and_reference_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "91496328bf132e3a6a8bc33bb14fa48215ca4fd1",
+      "expected_reason": "Eleven operation-bearing kinds require the exact signed top-level W1 reference; heartbeat forbids it; all entry JCS, hashes and Ed25519 signatures reproduce independently.",
+      "observed_reason": "Existing JCS, SHA-256, multibase and Ed25519 primitives reproduce all 12 positive entry bytes and exact operation commitments.",
+      "owner": "CB6",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB6-GAMMA-V2-MONOTONE-H2-BYTES",
+      "test_id": "cb2_gamma_v2_monotonicity_occurrence_and_raw_h2_preexisting_green",
+      "decision": "W1.1 monotone causal migration, occurrence admission and unchanged raw H2 semantics",
+      "scenario": "Causal edges upgrade at most once, mixed forks merge under draft2, replay/equivocation die before tally and H2 still counts exact Gamma lines only.",
+      "vector_ref": "CB2-GAMMA-V2-SEMANTIC-REPLAY-1",
+      "vector_slice": "monotonicity_cases, migration_merge, occurrence_cases and raw_h2_fixture",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_gamma_v2_replay -- cb2_gamma_v2_monotonicity_occurrence_and_raw_h2_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "91496328bf132e3a6a8bc33bb14fa48215ca4fd1",
+      "expected_reason": "All 8 causal-edge decisions, the two-parent migration merge, 3 occurrence decisions and the four-line BLAKE3 H2 segment root/counts reproduce exactly without mutation or total-consumption fields.",
+      "observed_reason": "Generic comparisons and the existing H2 Merkle primitive reproduce the independent oracle; physical segment order never becomes a causal downgrade.",
+      "owner": "CB6",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB6-GAMMA-V2-TYPED-ADMISSION-GATE",
+      "test_id": null,
+      "decision": "Typed Gamma-v2 form, signature, W1 correlation, profile monotonicity and occurrence admission",
+      "scenario": "Core admits each v2 candidate against every causal predecessor only after its exact top-level reference, signature, projection and occurrence identity validate.",
+      "vector_ref": "CB2-GAMMA-V2-SEMANTIC-REPLAY-1",
+      "vector_slice": "kind_cases, negative_entry_cases, negative_correlation_cases, monotonicity_cases, migration_merge and occurrence_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "All 12 kind cases, 8 transitions and 3 occurrence decisions hold; 35 form defects return Error::InvalidGammaEntry(String) and 2 projection defects plus replay/equivocation return Error::InvalidOperation(String).",
+      "observed_reason": "At observation SHA 9b30ab5, Core fixes GAMMA_ENTRY_VERSION to 1, Entry has no operation_ref member, and Error has no InvalidOperation variant or profile-aware occurrence admission API.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "9b30ab504bba3e56c7fc63f47a637a0b7c9ec668",
+        "source_command": "rg -n 'OperationRef|InvalidOperation|operation_ref|GAMMA_ENTRY_VERSION' rust/crates/aithos-core/src",
+        "source_observed": "Only GAMMA_ENTRY_VERSION = 1 exists; no Gamma-v2 operation reference, profile transition, occurrence map or approved InvalidOperation variant exists.",
+        "inventory_test_id": "cb2_gamma_v2_closed_negative_and_semantic_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_gamma_v2_replay -- cb2_gamma_v2_closed_negative_and_semantic_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB6",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB6-GAMMA-SEMANTIC-REPLAY-GATE",
+      "test_id": null,
+      "decision": "One pure prefix-sensitive semantic replay front door",
+      "scenario": "Core checks form, W1, time, signer, possession, chain, perimeter, revocation, heartbeat, logged grant, receipts and counters against only the exact accepted prefix before admission.",
+      "vector_ref": "CB2-GAMMA-V2-SEMANTIC-REPLAY-1",
+      "vector_slice": "semantic_replay_positive_cases and semantic_replay_negative_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "All 9 canonical operation classes are accepted; each of the 10 mono-defect histories returns its exact established error without advancing accepted prefix or counters.",
+      "observed_reason": "At observation SHA 9b30ab5, Core exposes separate historical Gamma helpers but no single typed prefix-sensitive semantic replay state or pure append/cold verdict API.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "9b30ab504bba3e56c7fc63f47a637a0b7c9ec668",
+        "source_command": "rg -n 'GammaReplay|SemanticReplay|ReplayState|replay_candidate|authorize_operation' rust/crates/aithos-core/src",
+        "source_observed": "No matching semantic replay state/front door exists; historical form, link, budget, heartbeat and revocation helpers are not one complete verdict.",
+        "inventory_test_id": "cb2_gamma_v2_closed_negative_and_semantic_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_gamma_v2_replay -- cb2_gamma_v2_closed_negative_and_semantic_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB6",
       "status": "COMPILE-RED-PRELIMINAIRE"
     }
   ]

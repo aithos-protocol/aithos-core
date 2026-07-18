@@ -1,0 +1,2827 @@
+{
+  "description": "Independent Python cryptography/blake3 oracle for signed Gamma v2 operation evidence, monotone migration, occurrence admission, raw H2 accounting and semantic replay against an exact prefix.",
+  "deterministic_signing_seed_hex": "9191919191919191919191919191919191919191919191919191919191919191",
+  "historical_vector_sha256": {
+    "cb2-operation-projection.json": "99bc175e0b4f07dece0afa828fff22be9be75d4b66f8b00fee3e7d427021e14c",
+    "f1-gamma-chain.json": "38d466f934f17e99acbbdb76fb236efafb36f7b1c4070e9729d6edca17768ca3",
+    "f2-gamma-counting.json": "d593d204144ffa81c2ba51393d8190081d80f29246f41fdfa3fed96db77d230f",
+    "f3-gamma-liveness.json": "20d06f2d8d59fa21c391be6f97c4141a53244def27d8a2dbc249e8364c9cd30e",
+    "h2-gamma-roots.json": "c497b9b2bced8fbf449ab249ea193cda956d2438a003f7bd06f6173c3486ef50"
+  },
+  "inventory": {
+    "correlation_error_variant": "InvalidOperation",
+    "correlation_negative_ids": [
+      "different-occurrence",
+      "different-commitment"
+    ],
+    "entry_error_variant": "InvalidGammaEntry",
+    "entry_negative_ids": [
+      "unknown-version",
+      "invalid-id",
+      "invalid-at",
+      "invalid-prev",
+      "unknown-kind",
+      "resolution-kind",
+      "gamma-read-kind",
+      "missing-operation-ref",
+      "null-operation-ref",
+      "operation-ref-extra-member",
+      "operation-ref-missing-occurrence",
+      "operation-ref-unknown-profile",
+      "operation-ref-malformed-occurrence",
+      "operation-ref-malformed-digest",
+      "operation-ref-uppercase-digest",
+      "operation-ref-moved-to-payload",
+      "extra-top-level-member",
+      "signature-extra-member",
+      "signature-algorithm",
+      "signature-malformed-key",
+      "signature-malformed-value",
+      "tampered-after-sign",
+      "v1-operation-ref",
+      "v2-heartbeat-operation-ref",
+      "action-missing-operation-ref",
+      "ethos.read-missing-operation-ref",
+      "grant-missing-operation-ref",
+      "inference-missing-operation-ref",
+      "merge-missing-operation-ref",
+      "revoke-missing-operation-ref",
+      "rotate-missing-operation-ref",
+      "section.add-missing-operation-ref",
+      "section.delete-missing-operation-ref",
+      "section.modify-missing-operation-ref",
+      "section.redact-missing-operation-ref"
+    ],
+    "gamma_append_allocates_no_occurrence": true,
+    "h2_remains_raw_and_unchanged": true,
+    "heartbeat_has_no_operation_ref": true,
+    "historical_bytes_are_not_reinterpreted": true,
+    "local_read_gamma_persists_no_artifact": true,
+    "operation_bearing_kinds": [
+      "action",
+      "ethos.read",
+      "grant",
+      "inference",
+      "merge",
+      "revoke",
+      "rotate",
+      "section.add",
+      "section.delete",
+      "section.modify",
+      "section.redact"
+    ],
+    "registered_kinds": [
+      "section.add",
+      "section.modify",
+      "section.delete",
+      "section.redact",
+      "ethos.read",
+      "action",
+      "inference",
+      "grant",
+      "revoke",
+      "rotate",
+      "merge",
+      "heartbeat"
+    ],
+    "semantic_negative_ids": [
+      "action-limit-n-plus-one",
+      "receipt-replayed-under-another-consumption",
+      "stale-heartbeat",
+      "consumption-after-revocation",
+      "sub-grant-absent-from-gamma",
+      "direct-child-beyond-max-children",
+      "mutation-outside-opaque-sid",
+      "valid-signature-wrong-chain",
+      "owner-entry-wrong-owner-key",
+      "delegated-entry-without-leaf-possession"
+    ],
+    "semantic_replay_requires_one_pure_front_door": true,
+    "signed_presentation_uses_no_new_gamma_kind": true
+  },
+  "kind_cases": [
+    {
+      "entry": {
+        "at": "2026-07-18T12:01:00Z",
+        "id": "gamma_01K00000000000000000000001",
+        "kind": "section.add",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:6305ede3e0cd15347abfad7752bfe288e877e033d4b5ce9a765b7b521f7d747d",
+          "occurrence": "op_01K00000000000000000000001"
+        },
+        "payload": {
+          "body_hash": "sha256:2b8b974098fb880e2f5d1f99a3786739154dc4a5cb4e4c815f5c2fc3081f3ac7"
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "3a336363ad558c8de4cf82e86989fcd0d5734b5c5bd36ea8a6017753321c8e496b6db91e5724221324033278f06cd90145be90e83793a6e39db612f8a8b63e0a"
+        },
+        "target": "public/sid_00000000000000000000000001",
+        "v": 2
+      },
+      "entry_hash": "sha256:105f2a05298014fc0069ea325d051c7ba092e3209df16071801fa4d77a9d444f",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:01:00Z\",\"id\":\"gamma_01K00000000000000000000001\",\"kind\":\"section.add\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:6305ede3e0cd15347abfad7752bfe288e877e033d4b5ce9a765b7b521f7d747d\",\"occurrence\":\"op_01K00000000000000000000001\"},\"payload\":{\"body_hash\":\"sha256:2b8b974098fb880e2f5d1f99a3786739154dc4a5cb4e4c815f5c2fc3081f3ac7\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"3a336363ad558c8de4cf82e86989fcd0d5734b5c5bd36ea8a6017753321c8e496b6db91e5724221324033278f06cd90145be90e83793a6e39db612f8a8b63e0a\"},\"target\":\"public/sid_00000000000000000000000001\",\"v\":2}",
+      "kind": "section.add",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:01:00Z\",\"id\":\"gamma_01K00000000000000000000001\",\"kind\":\"section.add\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:6305ede3e0cd15347abfad7752bfe288e877e033d4b5ce9a765b7b521f7d747d\",\"occurrence\":\"op_01K00000000000000000000001\"},\"payload\":{\"body_hash\":\"sha256:2b8b974098fb880e2f5d1f99a3786739154dc4a5cb4e4c815f5c2fc3081f3ac7\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"target\":\"public/sid_00000000000000000000000001\",\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:01:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000001",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:234203633c482966acd4b8175bd9d5bc0fd201f4ac5f4416ee48f8ed0250611c"
+          },
+          "kind": "mutation"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:02:00Z",
+        "id": "gamma_01K00000000000000000000002",
+        "kind": "section.modify",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:81d8d8804db05e28f8ae00916316d44223f22569932b2e1d136459da15a67c50",
+          "occurrence": "op_01K00000000000000000000002"
+        },
+        "payload": {
+          "body_hash": "sha256:89fd6be86b191088d4c8293645ee52ce6d9b2a46557668c1abc922d45b505c25"
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "90c4bd2f32f8717a5ab8874335d6acd2904dd82abe4564be51bc66fe426e548f536019900846f42bfde3a5e3ed043347cabe7dbec484c82ff3dcb08e8bd0a302"
+        },
+        "target": "public/sid_00000000000000000000000001",
+        "v": 2
+      },
+      "entry_hash": "sha256:33201eba6ef402ffa094f093f615c8e9aeee7c4adf2ef03870388b811486c10e",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:02:00Z\",\"id\":\"gamma_01K00000000000000000000002\",\"kind\":\"section.modify\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:81d8d8804db05e28f8ae00916316d44223f22569932b2e1d136459da15a67c50\",\"occurrence\":\"op_01K00000000000000000000002\"},\"payload\":{\"body_hash\":\"sha256:89fd6be86b191088d4c8293645ee52ce6d9b2a46557668c1abc922d45b505c25\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"90c4bd2f32f8717a5ab8874335d6acd2904dd82abe4564be51bc66fe426e548f536019900846f42bfde3a5e3ed043347cabe7dbec484c82ff3dcb08e8bd0a302\"},\"target\":\"public/sid_00000000000000000000000001\",\"v\":2}",
+      "kind": "section.modify",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:02:00Z\",\"id\":\"gamma_01K00000000000000000000002\",\"kind\":\"section.modify\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:81d8d8804db05e28f8ae00916316d44223f22569932b2e1d136459da15a67c50\",\"occurrence\":\"op_01K00000000000000000000002\"},\"payload\":{\"body_hash\":\"sha256:89fd6be86b191088d4c8293645ee52ce6d9b2a46557668c1abc922d45b505c25\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"target\":\"public/sid_00000000000000000000000001\",\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:02:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000002",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:70b3642fe8cf42de53220837cb4d3553516c250775c8187744909f44fd0ac1bf"
+          },
+          "kind": "mutation"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:03:00Z",
+        "id": "gamma_01K00000000000000000000003",
+        "kind": "section.delete",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:636d2a3f128cf0a115ad61e16462bafc64c3303ce6cbe725c873b417ffad4901",
+          "occurrence": "op_01K00000000000000000000003"
+        },
+        "payload": {
+          "body_hash": "sha256:49fdac7dcb6cd2b32c6a962c000bc8aecf6904d2a960b652a001ecb7b1937031"
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "ac5c1d72fc91fd1ded990df7e158e26135b5863926e628ca139bf900ae7bc48125492212602d1ba85e3e6dbd847a83e60fc9f00ded0b95cc75f99459abce910b"
+        },
+        "target": "public/sid_00000000000000000000000001",
+        "v": 2
+      },
+      "entry_hash": "sha256:a9b18842fa550707fca037572d9dad6cec8bd3e9cd626d5d57adc52b9b0c0ab7",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:03:00Z\",\"id\":\"gamma_01K00000000000000000000003\",\"kind\":\"section.delete\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:636d2a3f128cf0a115ad61e16462bafc64c3303ce6cbe725c873b417ffad4901\",\"occurrence\":\"op_01K00000000000000000000003\"},\"payload\":{\"body_hash\":\"sha256:49fdac7dcb6cd2b32c6a962c000bc8aecf6904d2a960b652a001ecb7b1937031\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"ac5c1d72fc91fd1ded990df7e158e26135b5863926e628ca139bf900ae7bc48125492212602d1ba85e3e6dbd847a83e60fc9f00ded0b95cc75f99459abce910b\"},\"target\":\"public/sid_00000000000000000000000001\",\"v\":2}",
+      "kind": "section.delete",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:03:00Z\",\"id\":\"gamma_01K00000000000000000000003\",\"kind\":\"section.delete\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:636d2a3f128cf0a115ad61e16462bafc64c3303ce6cbe725c873b417ffad4901\",\"occurrence\":\"op_01K00000000000000000000003\"},\"payload\":{\"body_hash\":\"sha256:49fdac7dcb6cd2b32c6a962c000bc8aecf6904d2a960b652a001ecb7b1937031\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"target\":\"public/sid_00000000000000000000000001\",\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:03:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000003",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:4e332b3167999326209bab22b7eadc3e928c08576a8647ee0245900f79d7f965"
+          },
+          "kind": "mutation"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:04:00Z",
+        "id": "gamma_01K00000000000000000000004",
+        "kind": "section.redact",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:75a49a5c805255080310381b5c4a9f8d7bf4c37cfa06f54de38e6415e74436b7",
+          "occurrence": "op_01K00000000000000000000004"
+        },
+        "payload": {
+          "body_hash": "sha256:73a985018a40867fa5d31e9909fe911fd66027bbb6ba841f0e01c4b3d9958823"
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "34a3005ccf7fc0b9a7717dd8e848330cd88eed0d1ffad4e91d1722d0aaab8cab756fde369b47bc27733d729e7a4f1e962650f24c836aefb2300f45c93fa2a405"
+        },
+        "target": "public/sid_00000000000000000000000001",
+        "v": 2
+      },
+      "entry_hash": "sha256:d045aadbd467a8572cc6c63d514bcfc309048302d551778a446d14d9ba084a36",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:04:00Z\",\"id\":\"gamma_01K00000000000000000000004\",\"kind\":\"section.redact\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:75a49a5c805255080310381b5c4a9f8d7bf4c37cfa06f54de38e6415e74436b7\",\"occurrence\":\"op_01K00000000000000000000004\"},\"payload\":{\"body_hash\":\"sha256:73a985018a40867fa5d31e9909fe911fd66027bbb6ba841f0e01c4b3d9958823\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"34a3005ccf7fc0b9a7717dd8e848330cd88eed0d1ffad4e91d1722d0aaab8cab756fde369b47bc27733d729e7a4f1e962650f24c836aefb2300f45c93fa2a405\"},\"target\":\"public/sid_00000000000000000000000001\",\"v\":2}",
+      "kind": "section.redact",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:04:00Z\",\"id\":\"gamma_01K00000000000000000000004\",\"kind\":\"section.redact\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:75a49a5c805255080310381b5c4a9f8d7bf4c37cfa06f54de38e6415e74436b7\",\"occurrence\":\"op_01K00000000000000000000004\"},\"payload\":{\"body_hash\":\"sha256:73a985018a40867fa5d31e9909fe911fd66027bbb6ba841f0e01c4b3d9958823\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"target\":\"public/sid_00000000000000000000000001\",\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:04:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000004",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:0fc6a9c44465c596a9b5f0f0e806902e36610753587bb060b0268c2aac942e60"
+          },
+          "kind": "mutation"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:05:00Z",
+        "body_enc": {
+          "c": "555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555",
+          "hint": "3333333333333333333333333333333333333333333333333333333333333333",
+          "n": "444444444444444444444444444444444444444444444444"
+        },
+        "id": "gamma_01K00000000000000000000005",
+        "kind": "ethos.read",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:3c468e8fc0c721f0e9b1fd7736c1a556f41b9136dbf5a31a266e8bdfdbaeec37",
+          "occurrence": "op_01K00000000000000000000005"
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "a54f8b80697687d0915524f420b9ef0c83de8228744cc5123daebb88a0ed088f0eccb3f6cf16505dc605cb96a831c1a4c4380c904e0287f3cb9165e1057bef02"
+        },
+        "v": 2
+      },
+      "entry_hash": "sha256:4e627c881d0879f1f014e71968f394c9d0583217c001b1a5c767ec8f54b47bc5",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:05:00Z\",\"body_enc\":{\"c\":\"555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555\",\"hint\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"n\":\"444444444444444444444444444444444444444444444444\"},\"id\":\"gamma_01K00000000000000000000005\",\"kind\":\"ethos.read\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:3c468e8fc0c721f0e9b1fd7736c1a556f41b9136dbf5a31a266e8bdfdbaeec37\",\"occurrence\":\"op_01K00000000000000000000005\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"a54f8b80697687d0915524f420b9ef0c83de8228744cc5123daebb88a0ed088f0eccb3f6cf16505dc605cb96a831c1a4c4380c904e0287f3cb9165e1057bef02\"},\"v\":2}",
+      "kind": "ethos.read",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:05:00Z\",\"body_enc\":{\"c\":\"555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555\",\"hint\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"n\":\"444444444444444444444444444444444444444444444444\"},\"id\":\"gamma_01K00000000000000000000005\",\"kind\":\"ethos.read\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:3c468e8fc0c721f0e9b1fd7736c1a556f41b9136dbf5a31a266e8bdfdbaeec37\",\"occurrence\":\"op_01K00000000000000000000005\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:05:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000005",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:ecc0301502f50d9bf9dc1d88bad1787ffb39bdd8b32dfa6f1c08aca5a57d61e0"
+          },
+          "kind": "read"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:06:00Z",
+        "id": "gamma_01K00000000000000000000006",
+        "kind": "action",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+          "occurrence": "op_01K00000000000000000000006"
+        },
+        "payload": {
+          "action": "send",
+          "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+        },
+        "target": "x.mail",
+        "v": 2
+      },
+      "entry_hash": "sha256:2e7738b1fe4aacba5dfee81542105bd6eae15a4821958bf9effd16ff046099c7",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:06:00Z\",\"id\":\"gamma_01K00000000000000000000006\",\"kind\":\"action\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95\",\"occurrence\":\"op_01K00000000000000000000006\"},\"payload\":{\"action\":\"send\",\"args_hash\":\"sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e\"},\"target\":\"x.mail\",\"v\":2}",
+      "kind": "action",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:06:00Z\",\"id\":\"gamma_01K00000000000000000000006\",\"kind\":\"action\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95\",\"occurrence\":\"op_01K00000000000000000000006\"},\"payload\":{\"action\":\"send\",\"args_hash\":\"sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"target\":\"x.mail\",\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:06:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000006",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+          },
+          "kind": "action"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:07:00Z",
+        "id": "gamma_01K00000000000000000000007",
+        "kind": "inference",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:c9c318e810395e533af8e43cddee4069d9d2c50e468513962869980c182bd1f0",
+          "occurrence": "op_01K00000000000000000000007"
+        },
+        "payload": {
+          "model": "small",
+          "provider": "local",
+          "tokens_in": 10,
+          "tokens_out": 4
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "38ed1ecf032d80dfa107dd3e79ca72f429565b8f4c2eb2ee713a872661d48a238d5cb9a5550052808083ffd3e4d0e2962db9b1c0e08d26a79893dd63e11b670c"
+        },
+        "target": "x.mail",
+        "v": 2
+      },
+      "entry_hash": "sha256:b6bfbcf7c6ee7f24478f034d814fe52c6351a20df2d9a815e20befdc239212e9",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:07:00Z\",\"id\":\"gamma_01K00000000000000000000007\",\"kind\":\"inference\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:c9c318e810395e533af8e43cddee4069d9d2c50e468513962869980c182bd1f0\",\"occurrence\":\"op_01K00000000000000000000007\"},\"payload\":{\"model\":\"small\",\"provider\":\"local\",\"tokens_in\":10,\"tokens_out\":4},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"38ed1ecf032d80dfa107dd3e79ca72f429565b8f4c2eb2ee713a872661d48a238d5cb9a5550052808083ffd3e4d0e2962db9b1c0e08d26a79893dd63e11b670c\"},\"target\":\"x.mail\",\"v\":2}",
+      "kind": "inference",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:07:00Z\",\"id\":\"gamma_01K00000000000000000000007\",\"kind\":\"inference\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:c9c318e810395e533af8e43cddee4069d9d2c50e468513962869980c182bd1f0\",\"occurrence\":\"op_01K00000000000000000000007\"},\"payload\":{\"model\":\"small\",\"provider\":\"local\",\"tokens_in\":10,\"tokens_out\":4},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"target\":\"x.mail\",\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:07:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000007",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:e35a7e9cd7c1c179ca5e8df3f5f99de708164abd2d90c5be182eb6c500d19d1a"
+          },
+          "kind": "inference"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:08:00Z",
+        "id": "gamma_01K00000000000000000000008",
+        "kind": "grant",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:82213554233f481bd366e5526349e111fc523ad82f0e3b43e8bd9335a2e0e06c",
+          "occurrence": "op_01K00000000000000000000008"
+        },
+        "payload": {
+          "mandate": "mandate_01J00000000000000000000091"
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "0c5d8a61bfef530773c075a8bbf777298be17bd40f2535268d96f22bc9614be3f6b5d37b3d5f1eda1019b3d9b24d8d7a45064f40b1dde1504301626fa6be270d"
+        },
+        "target": "mandate_01J00000000000000000000091",
+        "v": 2
+      },
+      "entry_hash": "sha256:4af591ff53cbea09048f19b6e43fafcf528b4f6ae90e7c952c7638ce02227ef0",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:08:00Z\",\"id\":\"gamma_01K00000000000000000000008\",\"kind\":\"grant\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:82213554233f481bd366e5526349e111fc523ad82f0e3b43e8bd9335a2e0e06c\",\"occurrence\":\"op_01K00000000000000000000008\"},\"payload\":{\"mandate\":\"mandate_01J00000000000000000000091\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"0c5d8a61bfef530773c075a8bbf777298be17bd40f2535268d96f22bc9614be3f6b5d37b3d5f1eda1019b3d9b24d8d7a45064f40b1dde1504301626fa6be270d\"},\"target\":\"mandate_01J00000000000000000000091\",\"v\":2}",
+      "kind": "grant",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:08:00Z\",\"id\":\"gamma_01K00000000000000000000008\",\"kind\":\"grant\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:82213554233f481bd366e5526349e111fc523ad82f0e3b43e8bd9335a2e0e06c\",\"occurrence\":\"op_01K00000000000000000000008\"},\"payload\":{\"mandate\":\"mandate_01J00000000000000000000091\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"target\":\"mandate_01J00000000000000000000091\",\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:08:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000008",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:488aa69c30cbc0641024da48d48860dd72ead652302d73898cf6aa70b79f7cc7"
+          },
+          "kind": "grant"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:09:00Z",
+        "id": "gamma_01K00000000000000000000009",
+        "kind": "revoke",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:5f7a400fe557c8f9053fb28f6ba8a7dbb89a4de432272ac5a5432221db3a5780",
+          "occurrence": "op_01K00000000000000000000009"
+        },
+        "payload": {
+          "mandate": "mandate_01J00000000000000000000091"
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "700125a672a7b3ce036c9c94b29a08384ffb165aefb8e6edbb0365b22e2a549c5cad321f9b299ceb8fdf6a015657159838ea7fdf502139da8d492150b260ed07"
+        },
+        "target": "mandate_01J00000000000000000000091",
+        "v": 2
+      },
+      "entry_hash": "sha256:4e4eb75135167adfa0e0d3e9f5b2889ed8a8bd0331bf05851b5c235bc3b9ecb4",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:09:00Z\",\"id\":\"gamma_01K00000000000000000000009\",\"kind\":\"revoke\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:5f7a400fe557c8f9053fb28f6ba8a7dbb89a4de432272ac5a5432221db3a5780\",\"occurrence\":\"op_01K00000000000000000000009\"},\"payload\":{\"mandate\":\"mandate_01J00000000000000000000091\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"700125a672a7b3ce036c9c94b29a08384ffb165aefb8e6edbb0365b22e2a549c5cad321f9b299ceb8fdf6a015657159838ea7fdf502139da8d492150b260ed07\"},\"target\":\"mandate_01J00000000000000000000091\",\"v\":2}",
+      "kind": "revoke",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:09:00Z\",\"id\":\"gamma_01K00000000000000000000009\",\"kind\":\"revoke\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:5f7a400fe557c8f9053fb28f6ba8a7dbb89a4de432272ac5a5432221db3a5780\",\"occurrence\":\"op_01K00000000000000000000009\"},\"payload\":{\"mandate\":\"mandate_01J00000000000000000000091\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"target\":\"mandate_01J00000000000000000000091\",\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:09:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000009",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:035c7d204fcc7508855985ab077d8e288c3354db463492f933c457f7b938909c"
+          },
+          "kind": "revoke"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:10:00Z",
+        "id": "gamma_01K00000000000000000000010",
+        "kind": "rotate",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:2fd971f42f164899526cc625a5b40172f055502a8327a005a34fef4c5b4a061b",
+          "occurrence": "op_01K00000000000000000000010"
+        },
+        "payload": {
+          "domain": "ethos-zone",
+          "zone": "circle"
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "f24a60ecf550415603c7f73ab338900480759165e540d5a4530a7283776ae2b813ab54256a3cabe55378c6eb6fe878bcb63872729e19ee7088b497afc6886d0b"
+        },
+        "v": 2
+      },
+      "entry_hash": "sha256:3cb863241a3e00ba1ecabd62d1708f4415bd0df5c0dd11dd28b68db3018ee400",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:10:00Z\",\"id\":\"gamma_01K00000000000000000000010\",\"kind\":\"rotate\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:2fd971f42f164899526cc625a5b40172f055502a8327a005a34fef4c5b4a061b\",\"occurrence\":\"op_01K00000000000000000000010\"},\"payload\":{\"domain\":\"ethos-zone\",\"zone\":\"circle\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"f24a60ecf550415603c7f73ab338900480759165e540d5a4530a7283776ae2b813ab54256a3cabe55378c6eb6fe878bcb63872729e19ee7088b497afc6886d0b\"},\"v\":2}",
+      "kind": "rotate",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:10:00Z\",\"id\":\"gamma_01K00000000000000000000010\",\"kind\":\"rotate\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:2fd971f42f164899526cc625a5b40172f055502a8327a005a34fef4c5b4a061b\",\"occurrence\":\"op_01K00000000000000000000010\"},\"payload\":{\"domain\":\"ethos-zone\",\"zone\":\"circle\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:10:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000010",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:7a4d80e588202ae69b2e99d85c02db6d82ee640b8f5f60cba34fd3c6aaa57b84"
+          },
+          "kind": "rotate"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:11:00Z",
+        "id": "gamma_01K00000000000000000000011",
+        "kind": "merge",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:daaefd7ea68d79612a799526bf62e73274405008bf667fa1f4469b47e3453935",
+          "occurrence": "op_01K00000000000000000000011"
+        },
+        "payload": {
+          "merges": [
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          ]
+        },
+        "prev": "sha256:3131313131313131313131313131313131313131313131313131313131313131",
+        "prevs": [
+          "sha256:3131313131313131313131313131313131313131313131313131313131313131",
+          "sha256:3232323232323232323232323232323232323232323232323232323232323232"
+        ],
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "dcedc224314563d2da9e802c94b352bf261784a440b3bb9770ae817a87718295521c85faf48c7fa9da8d4fcd64266e3b880eb667c47578f75540e714d69b810c"
+        },
+        "v": 2
+      },
+      "entry_hash": "sha256:28c2a970e3acc39392688bc492adf671d8ce7ba66877559d0a5efca4e6397fb2",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:11:00Z\",\"id\":\"gamma_01K00000000000000000000011\",\"kind\":\"merge\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:daaefd7ea68d79612a799526bf62e73274405008bf667fa1f4469b47e3453935\",\"occurrence\":\"op_01K00000000000000000000011\"},\"payload\":{\"merges\":[\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"sha256:2222222222222222222222222222222222222222222222222222222222222222\"]},\"prev\":\"sha256:3131313131313131313131313131313131313131313131313131313131313131\",\"prevs\":[\"sha256:3131313131313131313131313131313131313131313131313131313131313131\",\"sha256:3232323232323232323232323232323232323232323232323232323232323232\"],\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"dcedc224314563d2da9e802c94b352bf261784a440b3bb9770ae817a87718295521c85faf48c7fa9da8d4fcd64266e3b880eb667c47578f75540e714d69b810c\"},\"v\":2}",
+      "kind": "merge",
+      "operation_ref_presence": "required",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:11:00Z\",\"id\":\"gamma_01K00000000000000000000011\",\"kind\":\"merge\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:daaefd7ea68d79612a799526bf62e73274405008bf667fa1f4469b47e3453935\",\"occurrence\":\"op_01K00000000000000000000011\"},\"payload\":{\"merges\":[\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"sha256:2222222222222222222222222222222222222222222222222222222222222222\"]},\"prev\":\"sha256:3131313131313131313131313131313131313131313131313131313131313131\",\"prevs\":[\"sha256:3131313131313131313131313131313131313131313131313131313131313131\",\"sha256:3232323232323232323232323232323232323232323232323232323232323232\"],\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"v\":2}",
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:11:00Z",
+        "authority": {
+          "actor": "owner"
+        },
+        "history_heads": [],
+        "occurrence": "op_01K00000000000000000000011",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:617e3159c051853ee2114527f734fb609a5a63851cea3a99c112d1c471f764c3"
+          },
+          "kind": "publication"
+        },
+        "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+      }
+    },
+    {
+      "entry": {
+        "at": "2026-07-18T12:12:00Z",
+        "id": "gamma_01K00000000000000000000012",
+        "kind": "heartbeat",
+        "payload": {
+          "seq": 7
+        },
+        "prev": "",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "value": "000b7555d3ae3628dfaba5a867d09290c689e19f15d2d10df1a6a96ee1a89bb13a0570b7d162672af18957dec80d9d0c6d19e17632645a1892634b8d97cfc30e"
+        },
+        "v": 2
+      },
+      "entry_hash": "sha256:eb75ea11c6f71432826a74b132c623ea69c27406f723f86e2c69e2ca3be82633",
+      "entry_jcs": "{\"at\":\"2026-07-18T12:12:00Z\",\"id\":\"gamma_01K00000000000000000000012\",\"kind\":\"heartbeat\",\"payload\":{\"seq\":7},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"000b7555d3ae3628dfaba5a867d09290c689e19f15d2d10df1a6a96ee1a89bb13a0570b7d162672af18957dec80d9d0c6d19e17632645a1892634b8d97cfc30e\"},\"v\":2}",
+      "kind": "heartbeat",
+      "operation_ref_presence": "forbidden",
+      "preimage_jcs": "{\"at\":\"2026-07-18T12:12:00Z\",\"id\":\"gamma_01K00000000000000000000012\",\"kind\":\"heartbeat\",\"payload\":{\"seq\":7},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"\"},\"v\":2}",
+      "projection": null
+    }
+  ],
+  "migration_merge": {
+    "causal_edges": [
+      {
+        "child_gamma": "v2",
+        "child_manifest": "1.0.0-draft.2",
+        "parent_gamma": "v1",
+        "parent_manifest": "1.0.0-draft.1"
+      },
+      {
+        "child_gamma": "v2",
+        "child_manifest": "1.0.0-draft.2",
+        "parent_gamma": "v2",
+        "parent_manifest": "1.0.0-draft.2"
+      }
+    ],
+    "gamma_kind": "merge",
+    "manifest_profile": "1.0.0-draft.2",
+    "merge_entry": {
+      "at": "2026-07-18T12:11:00Z",
+      "id": "gamma_01K00000000000000000000011",
+      "kind": "merge",
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:daaefd7ea68d79612a799526bf62e73274405008bf667fa1f4469b47e3453935",
+        "occurrence": "op_01K00000000000000000000011"
+      },
+      "payload": {
+        "merges": [
+          "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        ]
+      },
+      "prev": "sha256:3131313131313131313131313131313131313131313131313131313131313131",
+      "prevs": [
+        "sha256:3131313131313131313131313131313131313131313131313131313131313131",
+        "sha256:3232323232323232323232323232323232323232323232323232323232323232"
+      ],
+      "signature": {
+        "alg": "ed25519",
+        "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+        "value": "dcedc224314563d2da9e802c94b352bf261784a440b3bb9770ae817a87718295521c85faf48c7fa9da8d4fcd64266e3b880eb667c47578f75540e714d69b810c"
+      },
+      "v": 2
+    },
+    "physical_order_is_not_a_causal_edge": true,
+    "physical_segment_order": [
+      "v2-parent",
+      "v1-parent",
+      "v2-merge"
+    ],
+    "publication_or_resolution_kind_added": false,
+    "retained_parent_bytes": {
+      "v1_entry_jcs": "{\"at\":\"2026-07-02T00:00:00Z\",\"authorized_by\":\"mandate_00000000000000000000000020\",\"authorized_via\":[\"mandate_00000000000000000000000020\"],\"id\":\"gamma_00000000000000000000000003\",\"kind\":\"action\",\"payload\":{\"action\":\"reply\",\"args_hash\":\"sha256:090772cf4068973daad3f715eb788d39fe2c02be42efd86de81f0e59198d6237\"},\"prev\":\"sha256:fdb2c1535e1b5aaea0af7576622a503c59df9871a59debdcaabeb9b2f627137b\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6Mks931aemXLmTDGrasbApX8araucPWxRhzP8iqL7XHhXeC\",\"value\":\"f26dffdb40447d27cbf1ded33dbb1db7faa6b4ce31b2dd11d8f04088843916d4b86a5159abcb3c99f4470a0023190861c0b074c5795f9f090cbe1a0f3185f20d\"},\"target\":\"x.gmail\",\"v\":1}",
+      "v1_entry_sha256": "d549a2f3326de49d28905ac4f25b06feb3c4a8453389c9169d380b803ce71972",
+      "v2_entry_jcs": "{\"at\":\"2026-07-18T12:06:00Z\",\"id\":\"gamma_01K00000000000000000000006\",\"kind\":\"action\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95\",\"occurrence\":\"op_01K00000000000000000000006\"},\"payload\":{\"action\":\"send\",\"args_hash\":\"sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05\"},\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e\"},\"target\":\"x.mail\",\"v\":2}",
+      "v2_entry_sha256": "2e7738b1fe4aacba5dfee81542105bd6eae15a4821958bf9effd16ff046099c7"
+    }
+  },
+  "monotonicity_cases": [
+    {
+      "child_gamma": "v1",
+      "child_manifest": "1.0.0-draft.1",
+      "expected_accepted": true,
+      "parent_gamma": "v1",
+      "parent_manifest": "1.0.0-draft.1"
+    },
+    {
+      "child_gamma": "v2",
+      "child_manifest": "1.0.0-draft.2",
+      "expected_accepted": true,
+      "parent_gamma": "v1",
+      "parent_manifest": "1.0.0-draft.1"
+    },
+    {
+      "child_gamma": "v2",
+      "child_manifest": "1.0.0-draft.2",
+      "expected_accepted": true,
+      "parent_gamma": "v2",
+      "parent_manifest": "1.0.0-draft.2"
+    },
+    {
+      "child_gamma": "v1",
+      "child_manifest": "1.0.0-draft.1",
+      "expected_accepted": false,
+      "parent_gamma": "v2",
+      "parent_manifest": "1.0.0-draft.2"
+    },
+    {
+      "child_gamma": "v2",
+      "child_manifest": "1.0.0-draft.1",
+      "expected_accepted": false,
+      "parent_gamma": "v1",
+      "parent_manifest": "1.0.0-draft.1"
+    },
+    {
+      "child_gamma": "v1",
+      "child_manifest": "1.0.0-draft.2",
+      "expected_accepted": false,
+      "parent_gamma": "v2",
+      "parent_manifest": "1.0.0-draft.2"
+    },
+    {
+      "child_gamma": "v2",
+      "child_manifest": "1.0.0-draft.2",
+      "expected_accepted": false,
+      "parent_gamma": "v1",
+      "parent_manifest": "unknown"
+    },
+    {
+      "child_gamma": "v2",
+      "child_manifest": "1.0.0-draft.2",
+      "expected_accepted": false,
+      "parent_gamma": "unknown",
+      "parent_manifest": "1.0.0-draft.1"
+    }
+  ],
+  "negative_correlation_cases": [
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000099"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "6f721cc17c6435009564fee1316f79b50167fe818ef646842cf64e80fd0a029f24060fcbdef59b902f3fcbcea56a10be88e5b6da2c7a4c510036c504e665f90a"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "different-occurrence",
+      "must_fail": "InvalidOperation"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "5b2ba9b398cac83f5fecfa2c8fb0e93b5d539e5de654ba81c601f5361b2b7be3066ad354141f81770861ef9cadb8fadce7149bc316b62d1bcccb1957eb27ac00"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "different-commitment",
+      "must_fail": "InvalidOperation"
+    }
+  ],
+  "negative_entry_cases": [
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 3
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "unknown-version",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_bad",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "invalid-id",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18 12:00:00",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "invalid-at",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "sha256:00",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "invalid-prev",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "publication",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "unknown-kind",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "resolution",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "resolution-kind",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "gamma.read",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "gamma-read-kind",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": null,
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "null-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "extra": true,
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "operation-ref-extra-member",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "operation-ref-missing-occurrence",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.2",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "operation-ref-unknown-profile",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_bad"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "operation-ref-malformed-occurrence",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:00",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "operation-ref-malformed-digest",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "operation-ref-uppercase-digest",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05",
+            "operation_ref": {
+              "aithos-operation-core": "1.0.0-draft.1",
+              "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+              "occurrence": "op_01K00000000000000000000006"
+            }
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "operation-ref-moved-to-payload",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "extra": true,
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "extra-top-level-member",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "extra": true,
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "signature-extra-member",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ecdsa",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "signature-algorithm",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "zBad",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "signature-malformed-key",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "00"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "signature-malformed-value",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "purchase",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "tampered-after-sign",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 1
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "v1-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:12:00Z",
+          "id": "gamma_01K00000000000000000000012",
+          "kind": "heartbeat",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+            "occurrence": "op_01K00000000000000000000006"
+          },
+          "payload": {
+            "seq": 7
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "000b7555d3ae3628dfaba5a867d09290c689e19f15d2d10df1a6a96ee1a89bb13a0570b7d162672af18957dec80d9d0c6d19e17632645a1892634b8d97cfc30e"
+          },
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "v2-heartbeat-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:06:00Z",
+          "id": "gamma_01K00000000000000000000006",
+          "kind": "action",
+          "payload": {
+            "action": "send",
+            "args_hash": "sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "c174223928319bff22984a38669bf0bfc6e214d90a47ebdb3978e42f3a4e77c6120b73f72ec929cbe1cbf7d5f5b661a917d2a48e7b2333783d0709d57706720e"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:06:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000006",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:13546e1f1c74d5b6c6ede69f12bb797f224e796059f2fff4059ac1457aaafc6a"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "action-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:05:00Z",
+          "body_enc": {
+            "c": "555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555",
+            "hint": "3333333333333333333333333333333333333333333333333333333333333333",
+            "n": "444444444444444444444444444444444444444444444444"
+          },
+          "id": "gamma_01K00000000000000000000005",
+          "kind": "ethos.read",
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "a54f8b80697687d0915524f420b9ef0c83de8228744cc5123daebb88a0ed088f0eccb3f6cf16505dc605cb96a831c1a4c4380c904e0287f3cb9165e1057bef02"
+          },
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:05:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000005",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:ecc0301502f50d9bf9dc1d88bad1787ffb39bdd8b32dfa6f1c08aca5a57d61e0"
+            },
+            "kind": "read"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "ethos.read-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:08:00Z",
+          "id": "gamma_01K00000000000000000000008",
+          "kind": "grant",
+          "payload": {
+            "mandate": "mandate_01J00000000000000000000091"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "0c5d8a61bfef530773c075a8bbf777298be17bd40f2535268d96f22bc9614be3f6b5d37b3d5f1eda1019b3d9b24d8d7a45064f40b1dde1504301626fa6be270d"
+          },
+          "target": "mandate_01J00000000000000000000091",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:08:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000008",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:488aa69c30cbc0641024da48d48860dd72ead652302d73898cf6aa70b79f7cc7"
+            },
+            "kind": "grant"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "grant-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:07:00Z",
+          "id": "gamma_01K00000000000000000000007",
+          "kind": "inference",
+          "payload": {
+            "model": "small",
+            "provider": "local",
+            "tokens_in": 10,
+            "tokens_out": 4
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "38ed1ecf032d80dfa107dd3e79ca72f429565b8f4c2eb2ee713a872661d48a238d5cb9a5550052808083ffd3e4d0e2962db9b1c0e08d26a79893dd63e11b670c"
+          },
+          "target": "x.mail",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:07:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000007",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:e35a7e9cd7c1c179ca5e8df3f5f99de708164abd2d90c5be182eb6c500d19d1a"
+            },
+            "kind": "inference"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "inference-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:11:00Z",
+          "id": "gamma_01K00000000000000000000011",
+          "kind": "merge",
+          "payload": {
+            "merges": [
+              "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            ]
+          },
+          "prev": "sha256:3131313131313131313131313131313131313131313131313131313131313131",
+          "prevs": [
+            "sha256:3131313131313131313131313131313131313131313131313131313131313131",
+            "sha256:3232323232323232323232323232323232323232323232323232323232323232"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "dcedc224314563d2da9e802c94b352bf261784a440b3bb9770ae817a87718295521c85faf48c7fa9da8d4fcd64266e3b880eb667c47578f75540e714d69b810c"
+          },
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:11:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000011",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:617e3159c051853ee2114527f734fb609a5a63851cea3a99c112d1c471f764c3"
+            },
+            "kind": "publication"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "merge-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:09:00Z",
+          "id": "gamma_01K00000000000000000000009",
+          "kind": "revoke",
+          "payload": {
+            "mandate": "mandate_01J00000000000000000000091"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "700125a672a7b3ce036c9c94b29a08384ffb165aefb8e6edbb0365b22e2a549c5cad321f9b299ceb8fdf6a015657159838ea7fdf502139da8d492150b260ed07"
+          },
+          "target": "mandate_01J00000000000000000000091",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:09:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000009",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:035c7d204fcc7508855985ab077d8e288c3354db463492f933c457f7b938909c"
+            },
+            "kind": "revoke"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "revoke-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:10:00Z",
+          "id": "gamma_01K00000000000000000000010",
+          "kind": "rotate",
+          "payload": {
+            "domain": "ethos-zone",
+            "zone": "circle"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "f24a60ecf550415603c7f73ab338900480759165e540d5a4530a7283776ae2b813ab54256a3cabe55378c6eb6fe878bcb63872729e19ee7088b497afc6886d0b"
+          },
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:10:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000010",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:7a4d80e588202ae69b2e99d85c02db6d82ee640b8f5f60cba34fd3c6aaa57b84"
+            },
+            "kind": "rotate"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "rotate-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:01:00Z",
+          "id": "gamma_01K00000000000000000000001",
+          "kind": "section.add",
+          "payload": {
+            "body_hash": "sha256:2b8b974098fb880e2f5d1f99a3786739154dc4a5cb4e4c815f5c2fc3081f3ac7"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "3a336363ad558c8de4cf82e86989fcd0d5734b5c5bd36ea8a6017753321c8e496b6db91e5724221324033278f06cd90145be90e83793a6e39db612f8a8b63e0a"
+          },
+          "target": "public/sid_00000000000000000000000001",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:01:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000001",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:234203633c482966acd4b8175bd9d5bc0fd201f4ac5f4416ee48f8ed0250611c"
+            },
+            "kind": "mutation"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "section.add-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:03:00Z",
+          "id": "gamma_01K00000000000000000000003",
+          "kind": "section.delete",
+          "payload": {
+            "body_hash": "sha256:49fdac7dcb6cd2b32c6a962c000bc8aecf6904d2a960b652a001ecb7b1937031"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "ac5c1d72fc91fd1ded990df7e158e26135b5863926e628ca139bf900ae7bc48125492212602d1ba85e3e6dbd847a83e60fc9f00ded0b95cc75f99459abce910b"
+          },
+          "target": "public/sid_00000000000000000000000001",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:03:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000003",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:4e332b3167999326209bab22b7eadc3e928c08576a8647ee0245900f79d7f965"
+            },
+            "kind": "mutation"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "section.delete-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:02:00Z",
+          "id": "gamma_01K00000000000000000000002",
+          "kind": "section.modify",
+          "payload": {
+            "body_hash": "sha256:89fd6be86b191088d4c8293645ee52ce6d9b2a46557668c1abc922d45b505c25"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "90c4bd2f32f8717a5ab8874335d6acd2904dd82abe4564be51bc66fe426e548f536019900846f42bfde3a5e3ed043347cabe7dbec484c82ff3dcb08e8bd0a302"
+          },
+          "target": "public/sid_00000000000000000000000001",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:02:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000002",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:70b3642fe8cf42de53220837cb4d3553516c250775c8187744909f44fd0ac1bf"
+            },
+            "kind": "mutation"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "section.modify-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": {
+        "entry": {
+          "at": "2026-07-18T12:04:00Z",
+          "id": "gamma_01K00000000000000000000004",
+          "kind": "section.redact",
+          "payload": {
+            "body_hash": "sha256:73a985018a40867fa5d31e9909fe911fd66027bbb6ba841f0e01c4b3d9958823"
+          },
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+            "value": "34a3005ccf7fc0b9a7717dd8e848330cd88eed0d1ffad4e91d1722d0aaab8cab756fde369b47bc27733d729e7a4f1e962650f24c836aefb2300f45c93fa2a405"
+          },
+          "target": "public/sid_00000000000000000000000001",
+          "v": 2
+        },
+        "projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-18T12:04:00Z",
+          "authority": {
+            "actor": "owner"
+          },
+          "history_heads": [],
+          "occurrence": "op_01K00000000000000000000004",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:0fc6a9c44465c596a9b5f0f0e806902e36610753587bb060b0268c2aac942e60"
+            },
+            "kind": "mutation"
+          },
+          "subject": "did:aithos:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz"
+        }
+      },
+      "id": "section.redact-missing-operation-ref",
+      "must_fail": "InvalidGammaEntry"
+    }
+  ],
+  "occurrence_cases": [
+    {
+      "effect": "same",
+      "expected": "refused-as-replay-before-tally",
+      "id": "same-occurrence-same-commitment",
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+        "occurrence": "op_01K00000000000000000000006"
+      }
+    },
+    {
+      "effect": "same",
+      "expected": "refused-as-equivocation-before-tally",
+      "id": "same-occurrence-different-commitment",
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "occurrence": "op_01K00000000000000000000006"
+      }
+    },
+    {
+      "effect": "same",
+      "expected": "accepted-as-distinct-occurrence",
+      "id": "different-occurrence-different-commitment-same-effect",
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "occurrence": "op_01K00000000000000000000098"
+      }
+    }
+  ],
+  "profiles": {
+    "gamma_v1": 1,
+    "gamma_v2": 2,
+    "manifest_v1": "1.0.0-draft.1",
+    "manifest_v2": "1.0.0-draft.2",
+    "operation": "1.0.0-draft.1"
+  },
+  "raw_h2_fixture": {
+    "existing_counter_tally": {
+      "mandate_01J00000000000000000000091": {
+        "actions": 2,
+        "entries": 2
+      }
+    },
+    "lines_jcs": [
+      "{\"at\":\"2026-07-01T00:00:00Z\",\"body_enc\":{\"c\":\"37c736e158dcd0c710cc031faa1ba0f1c183482b401772c8db12095f7e552a302e79031a9ad58db81fc0067b1577772f422dfdb8fa2a30d9e6ceb43b6638db08b4b0a21e9fb3998e37fc9d66d880b0ab07c3a9be038105367e80814eb10a60ff3fd0ffa3d8b0e79fce2ab2c883f1cef1e549da8636a750875a49df\",\"hint\":\"17a63d7a597fbc786298848f422dade44129671ea2421d5c29a1693fd0494c51\",\"n\":\"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\"},\"id\":\"gamma_00000000000000000000000001\",\"kind\":\"section.add\",\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#content\",\"value\":\"156fd56c8701b026df210269459e179dab8d5566b8ceae9d9eac52ac2b9a8ea948d0c3f90bc274aee177c86571e7bb53ce2127b4fda843d2111014cd5d69bc09\"},\"v\":1}",
+      "{\"at\":\"2026-07-18T12:06:00Z\",\"authorized_by\":\"mandate_01J00000000000000000000091\",\"authorized_via\":[\"mandate_01J00000000000000000000091\"],\"id\":\"gamma_01K00000000000000000000081\",\"kind\":\"action\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95\",\"occurrence\":\"op_01K00000000000000000000006\"},\"payload\":{\"action\":\"send\",\"args_hash\":\"sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05\"},\"prev\":\"sha256:3918e847f59c6c140cc40aa1c899fb124b1bac210cb1dd186ab51dd0ce176d42\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"2bcd98061de8209f57fab5166466e939ade309eec08d7b5ac2ed28d878a8f18eb8b632d938b2a6eba6c0329eab61d8dba46e04a6640725e9e6cce93beadb7b0e\"},\"target\":\"x.mail\",\"v\":2}",
+      "{\"at\":\"2026-07-18T13:02:00Z\",\"authorized_by\":\"mandate_01J00000000000000000000091\",\"authorized_via\":[\"mandate_01J00000000000000000000091\"],\"id\":\"gamma_01K00000000000000000000082\",\"kind\":\"action\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:4c3d1f70e69f0be97d78245ac6fe555f9ed7f59fded6d7ee25e6c28ed0b61d47\",\"occurrence\":\"op_01K00000000000000000000082\"},\"payload\":{\"action\":\"send\",\"args_hash\":\"sha256:746242b89adfe7eeb9ab890c7cf7944a765ca69ff8a06e00a6b1344d170c3f05\"},\"prev\":\"sha256:7ad4937c16386446630ed596f3240f548a0abe27165d0b3e3172ab3f331cd407\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"42ae410425ab0c882c9d219e2a5a25bc965d76ed50af541c4a6ea4506fa3934c505e4a770298c0e973f0601fb1e1a710dc18d16e506399fae659987b8d9e2a09\"},\"target\":\"x.mail\",\"v\":2}",
+      "{\"at\":\"2026-07-18T13:03:00Z\",\"id\":\"gamma_01K00000000000000000000083\",\"kind\":\"heartbeat\",\"payload\":{\"seq\":7},\"prev\":\"sha256:c740de4578f50345f5edfc820053bf7f71bdb86415a0f526eb9d03da077c62da\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"value\":\"4d8e42e1263705b69f5cef230f1595d910a6370914a238f7a4d36de53c3b98905a203766d16be91056a1d9a9db1bf86777baf4280d54b628489d4f80e3c4f403\"},\"v\":2}"
+    ],
+    "mutation_counter_present": false,
+    "n": 4,
+    "non_gamma_evidence": {
+      "contributes_count": false,
+      "contributes_line": false,
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:0970e24ad2f772c33a8897ea2307bbfb3495b3bef7ade1d2445bacc540fb3b95",
+        "occurrence": "op_01K00000000000000000000006"
+      }
+    },
+    "root": "46cd1090a9048ebb34ebcdecf3107e74aa90de197f41d09e729f65e33297c964",
+    "segment": "2026-07",
+    "total_consumption_counter_present": false
+  },
+  "semantic_replay_negative_cases": [
+    {
+      "accepted_prefix_and_counters_unchanged": true,
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "action",
+        "counters_valid": false,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "fixture",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "id": "action-limit-n-plus-one",
+      "must_fail": "GammaBudgetExhausted"
+    },
+    {
+      "accepted_prefix_and_counters_unchanged": true,
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "fixture",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": false,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "id": "receipt-replayed-under-another-consumption",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "accepted_prefix_and_counters_unchanged": true,
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": false,
+        "leaf_possession": true,
+        "operation_class": "fixture",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "id": "stale-heartbeat",
+      "must_fail": "GammaHeartbeatStale"
+    },
+    {
+      "accepted_prefix_and_counters_unchanged": true,
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "fixture",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": false,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "id": "consumption-after-revocation",
+      "must_fail": "MandateRevoked"
+    },
+    {
+      "accepted_prefix_and_counters_unchanged": true,
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": false,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "fixture",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "id": "sub-grant-absent-from-gamma",
+      "must_fail": "GammaGrantNotLogged"
+    },
+    {
+      "accepted_prefix_and_counters_unchanged": true,
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "max_children",
+        "counters_valid": false,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "fixture",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "id": "direct-child-beyond-max-children",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "accepted_prefix_and_counters_unchanged": true,
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "fixture",
+        "operation_valid": true,
+        "perimeter_valid": false,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "id": "mutation-outside-opaque-sid",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "accepted_prefix_and_counters_unchanged": true,
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": false,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "fixture",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "id": "valid-signature-wrong-chain",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "accepted_prefix_and_counters_unchanged": true,
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "fixture",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": false,
+        "time_valid": true
+      },
+      "id": "owner-entry-wrong-owner-key",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "accepted_prefix_and_counters_unchanged": true,
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": false,
+        "operation_class": "fixture",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "id": "delegated-entry-without-leaf-possession",
+      "must_fail": "InvalidOperation"
+    }
+  ],
+  "semantic_replay_positive_cases": [
+    {
+      "candidate": {
+        "actor": "owner",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "Ethos create",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "expected": "accepted"
+    },
+    {
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "Ethos edit",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "expected": "accepted"
+    },
+    {
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "Ethos delete",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "expected": "accepted"
+    },
+    {
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "connector action",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "expected": "accepted"
+    },
+    {
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "metered inference",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "expected": "accepted"
+    },
+    {
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "journalized read",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "expected": "accepted"
+    },
+    {
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "sub-grant",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "expected": "accepted"
+    },
+    {
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "scoped revocation",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "expected": "accepted"
+    },
+    {
+      "candidate": {
+        "actor": "grantee",
+        "chain_valid": true,
+        "counter_family": "none",
+        "counters_valid": true,
+        "entry_valid": true,
+        "grant_logged": true,
+        "heartbeat_valid": true,
+        "leaf_possession": true,
+        "operation_class": "disjoint merge kind:merge",
+        "operation_valid": true,
+        "perimeter_valid": true,
+        "receipts_valid": true,
+        "revocation_valid": true,
+        "signer_valid": true,
+        "time_valid": true
+      },
+      "expected": "accepted"
+    }
+  ],
+  "signing_public_key": "z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+  "vector": "CB2-GAMMA-V2-SEMANTIC-REPLAY-1"
+}

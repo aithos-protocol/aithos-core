@@ -176,3 +176,16 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`f73b35d29602217983c6401f06fbb49c73032a955d0ac14356d3a988181fe43c`);
   Rust consumer: `aithos-core/tests/cb2_connector_catalog.rs`
   (`56ec7a150fccf9da9bdcaf365b9ea9cc33c116908e64c592195da437bb6e4a22`).
+- `CB2-GAMMA-V2-SEMANTIC-REPLAY-1`: signed Gamma v2 top-level
+  `operation_ref` presence for the 12-kind closed registry, exact W1
+  correlation, monotone manifest/Gamma causal edges, mixed-profile merge,
+  replay/equivocation admission, unchanged raw H2 line accounting and the
+  semantic replay decision inventory. The independent cryptography/blake3
+  oracle preserves five historical vector hashes and rejects 35 entry plus 2
+  correlation defects with exact variants. Generator:
+  `gen-cb2-gamma-v2-replay.py`
+  (`558fa9320caf570363365222457bdf1acd9b059a0719445ac4c899ebfcbd3207`);
+  vector: `cb2-gamma-v2-replay.json`
+  (`a3cc536ea452940af061ce421c238e08f0894923562b8c8193dbb8d8b853cd06`);
+  Rust consumer: `aithos-core/tests/cb2_gamma_v2_replay.rs`
+  (`fa2593db199d6cbb2c68bfecd170f95f06826c7bfadd9744ce9aa48de6434e15`).
