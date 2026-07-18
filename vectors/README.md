@@ -115,3 +115,16 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`1be1d239055e5a66f0c64d3ca2c2b00cd102bac44a7cd8c2147d16dce8d275e3`);
   Rust consumer: `aithos-core/tests/cb2_operation_facts_structural.rs`
   (`c6ec4a78b33571f4b6ea58e73f0b1417f0dcf3fe9f674cfc1279148039077967`).
+- `CB2-D7-DELEGATED-COUNTS-1`: mandate draft3 `max_mutations` and
+  `max_consumptions`, canonical occurrence correlation and cross-view
+  deduplication, subtree accounting, closed non-zero leaves, the separate
+  `delegated_counts` BLAKE3/Merkle root and v1 proof, 36 fail-closed
+  `InvalidDelegatedCounts` candidates, and 13 draft3/attenuation
+  `InvalidMandate` candidates. The oracle reproduces the frozen H2
+  `gamma_counts_root` independently and never reinterprets it. Generator:
+  `gen-cb2-delegated-counts.py`
+  (`285606cc3aa299091f058957414ce148ae0cfcbc0af4844bfdeb74d300311997`);
+  vector: `cb2-delegated-counts.json`
+  (`c1edd459b00ff72f2693e54370a60d2c8b981c18ee10d213a4b26897ed2618f1`);
+  Rust consumer: `aithos-core/tests/cb2_delegated_counts.rs`
+  (`c16647a46331a303706c4a7bef731d71b2ffa74fb6717a08e405746d41b37f72`).

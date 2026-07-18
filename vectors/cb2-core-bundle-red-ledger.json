@@ -6,9 +6,9 @@
   "as_of": "2026-07-18",
   "baseline": {
     "git_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-    "observation_sha": "e6059359ff2eac8256ba0f9a2e5f3e58dc4f5b78",
+    "observation_sha": "3806c17f81783722ed0c31216536c508928f11d2",
     "index_was_empty": true,
-    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, and all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, plus their explicit API gates, are recorded. The list is not frozen."
+    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
   },
   "command_context": {
     "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core/rust",
@@ -74,6 +74,14 @@
       "generator_sha256": "244395a552b59116b77a75636ea20d0c2fc55847a97a7e9a735f157deb91f2f0",
       "consumer": "rust/crates/aithos-core/tests/cb2_operation_facts_structural.rs",
       "consumer_sha256": "c6ec4a78b33571f4b6ea58e73f0b1417f0dcf3fe9f674cfc1279148039077967"
+    },
+    "CB2-D7-DELEGATED-COUNTS-1": {
+      "file": "vectors/cb2-delegated-counts.json",
+      "sha256": "c1edd459b00ff72f2693e54370a60d2c8b981c18ee10d213a4b26897ed2618f1",
+      "generator": "vectors/gen-cb2-delegated-counts.py",
+      "generator_sha256": "285606cc3aa299091f058957414ce148ae0cfcbc0af4844bfdeb74d300311997",
+      "consumer": "rust/crates/aithos-core/tests/cb2_delegated_counts.rs",
+      "consumer_sha256": "c16647a46331a303706c4a7bef731d71b2ffa74fb6717a08e405746d41b37f72"
     }
   },
   "suite_observations": [
@@ -146,13 +154,24 @@
       "name": "K1 structural-facts byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_structural -- --nocapture",
       "observed": "5 passed; generic vector integrity, historical hashes, complete certificate, state, succession transition, changeset reference, JCS and operation-facts SHA-256 bytes are GREEN. The changeset document table and typed family validator remain explicitly non-GREEN."
+    },
+    {
+      "name": "D7 delegated-count generator reproducibility",
+      "command": "UV_CACHE_DIR=/private/tmp/aithos-cb2-uv-cache uv run --no-project --with blake3 python vectors/gen-cb2-delegated-counts.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-delegated-counts.json; 14 delegated occurrences across 23 evidence views produce root 76c994189820980e587d3a8944a877074e52f3e4bae9b29ecbe427034443b777, 36 counter negatives return InvalidDelegatedCounts, and 13 mandate negatives return InvalidMandate."
+    },
+    {
+      "name": "D7 delegated-count byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- --nocapture",
+      "observed": "5 passed; vector integrity, historical H2 hashes/root, generic JCS/Merkle leaves/root/proof, and closed case inventories are GREEN. The typed D7 verifier and public InvalidDelegatedCounts variant remain absent."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 44,
-    "COMPILE-RED-PRELIMINAIRE": 11,
-    "total": 89
+    "PREEXISTING-GREEN": 47,
+    "COMPILE-RED-PRELIMINAIRE": 13,
+    "total": 94
   },
   "entries": [
     {
@@ -1579,6 +1598,97 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_structural -- cb2_k1_structural_closed_family_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB4",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB5-D7-VECTOR-HASH",
+      "test_id": "cb2_d7_vector_hash_is_stable_preexisting_green",
+      "decision": "D7-CB2 independent oracle integrity",
+      "scenario": "The delegated-count vector bytes remain frozen within the partial CB2 tranche.",
+      "vector_ref": "CB2-D7-DELEGATED-COUNTS-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "3806c17f81783722ed0c31216536c508928f11d2",
+      "expected_reason": "The vector file SHA-256 is c1edd459b00ff72f2693e54370a60d2c8b981c18ee10d213a4b26897ed2618f1.",
+      "observed_reason": "The exact vector bytes match the independent Python/blake3 oracle.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-D7-HISTORICAL-H2",
+      "test_id": "cb2_d7_historical_h2_is_byte_identical_preexisting_green",
+      "decision": "D7 additive counter wire and H2 non-regression",
+      "scenario": "Historical gamma_counts_root bytes and their generator remain unchanged and are never reinterpreted.",
+      "vector_ref": "CB2-D7-DELEGATED-COUNTS-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_historical_h2_is_byte_identical_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "3806c17f81783722ed0c31216536c508928f11d2",
+      "expected_reason": "The frozen H2 vector/generator hashes and historical root remain exact.",
+      "observed_reason": "The historical files retain SHA-256 c497b9b2... and 09a6e7b8..., and gamma_counts_root remains 2f233fb3... without D7 fields.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-D7-MERKLE-BYTES",
+      "test_id": "cb2_d7_leaf_root_and_proof_bytes_preexisting_green",
+      "decision": "D7 delegated_counts leaf, root and proof wire",
+      "scenario": "Existing Core JCS/Merkle primitives reproduce the independent non-zero leaves, separate root and v1 proof.",
+      "vector_ref": "CB2-D7-DELEGATED-COUNTS-1",
+      "vector_slice": "positive.expected_counts, leaves, delegated_counts and proof_leaf_mandate",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_leaf_root_and_proof_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "3806c17f81783722ed0c31216536c508928f11d2",
+      "expected_reason": "Three sorted leaves yield delegated_counts root 76c994189820980e587d3a8944a877074e52f3e4bae9b29ecbe427034443b777 and its proof replays.",
+      "observed_reason": "Existing generic JCS, H_leaf, left-heavy mroot and v1 proof replay match every independent oracle byte.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-D7-COUNTER-API-GATE",
+      "test_id": null,
+      "decision": "D7 typed occurrence correlation, subtree tally and public counter error",
+      "scenario": "Core validates canonical occurrence evidence, deduplicates views and rebuilds max_mutations/max_consumptions identically at append time and cold replay.",
+      "vector_ref": "CB2-D7-DELEGATED-COUNTS-1",
+      "vector_slice": "positive.evidence_views and negative_counter_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "The positive history produces mutations=2/consumptions=14 for both ancestors and consumptions=1 for the child; all 36 malformed, mismatched or miscounted candidates return Error::InvalidDelegatedCounts(String).",
+      "observed_reason": "At observation SHA 3806c17, Core has no public delegated-count tally/verifier or Error::InvalidDelegatedCounts variant, so a semantic RED cannot compile without the CB5 skeleton.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "3806c17f81783722ed0c31216536c508928f11d2",
+        "source_command": "rg -n 'DelegatedCount|InvalidDelegatedCounts|max_mutations|max_consumptions' rust/crates/aithos-core/src",
+        "source_observed": "No matching public typed D7 symbol, constraint implementation or approved error variant.",
+        "inventory_test_id": "cb2_d7_occurrence_dedup_and_subtree_inventory_preexisting_green",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_occurrence_dedup_and_subtree_inventory_preexisting_green --exact --nocapture"
+      },
+      "owner": "CB5",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB5-D7-MANDATE-API-GATE",
+      "test_id": null,
+      "decision": "D7 draft3 constraint structure, homogeneous migration and attenuation",
+      "scenario": "Core accepts only unsigned, non-droppable and non-widening max_mutations/max_consumptions in a homogeneous draft3 chain.",
+      "vector_ref": "CB2-D7-DELEGATED-COUNTS-1",
+      "vector_slice": "positive.mandates and negative_mandate_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "The draft3 chain accepts zero and attenuation; all 13 old-profile, mixed, malformed, dropped, widened or wrongly linked candidates return Error::InvalidMandate(String).",
+      "observed_reason": "At observation SHA 3806c17, the Mandate constraint parser has no max_mutations/max_consumptions implementation and cannot distinguish the approved D7 table.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "3806c17f81783722ed0c31216536c508928f11d2",
+        "source_command": "rg -n 'max_mutations|max_consumptions|draft.3' rust/crates/aithos-core/src",
+        "source_observed": "No matching draft3 D7 constraint implementation.",
+        "inventory_test_id": "cb2_d7_closed_negative_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_delegated_counts -- cb2_d7_closed_negative_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB5",
       "status": "COMPILE-RED-PRELIMINAIRE"
     }
   ]
