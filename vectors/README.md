@@ -203,3 +203,16 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`2e75e9af30ba0207bd01a6f347cac1a263f816a7ae0fb3d583f75beabef2badc`);
   Rust consumer: `aithos-bundle/tests/cb2_draft2_carriers.rs`
   (`9c392d0acd16fcc4eb5699cb0677f88f36b48b98239f99327430e59ef8f1e3dd`).
+- `CB2-BUNDLE-BOUNDARIES-1`: pure-data G-B/G-C/G-D oracle covering twelve
+  MemStore/FsStore failure boundaries, four deterministic recovery states, one
+  logical linearization point, five accepted and fifteen refused confined
+  paths, six purpose/context-bound opaque capability classes with eighteen
+  substitution negatives, and eight fresh keyless cold-load decisions. It
+  preserves seven historical vector hashes and promotes neither transaction
+  metadata nor a capability encoding to signed wire. Generator:
+  `gen-cb2-bundle-boundaries.py`
+  (`4d2145459152bd9685c30a986acbc2d90869126f2d151e93777e3d8c8331aa4b`);
+  vector: `cb2-bundle-boundaries.json`
+  (`73149da64fbdc73bcfd81f8a3d11c83e9421e43f2053ad649bf0db0f585ee187`);
+  Rust consumer: `aithos-bundle/tests/cb2_bundle_boundaries.rs`
+  (`9ef5ae1c521b6902e799cbf00d1a6d9e2837db5d6a9f777e4ac0d4af8cd84666`).

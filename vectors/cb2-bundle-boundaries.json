@@ -1,0 +1,1181 @@
+{
+  "vector": "CB2-BUNDLE-BOUNDARIES-1",
+  "description": "Independent pure-data oracle for CB1 G-B/G-C/G-D: deterministic Bundle overlay/write-set/linearization and recovery, display/Store path confinement, typed opaque capability substitution, and fresh local keyless export/reopen decisions. No signed wire or stable capability encoding is introduced.",
+  "historical_vector_sha256": {
+    "a1-genesis.json": "ffb5ac6cda6591e91ecc80feb44ddc816a10d0fd6fbf63cb41df54ca9dcf4292",
+    "a2-did.json": "e677bd59f9ceefc7eae725f2222b715f07d9dbf066dc4296a1a9ad21a13bca36",
+    "cb2-bundle-version-coexistence.json": "61b53d0765c278a56adfa1b35bee99f5144d8ceeb78430be59aa50a8a519ba3c",
+    "cb2-draft2-carriers.json": "2e75e9af30ba0207bd01a6f347cac1a263f816a7ae0fb3d583f75beabef2badc",
+    "h1-merkle.json": "590efdd79e03859a17ba677e3f23cf9c3b2c83b473b255154c4376ba117274bd",
+    "h2-gamma-roots.json": "c497b9b2bced8fbf449ab249ea193cda956d2438a003f7bd06f6173c3486ef50",
+    "i1-concurrency.json": "556de81a4e842e04ada7b0521c89845000e3174d66ddd7c1736cdfb24b3e7864"
+  },
+  "transaction": {
+    "old_snapshot": {
+      "did.json": "{\"id\":\"did:aithos:fixture\"}",
+      "e/circle/index.json": "{\"sections\":[]}",
+      "e/self/index.json": "{\"blobs\":[]}",
+      "gamma/2026-07.jsonl": "{\"id\":\"gamma_old\"}\n",
+      "manifest.json": "{\"edition\":{\"height\":1},\"gamma_head\":\"sha256:old\"}",
+      "manifests/1.json": "{\"edition\":{\"height\":1},\"gamma_head\":\"sha256:old\"}"
+    },
+    "old_snapshot_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+    "new_snapshot": {
+      "did.json": "{\"id\":\"did:aithos:fixture\"}",
+      "e/circle/index.json": "{\"sections\":[{\"sid\":\"01K00000000000000000000081\"}]}",
+      "e/self/index.json": "{\"blobs\":[]}",
+      "gamma/2026-07.jsonl": "{\"id\":\"gamma_old\"}\n{\"id\":\"gamma_01K00000000000000000000081\"}\n",
+      "manifest.json": "{\"edition\":{\"height\":2},\"gamma_head\":\"sha256:new\"}",
+      "manifests/1.json": "{\"edition\":{\"height\":1},\"gamma_head\":\"sha256:old\"}",
+      "e/circle/blobs/01K00000000000000000000081.enc": "opaque-ciphertext-v1",
+      "manifests/2.json": "{\"edition\":{\"height\":2},\"gamma_head\":\"sha256:new\"}"
+    },
+    "new_snapshot_digest": "sha256:c33a6faa762d2c3805c3845f148df02049452f3eb67e4881b1dbd83f438b5a62",
+    "write_set": [
+      {
+        "path": "e/circle/blobs/01K00000000000000000000081.enc",
+        "before": {
+          "state": "absent"
+        },
+        "after": {
+          "state": "present",
+          "sha256": "7240a4f6f2e79731b65fe7dd91e2cfd825f1bb00881b15b91613da370345cff1"
+        }
+      },
+      {
+        "path": "e/circle/index.json",
+        "before": {
+          "state": "present",
+          "sha256": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274"
+        },
+        "after": {
+          "state": "present",
+          "sha256": "48e93804286e9c669533b9b2920bdf4e0d0dc3445e55faf81fb16cf188510369"
+        }
+      },
+      {
+        "path": "gamma/2026-07.jsonl",
+        "before": {
+          "state": "present",
+          "sha256": "fb239b2abe24c75fea9d97e8906d0054655c52054ef5a29abf7fb0be613872a8"
+        },
+        "after": {
+          "state": "present",
+          "sha256": "f3ff36dba9a7e6ce7f03a6959e906067b52a2bf704c3d6ee10c00fde1420b567"
+        }
+      },
+      {
+        "path": "manifest.json",
+        "before": {
+          "state": "present",
+          "sha256": "93bcd32ad1522d449105468e9d579acd74b4f59bff0b3534ddc9ab076b382a7e"
+        },
+        "after": {
+          "state": "present",
+          "sha256": "1aa58220a0fe8dd6863b77229e731237687856141c903fa5c655de12d23db638"
+        }
+      },
+      {
+        "path": "manifests/2.json",
+        "before": {
+          "state": "absent"
+        },
+        "after": {
+          "state": "present",
+          "sha256": "1aa58220a0fe8dd6863b77229e731237687856141c903fa5c655de12d23db638"
+        }
+      }
+    ],
+    "failure_cases": [
+      {
+        "id": "memstore-01",
+        "store": "MemStore",
+        "boundary": "cryptography",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "memstore-02",
+        "store": "MemStore",
+        "boundary": "blob preparation",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "memstore-03",
+        "store": "MemStore",
+        "boundary": "index preparation",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "memstore-04",
+        "store": "MemStore",
+        "boundary": "header or wrap",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "memstore-05",
+        "store": "MemStore",
+        "boundary": "Gamma validation",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "memstore-06",
+        "store": "MemStore",
+        "boundary": "before state replacement",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "fsstore-07",
+        "store": "FsStore",
+        "boundary": "cryptography",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "fsstore-08",
+        "store": "FsStore",
+        "boundary": "blob preparation",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "fsstore-09",
+        "store": "FsStore",
+        "boundary": "index preparation",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "fsstore-10",
+        "store": "FsStore",
+        "boundary": "header or wrap",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "fsstore-11",
+        "store": "FsStore",
+        "boundary": "Gamma validation",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      },
+      {
+        "id": "fsstore-12",
+        "store": "FsStore",
+        "boundary": "before commit marker or reference",
+        "visible_snapshot": "old",
+        "canonical_digest": "sha256:910f71bb1c6c2d2db95fafc7af078cdccd2d7f8dabb7ebeae5b1b13e81660c36",
+        "staging_is_canonical": false
+      }
+    ],
+    "recovery_cases": [
+      {
+        "id": "no-staging",
+        "internal_state": "old generation only",
+        "visible_snapshot": "old",
+        "scratch_resolution": "none"
+      },
+      {
+        "id": "prepared-not-linearized",
+        "internal_state": "complete new generation prepared, old reference durable",
+        "visible_snapshot": "old",
+        "scratch_resolution": "discard new scratch"
+      },
+      {
+        "id": "linearization-reference-durable",
+        "internal_state": "complete new generation and new reference durable",
+        "visible_snapshot": "new",
+        "scratch_resolution": "retain new generation"
+      },
+      {
+        "id": "acknowledgement-lost",
+        "internal_state": "new reference durable, caller did not receive success",
+        "visible_snapshot": "new",
+        "scratch_resolution": "discover outcome from manifest and Gamma head"
+      }
+    ],
+    "linearization_count": 1,
+    "staging_outside_canonical_namespace": true,
+    "internal_generation_metadata_is_not_wire": true
+  },
+  "confinement": {
+    "cases": [
+      {
+        "id": "display-relative",
+        "input_kind": "display_path",
+        "value": "projets/perso/note",
+        "resolved_outside_root": false,
+        "expected": "accepted"
+      },
+      {
+        "id": "public-markdown",
+        "input_kind": "store_key",
+        "value": "e/public/docs/readme.md",
+        "resolved_outside_root": false,
+        "expected": "accepted"
+      },
+      {
+        "id": "circle-blob",
+        "input_kind": "store_key",
+        "value": "e/circle/blobs/01K00000000000000000000081.enc",
+        "resolved_outside_root": false,
+        "expected": "accepted"
+      },
+      {
+        "id": "changeset-sidecar",
+        "input_kind": "cold_load_key",
+        "value": "changesets/a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1.json",
+        "resolved_outside_root": false,
+        "expected": "accepted"
+      },
+      {
+        "id": "connector-vault-object",
+        "input_kind": "store_key",
+        "value": "x/mail/config/oauth.enc",
+        "resolved_outside_root": false,
+        "expected": "accepted"
+      },
+      {
+        "id": "display-parent",
+        "input_kind": "display_path",
+        "value": "../circle/secret",
+        "resolved_outside_root": false,
+        "expected": "refused"
+      },
+      {
+        "id": "display-absolute",
+        "input_kind": "display_path",
+        "value": "/absolute/section",
+        "resolved_outside_root": false,
+        "expected": "refused"
+      },
+      {
+        "id": "display-dot",
+        "input_kind": "display_path",
+        "value": "folder/./section",
+        "resolved_outside_root": false,
+        "expected": "refused"
+      },
+      {
+        "id": "display-empty-segment",
+        "input_kind": "display_path",
+        "value": "folder//section",
+        "resolved_outside_root": false,
+        "expected": "refused"
+      },
+      {
+        "id": "display-backslash",
+        "input_kind": "display_path",
+        "value": "folder\\section",
+        "resolved_outside_root": false,
+        "expected": "refused"
+      },
+      {
+        "id": "display-symlink-out",
+        "input_kind": "display_path",
+        "value": "folder/link-out/section",
+        "resolved_outside_root": true,
+        "expected": "refused"
+      },
+      {
+        "id": "store-parent",
+        "input_kind": "store_key",
+        "value": "../../outside",
+        "resolved_outside_root": false,
+        "expected": "refused"
+      },
+      {
+        "id": "store-absolute",
+        "input_kind": "store_key",
+        "value": "/etc/passwd",
+        "resolved_outside_root": false,
+        "expected": "refused"
+      },
+      {
+        "id": "store-unlisted",
+        "input_kind": "store_key",
+        "value": "e/circle/unlisted-object.json",
+        "resolved_outside_root": false,
+        "expected": "refused"
+      },
+      {
+        "id": "store-intermediate-symlink-out",
+        "input_kind": "store_key",
+        "value": "e/circle/hdr/01K00000000000000000000081.json",
+        "resolved_outside_root": true,
+        "expected": "refused"
+      },
+      {
+        "id": "store-final-symlink-out",
+        "input_kind": "store_key",
+        "value": "e/circle/index.json",
+        "resolved_outside_root": true,
+        "expected": "refused"
+      },
+      {
+        "id": "store-backslash",
+        "input_kind": "store_key",
+        "value": "e\\circle\\index.json",
+        "resolved_outside_root": false,
+        "expected": "refused"
+      },
+      {
+        "id": "cold-manifest-symlink-out",
+        "input_kind": "cold_load_key",
+        "value": "manifest.json",
+        "resolved_outside_root": true,
+        "expected": "refused"
+      },
+      {
+        "id": "recovery-generation-symlink-out",
+        "input_kind": "recovery_key",
+        "value": "manifests/2.json",
+        "resolved_outside_root": true,
+        "expected": "refused"
+      },
+      {
+        "id": "store-unknown-root",
+        "input_kind": "store_key",
+        "value": "outside/accepted-looking.json",
+        "resolved_outside_root": false,
+        "expected": "refused"
+      }
+    ],
+    "accepted_count": 5,
+    "refused_count": 15,
+    "signed_manifest_cannot_authorize_escape": true,
+    "check_applies_to": [
+      "read",
+      "write",
+      "list",
+      "cold_load",
+      "staging_publication",
+      "recovery"
+    ]
+  },
+  "capabilities": {
+    "positive_cases": [
+      {
+        "id": "sign_manifest-exact",
+        "capability": {
+          "class": "sign_manifest",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "edition-manifest",
+            "domain": "aithos-core/v1/manifest"
+          },
+          "opaque_fixture_label": "manifest-capability-A"
+        },
+        "request": {
+          "class": "sign_manifest",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "edition-manifest",
+            "domain": "aithos-core/v1/manifest"
+          },
+          "protocol_object": "edition_manifest"
+        },
+        "expected": "accepted"
+      },
+      {
+        "id": "sign_gamma-exact",
+        "capability": {
+          "class": "sign_gamma",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "gamma-entry",
+            "domain": "aithos-core/v1/gamma-entry"
+          },
+          "opaque_fixture_label": "gamma-capability-A"
+        },
+        "request": {
+          "class": "sign_gamma",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "gamma-entry",
+            "domain": "aithos-core/v1/gamma-entry"
+          },
+          "protocol_object": "gamma_entry"
+        },
+        "expected": "accepted"
+      },
+      {
+        "id": "open_body-exact",
+        "capability": {
+          "class": "open_body",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "sealed-body",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3
+          },
+          "opaque_fixture_label": "body-capability-A"
+        },
+        "request": {
+          "class": "open_body",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "sealed-body",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3
+          },
+          "protocol_object": "sealed_body"
+        },
+        "expected": "accepted"
+      },
+      {
+        "id": "wrap_header-exact",
+        "capability": {
+          "class": "wrap_header",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "header-line",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3,
+            "recipient": "z6MkRecipientFixture"
+          },
+          "opaque_fixture_label": "wrap-capability-A"
+        },
+        "request": {
+          "class": "wrap_header",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "header-line",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3,
+            "recipient": "z6MkRecipientFixture"
+          },
+          "protocol_object": "header_line"
+        },
+        "expected": "accepted"
+      },
+      {
+        "id": "audit_args-exact",
+        "capability": {
+          "class": "audit_args",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "auditor",
+            "purpose": "sealed-action-args",
+            "connector": "mail",
+            "mandate_chain": [
+              "mandate_01K00000000000000000000081"
+            ]
+          },
+          "opaque_fixture_label": "audit-capability-A"
+        },
+        "request": {
+          "class": "audit_args",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "auditor",
+            "purpose": "sealed-action-args",
+            "connector": "mail",
+            "mandate_chain": [
+              "mandate_01K00000000000000000000081"
+            ]
+          },
+          "protocol_object": "sealed_action_args"
+        },
+        "expected": "accepted"
+      },
+      {
+        "id": "open_config-exact",
+        "capability": {
+          "class": "open_config",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "config-manager",
+            "purpose": "vault-config",
+            "connector": "mail",
+            "node": "/x/mail",
+            "key_version": 4,
+            "mandate_chain": [
+              "mandate_01K00000000000000000000082"
+            ]
+          },
+          "opaque_fixture_label": "config-capability-A"
+        },
+        "request": {
+          "class": "open_config",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "config-manager",
+            "purpose": "vault-config",
+            "connector": "mail",
+            "node": "/x/mail",
+            "key_version": 4,
+            "mandate_chain": [
+              "mandate_01K00000000000000000000082"
+            ]
+          },
+          "protocol_object": "vault_config"
+        },
+        "expected": "accepted"
+      }
+    ],
+    "negative_cases": [
+      {
+        "id": "sign_manifest-cross-class",
+        "capability": {
+          "class": "sign_manifest",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "edition-manifest",
+            "domain": "aithos-core/v1/manifest"
+          },
+          "opaque_fixture_label": "manifest-capability-A"
+        },
+        "request": {
+          "class": "sign_gamma",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "gamma-entry",
+            "domain": "aithos-core/v1/gamma-entry"
+          },
+          "protocol_object": "gamma_entry"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "sign_manifest-cross-actor",
+        "capability": {
+          "class": "sign_manifest",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "edition-manifest",
+            "domain": "aithos-core/v1/manifest"
+          },
+          "opaque_fixture_label": "manifest-capability-A"
+        },
+        "request": {
+          "class": "sign_manifest",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "different-actor",
+            "purpose": "edition-manifest",
+            "domain": "aithos-core/v1/manifest"
+          },
+          "protocol_object": "edition_manifest"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "sign_manifest-arbitrary-object",
+        "capability": {
+          "class": "sign_manifest",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "edition-manifest",
+            "domain": "aithos-core/v1/manifest"
+          },
+          "opaque_fixture_label": "manifest-capability-A"
+        },
+        "request": {
+          "class": "sign_manifest",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "edition-manifest",
+            "domain": "aithos-core/v1/manifest"
+          },
+          "protocol_object": "arbitrary_bytes"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "sign_gamma-cross-class",
+        "capability": {
+          "class": "sign_gamma",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "gamma-entry",
+            "domain": "aithos-core/v1/gamma-entry"
+          },
+          "opaque_fixture_label": "gamma-capability-A"
+        },
+        "request": {
+          "class": "open_body",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "sealed-body",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3
+          },
+          "protocol_object": "sealed_body"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "sign_gamma-cross-actor",
+        "capability": {
+          "class": "sign_gamma",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "gamma-entry",
+            "domain": "aithos-core/v1/gamma-entry"
+          },
+          "opaque_fixture_label": "gamma-capability-A"
+        },
+        "request": {
+          "class": "sign_gamma",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "different-actor",
+            "purpose": "gamma-entry",
+            "domain": "aithos-core/v1/gamma-entry"
+          },
+          "protocol_object": "gamma_entry"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "sign_gamma-arbitrary-object",
+        "capability": {
+          "class": "sign_gamma",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "gamma-entry",
+            "domain": "aithos-core/v1/gamma-entry"
+          },
+          "opaque_fixture_label": "gamma-capability-A"
+        },
+        "request": {
+          "class": "sign_gamma",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "gamma-entry",
+            "domain": "aithos-core/v1/gamma-entry"
+          },
+          "protocol_object": "arbitrary_bytes"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "open_body-cross-class",
+        "capability": {
+          "class": "open_body",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "sealed-body",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3
+          },
+          "opaque_fixture_label": "body-capability-A"
+        },
+        "request": {
+          "class": "wrap_header",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "header-line",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3,
+            "recipient": "z6MkRecipientFixture"
+          },
+          "protocol_object": "header_line"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "open_body-cross-actor",
+        "capability": {
+          "class": "open_body",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "sealed-body",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3
+          },
+          "opaque_fixture_label": "body-capability-A"
+        },
+        "request": {
+          "class": "open_body",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "different-actor",
+            "purpose": "sealed-body",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3
+          },
+          "protocol_object": "sealed_body"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "open_body-arbitrary-object",
+        "capability": {
+          "class": "open_body",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "sealed-body",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3
+          },
+          "opaque_fixture_label": "body-capability-A"
+        },
+        "request": {
+          "class": "open_body",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "sealed-body",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3
+          },
+          "protocol_object": "arbitrary_bytes"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "wrap_header-cross-class",
+        "capability": {
+          "class": "wrap_header",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "header-line",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3,
+            "recipient": "z6MkRecipientFixture"
+          },
+          "opaque_fixture_label": "wrap-capability-A"
+        },
+        "request": {
+          "class": "audit_args",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "auditor",
+            "purpose": "sealed-action-args",
+            "connector": "mail",
+            "mandate_chain": [
+              "mandate_01K00000000000000000000081"
+            ]
+          },
+          "protocol_object": "sealed_action_args"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "wrap_header-cross-actor",
+        "capability": {
+          "class": "wrap_header",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "header-line",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3,
+            "recipient": "z6MkRecipientFixture"
+          },
+          "opaque_fixture_label": "wrap-capability-A"
+        },
+        "request": {
+          "class": "wrap_header",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "different-actor",
+            "purpose": "header-line",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3,
+            "recipient": "z6MkRecipientFixture"
+          },
+          "protocol_object": "header_line"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "wrap_header-arbitrary-object",
+        "capability": {
+          "class": "wrap_header",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "header-line",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3,
+            "recipient": "z6MkRecipientFixture"
+          },
+          "opaque_fixture_label": "wrap-capability-A"
+        },
+        "request": {
+          "class": "wrap_header",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "header-line",
+            "node": "/e/circle/d/01K00000000000000000000081",
+            "key_version": 3,
+            "recipient": "z6MkRecipientFixture"
+          },
+          "protocol_object": "arbitrary_bytes"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "audit_args-cross-class",
+        "capability": {
+          "class": "audit_args",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "auditor",
+            "purpose": "sealed-action-args",
+            "connector": "mail",
+            "mandate_chain": [
+              "mandate_01K00000000000000000000081"
+            ]
+          },
+          "opaque_fixture_label": "audit-capability-A"
+        },
+        "request": {
+          "class": "open_config",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "config-manager",
+            "purpose": "vault-config",
+            "connector": "mail",
+            "node": "/x/mail",
+            "key_version": 4,
+            "mandate_chain": [
+              "mandate_01K00000000000000000000082"
+            ]
+          },
+          "protocol_object": "vault_config"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "audit_args-cross-actor",
+        "capability": {
+          "class": "audit_args",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "auditor",
+            "purpose": "sealed-action-args",
+            "connector": "mail",
+            "mandate_chain": [
+              "mandate_01K00000000000000000000081"
+            ]
+          },
+          "opaque_fixture_label": "audit-capability-A"
+        },
+        "request": {
+          "class": "audit_args",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "different-actor",
+            "purpose": "sealed-action-args",
+            "connector": "mail",
+            "mandate_chain": [
+              "mandate_01K00000000000000000000081"
+            ]
+          },
+          "protocol_object": "sealed_action_args"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "audit_args-arbitrary-object",
+        "capability": {
+          "class": "audit_args",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "auditor",
+            "purpose": "sealed-action-args",
+            "connector": "mail",
+            "mandate_chain": [
+              "mandate_01K00000000000000000000081"
+            ]
+          },
+          "opaque_fixture_label": "audit-capability-A"
+        },
+        "request": {
+          "class": "audit_args",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "auditor",
+            "purpose": "sealed-action-args",
+            "connector": "mail",
+            "mandate_chain": [
+              "mandate_01K00000000000000000000081"
+            ]
+          },
+          "protocol_object": "arbitrary_bytes"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "open_config-cross-class",
+        "capability": {
+          "class": "open_config",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "config-manager",
+            "purpose": "vault-config",
+            "connector": "mail",
+            "node": "/x/mail",
+            "key_version": 4,
+            "mandate_chain": [
+              "mandate_01K00000000000000000000082"
+            ]
+          },
+          "opaque_fixture_label": "config-capability-A"
+        },
+        "request": {
+          "class": "sign_manifest",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "owner",
+            "purpose": "edition-manifest",
+            "domain": "aithos-core/v1/manifest"
+          },
+          "protocol_object": "edition_manifest"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "open_config-cross-actor",
+        "capability": {
+          "class": "open_config",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "config-manager",
+            "purpose": "vault-config",
+            "connector": "mail",
+            "node": "/x/mail",
+            "key_version": 4,
+            "mandate_chain": [
+              "mandate_01K00000000000000000000082"
+            ]
+          },
+          "opaque_fixture_label": "config-capability-A"
+        },
+        "request": {
+          "class": "open_config",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "different-actor",
+            "purpose": "vault-config",
+            "connector": "mail",
+            "node": "/x/mail",
+            "key_version": 4,
+            "mandate_chain": [
+              "mandate_01K00000000000000000000082"
+            ]
+          },
+          "protocol_object": "vault_config"
+        },
+        "expected": "refused"
+      },
+      {
+        "id": "open_config-arbitrary-object",
+        "capability": {
+          "class": "open_config",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "config-manager",
+            "purpose": "vault-config",
+            "connector": "mail",
+            "node": "/x/mail",
+            "key_version": 4,
+            "mandate_chain": [
+              "mandate_01K00000000000000000000082"
+            ]
+          },
+          "opaque_fixture_label": "config-capability-A"
+        },
+        "request": {
+          "class": "open_config",
+          "context": {
+            "subject": "did:aithos:z6MkBundleBoundaryFixture",
+            "ethos": "did:aithos:z6MkBundleBoundaryFixture",
+            "actor": "config-manager",
+            "purpose": "vault-config",
+            "connector": "mail",
+            "node": "/x/mail",
+            "key_version": 4,
+            "mandate_chain": [
+              "mandate_01K00000000000000000000082"
+            ]
+          },
+          "protocol_object": "arbitrary_bytes"
+        },
+        "expected": "refused"
+      }
+    ],
+    "no_stable_encoding_promoted": true,
+    "no_generic_sign_open_wrap_oracle": true,
+    "no_raw_seed_private_key_dk_or_credential": true,
+    "session_binding": {
+      "one_ethos": true,
+      "one_actor": true,
+      "one_grantee_chain": true,
+      "ambient_capability_pool": false
+    }
+  },
+  "keyless_export": {
+    "objects": {
+      "did.json": "{\"id\":\"did:aithos:keyless-fixture\"}",
+      "certs/mandate_01K00000000000000000000081.json": "{\"signed\":true}",
+      "changesets/a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1.json": "{\"changes\":[]}",
+      "evidence/b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2.json": "{\"items\":[]}",
+      "gamma/2026-07.jsonl": "{\"id\":\"gamma_public_fixture\"}\n",
+      "manifests/1.json": "{\"edition\":{\"height\":1}}",
+      "manifests/2.json": "{\"edition\":{\"height\":2}}",
+      "manifest.json": "{\"edition\":{\"height\":2}}",
+      "e/circle/blobs/01K00000000000000000000081.enc": "opaque-ciphertext",
+      "e/self/blobs/01K00000000000000000000082.enc": "opaque-ciphertext"
+    },
+    "export_digest": "sha256:a58091af8c0ec0e1ca2f1202fe06a4a028ff71b68e2ae4d031af38e2a26ef6b2",
+    "cold_cases": [
+      {
+        "id": "memstore-complete",
+        "store": "MemStore",
+        "defect": "none",
+        "expected": "accepted"
+      },
+      {
+        "id": "fsstore-complete-after-producer-destroyed",
+        "store": "FsStore",
+        "defect": "none",
+        "expected": "accepted"
+      },
+      {
+        "id": "missing-certificate",
+        "store": "FsStore",
+        "defect": "required mandate certificate missing",
+        "expected": "refused"
+      },
+      {
+        "id": "substituted-certificate",
+        "store": "FsStore",
+        "defect": "certificate bytes substituted",
+        "expected": "refused"
+      },
+      {
+        "id": "truncated-gamma",
+        "store": "FsStore",
+        "defect": "one Gamma entry missing",
+        "expected": "refused"
+      },
+      {
+        "id": "wrong-parent",
+        "store": "FsStore",
+        "defect": "expected parent manifest substituted",
+        "expected": "refused"
+      },
+      {
+        "id": "unpinned-object",
+        "store": "FsStore",
+        "defect": "uncommitted public artifact added",
+        "expected": "refused"
+      },
+      {
+        "id": "private-capability-in-export",
+        "store": "FsStore",
+        "defect": "opaque local capability exported",
+        "expected": "refused"
+      }
+    ],
+    "producer_destroyed_before_fs_reopen": true,
+    "private_capabilities_removed_before_verify": true,
+    "network_participates": false,
+    "provider_cas_participates": false,
+    "secret_shape_detected": false
+  },
+  "inventory": {
+    "failure_boundary_count": 12,
+    "recovery_case_count": 4,
+    "path_case_count": 20,
+    "capability_positive_count": 6,
+    "capability_negative_count": 18,
+    "cold_case_count": 8,
+    "future_owners": {
+      "transaction_and_confinement": "CB7",
+      "capability_and_keyless_export": "CB12"
+    }
+  }
+}

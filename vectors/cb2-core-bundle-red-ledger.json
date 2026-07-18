@@ -130,6 +130,14 @@
       "generator_sha256": "d0fbc85c29b2fe06362eec9ee7084f69746589697d44da9570ec94e3e8c8c6eb",
       "consumer": "rust/crates/aithos-bundle/tests/cb2_draft2_carriers.rs",
       "consumer_sha256": "9c392d0acd16fcc4eb5699cb0677f88f36b48b98239f99327430e59ef8f1e3dd"
+    },
+    "CB2-BUNDLE-BOUNDARIES-1": {
+      "file": "vectors/cb2-bundle-boundaries.json",
+      "sha256": "73149da64fbdc73bcfd81f8a3d11c83e9421e43f2053ad649bf0db0f585ee187",
+      "generator": "vectors/gen-cb2-bundle-boundaries.py",
+      "generator_sha256": "4d2145459152bd9685c30a986acbc2d90869126f2d151e93777e3d8c8331aa4b",
+      "consumer": "rust/crates/aithos-bundle/tests/cb2_bundle_boundaries.rs",
+      "consumer_sha256": "9ef5ae1c521b6902e799cbf00d1a6d9e2837db5d6a9f777e4ac0d4af8cd84666"
     }
   },
   "suite_observations": [
@@ -279,13 +287,24 @@
       "name": "K1-C draft2-carrier byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- --nocapture",
       "observed": "5 passed; vector/historical hashes, exact K1.2 facts, W1 commitments, last-writer changeset bytes, five evidence signatures, D7 root, references, paths, file pins and signed manifest bytes are GREEN. Typed Core carriers and Bundle draft2 assembly/cold verification remain absent."
+    },
+    {
+      "name": "Bundle boundary generator reproducibility",
+      "command": "python3 vectors/gen-cb2-bundle-boundaries.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-bundle-boundaries.json; the independent pure-data oracle covers 12 failure boundaries, 4 recovery states, 20 confinement decisions, 6 exact opaque capability uses, 18 substitutions and 8 keyless cold-load decisions without promoting internal metadata or capability encoding to wire."
+    },
+    {
+      "name": "Bundle boundary byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- --nocapture",
+      "observed": "5 passed; vector/historical hashes, deterministic write-set and recovery visibility, path decisions, capability substitutions and keyless export digest/defects are GREEN as generic diagnostics. Transactional/confining Store APIs, typed capabilities and keyless export/cold verification remain absent."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 72,
-    "COMPILE-RED-PRELIMINAIRE": 24,
-    "total": 130
+    "PREEXISTING-GREEN": 77,
+    "COMPILE-RED-PRELIMINAIRE": 26,
+    "total": 137
   },
   "entries": [
     {
@@ -2429,6 +2448,127 @@
         "source_observed": "No draft2 manifest members, carrier derivation, canonical sidecar write-set or keyless K1-C cold replay API exists.",
         "inventory_test_id": "cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary",
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_draft2_carriers -- cb2_k1c_signed_manifest_negative_boundary_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB12",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB7-BUNDLE-BOUNDARY-VECTOR-HASH",
+      "test_id": "cb2_bundle_boundary_vector_hash_is_stable_preexisting_green",
+      "decision": "G-B/G-C/G-D independent boundary-oracle integrity",
+      "scenario": "The pure-data transaction, confinement, capability and keyless-export qualification vector remains byte-stable.",
+      "vector_ref": "CB2-BUNDLE-BOUNDARIES-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_boundary_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "expected_reason": "The vector file SHA-256 is 73149da64fbdc73bcfd81f8a3d11c83e9421e43f2053ad649bf0db0f585ee187.",
+      "observed_reason": "The exact committed oracle bytes match the independently generated file.",
+      "owner": "CB7",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB7-BUNDLE-BOUNDARY-HISTORICAL-HASHES",
+      "test_id": "cb2_bundle_boundary_historical_hashes_preexisting_green",
+      "decision": "Bundle boundary additive historical non-regression",
+      "scenario": "Genesis, DID, version-coexistence, draft2 carriers, H1, H2 and I1 source vectors remain byte-identical.",
+      "vector_ref": "CB2-BUNDLE-BOUNDARIES-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_boundary_historical_hashes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "expected_reason": "All seven selected historical vector hashes remain exact.",
+      "observed_reason": "No historical signed object, Merkle root or concurrency byte is changed or reinterpreted.",
+      "owner": "CB7",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB7-BUNDLE-TRANSACTION-RECOVERY-ORACLE",
+      "test_id": "cb2_bundle_transaction_write_set_and_recovery_preexisting_green",
+      "decision": "G-B deterministic overlay, write-set, linearization and recovery visibility",
+      "scenario": "Every pre-linearization failure exposes only the old generation; recovery exposes exactly old or new and never a partial mix.",
+      "vector_ref": "CB2-BUNDLE-BOUNDARIES-1",
+      "vector_slice": "transaction",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_transaction_write_set_and_recovery_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "expected_reason": "Generic JCS/SHA-256 reproduces both snapshot digests, the sorted five-key write-set, twelve old-visible failure boundaries, four deterministic recovery decisions and one logical linearization.",
+      "observed_reason": "The pure-data transaction oracle reproduces exactly; this does not claim that current Store implementations are transactional.",
+      "owner": "CB7",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB7-BUNDLE-CONFINEMENT-ORACLE",
+      "test_id": "cb2_bundle_confinement_decisions_preexisting_green",
+      "decision": "G-B display-path and canonical Store-key confinement",
+      "scenario": "Valid relative names are accepted while traversal, absolute, backslash, unknown-layout and resolved symlink escapes fail closed on every path-bearing phase.",
+      "vector_ref": "CB2-BUNDLE-BOUNDARIES-1",
+      "vector_slice": "confinement",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_confinement_decisions_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "expected_reason": "The independent allowlist admits five cases and refuses fifteen, including intermediate/final symlink escapes during read, write, cold load and recovery.",
+      "observed_reason": "A separate Rust decision function reproduces all twenty oracle outcomes; this is a diagnostic, not current FsStore enforcement.",
+      "owner": "CB7",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB12-BUNDLE-CAPABILITY-KEYLESS-ORACLE",
+      "test_id": "cb2_bundle_capability_keyless_and_api_inventory_preliminary",
+      "decision": "G-C/G-D typed opaque capability substitution and keyless cold-load decisions",
+      "scenario": "Only exact class/context/object capability uses succeed, exported artifacts contain no secret shapes, and incomplete or substituted cold bundles fail closed without network or Provider CAS.",
+      "vector_ref": "CB2-BUNDLE-BOUNDARIES-1",
+      "vector_slice": "capabilities and keyless_export",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_capability_keyless_and_api_inventory_preliminary --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+      "expected_reason": "Six exact capability uses succeed, eighteen cross-class/context/object substitutions fail, two complete cold loads succeed and six defective exports fail without any stable capability encoding.",
+      "observed_reason": "Generic comparisons, JCS and SHA-256 reproduce the independent oracle; the same passing test explicitly inventories the missing typed Bundle APIs and is not protocol GREEN for them.",
+      "owner": "CB12",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB7-BUNDLE-TRANSACTION-CONFINEMENT-API-GATE",
+      "test_id": null,
+      "decision": "Transactional MemStore/FsStore and one mandatory confinement gate",
+      "scenario": "All logical mutations prepare in an overlay, validate before one publication point, recover deterministically, and reject every lexical or filesystem-resolved root escape.",
+      "vector_ref": "CB2-BUNDLE-BOUNDARIES-1",
+      "vector_slice": "transaction and confinement",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "MemStore and FsStore satisfy all twelve failure boundaries, four recovery cases and twenty path decisions without exposing staging or partial canonical generations.",
+      "observed_reason": "At observation SHA 44f27a7, Store exposes only get/put/list; business helpers write directly and FsStore joins caller paths under root without lexical or symlink confinement.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+        "source_command": "rg -n 'pub trait Store|self\\.root\\.join|\\.store\\.put|transaction|overlay|validate_store_key' rust/crates/aithos-bundle/src",
+        "source_observed": "Store has only get/put/list; FsStore uses root.join(path); Bundle/log/merge write canonical objects directly and no transaction, recovery or confinement front door exists.",
+        "inventory_test_id": "cb2_bundle_capability_keyless_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_capability_keyless_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB7",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB12-BUNDLE-CAPABILITY-KEYLESS-API-GATE",
+      "test_id": null,
+      "decision": "Typed opaque Bundle capabilities and explicit keyless export/cold verifier",
+      "scenario": "Bundle business methods receive only purpose/context-bound capabilities, export only public/opaque committed artifacts, and cold-verify a fresh MemStore/FsStore after producer destruction.",
+      "vector_ref": "CB2-BUNDLE-BOUNDARIES-1",
+      "vector_slice": "capabilities and keyless_export",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "All six capability classes are non-substitutable and non-serializable as wire; both complete keyless stores reopen while every missing, substituted, truncated, unpinned or private-bearing export fails closed.",
+      "observed_reason": "At observation SHA 44f27a7, Bundle APIs accept raw OwnerKeys/StaticSecret and expose no typed opaque capability boundary, explicit keyless export or fresh-Store cold verifier.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "44f27a71d2cf2f5ad8945b49fddb5b2c7ed5f7cc",
+        "source_command": "rg -n 'OwnerKeys|StaticSecret|OpaqueCapability|export_keyless|import_keyless|cold_verify' rust/crates/aithos-bundle/src",
+        "source_observed": "Bundle business methods take raw OwnerKeys/StaticSecret throughout; no typed opaque capability family, keyless artifact export or cold-reopen verification façade exists.",
+        "inventory_test_id": "cb2_bundle_capability_keyless_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_boundaries -- cb2_bundle_capability_keyless_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB12",
       "status": "COMPILE-RED-PRELIMINAIRE"
