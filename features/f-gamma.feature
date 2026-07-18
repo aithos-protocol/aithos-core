@@ -616,6 +616,45 @@ Feature: The gamma log
       And an invalid selected facts document keeps its specific facts error
       And no accepted operation_ref is emitted
 
+  Rule: A session-bound occurrence proves both keys without gaining authority
+
+    @wip
+    Scenario: SC1 has one closed certificate and digest preimage
+      Given a session-bound leaf mandate and one short-lived ephemeral key
+      When the leaf certifies that session under SC1
+      Then the certificate has exactly profile, subject, mandate_id, key, not_before, not_after and signature
+      And its signature covers JCS with only signature.value emptied
+      And authority.session pins the complete signed certificate digest
+      And the interval is non-empty, inside the leaf mandate and contains operation.at
+
+    @wip
+    Scenario: The session proof signs the exact operation reference
+      Given one valid SC1 certificate and canonical operation_ref
+      When the leaf native signature and session proof are validated
+      Then the session proof has exactly aithos-session-proof-core, operation_ref, key and sig
+      And sig covers JCS with the sig member omitted
+      And both independent proofs bind the same exact operation_ref
+      And the SC1 certificate signature substitutes for neither possession proof
+
+    @wip
+    Scenario Outline: SC1 fails closed without creating session authority
+      Given session-bound material with "<defect>"
+      When Core validates the operation before effect or during cold replay
+      Then it is refused as InvalidSession
+      And no perimeter or authority is derived from SC1
+
+      Examples:
+        | defect                                  |
+        | certificate signed by another key       |
+        | subject or leaf mandate mismatch        |
+        | session key different from session_bind |
+        | interval outside the leaf mandate       |
+        | operation outside the session interval  |
+        | missing leaf possession proof           |
+        | missing session proof                   |
+        | session proof for another operation_ref |
+        | certificate digest mismatch             |
+
   Rule: Gamma v2 is a monotone operation-evidence profile
 
     @wip

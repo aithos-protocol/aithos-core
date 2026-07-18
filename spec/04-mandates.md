@@ -1266,6 +1266,38 @@ ephemeral Ed25519 session key. The public session certificate is a separately
 versioned, closed profile identified by
 `"aithos-session-core": "1.0.0-draft.1"` (SC1).
 
+The complete SC1 certificate is exactly:
+
+```json
+{
+  "aithos-session-core": "1.0.0-draft.1",
+  "subject": "did:aithos:…",
+  "mandate_id": "mandate_…",
+  "key": "z6Mk…",
+  "not_before": "2026-07-18T12:00:00Z",
+  "not_after": "2026-07-18T12:30:00Z",
+  "signature": {
+    "alg": "ed25519",
+    "key": "z6Mk…",
+    "value": "<128 lowercase hex>"
+  }
+}
+```
+
+No member is nullable or optional and no extra member is permitted. `subject`
+equals the operation and mandate subject; `mandate_id` equals the leaf mandate;
+the top-level `key` equals the effective `session_bind` key; and
+`signature.key` equals that leaf certificate's long-term `grantee.pubkey`.
+`not_before` and `not_after` are canonical RFC 3339 Z instants, define a non-empty
+inclusive interval contained inside the complete leaf mandate interval, and contain
+the operation's `at`. SC1 defines no maximum duration; issuers choose a short
+interval appropriate to the local session.
+
+The Ed25519 certificate signature covers exactly RFC8785-JCS of the complete
+certificate with only `signature.value` replaced by the empty string. The complete
+signed certificate, including its non-empty signature value, is then addressed by
+`authority.session.certificate_digest` as defined in §4.5.1.
+
 Semantically, SC1 certifies for the operation subject and leaf mandate that the
 leaf's long-term grantee key authorized the exact `session.key` for a short
 validity interval containing the operation's `at`. Its signature MUST verify under
@@ -1278,18 +1310,36 @@ A session-bound operation requires two independent possession proofs:
 1. the ordinary leaf proof under `authority.key`; and
 2. a session proof under `authority.session.key`.
 
+The ordinary leaf proof is the applicable native request, Gamma, authorship, or
+manifest signature that covers the exact `operation_ref`. The second proof is the
+closed object:
+
+```json
+{
+  "aithos-session-proof-core": "1.0.0-draft.1",
+  "operation_ref": {
+    "aithos-operation-core": "1.0.0-draft.1",
+    "occurrence": "op_<ULID>",
+    "commitment": "sha256:<64 lowercase hex>"
+  },
+  "key": "z6Mk…",
+  "sig": "<128 lowercase hex>"
+}
+```
+
+It has exactly the four members shown. `operation_ref` equals the native leaf
+proof's exact W1 reference, and `key` equals both the SC1 top-level key and
+`authority.session.key`. The session key signs exactly RFC8785-JCS of this object
+with the top-level `sig` member omitted. The public evidence set carries this same
+object when cold replay needs it; copying it among native views of the same
+occurrence is correlation, not another operation or proof.
+
 Both proofs MUST bind the same exact `operation_ref`. The leaf signature on the
 SC1 certificate is authorization of the session key and does not replace either
 operation proof. A missing proof, a proof for another occurrence or commitment, a
 wrong key, an expired certificate, a subject or leaf mismatch, a bad certificate
-signature, or a certificate-digest mismatch fails closed.
-
-W1.1 does not fix SC1's remaining JSON member names, its complete member set, the
-exact signature block or signed preimage, the carrier location of the certificate,
-or the member name and signed preimage of the second operation proof. Those bytes
-require a later human-validated carrier table and independent vector. Until then,
-no implementation may invent `session_signature` bytes or claim a session-bound
-carrier wire-complete.
+signature, or a certificate-digest mismatch fails closed as
+`Error::InvalidSession(String)`.
 
 SC1 also does not define session issuance, replacement, revocation, expiry
 indexing, or the public set of simultaneously active sessions. Consequently the
@@ -1617,7 +1667,8 @@ actor row below and never consumes these mandate constraints or counters.
 | Form, subject, proof of possession, chain, perimeter, revocation | P | P | P | P | P | P | P | P |
 | `not_before` / `not_after`, `active_windows` | A | A | A | A | A | A | A | A |
 | `freshness`, `heartbeat` | P | P | P | P | P | P | P | P |
-| `session_bind`, `max_sessions` | P-W | P-W | P-W | P-W | P-W | P-W | P-W | P-W |
+| `session_bind` | P | P | P | P | P | P | P | P |
+| `max_sessions` lifecycle/counter | F | F | F | F | F | F | F | F |
 | `first_party_only` | A | A | A | A | A | A | A | A |
 | `purpose` | A | A | A | A | A | A | A | A |
 | Explicitly applicable `obligations` (including a `co_sign` instance) | P-W* | P-W* | P* | P-W* | P-W* | P-W* | P-W* | P-W* |
