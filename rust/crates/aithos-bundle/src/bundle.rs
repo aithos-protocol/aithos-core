@@ -115,6 +115,40 @@ pub struct SectionSpec<'a> {
     pub now: &'a str,
 }
 
+/// One owner content operation through the common CB8 surface.
+#[derive(Debug, Clone, Copy)]
+pub enum OwnerContentOperation<'a> {
+    List,
+    Read {
+        display_path: &'a str,
+    },
+    Create {
+        folder_path: &'a str,
+        name: &'a str,
+        title: &'a str,
+        tags: &'a [String],
+        body: &'a str,
+        now: &'a str,
+    },
+    Edit {
+        display_path: &'a str,
+        body: &'a str,
+        now: &'a str,
+    },
+    Delete {
+        display_path: &'a str,
+        now: &'a str,
+    },
+}
+
+/// Result of [`Bundle::owner_content_operation`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnerContentOutcome {
+    Listed(Vec<TreeEntry>),
+    Read(String),
+    Mutated,
+}
+
 pub struct Bundle<S: Store> {
     pub store: S,
     pub did: String,
@@ -190,6 +224,11 @@ impl<S: Store> Bundle<S> {
         self.store.put(path, bytes).map_err(io_err)
     }
 
+    pub(crate) fn delete_object(&mut self, path: &str) -> Result<()> {
+        validate_store_key(path).map_err(io_err)?;
+        self.store.delete(path).map_err(io_err)
+    }
+
     pub(crate) fn get(&self, path: &str) -> Result<Vec<u8>> {
         self.store
             .get(path)
@@ -227,6 +266,72 @@ impl<S: Store> Bundle<S> {
             Err(error) => {
                 self.store.rollback_transaction().map_err(io_err)?;
                 Err(error)
+            }
+        }
+    }
+
+    /// Common owner surface for list/read/create/edit/delete in every zone.
+    ///
+    /// Reads use only the owner's KEX half. Every mutation is journalized,
+    /// published and committed through one CB7 transaction; it never
+    /// presents or consumes a mandate.
+    pub fn owner_content_operation(
+        &mut self,
+        zone: Zone,
+        operation: OwnerContentOperation<'_>,
+        owner: &OwnerKeys,
+        ent: &mut dyn EntropySource,
+    ) -> Result<OwnerContentOutcome> {
+        match operation {
+            OwnerContentOperation::List => Ok(OwnerContentOutcome::Listed(
+                self.zone_entries_with_owner_kex(zone, &owner.owner_kex)?,
+            )),
+            OwnerContentOperation::Read { display_path } => Ok(OwnerContentOutcome::Read(
+                self.read_section_with_owner_kex(zone, display_path, &owner.owner_kex)?,
+            )),
+            OwnerContentOperation::Create {
+                folder_path,
+                name,
+                title,
+                tags,
+                body,
+                now,
+            } => {
+                self.transaction(|bundle| {
+                    bundle.section_add(
+                        &SectionSpec {
+                            zone,
+                            folder_path,
+                            name,
+                            title,
+                            tags,
+                            body,
+                            now,
+                        },
+                        owner,
+                        ent,
+                    )?;
+                    bundle.publish(owner, now)
+                })?;
+                Ok(OwnerContentOutcome::Mutated)
+            }
+            OwnerContentOperation::Edit {
+                display_path,
+                body,
+                now,
+            } => {
+                self.transaction(|bundle| {
+                    bundle.section_rewrite(zone, display_path, body, owner, now, ent)?;
+                    bundle.publish(owner, now)
+                })?;
+                Ok(OwnerContentOutcome::Mutated)
+            }
+            OwnerContentOperation::Delete { display_path, now } => {
+                self.transaction(|bundle| {
+                    bundle.section_delete(zone, display_path, owner, now, ent)?;
+                    bundle.publish(owner, now)
+                })?;
+                Ok(OwnerContentOutcome::Mutated)
             }
         }
     }
@@ -624,9 +729,7 @@ impl<S: Store> Bundle<S> {
         )
     }
 
-    /// Rewrite an existing circle section's body under its SAME sid (the
-    /// same-node op of §02.6): new blob under the governing ancestor's
-    /// current key, row updated in place, `section.modify` logged (§07.4).
+    /// Rewrite one owner section under its same SID and journal the mutation.
     pub fn section_rewrite(
         &mut self,
         zone: Zone,
@@ -636,35 +739,66 @@ impl<S: Store> Bundle<S> {
         now: &str,
         ent: &mut dyn EntropySource,
     ) -> Result<()> {
-        if zone != Zone::Circle {
-            return Err(Error::InvalidPath(
-                "section_rewrite: circle only this pass".to_owned(),
-            ));
-        }
-        let (row, folders) = self.resolve_clear(zone, display_path)?;
-        let sid = Sid::parse(&row.sid)?;
-        let node = NodePath::section(zone, folders.clone(), sid);
-        let (kv, key) = self.owner_current_section_key(owner, &folders, sid)?;
-        let sig = owner_content_sig(owner, zone, display_path, &row.sid, body)?;
-        let blob = serde_json::json!({ "md": body, "sig": sig });
-        let sha = self.put_blob_v(
-            &format!("e/circle/blobs/{sid}.enc"),
-            &key,
-            &node,
-            kv,
-            &jcs::canonical_bytes(&blob)?,
-            ent,
-        )?;
-        let index_path = "e/circle/index.json";
-        let mut index: ZoneIndex = self.get_json(index_path)?;
-        let entry = index
-            .sections
-            .iter_mut()
-            .find(|r| r.sid == row.sid)
-            .ok_or_else(|| Error::InvalidPath(format!("no section {display_path}")))?;
-        entry.blob_sha = sha.clone();
-        entry.key_version = kv;
-        self.put_json(index_path, &index)?;
+        let (node, sha) = match zone {
+            Zone::Public => {
+                let (row, folders) = self.resolve_clear(zone, display_path)?;
+                let sid = Sid::parse(&row.sid)?;
+                let node = NodePath::section(zone, folders, sid);
+                let file = format!("e/public/{display_path}.md");
+                self.write_object(&file, body.as_bytes())?;
+                let sha = sha256_hex(body.as_bytes());
+                let signature = owner_content_sig(owner, zone, display_path, &row.sid, body)?;
+                let mut index: ZoneIndex = self.get_json("e/public/index.json")?;
+                let entry = index
+                    .sections
+                    .iter_mut()
+                    .find(|entry| entry.sid == row.sid)
+                    .ok_or_else(|| Error::InvalidPath(format!("no section {display_path}")))?;
+                entry.blob_sha = sha.clone();
+                entry.sig = Some(signature);
+                self.put_json("e/public/index.json", &index)?;
+                (node, sha)
+            }
+            Zone::Circle => {
+                let (row, folders) = self.resolve_clear(zone, display_path)?;
+                let sid = Sid::parse(&row.sid)?;
+                let node = NodePath::section(zone, folders.clone(), sid);
+                let (kv, key) = self.owner_current_section_key(owner, &folders, sid)?;
+                let sig = owner_content_sig(owner, zone, display_path, &row.sid, body)?;
+                let blob = serde_json::json!({ "md": body, "sig": sig });
+                let sha = self.put_blob_v(
+                    &format!("e/circle/blobs/{sid}.enc"),
+                    &key,
+                    &node,
+                    kv,
+                    &jcs::canonical_bytes(&blob)?,
+                    ent,
+                )?;
+                let mut index: ZoneIndex = self.get_json("e/circle/index.json")?;
+                let entry = index
+                    .sections
+                    .iter_mut()
+                    .find(|entry| entry.sid == row.sid)
+                    .ok_or_else(|| Error::InvalidPath(format!("no section {display_path}")))?;
+                entry.blob_sha = sha.clone();
+                entry.key_version = kv;
+                self.put_json("e/circle/index.json", &index)?;
+                (node, sha)
+            }
+            Zone::Self_ => {
+                let (folders, sid) = self.self_resolve(display_path, &owner.owner_kex)?;
+                let node = NodePath::section(zone, folders, sid);
+                let key = node_key(&self.zone_dk(zone, owner)?, &node);
+                let file = format!("e/self/blobs/{sid}.enc");
+                let plaintext = self.open_blob(&file, &key, &node)?;
+                let mut section: SelfSection = serde_json::from_slice(&plaintext)
+                    .map_err(|error| Error::SealRejected(format!("self blob: {error}")))?;
+                section.md = body.to_owned();
+                let sha =
+                    self.put_blob(&file, &key, &node, &jcs::canonical_bytes(&section)?, ent)?;
+                (node, sha)
+            }
+        };
         self.log_owner_mutation(
             owner,
             aithos_core::gamma::Kind::SectionModify,
@@ -675,10 +809,7 @@ impl<S: Store> Bundle<S> {
         )
     }
 
-    /// Delete a circle section: the index row goes (the tree forgets the
-    /// node), `section.delete` is logged (§07.4). The sealed blob bytes
-    /// stay on disk — erasure is cryptographic (key destruction, §06), a
-    /// row-less blob is unreachable and unreadable.
+    /// Delete one owner section and journal the mutation.
     pub fn section_delete(
         &mut self,
         zone: Zone,
@@ -687,23 +818,55 @@ impl<S: Store> Bundle<S> {
         now: &str,
         ent: &mut dyn EntropySource,
     ) -> Result<()> {
-        if zone != Zone::Circle {
-            return Err(Error::InvalidPath(
-                "section_delete: circle only this pass".to_owned(),
-            ));
-        }
-        let (row, folders) = self.resolve_clear(zone, display_path)?;
-        let sid = Sid::parse(&row.sid)?;
-        let node = NodePath::section(zone, folders, sid);
-        let index_path = "e/circle/index.json";
-        let mut index: ZoneIndex = self.get_json(index_path)?;
-        index.sections.retain(|r| r.sid != row.sid);
-        self.put_json(index_path, &index)?;
+        let (node, name) = match zone {
+            Zone::Public | Zone::Circle => {
+                let (row, folders) = self.resolve_clear(zone, display_path)?;
+                let sid = Sid::parse(&row.sid)?;
+                let node = NodePath::section(zone, folders, sid);
+                let index_path = format!("e/{}/index.json", zone.as_str());
+                let mut index: ZoneIndex = self.get_json(&index_path)?;
+                index.sections.retain(|entry| entry.sid != row.sid);
+                self.put_json(&index_path, &index)?;
+                if zone == Zone::Public {
+                    self.delete_object(&format!("e/public/{display_path}.md"))?;
+                }
+                (node, row.name)
+            }
+            Zone::Self_ => {
+                let (folders, sid) = self.self_resolve(display_path, &owner.owner_kex)?;
+                let node = NodePath::section(zone, folders.clone(), sid);
+                let (descriptor_file, descriptor_key, descriptor_node) =
+                    self.self_desc_location(&folders, &owner.owner_kex)?;
+                let mut descriptor =
+                    self.read_desc(&descriptor_file, &descriptor_key, &descriptor_node)?;
+                descriptor
+                    .children
+                    .retain(|child| child.kind != "s" || child.sid != sid.to_string());
+                self.write_desc(
+                    &descriptor_file,
+                    &descriptor_key,
+                    &descriptor_node,
+                    &descriptor,
+                    ent,
+                )?;
+                let mut index: SelfIndex = self.get_json("e/self/index.json")?;
+                index.blobs.retain(|entry| entry.sid != sid.to_string());
+                self.put_json("e/self/index.json", &index)?;
+                (
+                    node,
+                    display_path
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(display_path)
+                        .to_owned(),
+                )
+            }
+        };
         self.log_owner_mutation(
             owner,
             aithos_core::gamma::Kind::SectionDelete,
             &node,
-            serde_json::json!({ "name": row.name }),
+            serde_json::json!({ "name": name }),
             now,
             ent,
         )
@@ -946,7 +1109,44 @@ impl<S: Store> Bundle<S> {
         String::from_utf8(body).map_err(|_| Error::SealRejected("not utf-8".to_owned()))
     }
 
-    fn self_resolve(
+    pub(crate) fn resolve_self_folder(
+        &self,
+        display_path: &str,
+        owner_kex: &StaticSecret,
+    ) -> Result<Vec<Sid>> {
+        Self::gate_display_path(display_path, true)?;
+        let self_dk = self.zone_dk_with_owner_kex(Zone::Self_, owner_kex)?;
+        let mut chain: Vec<Sid> = Vec::new();
+        for segment in display_path
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+        {
+            let (file, key, node) = self.self_desc_location(&chain, owner_kex)?;
+            let descriptor = self.read_desc(&file, &key, &node)?;
+            let mut next = None;
+            for child in descriptor.children.iter().filter(|child| child.kind == "d") {
+                let child_sid = Sid::parse(&child.sid)?;
+                let mut child_chain = chain.clone();
+                child_chain.push(child_sid);
+                let child_node = NodePath::folder(Zone::Self_, child_chain);
+                let child_key = node_key(&self_dk, &child_node);
+                let child_descriptor = self.read_desc(
+                    &format!("e/self/blobs/{child_sid}.enc"),
+                    &child_key,
+                    &child_node,
+                )?;
+                if child_descriptor.name == segment {
+                    next = Some(child_sid);
+                    break;
+                }
+            }
+            chain
+                .push(next.ok_or_else(|| Error::InvalidPath(format!("no self folder {segment}")))?);
+        }
+        Ok(chain)
+    }
+
+    pub(crate) fn self_resolve(
         &self,
         display_path: &str,
         owner_kex: &StaticSecret,
@@ -957,28 +1157,7 @@ impl<S: Store> Bundle<S> {
         let name = segs
             .pop()
             .ok_or_else(|| Error::InvalidPath(display_path.to_owned()))?;
-        let mut chain: Vec<Sid> = Vec::new();
-        for seg in segs {
-            let (file, key, node) = self.self_desc_location(&chain, owner_kex)?;
-            let desc = self.read_desc(&file, &key, &node)?;
-            let mut next = None;
-            for child in desc.children.iter().filter(|c| c.kind == "d") {
-                let child_sid = Sid::parse(&child.sid)?;
-                let mut cc = chain.clone();
-                cc.push(child_sid);
-                let cn = NodePath::folder(Zone::Self_, cc);
-                let ck = node_key(&self_dk, &cn);
-                if self
-                    .read_desc(&format!("e/self/blobs/{child_sid}.enc"), &ck, &cn)?
-                    .name
-                    == seg
-                {
-                    next = Some(child_sid);
-                    break;
-                }
-            }
-            chain.push(next.ok_or_else(|| Error::InvalidPath(format!("no self folder {seg}")))?);
-        }
+        let chain = self.resolve_self_folder(&segs.join("/"), owner_kex)?;
         let (file, key, node) = self.self_desc_location(&chain, owner_kex)?;
         let desc = self.read_desc(&file, &key, &node)?;
         for child in desc.children.iter().filter(|c| c.kind == "s") {

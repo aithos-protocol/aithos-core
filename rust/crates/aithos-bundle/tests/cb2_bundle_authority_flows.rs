@@ -303,7 +303,6 @@ fn cb2_bundle_delegated_evidence_atomicity_and_api_inventory_preliminary() {
     assert!(BUNDLE_SOURCE.contains("&OwnerKeys"));
     for absent in [
         "pub fn content_operation(",
-        "pub fn owner_content_operation(",
         "pub fn grantee_content_operation(",
         "pub fn open_bundle_session(",
         "pub fn export_keyless(",
@@ -314,5 +313,31 @@ fn cb2_bundle_delegated_evidence_atomicity_and_api_inventory_preliminary() {
                 && !LOG_SOURCE.contains(absent),
             "{absent}"
         );
+    }
+}
+
+#[test]
+fn cb2_cb8_owner_parity_generic_grants_api_gate() {
+    for present in [
+        "pub enum OwnerContentOperation",
+        "pub enum OwnerContentOutcome",
+        "pub fn owner_content_operation(",
+        "OwnerContentOperation::List",
+        "OwnerContentOperation::Read",
+        "OwnerContentOperation::Create",
+        "OwnerContentOperation::Edit",
+        "OwnerContentOperation::Delete",
+    ] {
+        assert!(BUNDLE_SOURCE.contains(present), "{present}");
+    }
+    for present in [
+        "pub enum GrantSelector",
+        "pub enum GenericGrantRequest",
+        "pub enum GrantLineKind",
+        "pub fn grant_generic(",
+        "GrantLineKind::ConnectorVault",
+        "self.transaction(",
+    ] {
+        assert!(GRANTS_SOURCE.contains(present), "{present}");
     }
 }

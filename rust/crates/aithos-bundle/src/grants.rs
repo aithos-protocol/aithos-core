@@ -18,6 +18,10 @@ use aithos_core::wire;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::collections::BTreeMap;
 
+fn io_err(error: std::io::Error) -> Error {
+    Error::SealRejected(format!("store i/o: {error}"))
+}
+
 /// One requested perimeter, in display terms (names). Resolution to sids
 /// happens against the clear index at issuance time. The verb spans the
 /// full §04.2 lattice: the delivered key is the same for every verb
@@ -29,6 +33,77 @@ pub struct GrantSpec {
     pub verb: Verb,
     pub dir: String,
     pub tag: Option<String>,
+}
+
+/// Display-level selector accepted by the generic CB8 grant façade.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GrantSelector {
+    Zone,
+    Dir(String),
+    Tag {
+        dir: String,
+        tag: String,
+    },
+    /// Owner-resolved display path; the signed perimeter carries only its SID.
+    Id(String),
+}
+
+/// One generic grant request. Resolution and key delivery happen together.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenericGrantRequest {
+    Ethos {
+        verb: Verb,
+        zone: Zone,
+        selector: GrantSelector,
+    },
+    Act {
+        connector: String,
+        action: String,
+    },
+}
+
+impl GenericGrantRequest {
+    #[must_use]
+    pub fn ethos(verb: Verb, zone: Zone, selector: GrantSelector) -> Self {
+        Self::Ethos {
+            verb,
+            zone,
+            selector,
+        }
+    }
+
+    #[must_use]
+    pub fn act(connector: impl Into<String>, action: impl Into<String>) -> Self {
+        Self::Act {
+            connector: connector.into(),
+            action: action.into(),
+        }
+    }
+}
+
+/// Exact physical key consequence of one generic grant request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrantLineKind {
+    None,
+    ZoneRoot,
+    Folder,
+    ZoneTagView,
+    FolderTagView,
+    Section,
+    ConnectorVault,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrantDelivery {
+    pub authority: String,
+    pub kind: GrantLineKind,
+    pub node: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericGrantOutcome {
+    pub mandate: Mandate,
+    pub deliveries: Vec<GrantDelivery>,
 }
 
 pub(crate) fn hdr_file(zone: Zone, node: &NodePath) -> String {
@@ -195,6 +270,260 @@ impl<S: Store> Bundle<S> {
                 Ok(())
             }
         }
+    }
+
+    fn deliver_exact_section(
+        &mut self,
+        owner: &OwnerKeys,
+        recipient: &Recipient,
+        zone: Zone,
+        folders: &[Sid],
+        sid: Sid,
+        ent: &mut dyn EntropySource,
+    ) -> Result<NodePath> {
+        let node = NodePath::section(zone, folders.to_vec(), sid);
+        let key = match zone {
+            Zone::Circle => self.owner_current_section_key(owner, folders, sid)?.1,
+            Zone::Self_ => node_key(&self.zone_dk(zone, owner)?, &node),
+            Zone::Public => {
+                return Err(Error::InvalidPath(
+                    "public sections require no delivered key line".into(),
+                ));
+            }
+        };
+        self.add_line_on(&node, &key, recipient, ent)?;
+        Ok(node)
+    }
+
+    fn deliver_connector_line(
+        &mut self,
+        owner: &OwnerKeys,
+        recipient: &Recipient,
+        connector: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<String> {
+        Self::gate_display_name(connector)?;
+        let node = format!("/x/{connector}");
+        let file = format!("e/x/{connector}/header.json");
+        let key = self.audit_key_owner(owner, connector)?;
+        match self.store.get(&file).map_err(io_err)? {
+            Some(bytes) => {
+                let mut header: Header = serde_json::from_slice(&bytes)
+                    .map_err(|error| Error::SealRejected(format!("{file}: {error}")))?;
+                header.append_line(&self.did, KV, &key, recipient, ent.e32(), ent.e24())?;
+                self.put_json(&file, &header)?;
+            }
+            None => {
+                let header = Header::build(
+                    &self.did,
+                    &node,
+                    &key,
+                    &[self.owner_kex_recipient()?, recipient.clone()],
+                    &[ent.e32(), ent.e32()],
+                    &[ent.e24(), ent.e24()],
+                )?;
+                self.put_json(&file, &header)?;
+            }
+        }
+        Ok(node)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_generic_grant(
+        &mut self,
+        owner: &OwnerKeys,
+        label: &str,
+        agent_pub: &VerifyingKey,
+        requests: &[GenericGrantRequest],
+        not_before: &str,
+        not_after: &str,
+        issue_depth: u32,
+        ent: &mut dyn EntropySource,
+    ) -> Result<GenericGrantOutcome> {
+        let recipient = agent_recipient(agent_pub);
+        let mut perimeter = Vec::new();
+        let mut deliveries = Vec::new();
+        for request in requests {
+            let (entry, kind, node) = match request {
+                GenericGrantRequest::Act { connector, action } => {
+                    Self::gate_display_name(connector)?;
+                    Self::gate_display_name(action)?;
+                    let entry = PerimeterEntry::Act {
+                        connector: connector.clone(),
+                        action: Some(action.clone()),
+                    };
+                    if action == "config" {
+                        let node =
+                            self.deliver_connector_line(owner, &recipient, connector, ent)?;
+                        (entry, GrantLineKind::ConnectorVault, Some(node))
+                    } else {
+                        (entry, GrantLineKind::None, None)
+                    }
+                }
+                GenericGrantRequest::Ethos {
+                    verb,
+                    zone,
+                    selector,
+                } => match selector {
+                    GrantSelector::Zone => {
+                        let entry = PerimeterEntry::Ethos {
+                            verb: *verb,
+                            zone: *zone,
+                            dir: Vec::new(),
+                            tag: None,
+                        };
+                        if *zone == Zone::Public {
+                            (entry, GrantLineKind::None, None)
+                        } else {
+                            self.deliver_entry(owner, &recipient, *zone, &[], None, ent)?;
+                            (
+                                entry,
+                                GrantLineKind::ZoneRoot,
+                                Some(NodePath::zone_root(*zone).to_string()),
+                            )
+                        }
+                    }
+                    GrantSelector::Dir(display) => {
+                        let dir = if *zone == Zone::Self_ {
+                            self.resolve_self_folder(display, &owner.owner_kex)?
+                        } else {
+                            self.resolve_folder(*zone, display)?
+                        };
+                        let entry = PerimeterEntry::Ethos {
+                            verb: *verb,
+                            zone: *zone,
+                            dir: dir.clone(),
+                            tag: None,
+                        };
+                        if *zone == Zone::Public {
+                            (entry, GrantLineKind::None, None)
+                        } else {
+                            self.deliver_entry(owner, &recipient, *zone, &dir, None, ent)?;
+                            (
+                                entry,
+                                GrantLineKind::Folder,
+                                Some(NodePath::folder(*zone, dir).to_string()),
+                            )
+                        }
+                    }
+                    GrantSelector::Tag { dir: display, tag } => {
+                        if *zone == Zone::Self_ {
+                            return Err(Error::InvalidPath(
+                                "self tag delivery requires an exact id in CB8".into(),
+                            ));
+                        }
+                        let dir = self.resolve_folder(*zone, display)?;
+                        let entry = PerimeterEntry::Ethos {
+                            verb: *verb,
+                            zone: *zone,
+                            dir: dir.clone(),
+                            tag: Some(tag.clone()),
+                        };
+                        if *zone == Zone::Public {
+                            (entry, GrantLineKind::None, None)
+                        } else {
+                            self.deliver_entry(owner, &recipient, *zone, &dir, Some(tag), ent)?;
+                            let kind = if dir.is_empty() {
+                                GrantLineKind::ZoneTagView
+                            } else {
+                                GrantLineKind::FolderTagView
+                            };
+                            (
+                                entry,
+                                kind,
+                                Some(NodePath::tag_view(*zone, dir, tag)?.to_string()),
+                            )
+                        }
+                    }
+                    GrantSelector::Id(display_path) => {
+                        let (folders, sid) = if *zone == Zone::Self_ {
+                            self.self_resolve(display_path, &owner.owner_kex)?
+                        } else {
+                            let (row, folders) = self.resolve_clear(*zone, display_path)?;
+                            (folders, Sid::parse(&row.sid)?)
+                        };
+                        let entry = PerimeterEntry::EthosId {
+                            verb: *verb,
+                            zone: *zone,
+                            id: sid,
+                        };
+                        if *zone == Zone::Public {
+                            (entry, GrantLineKind::None, None)
+                        } else {
+                            let node = self.deliver_exact_section(
+                                owner, &recipient, *zone, &folders, sid, ent,
+                            )?;
+                            (entry, GrantLineKind::Section, Some(node.to_string()))
+                        }
+                    }
+                },
+            };
+            let authority = entry.to_entry_string();
+            perimeter.push(entry);
+            deliveries.push(GrantDelivery {
+                authority,
+                kind,
+                node,
+            });
+        }
+        if issue_depth > 0 {
+            perimeter.push(PerimeterEntry::Issue { depth: issue_depth });
+        }
+        let mandate = Mandate::build_root(
+            &owner.root_sign,
+            &MandateSpec {
+                id: format!(
+                    "mandate_{}",
+                    Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
+                ),
+                subject: self.did.clone(),
+                constraints: MandateSpec::no_constraints(),
+                grantee_id: format!("urn:aithos:agent:{label}"),
+                grantee_label: label.to_owned(),
+                grantee_pub: agent_pub,
+                perimeter,
+                not_before: not_before.to_owned(),
+                not_after: not_after.to_owned(),
+                issued_at: not_before.to_owned(),
+                nonce: hex::encode(ent.e16()),
+            },
+        )?;
+        self.put_json(&format!("certs/{}.json", mandate.id), &mandate)?;
+        Ok(GenericGrantOutcome {
+            mandate,
+            deliveries,
+        })
+    }
+
+    /// Resolve, deliver, journal and publish one generic owner grant.
+    #[allow(clippy::too_many_arguments)]
+    pub fn grant_generic(
+        &mut self,
+        owner: &OwnerKeys,
+        label: &str,
+        agent_pub: &VerifyingKey,
+        requests: &[GenericGrantRequest],
+        not_before: &str,
+        not_after: &str,
+        issue_depth: u32,
+        now: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<GenericGrantOutcome> {
+        self.transaction(|bundle| {
+            let outcome = bundle.prepare_generic_grant(
+                owner,
+                label,
+                agent_pub,
+                requests,
+                not_before,
+                not_after,
+                issue_depth,
+                ent,
+            )?;
+            bundle.log_owner_grant(owner, &outcome.mandate.id, now, ent)?;
+            bundle.publish(owner, now)?;
+            Ok(outcome)
+        })
     }
 
     /// Owner grant (§04.3): mint the root certificate AND deliver the keys.

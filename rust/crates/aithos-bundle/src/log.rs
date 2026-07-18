@@ -387,9 +387,22 @@ impl<S: Store> Bundle<S> {
         connector: &str,
     ) -> Result<[u8; 32]> {
         let label = format!("aithos-core/v1/x/{connector}");
-        // Agent path: a line on the vault root sealed to the leaf grantee.
+        // Exact connector line first (CB8); the historical vault-root line
+        // remains readable for existing bundles.
         if let Some(leaf) = chain.last() {
             let kex = grantee_kex_secret(agent_sk);
+            if let Some(bytes) = self
+                .store
+                .get(&format!("e/x/{connector}/header.json"))
+                .ok()
+                .flatten()
+            {
+                if let Ok(header) = serde_json::from_slice::<aithos_core::header::Header>(&bytes) {
+                    if let Ok(key) = header.open(&self.did, KV, &leaf.grantee.pubkey, &kex) {
+                        return Ok(key);
+                    }
+                }
+            }
             if let Some(bytes) = self.store.get("e/x/header.json").ok().flatten() {
                 if let Ok(header) = serde_json::from_slice::<aithos_core::header::Header>(&bytes) {
                     if let Ok(dk) = header.open(&self.did, KV, &leaf.grantee.pubkey, &kex) {
