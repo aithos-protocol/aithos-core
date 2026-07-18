@@ -2,6 +2,8 @@
 //! root in `features/`; step definitions grow with each phase of
 //! docs/EXECUTION-PLAN.md and are never rewritten, only extended.
 
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use aithos_bundle::bundle::{Bundle, SectionSpec, ZoneIndex};
@@ -9,7 +11,7 @@ use aithos_bundle::entropy::{EntropySource, SeqEntropy};
 use aithos_bundle::grants::GrantSpec;
 use aithos_bundle::log::{LogFilter, LogHit};
 use aithos_bundle::manifest::{sha256_hex, Manifest};
-use aithos_bundle::{MemStore, Store};
+use aithos_bundle::{validate_display_path, validate_store_key, FsStore, MemStore, Store};
 use aithos_core::catalog::{
     catalog_action_permitted, verify_catalog_action_facts, verify_catalog_approval,
     verify_catalog_chain, verify_connector_catalog,
@@ -73,6 +75,7 @@ const CB5_CATALOG: &str = include_str!("../../../../vectors/cb2-connector-catalo
 const CB6_GAMMA: &str = include_str!("../../../../vectors/cb2-gamma-v2-replay.json");
 const CB6_COEXISTENCE: &str =
     include_str!("../../../../vectors/cb2-bundle-version-coexistence.json");
+const CB7_BOUNDARIES: &str = include_str!("../../../../vectors/cb2-bundle-boundaries.json");
 
 fn agent_sk(b: u8) -> SigningKey {
     SigningKey::from_bytes(&[b; 32])
@@ -198,6 +201,7 @@ pub struct ProtocolWorld {
     cb4_result: Option<Result<(), String>>,
     cb5_result: Option<Result<(), String>>,
     cb6_result: Option<Result<(), String>>,
+    cb7_result: Option<Result<(), String>>,
     // --- step F: gamma ---
     gamma_result: Option<Result<String, String>>,
     audit_chain: Vec<Mandate>,
@@ -624,6 +628,7 @@ static CB5_COUNTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB5_RECEIPTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB5_CATALOG_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB6_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+static CB7_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 
 fn cb5_parsed(bytes: &str) -> Result<serde_json::Value, String> {
     serde_json::from_str(bytes).map_err(|error| format!("CB5 vector does not parse: {error}"))
@@ -848,6 +853,221 @@ fn cb6_acceptance() -> Result<(), String> {
     {
         return Err("CB6 closed Gamma inventory drift".into());
     }
+    Ok(())
+}
+
+fn cb7_snapshot(value: &serde_json::Value) -> Result<BTreeMap<String, Vec<u8>>, String> {
+    value
+        .as_object()
+        .ok_or_else(|| "CB7 snapshot is not an object".to_owned())?
+        .iter()
+        .map(|(path, bytes)| {
+            Ok((
+                path.clone(),
+                bytes
+                    .as_str()
+                    .ok_or_else(|| format!("CB7 snapshot {path} is not text"))?
+                    .as_bytes()
+                    .to_vec(),
+            ))
+        })
+        .collect()
+}
+
+fn cb7_store_snapshot(store: &impl Store) -> Result<BTreeMap<String, Vec<u8>>, String> {
+    store
+        .list("")
+        .map_err(|error| format!("CB7 list failed: {error}"))?
+        .into_iter()
+        .map(|path| {
+            let bytes = store
+                .get(&path)
+                .map_err(|error| format!("CB7 read {path} failed: {error}"))?
+                .ok_or_else(|| format!("CB7 listed object vanished: {path}"))?;
+            Ok((path, bytes))
+        })
+        .collect()
+}
+
+fn cb7_install(store: &mut impl Store, snapshot: &BTreeMap<String, Vec<u8>>) -> Result<(), String> {
+    for (path, bytes) in snapshot {
+        store
+            .put(path, bytes)
+            .map_err(|error| format!("CB7 install {path} failed: {error}"))?;
+    }
+    Ok(())
+}
+
+fn cb7_stage_replacement(
+    store: &mut impl Store,
+    old: &BTreeMap<String, Vec<u8>>,
+    new: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), String> {
+    store
+        .begin_transaction()
+        .map_err(|error| format!("CB7 begin failed: {error}"))?;
+    for path in old.keys().filter(|path| !new.contains_key(*path)) {
+        store
+            .delete(path)
+            .map_err(|error| format!("CB7 staged delete {path} failed: {error}"))?;
+    }
+    for (path, bytes) in new {
+        if old.get(path) != Some(bytes) {
+            store
+                .put(path, bytes)
+                .map_err(|error| format!("CB7 staged put {path} failed: {error}"))?;
+        }
+    }
+    Ok(())
+}
+
+struct Cb7TempRoot(PathBuf);
+
+impl Cb7TempRoot {
+    fn new(label: &str) -> Result<Self, String> {
+        let base = option_env!("CARGO_TARGET_TMPDIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&base).map_err(|error| format!("CB7 temp base failed: {error}"))?;
+        for serial in 0..1024 {
+            let path = base.join(format!(
+                "aithos-cb7-cucumber-{}-{label}-{serial}",
+                std::process::id()
+            ));
+            match std::fs::create_dir(&path) {
+                Ok(()) => return Ok(Self(path)),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(format!("CB7 temp root failed: {error}")),
+            }
+        }
+        Err("CB7 could not allocate a temp root".into())
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for Cb7TempRoot {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+        let name = self
+            .0
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        if let Some(parent) = self.0.parent() {
+            let _ = std::fs::remove_dir_all(parent.join(format!(".{name}.aithos-generations")));
+        }
+    }
+}
+
+fn cb7_acceptance() -> Result<(), String> {
+    let vector: serde_json::Value = serde_json::from_str(CB7_BOUNDARIES)
+        .map_err(|error| format!("CB7 boundary vector does not parse: {error}"))?;
+    let old = cb7_snapshot(&vector["transaction"]["old_snapshot"])?;
+    let new = cb7_snapshot(&vector["transaction"]["new_snapshot"])?;
+
+    for case in vector["transaction"]["failure_cases"]
+        .as_array()
+        .ok_or_else(|| "CB7 failure cases are not an array".to_owned())?
+    {
+        let store_kind = case["store"].as_str().unwrap_or_default();
+        if store_kind == "MemStore" {
+            let mut store = MemStore::default();
+            cb7_install(&mut store, &old)?;
+            cb7_stage_replacement(&mut store, &old, &new)?;
+            store
+                .rollback_transaction()
+                .map_err(|error| format!("{} rollback failed: {error}", case["id"]))?;
+            if cb7_store_snapshot(&store)? != old {
+                return Err(format!("{} exposed a partial MemStore", case["id"]));
+            }
+        } else if store_kind == "FsStore" {
+            let root = Cb7TempRoot::new(case["id"].as_str().unwrap_or("failure"))?;
+            let mut store = FsStore::new(root.path());
+            cb7_install(&mut store, &old)?;
+            cb7_stage_replacement(&mut store, &old, &new)?;
+            drop(store);
+            let mut reopened = FsStore::new(root.path());
+            reopened
+                .recover_transaction()
+                .map_err(|error| format!("{} recovery failed: {error}", case["id"]))?;
+            if cb7_store_snapshot(&reopened)? != old {
+                return Err(format!("{} exposed a partial FsStore", case["id"]));
+            }
+        } else {
+            return Err(format!("unknown CB7 store kind {store_kind}"));
+        }
+    }
+
+    let mut memory = MemStore::default();
+    cb7_install(&mut memory, &old)?;
+    cb7_stage_replacement(&mut memory, &old, &new)?;
+    memory
+        .commit_transaction()
+        .map_err(|error| format!("CB7 MemStore commit failed: {error}"))?;
+    if cb7_store_snapshot(&memory)? != new {
+        return Err("CB7 MemStore commit is not the complete new snapshot".into());
+    }
+
+    let root = Cb7TempRoot::new("success")?;
+    let mut filesystem = FsStore::new(root.path());
+    cb7_install(&mut filesystem, &old)?;
+    cb7_stage_replacement(&mut filesystem, &old, &new)?;
+    filesystem
+        .commit_transaction()
+        .map_err(|error| format!("CB7 FsStore commit failed: {error}"))?;
+    drop(filesystem);
+    let mut reopened = FsStore::new(root.path());
+    reopened
+        .recover_transaction()
+        .map_err(|error| format!("CB7 committed recovery failed: {error}"))?;
+    if cb7_store_snapshot(&reopened)? != new {
+        return Err("CB7 FsStore commit is not the complete new snapshot".into());
+    }
+
+    for case in vector["confinement"]["cases"]
+        .as_array()
+        .ok_or_else(|| "CB7 confinement cases are not an array".to_owned())?
+    {
+        if case["resolved_outside_root"] == true {
+            continue;
+        }
+        let value = case["value"].as_str().unwrap_or_default();
+        let result = match case["input_kind"].as_str().unwrap_or_default() {
+            "display_path" => validate_display_path(value),
+            "store_key" | "cold_load_key" | "recovery_key" => validate_store_key(value),
+            other => return Err(format!("unknown CB7 path kind {other}")),
+        };
+        if result.is_ok() != (case["expected"] == "accepted") {
+            return Err(format!("{} confinement verdict drift", case["id"]));
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+        let root = Cb7TempRoot::new("symlink")?;
+        let outside = Cb7TempRoot::new("outside")?;
+        std::fs::create_dir_all(root.path().join("e/public/folder"))
+            .map_err(|error| format!("CB7 symlink fixture failed: {error}"))?;
+        symlink(outside.path(), root.path().join("e/public/folder/link-out"))
+            .map_err(|error| format!("CB7 display symlink failed: {error}"))?;
+        let store = FsStore::new(root.path());
+        if store.get("e/public/folder/link-out/section.md").is_ok() {
+            return Err("CB7 intermediate display symlink escaped".into());
+        }
+        symlink(
+            outside.path().join("manifest.json"),
+            root.path().join("manifest.json"),
+        )
+        .map_err(|error| format!("CB7 final symlink failed: {error}"))?;
+        if store.get("manifest.json").is_ok() {
+            return Err("CB7 final Store symlink escaped".into());
+        }
+    }
+
     Ok(())
 }
 
@@ -1352,6 +1572,14 @@ fn cb6_result(w: &mut ProtocolWorld) {
 
 fn cb6_assert_green(w: &ProtocolWorld) {
     assert_eq!(w.cb6_result, Some(Ok(())));
+}
+
+fn cb7_result(w: &mut ProtocolWorld) {
+    w.cb7_result = Some(CB7_ACCEPTANCE.get_or_init(cb7_acceptance).clone());
+}
+
+fn cb7_assert_green(w: &ProtocolWorld) {
+    assert_eq!(w.cb7_result, Some(Ok(())));
 }
 
 impl ProtocolWorld {
@@ -3006,6 +3234,29 @@ fn cb6_when(w: &mut ProtocolWorld) {
 )]
 fn cb6_then(w: &mut ProtocolWorld) {
     cb6_assert_green(w);
+}
+
+// ------------------------------------------------------- CB7 transactions
+
+#[given(
+    regex = r#"^(?:a published ".*" bundle snapshotted byte for byte|an injected failure at ".*")$"#
+)]
+fn cb7_given(w: &mut ProtocolWorld) {
+    cb7_result(w);
+}
+
+#[when(
+    regex = r#"^(?:the owner attempts a valid mutation and publication|the owner commits a valid circle edit|a caller supplies ".*" as a ".*" under ".*")$"#
+)]
+fn cb7_when(w: &mut ProtocolWorld) {
+    cb7_result(w);
+}
+
+#[then(
+    regex = r#"^(?:the mutation is refused before canonical effect|the canonical bundle is byte-for-byte identical to the snapshot|re-reading or reopening the ".*" observes the old manifest and Gamma head|no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle|staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan|one deterministic write-set advances content, roots, manifest and Gamma|normal completion exposes the complete new state at one logical commit point|a crash or lost acknowledgement at that point resolves to the complete old or complete new state from the canonical manifest and Gamma head|no reader or reopen observes an individual file replacement or partial edition|the operation is rejected before any out-of-root store access)$"#
+)]
+fn cb7_then(w: &mut ProtocolWorld) {
+    cb7_assert_green(w);
 }
 
 // ----------------------------------------------------------------- thens

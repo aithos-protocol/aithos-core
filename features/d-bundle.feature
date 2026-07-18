@@ -88,7 +88,6 @@ Feature: Bundle and editions
 
   Rule: A local mutation commits state and Gamma as one transaction
 
-    @wip
     Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
       Given a published "<store>" bundle snapshotted byte for byte
       And an injected failure at "<boundary>"
@@ -114,7 +113,6 @@ Feature: Bundle and editions
         | FsStore  | Gamma validation  |
         | FsStore  | before commit marker or reference |
 
-    @wip
     Scenario Outline: A successful local transaction publishes content and Gamma together
       Given a published "<store>" bundle snapshotted byte for byte
       When the owner commits a valid circle edit
@@ -148,7 +146,6 @@ Feature: Bundle and editions
         | open       | node-and-version-bound sealed body      | body from a sibling node or version      | the expected plaintext is recovered only locally |
         | wrap       | node-version-and-recipient header line  | line for another node or recipient       | only the intended recipient opens the wrapped key |
 
-    @wip
     Scenario Outline: An untrusted path or Store key can never escape its selected root
       Given a published "<store>" bundle snapshotted byte for byte
       When a caller supplies "<invalid input>" as a "<input kind>" under "<filesystem condition>"
