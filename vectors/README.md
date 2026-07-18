@@ -88,3 +88,17 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`b8b4014b390fc3ebc65897f8b59d084da78c97137e9ad7f7703dbe5b0e0194db`);
   Rust consumer: `aithos-core/tests/cb2_operation_facts_read.rs`
   (`79f27ce5ea5511859edd5c9c24fd73e90d4f701468752f61b3f90cae72b51747`).
+- `CB2-K1-OPERATION-FACTS-ACTION-INFERENCE-1`: K1.2-AI-B closed action
+  and inference pre-effect facts; historical action `args_hash`, exact private
+  inference-request and purpose commitments, distinct catalog/approval content
+  addresses, all budget/purpose applicability combinations, 8 positive cases,
+  and 35 fail-closed `InvalidOperationFacts` candidates. Catalog and approval
+  documents are explicitly syntactic fixtures only; their signed tables remain
+  separately gated. Generator:
+  `gen-cb2-operation-facts-action-inference.py`
+  (`481bbb75475813a6161b377e4bca28ddb385a146d9edf6f4cbc0ce2d98fdf901`);
+  vector: `cb2-operation-facts-action-inference.json`
+  (`4e1f319439ec4cc5faef2012a2a8aa198ba8d62fced2f330d2bbd13580c78b71`);
+  Rust consumer:
+  `aithos-core/tests/cb2_operation_facts_action_inference.rs`
+  (`aab91fdc7cf66efe8e84bd0c6913dc58e599cc4d6799e7b55dde55655abb745e`).

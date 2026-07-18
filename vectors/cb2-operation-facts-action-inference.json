@@ -1,0 +1,2206 @@
+{
+  "commitment_domains": {
+    "inference_request": "aithos-core/v1/inference-request",
+    "operation_facts": "aithos-core/v1/operation-facts",
+    "purpose": "aithos-core/v1/purpose"
+  },
+  "description": "Independent Python stdlib oracle for K1.2-AI-B closed action and inference pre-effect facts. Catalog documents are syntactic content-address fixtures only; their signed tables remain reserved.",
+  "fixtures": {
+    "action": {
+      "action": "send",
+      "args": {
+        "body": "private fixture body",
+        "recipients": [
+          "alice@example.test"
+        ],
+        "subject": "CB2 exact action"
+      },
+      "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+      "args_jcs": "{\"body\":\"private fixture body\",\"recipients\":[\"alice@example.test\"],\"subject\":\"CB2 exact action\"}",
+      "connector": "mail"
+    },
+    "budget_ref": "haiku",
+    "catalog": {
+      "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+      "approval_document": {
+        "aithos-connector-catalog-approval-core": "1.0.0-fixture",
+        "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+        "catalog_version": "2026.07",
+        "connector": "mail",
+        "signature": {
+          "alg": "ed25519",
+          "key": "#content",
+          "value": "22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "subject": "did:aithos:z6MkOwnerFixture"
+      },
+      "approval_document_jcs": "{\"aithos-connector-catalog-approval-core\":\"1.0.0-fixture\",\"catalog_digest\":\"sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e\",\"catalog_version\":\"2026.07\",\"connector\":\"mail\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#content\",\"value\":\"22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222\"},\"subject\":\"did:aithos:z6MkOwnerFixture\"}",
+      "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+      "catalog_document": {
+        "actions": [
+          {
+            "action": "list",
+            "class": "read"
+          },
+          {
+            "action": "send",
+            "class": "act"
+          },
+          {
+            "action": "purchase",
+            "class": "binding"
+          }
+        ],
+        "aithos-connector-catalog-core": "1.0.0-fixture",
+        "connector": "mail",
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkCatalogFixture",
+          "value": "11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "version": "2026.07"
+      },
+      "catalog_document_jcs": "{\"actions\":[{\"action\":\"list\",\"class\":\"read\"},{\"action\":\"send\",\"class\":\"act\"},{\"action\":\"purchase\",\"class\":\"binding\"}],\"aithos-connector-catalog-core\":\"1.0.0-fixture\",\"connector\":\"mail\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"z6MkCatalogFixture\",\"value\":\"11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\"},\"version\":\"2026.07\"}",
+      "catalog_ref": {
+        "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+        "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+        "catalog_version": "2026.07"
+      }
+    },
+    "inference": {
+      "model": "claude-haiku",
+      "provider": "anthropic",
+      "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d",
+      "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+    },
+    "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+    "purpose_text": "Prepare the first Aithos protocol demonstration"
+  },
+  "historical_vector_sha256": {
+    "e1-mandate.json": "e243e2348f3778c8e9ec9a3bbc350d480aeb779c4cadac0f8d00f9007264d45e",
+    "f1-gamma-chain.json": "38d466f934f17e99acbbdb76fb236efafb36f7b1c4070e9729d6edca17768ca3",
+    "f2-gamma-counting.json": "d593d204144ffa81c2ba51393d8190081d80f29246f41fdfa3fed96db77d230f",
+    "gplus-obligations.json": "f74f6c2b4611e798c0c00bd35ccdfb056e26de2d558efc0e2c3ad04ae57a7285"
+  },
+  "inventory": {
+    "catalog_documents_are_syntactic_only": true,
+    "negative_case_ids": [
+      "missing-envelope-profile",
+      "extra-envelope-member",
+      "kind-family-mismatch",
+      "missing-action-member",
+      "extra-action-member",
+      "null-action-member",
+      "empty-connector",
+      "mismatched-action",
+      "missing-catalog-member",
+      "extra-catalog-member",
+      "empty-catalog-version",
+      "malformed-catalog-digest",
+      "mismatched-catalog-digest",
+      "mismatched-approval-digest",
+      "malformed-args-hash",
+      "mismatched-action-arguments",
+      "action-post-effect-tokens",
+      "action-usage-receipt",
+      "missing-inference-member",
+      "empty-provider",
+      "empty-model",
+      "malformed-request-digest",
+      "mismatched-inference-request",
+      "inference-args-hash",
+      "inference-post-effect-counters",
+      "missing-applicable-budget",
+      "volunteered-budget",
+      "empty-budget-ref",
+      "extra-budget-member",
+      "unknown-budget-state",
+      "missing-applicable-purpose",
+      "volunteered-purpose",
+      "mismatched-purpose-ref",
+      "null-purpose",
+      "facts-ref-digest-mismatch"
+    ],
+    "positive_case_ids": [
+      "action-plain",
+      "action-budget",
+      "action-purpose",
+      "action-budget-purpose",
+      "inference-plain",
+      "inference-budget",
+      "inference-purpose",
+      "inference-budget-purpose"
+    ],
+    "post_effect_members_forbidden": [
+      "tokens",
+      "tokens_in",
+      "tokens_out",
+      "usage_receipt",
+      "response"
+    ],
+    "required_error_variant": "InvalidOperationFacts"
+  },
+  "negative_cases": [
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "missing operation-facts profile",
+      "facts_ref": null,
+      "id": "missing-envelope-profile",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action",
+        "nonce": "forbidden"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "extra operation-facts envelope member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:0a2b7395058abe68c0e26a53b0dc22e5d7c4c74937affa46039b6fdc799933c4"
+      },
+      "id": "extra-envelope-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "action facts selected as inference",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:3f0b29026c1e0fd79737294c68c1d21435dda6775e3fc1461f2ad7bc8eb29ca7"
+      },
+      "id": "kind-family-mismatch",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "missing exact action member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:275b39151df4bc57fb224090dd3df4ced934474ae75d403ca5d1eb68dbe67847"
+      },
+      "id": "missing-action-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:43ed5c457b799abe72e15e5ce574960937404f72402c5c15837044c1fc1a3a4a"
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "extra action member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:5984b6c54608d60f03b64f8401b1bbf1bf9aa4233ff5027431635d56247d9881"
+      },
+      "id": "extra-action-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": null,
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "null action member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:336bc667e60e6de3b8840f657801d21643b1ef951862c017e6c648fcf445418f"
+      },
+      "id": "null-action-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "empty connector identifier",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:a2790ed63b98f6b306fb88aef8ed30cdc79b4fc35733f8f28f828f36ec424c9f"
+      },
+      "id": "empty-connector",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "purchase",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "native action identifier mismatch",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:5308c1d7aa96cbf21e014ebc9262d455b03bad73de3d109c01596f23a0577dc5"
+      },
+      "id": "mismatched-action",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "catalog_ref missing approval digest",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:7c1156858cbb92d05c5fd028860d9d20f7709f44b17e413a6cb0cbdadc05203b"
+      },
+      "id": "missing-catalog-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07",
+            "class": "act"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "catalog_ref duplicates derived class",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:6e01e91f2be7738e2ea97a640586a6e78407b4c19e67e5015ce72bb5a98f80bf"
+      },
+      "id": "extra-catalog-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": ""
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "empty catalog version",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:d88cb0ee0850b35c3079d27b00d4be6861a891160aaab0b4adee94ec2b5329a3"
+      },
+      "id": "empty-catalog-version",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:ABC",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "malformed catalog digest",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:8a3f39b6905d15b394d278ed9a9e678a1155023efedef3f0a416c59893eea438"
+      },
+      "id": "malformed-catalog-digest",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:597d1e45c0479f67a910682e3e59e219138b60469c608eb8e5019cc497e1b110",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "different catalog digest under the same version",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:62964c5f45b404c515121130ca3a798ac82fdfe369c36895417011dcb8fae2a2"
+      },
+      "id": "mismatched-catalog-digest",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:49a17954fe2b6b0cc52a978c819018f62ea03468403a9d61efae3b674bc58f8f",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "different owner approval evidence",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:4ad7387e336a15f2749993436b497b1acf802aa1414b754b077f64bdc7823349"
+      },
+      "id": "mismatched-approval-digest",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:ABC",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "malformed args_hash",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:50f9cd4ea933bb4c99c39e9decf90d12e249faaaa7d332acabb07e9a450eaec7"
+      },
+      "id": "malformed-args-hash",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "changed"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "native arguments differ from args_hash",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:ee74a181bbb716fd35b52fe2abc7f50bc950e662a7171d2fca6d96912670d302"
+      },
+      "id": "mismatched-action-arguments",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "tokens": 10
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "action facts carry post-effect tokens",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:55067f3135644d3fcd3df2c1e363d76ad3d894f2eb8abe25a14737542e562022"
+      },
+      "id": "action-post-effect-tokens",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "usage_receipt": {}
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "action facts carry a usage receipt",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:188aebc811845df4d487a6d67822f9b1909707d418950c9ffdc87d7152b670da"
+      },
+      "id": "action-usage-receipt",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "inference-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "state": "not-applicable"
+          },
+          "provider": "anthropic",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "defect": "missing exact inference member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:5c8262ccb625fb46053d0cd11083cf1452cb8d7bc49ff142c54a9c2e91066bc7"
+      },
+      "id": "missing-inference-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "inference-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "state": "not-applicable"
+          },
+          "model": "claude-haiku",
+          "provider": "",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "defect": "empty provider identifier",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:17f442f5ea10b7232f6abf1842a5e8db3dc614f08ee9f97d623012651887e29e"
+      },
+      "id": "empty-provider",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "inference-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "state": "not-applicable"
+          },
+          "model": "",
+          "provider": "anthropic",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "defect": "empty model identifier",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:b234ef619bde225b30760fc10d2461bb3640b7af4b6660ea26454ecf5b7ad701"
+      },
+      "id": "empty-model",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "inference-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "state": "not-applicable"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:ABC"
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "defect": "malformed request digest",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:019f9ac1302cc9e59813eaef49975eca04d64ebde0b04f7c7337e529329eaa15"
+      },
+      "id": "malformed-request-digest",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "inference-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "state": "not-applicable"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "6368616e6765642072657175657374206279746573"
+      },
+      "defect": "private request bytes differ from request_digest",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:bd115508e1951da92a016994090296730085d5005ea102f46098d50506c93c21"
+      },
+      "id": "mismatched-inference-request",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "inference-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "args_hash": "sha256:43ed5c457b799abe72e15e5ce574960937404f72402c5c15837044c1fc1a3a4a",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "defect": "inference invents args_hash",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:a6679c0c1718b5e9bdb842c29805a012bcdfa7f32c0fa169c702130158aeda42"
+      },
+      "id": "inference-args-hash",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "inference-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "state": "not-applicable"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da",
+          "tokens_in": 1
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "defect": "inference facts carry post-effect token counters",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:8d4d56de0d79b55140c1771529ca789068b7b3f14204b4b9b180c03931d7ff2f"
+      },
+      "id": "inference-post-effect-counters",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-budget",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": true,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "applicable budget is marked not-applicable",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:ee74a181bbb716fd35b52fe2abc7f50bc950e662a7171d2fca6d96912670d302"
+      },
+      "id": "missing-applicable-budget",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "budget_ref": "haiku",
+            "state": "cited"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "budget citation is volunteered without budgets",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:3a363759e984e6b9140e72b82ee24a237ccc8f524a00de8f527f9f6f8f141e2e"
+      },
+      "id": "volunteered-budget",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "inference-budget",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "budget_ref": "",
+            "state": "cited"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "budget_applicable": true,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "defect": "budget citation is empty",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:f958569bad7df943acde6e7e53c0a1656b599ebee980e1c9c57fd2d41c7021ef"
+      },
+      "id": "empty-budget-ref",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-budget-purpose",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "budget_ref": "haiku",
+            "state": "cited",
+            "tokens": 10
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+            "state": "cited"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": true,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": true,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "budget applicability carries an extra member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:a840daed0c9a36a4f3beb5c2c0fd0cc75e60101121907c0fc9dce0efaa5d740b"
+      },
+      "id": "extra-budget-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "absent"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "budget applicability has an unknown state",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:529f093ce1c67df5df9c0e4c873ecfe645a99685065d2e69ae9144d569bbcc34"
+      },
+      "id": "unknown-budget-state",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-purpose",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": true,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "applicable purpose is marked not-applicable",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:ee74a181bbb716fd35b52fe2abc7f50bc950e662a7171d2fca6d96912670d302"
+      },
+      "id": "missing-applicable-purpose",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "inference-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "state": "not-applicable"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "purpose_ref": "sha256:c0d93bdc35c3a7ebd7ababb394cc7697e336c35759e963ba06fda7256bb6929d",
+            "state": "cited"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "defect": "purpose citation is volunteered without purpose",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:8a1ba6dda5b5eef797287ec972a0d4136c24924149571e3cca8559853f1b06ca"
+      },
+      "id": "volunteered-purpose",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "inference-purpose",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "state": "not-applicable"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+            "state": "cited"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": true,
+        "purpose_text": "changed purpose",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "defect": "purpose text differs from purpose_ref",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:785ee981f629cab498a6a204ce00db747df381c790d8a4a15cf07102f43a8be4"
+      },
+      "id": "mismatched-purpose-ref",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": null
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "purpose applicability is null",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:2975d29e282aa176fb1b685419940f72037531fdbc8515b0dcc607fc90e7f582"
+      },
+      "id": "null-purpose",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "action-plain",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "defect": "facts_ref does not select the candidate facts",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:a00568b9b318f3be213d23305c21a1dca127113c93a961b923337c7282944850"
+      },
+      "id": "facts-ref-digest-mismatch",
+      "must_fail": "InvalidOperationFacts"
+    }
+  ],
+  "positive_cases": [
+    {
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "digest": "sha256:ee74a181bbb716fd35b52fe2abc7f50bc950e662a7171d2fca6d96912670d302",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"action\":\"send\",\"args_hash\":\"sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715\",\"budget\":{\"state\":\"not-applicable\"},\"catalog_ref\":{\"approval_digest\":\"sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc\",\"catalog_digest\":\"sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e\",\"catalog_version\":\"2026.07\"},\"connector\":\"mail\",\"purpose\":{\"state\":\"not-applicable\"}},\"kind\":\"action\"}",
+      "facts": {
+        "action": "send",
+        "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+        "budget": {
+          "state": "not-applicable"
+        },
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose": {
+          "state": "not-applicable"
+        }
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:ee74a181bbb716fd35b52fe2abc7f50bc950e662a7171d2fca6d96912670d302"
+      },
+      "id": "action-plain",
+      "kind": "action"
+    },
+    {
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": true,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "digest": "sha256:3a363759e984e6b9140e72b82ee24a237ccc8f524a00de8f527f9f6f8f141e2e",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "budget_ref": "haiku",
+            "state": "cited"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "state": "not-applicable"
+          }
+        },
+        "kind": "action"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"action\":\"send\",\"args_hash\":\"sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715\",\"budget\":{\"budget_ref\":\"haiku\",\"state\":\"cited\"},\"catalog_ref\":{\"approval_digest\":\"sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc\",\"catalog_digest\":\"sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e\",\"catalog_version\":\"2026.07\"},\"connector\":\"mail\",\"purpose\":{\"state\":\"not-applicable\"}},\"kind\":\"action\"}",
+      "facts": {
+        "action": "send",
+        "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+        "budget": {
+          "budget_ref": "haiku",
+          "state": "cited"
+        },
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose": {
+          "state": "not-applicable"
+        }
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:3a363759e984e6b9140e72b82ee24a237ccc8f524a00de8f527f9f6f8f141e2e"
+      },
+      "id": "action-budget",
+      "kind": "action"
+    },
+    {
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": true,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "digest": "sha256:e8da22f8355aa470659a8c24cf7e9b3cb1d86e6b110af07b98135a0fa665abbf",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "state": "not-applicable"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+            "state": "cited"
+          }
+        },
+        "kind": "action"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"action\":\"send\",\"args_hash\":\"sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715\",\"budget\":{\"state\":\"not-applicable\"},\"catalog_ref\":{\"approval_digest\":\"sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc\",\"catalog_digest\":\"sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e\",\"catalog_version\":\"2026.07\"},\"connector\":\"mail\",\"purpose\":{\"purpose_ref\":\"sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c\",\"state\":\"cited\"}},\"kind\":\"action\"}",
+      "facts": {
+        "action": "send",
+        "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+        "budget": {
+          "state": "not-applicable"
+        },
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose": {
+          "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+          "state": "cited"
+        }
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:e8da22f8355aa470659a8c24cf7e9b3cb1d86e6b110af07b98135a0fa665abbf"
+      },
+      "id": "action-purpose",
+      "kind": "action"
+    },
+    {
+      "context": {
+        "action": "send",
+        "args": {
+          "body": "private fixture body",
+          "recipients": [
+            "alice@example.test"
+          ],
+          "subject": "CB2 exact action"
+        },
+        "budget_applicable": true,
+        "budget_ref": "haiku",
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose_applicable": true,
+        "purpose_text": "Prepare the first Aithos protocol demonstration"
+      },
+      "digest": "sha256:ac40caabf515f1d1e5b236495e4abfef4c2d0ff43312d8612d54fdd36792e1dc",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "action": "send",
+          "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+          "budget": {
+            "budget_ref": "haiku",
+            "state": "cited"
+          },
+          "catalog_ref": {
+            "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+            "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+            "catalog_version": "2026.07"
+          },
+          "connector": "mail",
+          "purpose": {
+            "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+            "state": "cited"
+          }
+        },
+        "kind": "action"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"action\":\"send\",\"args_hash\":\"sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715\",\"budget\":{\"budget_ref\":\"haiku\",\"state\":\"cited\"},\"catalog_ref\":{\"approval_digest\":\"sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc\",\"catalog_digest\":\"sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e\",\"catalog_version\":\"2026.07\"},\"connector\":\"mail\",\"purpose\":{\"purpose_ref\":\"sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c\",\"state\":\"cited\"}},\"kind\":\"action\"}",
+      "facts": {
+        "action": "send",
+        "args_hash": "sha256:a35dc4982a8afeaddc66fa12b5fc524be070315f8684faac267916c2f1f3e715",
+        "budget": {
+          "budget_ref": "haiku",
+          "state": "cited"
+        },
+        "catalog_ref": {
+          "approval_digest": "sha256:560d496dff707c36020870f917ecf1ca2c653d2b54efef85eb05659c349d24cc",
+          "catalog_digest": "sha256:034c2ea472028a4eccb2f945f6cb50f40f2cb28d6f4e6c9a387c7e33b737344e",
+          "catalog_version": "2026.07"
+        },
+        "connector": "mail",
+        "purpose": {
+          "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+          "state": "cited"
+        }
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:ac40caabf515f1d1e5b236495e4abfef4c2d0ff43312d8612d54fdd36792e1dc"
+      },
+      "id": "action-budget-purpose",
+      "kind": "action"
+    },
+    {
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "digest": "sha256:bd115508e1951da92a016994090296730085d5005ea102f46098d50506c93c21",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "state": "not-applicable"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"budget\":{\"state\":\"not-applicable\"},\"model\":\"claude-haiku\",\"provider\":\"anthropic\",\"purpose\":{\"state\":\"not-applicable\"},\"request_digest\":\"sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da\"},\"kind\":\"inference\"}",
+      "facts": {
+        "budget": {
+          "state": "not-applicable"
+        },
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose": {
+          "state": "not-applicable"
+        },
+        "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:bd115508e1951da92a016994090296730085d5005ea102f46098d50506c93c21"
+      },
+      "id": "inference-plain",
+      "kind": "inference"
+    },
+    {
+      "context": {
+        "budget_applicable": true,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": false,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "digest": "sha256:0010de9cf5ec92426fc3de2e24cab0fe3cec901ca8d9b71d6db1a90227c5ce47",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "budget_ref": "haiku",
+            "state": "cited"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "state": "not-applicable"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"budget\":{\"budget_ref\":\"haiku\",\"state\":\"cited\"},\"model\":\"claude-haiku\",\"provider\":\"anthropic\",\"purpose\":{\"state\":\"not-applicable\"},\"request_digest\":\"sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da\"},\"kind\":\"inference\"}",
+      "facts": {
+        "budget": {
+          "budget_ref": "haiku",
+          "state": "cited"
+        },
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose": {
+          "state": "not-applicable"
+        },
+        "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:0010de9cf5ec92426fc3de2e24cab0fe3cec901ca8d9b71d6db1a90227c5ce47"
+      },
+      "id": "inference-budget",
+      "kind": "inference"
+    },
+    {
+      "context": {
+        "budget_applicable": false,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": true,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "digest": "sha256:785ee981f629cab498a6a204ce00db747df381c790d8a4a15cf07102f43a8be4",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "state": "not-applicable"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+            "state": "cited"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"budget\":{\"state\":\"not-applicable\"},\"model\":\"claude-haiku\",\"provider\":\"anthropic\",\"purpose\":{\"purpose_ref\":\"sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c\",\"state\":\"cited\"},\"request_digest\":\"sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da\"},\"kind\":\"inference\"}",
+      "facts": {
+        "budget": {
+          "state": "not-applicable"
+        },
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose": {
+          "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+          "state": "cited"
+        },
+        "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:785ee981f629cab498a6a204ce00db747df381c790d8a4a15cf07102f43a8be4"
+      },
+      "id": "inference-purpose",
+      "kind": "inference"
+    },
+    {
+      "context": {
+        "budget_applicable": true,
+        "budget_ref": "haiku",
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose_applicable": true,
+        "purpose_text": "Prepare the first Aithos protocol demonstration",
+        "request_body_hex": "7b226d65737361676573223a5b7b22636f6e74656e74223a227072697661746520696e666572656e63652066697874757265222c22726f6c65223a2275736572227d5d2c2274656d7065726174757265223a302c22746f6f6c73223a5b7b22696e7075745f736368656d61223a7b2274797065223a226f626a656374227d2c226e616d65223a226c6f6f6b7570227d5d7d"
+      },
+      "digest": "sha256:25bf4d2136a97b0b62619d206bbbe8990f7924c33a7ba30f7eda5fb9e29ea77b",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "budget": {
+            "budget_ref": "haiku",
+            "state": "cited"
+          },
+          "model": "claude-haiku",
+          "provider": "anthropic",
+          "purpose": {
+            "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+            "state": "cited"
+          },
+          "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+        },
+        "kind": "inference"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"budget\":{\"budget_ref\":\"haiku\",\"state\":\"cited\"},\"model\":\"claude-haiku\",\"provider\":\"anthropic\",\"purpose\":{\"purpose_ref\":\"sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c\",\"state\":\"cited\"},\"request_digest\":\"sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da\"},\"kind\":\"inference\"}",
+      "facts": {
+        "budget": {
+          "budget_ref": "haiku",
+          "state": "cited"
+        },
+        "model": "claude-haiku",
+        "provider": "anthropic",
+        "purpose": {
+          "purpose_ref": "sha256:288af34527713c3273315c0919e6441fa9b72f424f4d295de851b7223178ca9c",
+          "state": "cited"
+        },
+        "request_digest": "sha256:35f65ef016efe5646a0c5a8934b2e3be1383badbc9aa1b69ab517b4535d148da"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:25bf4d2136a97b0b62619d206bbbe8990f7924c33a7ba30f7eda5fb9e29ea77b"
+      },
+      "id": "inference-budget-purpose",
+      "kind": "inference"
+    }
+  ],
+  "profiles": {
+    "operation_facts": "1.0.0-draft.1"
+  },
+  "vector": "CB2-K1-OPERATION-FACTS-ACTION-INFERENCE-1"
+}

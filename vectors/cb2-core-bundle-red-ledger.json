@@ -6,9 +6,9 @@
   "as_of": "2026-07-18",
   "baseline": {
     "git_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-    "observation_sha": "ca943ff30fa6f900a4cb3e52b9bad412a9a7d4a3",
+    "observation_sha": "da146f41371171187565a4532184c495765d056f",
     "index_was_empty": true,
-    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, K1.1-B/K1.2-M-B mutation-facts, and K1.2-R-B read-facts vector families, plus their explicit API gates, are recorded. The list is not frozen."
+    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, K1.1-B/K1.2-M-B mutation-facts, K1.2-R-B read-facts, and K1.2-AI-B action/inference-facts vector families, plus their explicit API gates, are recorded. The list is not frozen."
   },
   "command_context": {
     "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core/rust",
@@ -58,6 +58,14 @@
       "generator_sha256": "45c05f254c9cd1d682ee58d75f04911367155fcf01db8bc2c671e7b2dcafa3ba",
       "consumer": "rust/crates/aithos-core/tests/cb2_operation_facts_read.rs",
       "consumer_sha256": "79f27ce5ea5511859edd5c9c24fd73e90d4f701468752f61b3f90cae72b51747"
+    },
+    "CB2-K1-OPERATION-FACTS-ACTION-INFERENCE-1": {
+      "file": "vectors/cb2-operation-facts-action-inference.json",
+      "sha256": "4e1f319439ec4cc5faef2012a2a8aa198ba8d62fced2f330d2bbd13580c78b71",
+      "generator": "vectors/gen-cb2-operation-facts-action-inference.py",
+      "generator_sha256": "481bbb75475813a6161b377e4bca28ddb385a146d9edf6f4cbc0ce2d98fdf901",
+      "consumer": "rust/crates/aithos-core/tests/cb2_operation_facts_action_inference.rs",
+      "consumer_sha256": "aab91fdc7cf66efe8e84bd0c6913dc58e599cc4d6799e7b55dde55655abb745e"
     }
   },
   "suite_observations": [
@@ -108,13 +116,24 @@
       "name": "K1 read-facts byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_read -- --nocapture",
       "observed": "5 passed; generic vector integrity, historical hashes, manifest chain-hash preimage, Gamma query digest, vault key commitment, JCS and operation-facts SHA-256 bytes are GREEN. The closed-family/error inventory test is a passing diagnostic, not typed Core protocol GREEN."
+    },
+    {
+      "name": "K1 action/inference-facts generator reproducibility",
+      "command": "python3 vectors/gen-cb2-operation-facts-action-inference.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-operation-facts-action-inference.json; the independent oracle accepts 8 applicability combinations and rejects 35 mono-defect candidates with InvalidOperationFacts."
+    },
+    {
+      "name": "K1 action/inference-facts byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- --nocapture",
+      "observed": "5 passed; generic vector integrity, historical hashes, args JCS/hash, inference-request and purpose domains, distinct catalog/approval content addresses, JCS and operation-facts SHA-256 bytes are GREEN. Catalog document semantics and the closed-family/error inventory remain explicitly non-GREEN diagnostics."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 36,
-    "COMPILE-RED-PRELIMINAIRE": 9,
-    "total": 79
+    "PREEXISTING-GREEN": 40,
+    "COMPILE-RED-PRELIMINAIRE": 10,
+    "total": 84
   },
   "entries": [
     {
@@ -1373,6 +1392,89 @@
         "source_observed": "No matching public K1 operation/read-facts symbol or approved error variant.",
         "inventory_test_id": "cb2_k1_read_closed_family_and_error_inventory_preliminary",
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_read -- cb2_k1_read_closed_family_and_error_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB4",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB4-K1-AI-VECTOR-HASH",
+      "test_id": "cb2_k1_action_inference_vector_hash_is_stable_preexisting_green",
+      "decision": "K1.2-AI-B independent oracle integrity",
+      "scenario": "The committed K1 action/inference-facts vector bytes remain frozen within the partial CB2 tranche.",
+      "vector_ref": "CB2-K1-OPERATION-FACTS-ACTION-INFERENCE-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- cb2_k1_action_inference_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "da146f41371171187565a4532184c495765d056f",
+      "expected_reason": "The vector file SHA-256 is 4e1f319439ec4cc5faef2012a2a8aa198ba8d62fced2f330d2bbd13580c78b71.",
+      "observed_reason": "The exact committed bytes have the expected SHA-256. This is an oracle-integrity check, not typed semantic validation.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-K1-AI-HISTORICAL-HASHES",
+      "test_id": "cb2_k1_action_inference_historical_hashes_preexisting_green",
+      "decision": "K1.2-AI-B additive historical non-regression",
+      "scenario": "E1, F1, F2 and G+ historical vector files remain byte-identical.",
+      "vector_ref": "CB2-K1-OPERATION-FACTS-ACTION-INFERENCE-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- cb2_k1_action_inference_historical_hashes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "da146f41371171187565a4532184c495765d056f",
+      "expected_reason": "The four historical vector files retain their frozen whole-file SHA-256 values.",
+      "observed_reason": "All four exact file hashes match; no historical vector was rewritten.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-K1-AI-PREIMAGE-BYTES",
+      "test_id": "cb2_k1_action_inference_preimage_bytes_preexisting_green",
+      "decision": "K1.2-AI-B native args, inference request, purpose and catalog-reference preimages",
+      "scenario": "Core generic primitives reproduce every independently generated pre-effect commitment.",
+      "vector_ref": "CB2-K1-OPERATION-FACTS-ACTION-INFERENCE-1",
+      "vector_slice": "fixtures and commitment_domains",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- cb2_k1_action_inference_preimage_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "da146f41371171187565a4532184c495765d056f",
+      "expected_reason": "Existing JCS/SHA-256 primitives reproduce args_hash, inference-request and purpose commitments, and the two distinct complete-document content addresses.",
+      "observed_reason": "Every generic byte-level assertion matches the independent Python oracle; the catalog documents are syntactic fixtures and no signed-table validity is claimed.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-K1-AI-OPERATION-BYTES",
+      "test_id": "cb2_k1_action_inference_operation_bytes_preexisting_green",
+      "decision": "K1.2-AI-B closed action/inference tables and operation-facts digest preimage",
+      "scenario": "Core generic primitives reproduce the independent action/inference operation-facts JCS and digest bytes.",
+      "vector_ref": "CB2-K1-OPERATION-FACTS-ACTION-INFERENCE-1",
+      "vector_slice": "positive_cases",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- cb2_k1_action_inference_operation_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "da146f41371171187565a4532184c495765d056f",
+      "expected_reason": "Existing RFC8785-JCS and SHA-256 primitives reproduce the exact envelope, member tables, applicability variants, facts_ref and digest bytes for all 8 cases.",
+      "observed_reason": "All byte-level assertions match. This does not claim that Core has a typed K1.2-AI-B validator.",
+      "owner": "CB4",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB4-K1-AI-FACTS-API-GATE",
+      "test_id": null,
+      "decision": "K1.2-AI-B typed action/inference validation and approved public error",
+      "scenario": "Core validates exact pre-effect action and inference facts against native inputs and applicability before an external effect.",
+      "vector_ref": "CB2-K1-OPERATION-FACTS-ACTION-INFERENCE-1",
+      "vector_slice": "positive_cases and negative_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "The 8 registered cases are accepted and each of the 35 mono-defect candidates returns Error::InvalidOperationFacts(String), with no commitment or effect emitted.",
+      "observed_reason": "At observation SHA da146f4, no public typed action/inference-facts validator or Error::InvalidOperationFacts variant exists; a semantic RED test cannot compile without inventing the future API shape.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "da146f41371171187565a4532184c495765d056f",
+        "source_command": "rg -n 'OperationFacts|InvalidOperationFacts|facts_ref' rust/crates/aithos-core/src",
+        "source_observed": "No matching public K1 operation/action/inference-facts symbol or approved error variant.",
+        "inventory_test_id": "cb2_k1_action_inference_closed_family_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_facts_action_inference -- cb2_k1_action_inference_closed_family_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB4",
       "status": "COMPILE-RED-PRELIMINAIRE"
