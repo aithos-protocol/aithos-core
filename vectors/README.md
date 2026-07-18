@@ -78,3 +78,13 @@ vectors yet. Their classified results are recorded one behavior per entry in
   Rust consumer:
   `aithos-core/tests/cb2_operation_facts_mutation.rs`
   (`09e233412bc4add875acc2839f48156f5a10394d18e4691fd20984b6a3d81098`).
+- `CB2-K1-OPERATION-FACTS-READ-1`: K1.2-R-B Ethos, signed Gamma
+  presentation, and vault-config read facts; existing manifest chain-hash
+  preimage, canonical `read.gamma` request digest, vault state-key commitment,
+  6 positive cases, and 21 fail-closed `InvalidOperationFacts` candidates.
+  Generator: `gen-cb2-operation-facts-read.py`
+  (`45c05f254c9cd1d682ee58d75f04911367155fcf01db8bc2c671e7b2dcafa3ba`);
+  vector: `cb2-operation-facts-read.json`
+  (`b8b4014b390fc3ebc65897f8b59d084da78c97137e9ad7f7703dbe5b0e0194db`);
+  Rust consumer: `aithos-core/tests/cb2_operation_facts_read.rs`
+  (`79f27ce5ea5511859edd5c9c24fd73e90d4f701468752f61b3f90cae72b51747`).

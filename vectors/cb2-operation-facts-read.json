@@ -1,0 +1,813 @@
+{
+  "commitment_domains": {
+    "gamma_read_request": "aithos-core/v1/gamma-read-request",
+    "operation_facts": "aithos-core/v1/operation-facts",
+    "state_key": "aithos-core/v1/state-key"
+  },
+  "description": "Independent Python standard-library oracle for K1.2-R-B Ethos, signed Gamma-presentation and vault-config read facts. The query string and cb2-fixture store key are protected oracle inputs only; they define no public carrier or Bundle path.",
+  "fixtures": {
+    "queries": {
+      "filtered": {
+        "canonical": "read.gamma#dir=01J00000000000000000000201/01J00000000000000000000202&id=01J00000000000000000000102&tag=alpha&kind=action&action=reply&since=2026-07-01T00:00:00Z&until=2026-07-18T10:00:00Z",
+        "request_digest": "sha256:0af4fa6bd7e6759206829586df36f5e1f261af7fc125c02bde4e8f96a72ad60a"
+      },
+      "unfiltered": {
+        "canonical": "read.gamma",
+        "request_digest": "sha256:6ac77ed9928a0b3b25df32c0df7af623a64987dbf71340fdb791440a3dcf5495"
+      }
+    },
+    "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56",
+    "source_manifest": {
+      "chain_hash_preimage_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-18T10:00:00Z\",\"height\":7,\"prev_hash\":\"198d7b371ac8552be64cb4f59865ef26799721b932ae7781961447d8a63426bd\"},\"files\":{\"e/circle/index.json\":\"sha256:bffe630d1205bfd7a96206e89bd258928970ca36a08602e3d401dc641c68c4b7\",\"gamma/2026-07.jsonl\":\"sha256:08d495353f56881044bc038d2d373a85240bd22d6661de4ad7ff593b8482296d\"},\"gamma_counts_root\":\"34323a6de685f7046dd337c8aca3bf7d26359524901328a8df0979ad8ed89563\",\"gamma_head\":\"sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56\",\"gamma_roots\":{\"2026-07\":{\"n\":4,\"root\":\"78d8240741692ff3ccc1711ca3a355b168b97d4631a85bdc5c5d507430291af2\"}},\"roots\":{\"circle\":\"8b763455250b3cdb2613791621741308074b577394728ac210dc33e81caec7dc\",\"public\":\"81a38f57ac7a77111edaf1a62fc73dd6f5452995a18e8e1e7203ad3eff31db4b\",\"self\":\"fff081f52a086c1bb40aa4c40e86eaf94ac47f93d3b8fd1194af53127c6f51a7\",\"vault\":\"00c422a8468e3e38ec0cfda3a793a2b1c11592d510b2a331f000b5e3eea15769\"},\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"\"}}",
+      "document": {
+        "aithos-core": "1.0.0-draft.1",
+        "edition": {
+          "created_at": "2026-07-18T10:00:00Z",
+          "height": 7,
+          "prev_hash": "198d7b371ac8552be64cb4f59865ef26799721b932ae7781961447d8a63426bd"
+        },
+        "files": {
+          "e/circle/index.json": "sha256:bffe630d1205bfd7a96206e89bd258928970ca36a08602e3d401dc641c68c4b7",
+          "gamma/2026-07.jsonl": "sha256:08d495353f56881044bc038d2d373a85240bd22d6661de4ad7ff593b8482296d"
+        },
+        "gamma_counts_root": "34323a6de685f7046dd337c8aca3bf7d26359524901328a8df0979ad8ed89563",
+        "gamma_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56",
+        "gamma_roots": {
+          "2026-07": {
+            "n": 4,
+            "root": "78d8240741692ff3ccc1711ca3a355b168b97d4631a85bdc5c5d507430291af2"
+          }
+        },
+        "roots": {
+          "circle": "8b763455250b3cdb2613791621741308074b577394728ac210dc33e81caec7dc",
+          "public": "81a38f57ac7a77111edaf1a62fc73dd6f5452995a18e8e1e7203ad3eff31db4b",
+          "self": "fff081f52a086c1bb40aa4c40e86eaf94ac47f93d3b8fd1194af53127c6f51a7",
+          "vault": "00c422a8468e3e38ec0cfda3a793a2b1c11592d510b2a331f000b5e3eea15769"
+        },
+        "signature": {
+          "alg": "ed25519",
+          "key": "#root",
+          "value": "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab"
+        }
+      },
+      "document_jcs": "{\"aithos-core\":\"1.0.0-draft.1\",\"edition\":{\"created_at\":\"2026-07-18T10:00:00Z\",\"height\":7,\"prev_hash\":\"198d7b371ac8552be64cb4f59865ef26799721b932ae7781961447d8a63426bd\"},\"files\":{\"e/circle/index.json\":\"sha256:bffe630d1205bfd7a96206e89bd258928970ca36a08602e3d401dc641c68c4b7\",\"gamma/2026-07.jsonl\":\"sha256:08d495353f56881044bc038d2d373a85240bd22d6661de4ad7ff593b8482296d\"},\"gamma_counts_root\":\"34323a6de685f7046dd337c8aca3bf7d26359524901328a8df0979ad8ed89563\",\"gamma_head\":\"sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56\",\"gamma_roots\":{\"2026-07\":{\"n\":4,\"root\":\"78d8240741692ff3ccc1711ca3a355b168b97d4631a85bdc5c5d507430291af2\"}},\"roots\":{\"circle\":\"8b763455250b3cdb2613791621741308074b577394728ac210dc33e81caec7dc\",\"public\":\"81a38f57ac7a77111edaf1a62fc73dd6f5452995a18e8e1e7203ad3eff31db4b\",\"self\":\"fff081f52a086c1bb40aa4c40e86eaf94ac47f93d3b8fd1194af53127c6f51a7\",\"vault\":\"00c422a8468e3e38ec0cfda3a793a2b1c11592d510b2a331f000b5e3eea15769\"},\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab\"}}",
+      "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b"
+    },
+    "vault": {
+      "connector": "mail",
+      "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+      "store_key_utf8": "cb2-fixture/vault/mail/oauth"
+    }
+  },
+  "gamma_query_rule": {
+    "digest_preimage": "ASCII(aithos-core/v1/gamma-read-request) || NUL || UTF8(canonical read.gamma string)",
+    "prefix": "read.gamma",
+    "selector_order": [
+      "dir",
+      "id",
+      "tag",
+      "kind",
+      "action",
+      "since",
+      "until"
+    ]
+  },
+  "historical_vector_sha256": {
+    "e1-mandate.json": "e243e2348f3778c8e9ec9a3bbc350d480aeb779c4cadac0f8d00f9007264d45e",
+    "f1-gamma-chain.json": "38d466f934f17e99acbbdb76fb236efafb36f7b1c4070e9729d6edca17768ca3",
+    "f2-gamma-counting.json": "d593d204144ffa81c2ba51393d8190081d80f29246f41fdfa3fed96db77d230f",
+    "gplus-obligations.json": "f74f6c2b4611e798c0c00bd35ccdfb056e26de2d558efc0e2c3ad04ae57a7285"
+  },
+  "inventory": {
+    "negative_case_ids": [
+      "missing-envelope-profile",
+      "extra-envelope-member",
+      "kind-family-mismatch",
+      "unknown-read-domain",
+      "missing-read-member",
+      "extra-read-member",
+      "null-source-edition",
+      "unknown-ethos-zone",
+      "noncanonical-ethos-sid",
+      "mismatched-ethos-target",
+      "malformed-source-edition",
+      "mismatched-source-edition",
+      "empty-source-head",
+      "mismatched-source-head",
+      "noncanonical-gamma-query",
+      "duplicate-gamma-selector",
+      "mismatched-request-digest",
+      "mismatched-vault-connector",
+      "mismatched-vault-record-key",
+      "clear-display-path",
+      "clear-vault-record-name"
+    ],
+    "positive_case_ids": [
+      "ethos-public",
+      "ethos-circle",
+      "ethos-self",
+      "gamma-unfiltered",
+      "gamma-filtered",
+      "vault-config"
+    ],
+    "required_error_variant": "InvalidOperationFacts"
+  },
+  "manifest_chain_hash_rule": "sha256: prefix plus SHA-256 of RFC8785-JCS after replacing only signature.value with the empty string",
+  "negative_cases": [
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000102",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "missing operation-facts profile",
+      "facts_ref": null,
+      "id": "missing-envelope-profile",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000102",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "circle"
+        },
+        "kind": "read",
+        "nonce": "forbidden"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "extra operation-facts envelope member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:10ebe4ba24693fe7a403a190c4f4f57555eb66a7757e30a70d6e533e396e3bd3"
+      },
+      "id": "extra-envelope-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000102",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "circle"
+        },
+        "kind": "mutation"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "read facts selected by another operation kind",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:74cd93002fb1d482edb735a45df5b7bafcc6001bd16ce5c2fba9d9d34606c7f0"
+      },
+      "id": "kind-family-mismatch",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "unknown",
+          "sid": "01J00000000000000000000102",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "unknown read domain",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:a593222c698e156f9489fcb6fe396a369076cffa197fca0bd0eec2499ed91045"
+      },
+      "id": "unknown-read-domain",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "missing exact read-family member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:be1f6adaca06f1e1bb65225971ec2b86c752a272e444a0da9f80ebad6db36875"
+      },
+      "id": "missing-read-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000102",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "tag": "forbidden",
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "extra read-family member",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:19371a0233e9c836702451daf75623f8980dc4a92037a99c7f6f3d255128014c"
+      },
+      "id": "extra-read-member",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000102",
+          "source_edition": null,
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "null source edition",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:b06bbb36fe782936fee78e52bf86b9ec296a75622b287e1e067b56c2303c8b76"
+      },
+      "id": "null-source-edition",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000102",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "team"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "unknown Ethos zone",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:3acc5068dc0d51fd83b8a38b0290b18a98ba7edfa10888595bbfe11794a678c1"
+      },
+      "id": "unknown-ethos-zone",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "not-a-sid",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "non-canonical Ethos SID",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:e1cd322d13856b844d4e2d2fbf1050758ee62b599df5e7e319bc0bd938081c8c"
+      },
+      "id": "noncanonical-ethos-sid",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000101",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "Ethos native target mismatch",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:dd25af3a91617e5d5056ba4cda783b14b4695e5acc36df26e3ae18c729217c33"
+      },
+      "id": "mismatched-ethos-target",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000102",
+          "source_edition": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "malformed source edition",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:05820e8e7b5ca534296a6809c708f47428a7832af8283f634da6f31ab15461f3"
+      },
+      "id": "malformed-source-edition",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000102",
+          "source_edition": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "source edition does not match the verified manifest",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:59675bbac4c63a3cdfb9306355b7390a0911b94acec99d2f818af7669c537f24"
+      },
+      "id": "mismatched-source-edition",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "gamma-filtered",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "gamma",
+          "request_digest": "sha256:0af4fa6bd7e6759206829586df36f5e1f261af7fc125c02bde4e8f96a72ad60a",
+          "source_head": ""
+        },
+        "kind": "read"
+      },
+      "context": {
+        "query": "read.gamma#dir=01J00000000000000000000201/01J00000000000000000000202&id=01J00000000000000000000102&tag=alpha&kind=action&action=reply&since=2026-07-01T00:00:00Z&until=2026-07-18T10:00:00Z",
+        "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+      },
+      "defect": "empty Gamma source head",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:8c2101c7da11e4bb9bba7ff16ddc98b2eae9db4fa85a4cb02ff27a6057b4e5d6"
+      },
+      "id": "empty-source-head",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "gamma-filtered",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "gamma",
+          "request_digest": "sha256:0af4fa6bd7e6759206829586df36f5e1f261af7fc125c02bde4e8f96a72ad60a",
+          "source_head": "sha256:15fc2702b1e7e7d6639fb478b81b00b85f518e31c6648c43a0be677e67c0b2e0"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "query": "read.gamma#dir=01J00000000000000000000201/01J00000000000000000000202&id=01J00000000000000000000102&tag=alpha&kind=action&action=reply&since=2026-07-01T00:00:00Z&until=2026-07-18T10:00:00Z",
+        "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+      },
+      "defect": "Gamma source head mismatch",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:1a4890916b3e74cfda21f95c45e33822e53826a0b3b8b1cfb1023b3b085dfc88"
+      },
+      "id": "mismatched-source-head",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "gamma-filtered",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "gamma",
+          "request_digest": "sha256:e77898b85332915694d40c0131235de6e7398a804859f1b001abf7a4f20e26dd",
+          "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "query": "read.gamma#id=01J00000000000000000000102&dir=01J00000000000000000000201/01J00000000000000000000202&tag=alpha&kind=action&action=reply&since=2026-07-01T00:00:00Z&until=2026-07-18T10:00:00Z",
+        "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+      },
+      "defect": "non-canonical Gamma query selector order",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:0c4a02d53eda70d62782444f7297ad686b69272d1c7802e2ae7f7e77e6d7bc30"
+      },
+      "id": "noncanonical-gamma-query",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "gamma-filtered",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "gamma",
+          "request_digest": "sha256:c5bbee5ca478259dbce9e06130ec7af5a4b18a3d6f161f66022e3154ccc4db95",
+          "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "query": "read.gamma#dir=01J00000000000000000000201/01J00000000000000000000202&id=01J00000000000000000000102&tag=alpha&kind=action&kind=action&action=reply&since=2026-07-01T00:00:00Z&until=2026-07-18T10:00:00Z",
+        "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+      },
+      "defect": "duplicate Gamma query selector",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:3bf8d2ed12a2ed129e31fb2db3e7af80bc494b1e3df9f928d41fb51484d871f4"
+      },
+      "id": "duplicate-gamma-selector",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "gamma-filtered",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "gamma",
+          "request_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "query": "read.gamma#dir=01J00000000000000000000201/01J00000000000000000000202&id=01J00000000000000000000102&tag=alpha&kind=action&action=reply&since=2026-07-01T00:00:00Z&until=2026-07-18T10:00:00Z",
+        "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+      },
+      "defect": "Gamma request digest mismatch",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:5fb8ed024c4a10158369e29556283340b0dd0b73072fb33df7045a297c9f5f0e"
+      },
+      "id": "mismatched-request-digest",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "vault-config",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "connector": "calendar",
+          "domain": "vault-config",
+          "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "connector": "mail",
+        "source_manifest": "source_manifest",
+        "store_key_utf8": "cb2-fixture/vault/mail/oauth"
+      },
+      "defect": "vault connector differs from native evidence",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:1caa12116a4a9b97d0b1711411a07d4b9b36971a3248f54e9b5754079b553ba1"
+      },
+      "id": "mismatched-vault-connector",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "vault-config",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "connector": "mail",
+          "domain": "vault-config",
+          "record_key": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "connector": "mail",
+        "source_manifest": "source_manifest",
+        "store_key_utf8": "cb2-fixture/vault/mail/oauth"
+      },
+      "defect": "vault record-key commitment mismatch",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:1233d5e98b18cdd05eaae78f339596b28e74b9b836293f6a8bfc7e28934af51e"
+      },
+      "id": "mismatched-vault-record-key",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "ethos-circle",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "path": "/Projets/Secret",
+          "sid": "01J00000000000000000000102",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "defect": "forbidden clear display path",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:b46c9a900e36c00b7a257e332d1c6ec2457434a2e0f365cdc4e523605f41774a"
+      },
+      "id": "clear-display-path",
+      "must_fail": "InvalidOperationFacts"
+    },
+    {
+      "base_case": "vault-config",
+      "candidate": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "connector": "mail",
+          "domain": "vault-config",
+          "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+          "record_name": "oauth",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b"
+        },
+        "kind": "read"
+      },
+      "context": {
+        "connector": "mail",
+        "source_manifest": "source_manifest",
+        "store_key_utf8": "cb2-fixture/vault/mail/oauth"
+      },
+      "defect": "forbidden clear vault record name",
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:47d8531269f8473b0f64fdbee813354c5a170ade46f25c815e554e17910f25af"
+      },
+      "id": "clear-vault-record-name",
+      "must_fail": "InvalidOperationFacts"
+    }
+  ],
+  "positive_cases": [
+    {
+      "context": {
+        "sid": "01J00000000000000000000101",
+        "source_manifest": "source_manifest",
+        "zone": "public"
+      },
+      "digest": "sha256:15c3d65c26e7e2138a7cc7d1130093c9c6a5659e1717c93ef4fbac2c6bc685cf",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000101",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "public"
+        },
+        "kind": "read"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"domain\":\"ethos\",\"sid\":\"01J00000000000000000000101\",\"source_edition\":\"sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b\",\"zone\":\"public\"},\"kind\":\"read\"}",
+      "facts": {
+        "domain": "ethos",
+        "sid": "01J00000000000000000000101",
+        "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+        "zone": "public"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:15c3d65c26e7e2138a7cc7d1130093c9c6a5659e1717c93ef4fbac2c6bc685cf"
+      },
+      "id": "ethos-public"
+    },
+    {
+      "context": {
+        "sid": "01J00000000000000000000102",
+        "source_manifest": "source_manifest",
+        "zone": "circle"
+      },
+      "digest": "sha256:27456da92e002000ab5bd66daf911ae13b0028802d72d2971def56c1b53af86d",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000102",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "circle"
+        },
+        "kind": "read"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"domain\":\"ethos\",\"sid\":\"01J00000000000000000000102\",\"source_edition\":\"sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b\",\"zone\":\"circle\"},\"kind\":\"read\"}",
+      "facts": {
+        "domain": "ethos",
+        "sid": "01J00000000000000000000102",
+        "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+        "zone": "circle"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:27456da92e002000ab5bd66daf911ae13b0028802d72d2971def56c1b53af86d"
+      },
+      "id": "ethos-circle"
+    },
+    {
+      "context": {
+        "sid": "01J00000000000000000000103",
+        "source_manifest": "source_manifest",
+        "zone": "self"
+      },
+      "digest": "sha256:84dfa69e96fb4f8e3870b634ba8eb33d05edc0458c6894de7b635fc3f3903c16",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "ethos",
+          "sid": "01J00000000000000000000103",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+          "zone": "self"
+        },
+        "kind": "read"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"domain\":\"ethos\",\"sid\":\"01J00000000000000000000103\",\"source_edition\":\"sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b\",\"zone\":\"self\"},\"kind\":\"read\"}",
+      "facts": {
+        "domain": "ethos",
+        "sid": "01J00000000000000000000103",
+        "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b",
+        "zone": "self"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:84dfa69e96fb4f8e3870b634ba8eb33d05edc0458c6894de7b635fc3f3903c16"
+      },
+      "id": "ethos-self"
+    },
+    {
+      "context": {
+        "query": "read.gamma",
+        "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+      },
+      "digest": "sha256:422d2b34c9303ef90404a362b1ba3a5587748bdcb75d49068ed5689ef828a647",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "gamma",
+          "request_digest": "sha256:6ac77ed9928a0b3b25df32c0df7af623a64987dbf71340fdb791440a3dcf5495",
+          "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+        },
+        "kind": "read"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"domain\":\"gamma\",\"request_digest\":\"sha256:6ac77ed9928a0b3b25df32c0df7af623a64987dbf71340fdb791440a3dcf5495\",\"source_head\":\"sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56\"},\"kind\":\"read\"}",
+      "facts": {
+        "domain": "gamma",
+        "request_digest": "sha256:6ac77ed9928a0b3b25df32c0df7af623a64987dbf71340fdb791440a3dcf5495",
+        "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:422d2b34c9303ef90404a362b1ba3a5587748bdcb75d49068ed5689ef828a647"
+      },
+      "id": "gamma-unfiltered"
+    },
+    {
+      "context": {
+        "query": "read.gamma#dir=01J00000000000000000000201/01J00000000000000000000202&id=01J00000000000000000000102&tag=alpha&kind=action&action=reply&since=2026-07-01T00:00:00Z&until=2026-07-18T10:00:00Z",
+        "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+      },
+      "digest": "sha256:5517a578a7818572a82d639226641b383ecfb34e6aebb72a3a215a696d701584",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "domain": "gamma",
+          "request_digest": "sha256:0af4fa6bd7e6759206829586df36f5e1f261af7fc125c02bde4e8f96a72ad60a",
+          "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+        },
+        "kind": "read"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"domain\":\"gamma\",\"request_digest\":\"sha256:0af4fa6bd7e6759206829586df36f5e1f261af7fc125c02bde4e8f96a72ad60a\",\"source_head\":\"sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56\"},\"kind\":\"read\"}",
+      "facts": {
+        "domain": "gamma",
+        "request_digest": "sha256:0af4fa6bd7e6759206829586df36f5e1f261af7fc125c02bde4e8f96a72ad60a",
+        "source_head": "sha256:aac8e46e29931b7103602e6c12993522327a2071ef207975b9b3fce943e68e56"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:5517a578a7818572a82d639226641b383ecfb34e6aebb72a3a215a696d701584"
+      },
+      "id": "gamma-filtered"
+    },
+    {
+      "context": {
+        "connector": "mail",
+        "source_manifest": "source_manifest",
+        "store_key_utf8": "cb2-fixture/vault/mail/oauth"
+      },
+      "digest": "sha256:dca0aa9cebda010b463e03de3c6cb227067429c448a37af92c164db4913418c4",
+      "document": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "facts": {
+          "connector": "mail",
+          "domain": "vault-config",
+          "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+          "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b"
+        },
+        "kind": "read"
+      },
+      "document_jcs": "{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"facts\":{\"connector\":\"mail\",\"domain\":\"vault-config\",\"record_key\":\"sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb\",\"source_edition\":\"sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b\"},\"kind\":\"read\"}",
+      "facts": {
+        "connector": "mail",
+        "domain": "vault-config",
+        "record_key": "sha256:6bff4d69c5994b8d6bea62abcfd551cb62ecd61f9cdc66b12bd8cd080a66edbb",
+        "source_edition": "sha256:085795f6c05132a9a2fcc5312a9f156b27b7042938ad3da7024573a2e7f5854b"
+      },
+      "facts_ref": {
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": "sha256:dca0aa9cebda010b463e03de3c6cb227067429c448a37af92c164db4913418c4"
+      },
+      "id": "vault-config"
+    }
+  ],
+  "profile": {
+    "aithos-operation-facts-core": "1.0.0-draft.1"
+  },
+  "source_manifest_fixture_scope": "Chain-hash preimage fixture only. Its signature block is syntactic; source signature and edition validation belong to the future typed Core front door and are not claimed GREEN by this consumer.",
+  "vector": "CB2-K1-OPERATION-FACTS-READ-1"
+}
