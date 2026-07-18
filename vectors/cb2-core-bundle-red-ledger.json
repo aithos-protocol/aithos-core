@@ -2843,11 +2843,11 @@
       "vector_slice": "delegated_evidence, current_authority_cases, atomic_refusal_cases and gamma_read_cases",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_authority_flows -- cb2_bundle_delegated_evidence_atomicity_and_api_inventory_preliminary --exact --nocapture",
       "red_sha": null,
-      "green_sha": "dbd62093bf81473163ac5ea4b480e176fbd1f020",
+      "green_sha": "4bf7fb4cd1a862cd2ccbe17b1e8efba53cda4980",
       "expected_reason": "The nine-member authorship evidence, three self transitions, two current-authority refusals, six atomic refusals and three Gamma-read decisions remain exact and leak no protected self field.",
-      "observed_reason": "Generic set, JCS and decision checks reproduce the oracle; the same passing test inventories the missing unified CB9 APIs and is not durable protocol GREEN.",
+      "observed_reason": "CB9 GREEN at 4bf7fb4cd1a862cd2ccbe17b1e8efba53cda4980: the independent oracle remains exact and the real Bundle integration now executes delegated public/circle/self operations through one transactional path. Public authorship is signed only by the grantee and committed by Gamma plus the next manifest, self exact-ID access discloses only an opaque sealed locator, expiry/revocation/unknown-constraint and missing/wrong-line refusals preserve every canonical byte, and mandated Gamma reads survive export/import into a fresh store.",
       "owner": "CB9",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB8-OWNER-PARITY-GENERIC-GRANTS-API-GATE",
@@ -2874,16 +2874,16 @@
     },
     {
       "id": "CB2-CB9-DELEGATED-CONTENT-GAMMA-COLD-API-GATE",
-      "test_id": null,
+      "test_id": "cb9_delegated_content",
       "decision": "One delegated operation path across public/circle/self with evidence, current verdict, atomic publication and cold replay",
       "scenario": "A grantee list/read/create/edit/delete or Gamma read passes exact Core authority plus content physics, publishes one actor/chain and re-verifies from a fresh keyless store; every refusal is effect-free.",
       "vector_ref": "CB2-BUNDLE-AUTHORITY-FLOWS-1",
       "vector_slice": "grantee_cases, content_fence_cases, delegated_evidence, current_authority_cases, atomic_refusal_cases and gamma_read_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb9_delegated_content",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "4bf7fb4cd1a862cd2ccbe17b1e8efba53cda4980",
       "expected_reason": "All accepted decisions journalize/cold-verify under one grantee chain; public authorship, self commitments and Gamma reads stay exact; every authority, physics or constraint refusal preserves the old digest.",
-      "observed_reason": "At observation SHA dbd6209, delegated mutations are explicitly circle-only, write directly to e/circle objects and Gamma, and there is no public/self parity, K1-C authorship assembly, transactional rollback or fresh-store cold path.",
+      "observed_reason": "The preliminary observation at dbd6209 had only a circle-specific direct path. CB9 GREEN at 4bf7fb4cd1a862cd2ccbe17b1e8efba53cda4980: grantee_content_operation now covers list/read/create/edit/delete over public/circle/self, rechecks the live homogeneous chain, leaf key, revocation and applicable constraints before every effect, requires the exact delivered physics line, and commits content plus exactly one delegated Gamma occurrence through the CB7 transaction. The real integration passes 3/3 including sixteen accepted zone operations, byte-exact negative snapshots, grantee-only public authorship, owner publication and fresh-store replay with the same actor/chain. The activated suite passes 533/533 scenarios and 2284/2284 steps; Core history, CLI 17/17, Gateway 82 unit plus 152/152 BDD and all socket journeys, strict workspace Clippy, formatting and WASM pass. The workspace replay still fails only the ledger-owned future CB11 K1-C typed carrier gate, for its unchanged recorded reason.",
       "evidence": {
         "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
         "observation_sha": "dbd62093bf81473163ac5ea4b480e176fbd1f020",
@@ -2893,7 +2893,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_authority_flows -- cb2_bundle_delegated_evidence_atomicity_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB9",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB10-STRUCTURE-VAULT-VECTOR-HASH",
