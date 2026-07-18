@@ -28,6 +28,17 @@ pub struct Window {
 impl Window {
     pub fn from_json(v: &serde_json::Value) -> Result<Self> {
         let err = |m: &str| Error::InvalidMandate(format!("active_windows: {m}"));
+        let object = v
+            .as_object()
+            .ok_or_else(|| err("window must be an object"))?;
+        if object.keys().any(|key| {
+            !matches!(
+                key.as_str(),
+                "anchor" | "duration" | "period" | "until" | "count"
+            )
+        }) {
+            return Err(err("window has an unknown member"));
+        }
         let anchor = v
             .get("anchor")
             .and_then(serde_json::Value::as_str)
@@ -39,9 +50,10 @@ impl Window {
         let period = v
             .get("period")
             .map(|p| {
-                p.as_str()
-                    .ok_or_else(|| err("period must be a duration string"))
-                    .and_then(parse_duration)
+                let value = p
+                    .as_str()
+                    .ok_or_else(|| err("period must be a duration string"))?;
+                parse_duration(value).map_err(|_| err("period must be a canonical duration"))
             })
             .transpose()?;
         if period.is_some_and(|p| p <= 0) {
@@ -50,15 +62,25 @@ impl Window {
         let until = v
             .get("until")
             .map(|u| {
-                u.as_str()
-                    .ok_or_else(|| err("until must be an RFC 3339 instant"))
-                    .and_then(ts_epoch)
+                let value = u
+                    .as_str()
+                    .ok_or_else(|| err("until must be an RFC 3339 instant"))?;
+                ts_epoch(value).map_err(|_| err("until must be a canonical RFC 3339 Z instant"))
             })
             .transpose()?;
-        let count = v.get("count").and_then(serde_json::Value::as_u64);
+        let count = v
+            .get("count")
+            .map(|value| {
+                value
+                    .as_u64()
+                    .ok_or_else(|| err("count must be an unsigned integer"))
+            })
+            .transpose()?;
         Ok(Window {
-            anchor: ts_epoch(anchor)?,
-            duration: parse_duration(duration)?,
+            anchor: ts_epoch(anchor)
+                .map_err(|_| err("anchor must be a canonical RFC 3339 Z instant"))?,
+            duration: parse_duration(duration)
+                .map_err(|_| err("duration must be a canonical duration"))?,
             period,
             until,
             count,
@@ -894,7 +916,7 @@ fn constraints_object(
 /// every key must be known (M0.c — unknown keys fail closed, no
 /// copy-through) and well-formed. Root mandates alone are never run
 /// through this — §04.4 keeps leaf-side unknown keys non-fatal.
-pub fn validate_link_constraints(c: &serde_json::Value) -> Result<()> {
+fn validate_known_constraints(c: &serde_json::Value, reject_unknown: bool) -> Result<()> {
     let obj = constraints_object(c)?;
     for (key, v) in obj {
         match key.as_str() {
@@ -989,20 +1011,63 @@ pub fn validate_link_constraints(c: &serde_json::Value) -> Result<()> {
                 parse_windows(c)?;
             }
             "obligations" => {
-                // Shape-checked by obligations_attenuate / parse (§04.12);
-                // attestor keys are opaque strings here.
-                if !v.is_array() {
-                    return Err(c_err(key, "must be an array"));
+                let obligations = v.as_array().ok_or_else(|| c_err(key, "must be an array"))?;
+                for obligation in obligations {
+                    Obligation::from_json(obligation)?;
                 }
             }
-            other => {
+            other if reject_unknown => {
                 return Err(Error::InvalidMandate(format!(
                     "unknown constraint key `{other}` at a delegation link (fail-closed, no copy-through)"
                 )));
             }
+            _ => {}
         }
     }
     Ok(())
+}
+
+/// Typed validation of one constraints object at a delegation link.
+///
+/// Unknown keys fail closed; directly issued roots use a distinct preservation
+/// gate and therefore do not call this function.
+pub fn validate_link_constraints(c: &serde_json::Value) -> Result<()> {
+    validate_known_constraints(c, true)
+}
+
+/// Validate every known root constraint while preserving unknown extensions.
+///
+/// Preservation is structural only. [`verify_operation_constraints`] is the
+/// operation-side fail-closed gate.
+pub(crate) fn validate_root_constraints(c: &serde_json::Value) -> Result<()> {
+    validate_known_constraints(c, false)
+}
+
+/// Opaque proof that every constraint affecting a current operation is known
+/// and structurally valid. This type conveys no authorization verdict.
+#[derive(Debug)]
+pub struct VerifiedOperationConstraints {
+    known_family_count: usize,
+}
+
+impl VerifiedOperationConstraints {
+    #[must_use]
+    pub const fn known_family_count(&self) -> usize {
+        self.known_family_count
+    }
+}
+
+/// Fail-closed operation-side constraint gate.
+///
+/// Root certificates may preserve future extension bytes, but a current
+/// verifier cannot evaluate such an extension and must refuse the operation.
+pub fn verify_operation_constraints(
+    constraints: &serde_json::Value,
+) -> Result<VerifiedOperationConstraints> {
+    validate_known_constraints(constraints, true)?;
+    Ok(VerifiedOperationConstraints {
+        known_family_count: constraints.as_object().map_or(0, serde_json::Map::len),
+    })
 }
 
 fn family_containment(key: &str, pv: &serde_json::Value, cv: &serde_json::Value) -> Result<()> {
@@ -1206,6 +1271,26 @@ pub fn constraints_attenuate(
     child_not_before: &str,
     child_not_after: &str,
 ) -> Result<()> {
+    constraints_attenuate_for_profile(
+        crate::mandate::MANDATE_VERSION_DRAFT1,
+        parent,
+        child,
+        child_not_before,
+        child_not_after,
+    )
+}
+
+/// Version-aware delegation-link gate.
+///
+/// Draft.1 keeps its historical per-level `max_children` omission semantics.
+/// Draft.2 and later make the cap non-droppable.
+pub fn constraints_attenuate_for_profile(
+    mandate_profile: &str,
+    parent: &serde_json::Value,
+    child: &serde_json::Value,
+    child_not_before: &str,
+    child_not_after: &str,
+) -> Result<()> {
     validate_link_constraints(parent)?;
     validate_link_constraints(child)?;
     // The two historic gates keep their own drop/containment semantics.
@@ -1227,7 +1312,9 @@ pub fn constraints_attenuate(
                 // obligations_attenuate already rejected any drop; an
                 // absent child list with an empty parent list is fine.
             }
-            None if DROPPABLE_CONSTRAINTS.contains(&key.as_str()) => {}
+            None if DROPPABLE_CONSTRAINTS.contains(&key.as_str())
+                && (key != "max_children"
+                    || mandate_profile == crate::mandate::MANDATE_VERSION_DRAFT1) => {}
             None => {
                 return Err(c_err(
                     key,

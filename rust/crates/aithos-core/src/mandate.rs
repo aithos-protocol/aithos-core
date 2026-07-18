@@ -859,6 +859,7 @@ impl Mandate {
         if !self.constraints.is_object() {
             return Err(invalid("constraints is not an object"));
         }
+        crate::constraints::validate_root_constraints(&self.constraints)?;
         for entry in &self.perimeter {
             PerimeterEntry::parse(entry).map_err(|_| invalid("malformed perimeter entry"))?;
         }
@@ -1106,7 +1107,8 @@ pub fn verify_chain_revocable(
         // E+ vector): typed validation of both sides, per-family fail-closed
         // containment, unknown keys rejected both ways (M0.c). Subsumes the
         // historic windows (§04.10) and obligations (§04.12) gates.
-        crate::constraints::constraints_attenuate(
+        crate::constraints::constraints_attenuate_for_profile(
+            &parent.version,
             &parent.constraints,
             &m.constraints,
             &m.not_before,
