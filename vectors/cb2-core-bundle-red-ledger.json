@@ -2783,11 +2783,11 @@
       "vector_slice": "$",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_authority_flows -- cb2_bundle_authority_flow_vector_hash_is_stable_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "dbd62093bf81473163ac5ea4b480e176fbd1f020",
+      "green_sha": "472b22272d6a51b7a028732d7c3ddf671f645701",
       "expected_reason": "The vector file SHA-256 is 30545958c170fda12e53817d3c5b7adb295432a4352e1abcbc7749fdd5c7eca0.",
-      "observed_reason": "The exact bytes match the independently generated pure-data oracle.",
+      "observed_reason": "CB8 GREEN at 472b22272d6a51b7a028732d7c3ddf671f645701: the exact SHA-256 remains 30545958c170fda12e53817d3c5b7adb295432a4352e1abcbc7749fdd5c7eca0 after owner parity, generic grant delivery and activated acceptance were added.",
       "owner": "CB8",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB8-BUNDLE-AUTHORITY-FLOW-HISTORICAL-HASHES",
@@ -2798,11 +2798,11 @@
       "vector_slice": "historical_vector_sha256",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_authority_flows -- cb2_bundle_authority_flow_historical_hashes_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "dbd62093bf81473163ac5ea4b480e176fbd1f020",
+      "green_sha": "472b22272d6a51b7a028732d7c3ddf671f645701",
       "expected_reason": "All eight selected historical vector hashes remain exact.",
-      "observed_reason": "No historical certificate, operation, counter, session, carrier or Bundle-boundary byte is changed or reinterpreted.",
+      "observed_reason": "CB8 GREEN at 472b22272d6a51b7a028732d7c3ddf671f645701: all eight historical hashes remain exact; the additive owner/grant façades do not rewrite or reinterpret any historical certificate, operation, counter, session, carrier or Bundle-boundary byte.",
       "owner": "CB8",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB8-OWNER-PARITY-ORACLE",
@@ -2813,11 +2813,11 @@
       "vector_slice": "owner_cases",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_authority_flows -- cb2_bundle_owner_parity_matrix_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "dbd62093bf81473163ac5ea4b480e176fbd1f020",
+      "green_sha": "472b22272d6a51b7a028732d7c3ddf671f645701",
       "expected_reason": "All fifteen zone/operation pairs are accepted without mandate or counter consumption and require a fresh-store reopen.",
-      "observed_reason": "The closed pure-data matrix contains each pair exactly once and reproduces the owner invariants.",
+      "observed_reason": "CB8 GREEN at 472b22272d6a51b7a028732d7c3ddf671f645701: Bundle::owner_content_operation executes all fifteen zone/operation pairs without a mandate; list/read consume no Gamma entry, create/edit/delete add exactly one owner mutation, every mutation and signed publication share one CB7 transaction, and real FsStore reopen plus edition/Gamma verification passes after every operation.",
       "owner": "CB8",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB8-CB9-GRANTEE-GRANT-CONTENT-FENCE-ORACLE",
@@ -2828,11 +2828,11 @@
       "vector_slice": "grantee_cases, grant_delivery_cases and content_fence_cases",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_authority_flows -- cb2_bundle_grantee_grant_and_content_fences_preexisting_green --exact --nocapture",
       "red_sha": null,
-      "green_sha": "dbd62093bf81473163ac5ea4b480e176fbd1f020",
+      "green_sha": "472b22272d6a51b7a028732d7c3ddf671f645701",
       "expected_reason": "Sixteen of eighteen grantee operations are accepted, both structural self-selector mutations are refused, all nine delivery rows are exact and all four authority/decryption combinations remain distinct.",
-      "observed_reason": "A separate Rust decision function reproduces every pure oracle outcome without invoking Bundle production behavior.",
+      "observed_reason": "CB8 GREEN at 472b22272d6a51b7a028732d7c3ddf671f645701: the oracle still reproduces every decision; grant_generic resolves and signs the same exact perimeter while delivering no public line, circle/self zone, folder or exact-section lines, circle tag-view lines, and the exact /x/<connector> vault line. Certificate, delivery, owner grant Gamma and publication commit atomically; a real grantee reads through the delivered circle capability after reopen, and a refused self-tag request leaves the canonical store byte-identical.",
       "owner": "CB8",
-      "status": "PREEXISTING-GREEN"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB9-DELEGATED-EVIDENCE-ATOMICITY-ORACLE",
@@ -2851,16 +2851,16 @@
     },
     {
       "id": "CB2-CB8-OWNER-PARITY-GENERIC-GRANTS-API-GATE",
-      "test_id": null,
+      "test_id": "cb8_owner_grants",
       "decision": "One owner operation surface and generic exact grant delivery across all zones",
       "scenario": "Owner list/read/create/edit/delete uses narrow capabilities with durable parity; issuance mints the certificate and delivers precisely the applicable public/circle/self or connector-vault line.",
       "vector_ref": "CB2-BUNDLE-AUTHORITY-FLOWS-1",
       "vector_slice": "owner_cases and grant_delivery_cases",
-      "command": null,
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb8_owner_grants",
       "red_sha": null,
-      "green_sha": null,
+      "green_sha": "472b22272d6a51b7a028732d7c3ddf671f645701",
       "expected_reason": "All fifteen owner operations and nine grant-delivery forms execute durably through one Bundle transaction without mandate consumption or over-delivery.",
-      "observed_reason": "At observation SHA dbd6209, Bundle exposes historical operation-specific owner methods and grant helpers but no common owner operation/session surface or complete generic delivery across public/circle/self/id/vault.",
+      "observed_reason": "The preliminary inventory at dbd6209 had no common owner operation or exhaustive grant façade. CB8 GREEN at 472b22272d6a51b7a028732d7c3ddf671f645701: OwnerContentOperation and owner_content_operation provide durable list/read/create/edit/delete parity over public/circle/self; GenericGrantRequest and grant_generic resolve all nine exact delivery forms, append only the required line, mint one matching mandate, record one owner grant and publish in the same transaction. The integration target passes 2/2, the activated BDD suite passes 504/504 scenarios and 2168/2168 steps, CLI passes 17/17, Gateway passes 152/152 BDD scenarios plus all socket journeys, strict workspace Clippy and WASM pass; the only workspace test failure remains the explicit future CB11 K1-C typed-error inventory.",
       "evidence": {
         "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
         "observation_sha": "dbd62093bf81473163ac5ea4b480e176fbd1f020",
@@ -2870,7 +2870,7 @@
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-bundle --locked --test cb2_bundle_authority_flows -- cb2_bundle_delegated_evidence_atomicity_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB8",
-      "status": "COMPILE-RED-PRELIMINAIRE"
+      "status": "VERT"
     },
     {
       "id": "CB2-CB9-DELEGATED-CONTENT-GAMMA-COLD-API-GATE",
