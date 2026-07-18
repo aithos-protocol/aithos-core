@@ -5,6 +5,36 @@ Feature: Connector classes and isolated vault capabilities
   Rule: An approved catalog is the sole source of action class
 
     @wip
+    Scenario Outline: Catalog authority begins only with a homogeneous draft3 chain
+      Given a connector mandate chain under "<profile>"
+      When it presents "<catalog claim>" for a new W1 action occurrence
+      Then catalog authority is "<verdict>"
+      And historical mandate bytes are never reinterpreted
+
+      Examples:
+        | profile | catalog claim                                     | verdict  |
+        | draft.1 | a later catalog sidecar                           | refused  |
+        | draft.2 | a later owner approval                            | refused  |
+        | draft.3 | the exact catalog and approval pinned at issuance | accepted |
+        | draft.3 | a different digest with the same catalog version  | refused  |
+        | draft.3 | the right pin under a mixed-version chain         | refused  |
+
+    @wip
+    Scenario: Draft3 catalog migration reissues the complete chain
+      Given an existing homogeneous draft2 chain with connector authority
+      When the authorities migrate it to catalog-bound draft3
+      Then every certificate receives a fresh mandate id and draft3 signature
+      And each grant is recorded by its normal Gamma v2 occurrence
+      And no draft2 certificate, signature or historical action byte changes
+
+    @wip
+    Scenario: Catalog attenuation never widens through a child or later sidecar
+      Given a draft3 parent pins one approved connector catalog
+      When a child or runtime presents a changed digest, version, class or action set
+      Then the existing chain is refused for that catalog
+      And only fresh homogeneous draft3 authority may approve the change
+
+    @wip
     Scenario: Catalog signer and owner approval are distinct proofs
       Given a signed, versioned and content-addressed connector catalog
       When the owner approves its exact digest and version

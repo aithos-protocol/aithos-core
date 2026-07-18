@@ -22,6 +22,17 @@ catalog. A `binding` action is always named exactly and carries the reserved own
 addition, version drift, or reclassification remains unauthorized until a new
 owner-approved catalog is pinned by new authority.
 
+> **K1-B catalog migration — human-validated on 2026-07-18.**
+>
+> New W1 connector authority pins catalog digest, catalog version, and the distinct
+> owner-approval evidence inside a homogeneous mandate `draft.3` chain. A catalog
+> sidecar or later approval cannot extend a `draft.1` or `draft.2` mandate and
+> cannot silently replace the pin of a draft3 chain. Catalog change means fresh
+> draft3 certificate ids, issuer-ordered reissuance, and normal Gamma v2 `grant`
+> evidence. Historical action and mandate bytes keep their historical semantics.
+> The exact draft3 catalog member and catalog/approval document tables remain
+> reserved; no draft3 certificate may be emitted before their vectors are approved.
+
 Whoever executes the action — an agent runtime or a tool host — verifies the
 presented chain and catalog proof, obtains the single pure Core verdict, honors
 tier-X constraints and required public evidence, writes the mandatory `action`

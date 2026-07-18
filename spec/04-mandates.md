@@ -42,14 +42,32 @@ historical vectors; in particular, the E+ case in which a child omits its parent
 rule identified in T1: a parent's `max_children` is non-droppable, including when
 the child is a chain leaf. It does not reinterpret any `draft.1` certificate.
 
+> **K1-B mandate migration decision — human-validated on 2026-07-18.**
+
+Mandate `"1.0.0-draft.3"` is the first profile permitted to carry the approved
+connector-catalog pins and the typed non-action obligation matcher. It is a new
+homogeneous issuance profile, not a companion certificate, sidecar extension, or
+reinterpretation of `draft.1`/`draft.2`. Migration reissues the complete chain with
+fresh mandate ids and normal Gamma v2 `grant` occurrences.
+
+Every catalog binding applicable at a parent is non-droppable: each child keeps the
+same exact approved catalog reference or selects a strictly narrower set already
+permitted by its parent. A changed catalog digest, version, class assignment, owner
+approval, or action set requires new draft3 authority; it never widens an existing
+chain. Catalog signature and owner approval remain distinct proofs (§08.1).
+
+The complete draft3 member names, catalog-reference object, typed matcher,
+attenuation encoding, and signature vectors remain reserved. Until those tables are
+human-validated, `draft.3` is not issuable and an emitter MUST NOT guess its bytes.
+
 A delegation chain is version-homogeneous: every certificate from root through
-leaf carries the same `aithos-mandate-core` value. A `draft.1`→`draft.2` or
-`draft.2`→`draft.1` link is invalid before attenuation is evaluated. Migration is
-not an in-place edit: the authorities reissue the complete chain in issuer order
-under `draft.2`, producing fresh certificates and the normal `grant` Gamma
-records. Existing `draft.1` certificates, signatures, and historical vectors
-remain byte-identical and continue to verify under `draft.1` until their ordinary
-expiry or revocation.
+leaf carries the same `aithos-mandate-core` value. Any link between different
+profiles is invalid before attenuation is evaluated. Migration is not an in-place
+edit: the authorities reissue the complete chain in issuer order under the selected
+newer profile, producing fresh certificates and normal `grant` Gamma records.
+Existing `draft.1` and `draft.2` certificates, signatures, and historical vectors
+remain byte-identical and continue to verify under their declared profile until
+their ordinary expiry or revocation.
 
 **Form is verified before signature trust (T3).** A verifier first validates the
 supported `aithos-mandate-core` profile; mandate, subject, parent, issuer, and
