@@ -152,3 +152,15 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`17553dd95f515e8045e17e8e46816b1d7e2007d4985eec0048fcac34197bef74`);
   Rust consumer: `aithos-core/tests/cb2_session_proof.rs`
   (`03df1111aa1945e27684bf29a55e8ca7772617f5ab350baaa738dd302eda1b8e`).
+- `CB2-R2-U1-OPERATION-RECEIPTS-1`: exact operation-bound R2 obligation
+  receipts, U1 action/inference usage receipts, Ed25519 preimages with `sig`
+  omitted, actual-usage totals, and the closed homogeneous-draft3 non-action
+  obligation matcher. The oracle preserves historical v1 receipts, covers both
+  R2 optional-presentation tables and all three family literals, and rejects 25
+  R2, 31 U1, and 24 matcher/chain defects with the established exact variants.
+  Generator: `gen-cb2-operation-receipts.py`
+  (`4247b6485ffba02b860d079fdf60da84bb6d431f9aed5ebbb257b95147c034b3`);
+  vector: `cb2-operation-receipts.json`
+  (`2ce3d53bda43dc28ce599a8f7ec97d0050c3bf61b8f9ade4b51e8a74336ff22c`);
+  Rust consumer: `aithos-core/tests/cb2_operation_receipts.rs`
+  (`4279a897f6adb5ac7189f9a6f087adc8e6acc82f13af1e533cb2d59c632af300`).

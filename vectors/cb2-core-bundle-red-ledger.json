@@ -6,9 +6,9 @@
   "as_of": "2026-07-18",
   "baseline": {
     "git_sha": "f95802e8959a1ada1e3331a2fbcac954baaf6680",
-    "observation_sha": "2d0f4790e88627cb25ce921ffa8478b9b84ea86d",
+    "observation_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
     "index_was_empty": true,
-    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection, SC1 session certificate/proof bytes, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
+    "note": "Partial CB2 ledger. The current Core mandate/max_children, Bundle version-coexistence, complete W1/A1/K1 projection, SC1 session certificate/proof bytes, R2/U1 receipts and draft3 obligation matcher, all K1.1/K1.2 operation-facts families through K1.2-GRRP-B, D7 delegated occurrence counters, and their explicit API gates are recorded. The list is not frozen."
   },
   "command_context": {
     "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core/rust",
@@ -98,6 +98,14 @@
       "generator_sha256": "37f8fde6cd69e8ed05d9bb0b2414e676694e2c3a614ff2ad06eaa134259784a6",
       "consumer": "rust/crates/aithos-core/tests/cb2_session_proof.rs",
       "consumer_sha256": "03df1111aa1945e27684bf29a55e8ca7772617f5ab350baaa738dd302eda1b8e"
+    },
+    "CB2-R2-U1-OPERATION-RECEIPTS-1": {
+      "file": "vectors/cb2-operation-receipts.json",
+      "sha256": "2ce3d53bda43dc28ce599a8f7ec97d0050c3bf61b8f9ade4b51e8a74336ff22c",
+      "generator": "vectors/gen-cb2-operation-receipts.py",
+      "generator_sha256": "4247b6485ffba02b860d079fdf60da84bb6d431f9aed5ebbb257b95147c034b3",
+      "consumer": "rust/crates/aithos-core/tests/cb2_operation_receipts.rs",
+      "consumer_sha256": "4279a897f6adb5ac7189f9a6f087adc8e6acc82f13af1e533cb2d59c632af300"
     }
   },
   "suite_observations": [
@@ -203,13 +211,24 @@
       "name": "SC1 session-proof byte and inventory diagnostics",
       "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- --nocapture",
       "observed": "5 passed; vector and historical hashes, mandate/certificate Ed25519 signatures, complete certificate digest, session-bound operation commitment and both possession signatures are GREEN. Typed SC1 validation, InvalidSession and max_sessions lifecycle remain absent."
+    },
+    {
+      "name": "R2/U1 operation-receipt generator reproducibility",
+      "command": "PYTHONPYCACHEPREFIX=/private/tmp/aithos-cb2-pycache python3 vectors/gen-cb2-operation-receipts.py --check",
+      "cwd": "/Volumes/Math17/aithos/v2/code/aithos-core",
+      "observed": "verified vectors/cb2-operation-receipts.json; the independent cryptography oracle accepts 5 exact signed receipts, 9 matcher decisions and one additive draft3 chain while rejecting 25 R2, 31 U1 and 24 matcher/chain defects with exact established variants."
+    },
+    {
+      "name": "R2/U1 operation-receipt byte and inventory diagnostics",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- --nocapture",
+      "observed": "5 passed; vector/historical hashes, all W1 commitments, closed receipt tables, omitted-sig JCS, Ed25519 signatures, usage totals and draft3 matcher/attenuation bytes are GREEN. Typed R2/U1 validation and matcher APIs remain absent."
     }
   ],
   "status_counts": {
     "RED-QUALIFIE": 34,
-    "PREEXISTING-GREEN": 55,
-    "COMPILE-RED-PRELIMINAIRE": 16,
-    "total": 105
+    "PREEXISTING-GREEN": 59,
+    "COMPILE-RED-PRELIMINAIRE": 18,
+    "total": 111
   },
   "entries": [
     {
@@ -1914,6 +1933,112 @@
         "source_observed": "Generic constraint syntax/attenuation hooks exist; no certificate lifecycle, active-session counter or replay validator exists.",
         "inventory_test_id": "cb2_sc1_closed_negative_and_api_inventory_preliminary",
         "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_session_proof -- cb2_sc1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB5",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB5-R2-U1-VECTOR-HASH",
+      "test_id": "cb2_r2_u1_vector_hash_is_stable_preexisting_green",
+      "decision": "R2/U1 independent oracle integrity",
+      "scenario": "The complete receipt-v2 and matcher qualification vector bytes remain frozen within the partial CB2 tranche.",
+      "vector_ref": "CB2-R2-U1-OPERATION-RECEIPTS-1",
+      "vector_slice": "$",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_vector_hash_is_stable_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+      "expected_reason": "The vector file SHA-256 is 2ce3d53bda43dc28ce599a8f7ec97d0050c3bf61b8f9ade4b51e8a74336ff22c.",
+      "observed_reason": "The exact bytes match the independent Python cryptography oracle.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-R2-U1-HISTORICAL-HASHES",
+      "test_id": "cb2_r2_u1_historical_v1_hashes_preexisting_green",
+      "decision": "R2/U1 additive historical non-regression",
+      "scenario": "Historical obligation, usage, attenuation, W1 and action/inference facts remain byte-identical.",
+      "vector_ref": "CB2-R2-U1-OPERATION-RECEIPTS-1",
+      "vector_slice": "historical_vector_sha256",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_historical_v1_hashes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+      "expected_reason": "All five complete historical vector hashes remain exact and v1 receipts retain their original profile.",
+      "observed_reason": "No v1 receipt is upgraded, downgraded, supplied an operation_ref or otherwise reinterpreted.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-R2-U1-RECEIPT-BYTES",
+      "test_id": "cb2_r2_u1_projection_and_receipt_signature_bytes_preexisting_green",
+      "decision": "R2/U1 closed tables, W1 binding and Ed25519 preimages",
+      "scenario": "Generic Core primitives reproduce all operation commitments, exact family tables, omitted-sig preimages, signatures and usage totals.",
+      "vector_ref": "CB2-R2-U1-OPERATION-RECEIPTS-1",
+      "vector_slice": "contexts, positive_receipts, obligations and budget_profile",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_projection_and_receipt_signature_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+      "expected_reason": "Both R2 optional-presentation tables and both U1 usage tables sign JCS with sig omitted, reference the exact W1 occurrence, and yield actual totals 8412 and 1500.",
+      "observed_reason": "Existing JCS, SHA-256, multibase and Ed25519 primitives reproduce every independent oracle byte; no receipt enters a pre-effect projection.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-R2-MATCHER-BYTES",
+      "test_id": "cb2_r2_u1_matcher_and_attenuation_bytes_preexisting_green",
+      "decision": "Draft3 closed non-action matcher and additive attenuation",
+      "scenario": "The exact matcher tuples select only reconstructed K1.2 facts and inherited obligations remain byte-identical in a homogeneous draft3 chain.",
+      "vector_ref": "CB2-R2-U1-OPERATION-RECEIPTS-1",
+      "vector_slice": "matcher_cases and draft3_obligation_chain",
+      "command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_matcher_and_attenuation_bytes_preexisting_green --exact --nocapture",
+      "red_sha": null,
+      "green_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+      "expected_reason": "Eight exact tuples apply, one cross-family tuple does not, and the child retains its inherited obligation while adding one distinct gate.",
+      "observed_reason": "Generic JSON equality reproduces the independent matcher matrix and additive chain bytes without claiming a typed draft3 validator.",
+      "owner": "CB5",
+      "status": "PREEXISTING-GREEN"
+    },
+    {
+      "id": "CB2-CB5-R2-U1-TYPED-API-GATE",
+      "test_id": null,
+      "decision": "Typed operation-bound receipt validation and usage override",
+      "scenario": "Core validates the selected R2/U1 closed family, exact signature authority, W1 correlation, freshness, replay and usage tally before append and cold replay.",
+      "vector_ref": "CB2-R2-U1-OPERATION-RECEIPTS-1",
+      "vector_slice": "positive_receipts, negative_r2_cases and negative_u1_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "Five positives validate; all 25 R2 defects return Error::GammaObligationUnsatisfied(String) and all 31 U1 defects return Error::InvalidGammaEntry(String).",
+      "observed_reason": "At observation SHA e7b3fed, Core only has historical v1 receipt validators and no receipt-v2 family type or operation_ref-aware verifier.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+        "source_command": "rg -n 'ReceiptV2|usage.action|usage.inference|operation_ref.*receipt|family.*obligation' rust/crates/aithos-core/src",
+        "source_observed": "No matching typed R2/U1 family, omitted-sig receipt-v2 preimage, or operation-bound replay validator.",
+        "inventory_test_id": "cb2_r2_u1_closed_negative_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
+      },
+      "owner": "CB5",
+      "status": "COMPILE-RED-PRELIMINAIRE"
+    },
+    {
+      "id": "CB2-CB5-R2-MATCHER-API-GATE",
+      "test_id": null,
+      "decision": "Typed homogeneous-draft3 non-action obligation matching",
+      "scenario": "Core parses exactly one obligation selector, matches the closed K1.2 tuple and enforces additive inheritance without changing historical action matchers.",
+      "vector_ref": "CB2-R2-U1-OPERATION-RECEIPTS-1",
+      "vector_slice": "matcher_cases, draft3_obligation_chain, negative_matcher_cases and negative_matcher_chain_cases",
+      "command": null,
+      "red_sha": null,
+      "green_sha": null,
+      "expected_reason": "All 9 matcher decisions hold and all 24 malformed, cross-version, dropped, altered or wrongly linked candidates return Error::InvalidMandate(String).",
+      "observed_reason": "At observation SHA e7b3fed, Core has no mandate draft3 obligation selector or typed match against reconstructed operation facts.",
+      "evidence": {
+        "kind": "source inventory plus passing vector diagnostic, not protocol GREEN",
+        "observation_sha": "e7b3feda172f06f0c10187fdc4ae870b39296404",
+        "source_command": "rg -n 'applies_to_operation|OperationMatcher|draft.3' rust/crates/aithos-core/src",
+        "source_observed": "No matching draft3 non-action matcher type, parser or attenuation implementation.",
+        "inventory_test_id": "cb2_r2_u1_closed_negative_and_api_inventory_preliminary",
+        "inventory_command": "TMPDIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718/runtime-tmp CARGO_TARGET_DIR=/Volumes/Math17/aithos/v2/.codex-targets/core-bundle-cb2-cb13-20260718 CARGO_INCREMENTAL=0 cargo test -p aithos-core --locked --test cb2_operation_receipts -- cb2_r2_u1_closed_negative_and_api_inventory_preliminary --exact --nocapture"
       },
       "owner": "CB5",
       "status": "COMPILE-RED-PRELIMINAIRE"

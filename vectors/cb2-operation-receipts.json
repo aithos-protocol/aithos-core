@@ -1,0 +1,2464 @@
+{
+  "budget_profile": {
+    "attestation_key": "z6MkwbiX9wGtoF7TrG6uRKL6YfdcawhAQVtixrqSo3mpXCLe",
+    "id": "haiku",
+    "models": [
+      "claude-haiku"
+    ],
+    "require_attestation": true
+  },
+  "contexts": {
+    "action": {
+      "kind": "action",
+      "native": {
+        "action_selector": "act.x.mail.send",
+        "model": "claude-haiku"
+      },
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+        "occurrence": "op_01K00000000000000000000071"
+      },
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:00:00Z",
+        "authority": {
+          "actor": "grantee",
+          "authorized_by": "mandate_01J00000000000000000000071",
+          "authorized_via": [
+            {
+              "certificate_digest": "sha256:7272727272727272727272727272727272727272727272727272727272727272",
+              "id": "mandate_01J00000000000000000000071"
+            }
+          ],
+          "key": "z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ"
+        },
+        "history_heads": [
+          "sha256:7171717171717171717171717171717171717171717171717171717171717171"
+        ],
+        "occurrence": "op_01K00000000000000000000071",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:3a363759e984e6b9140e72b82ee24a237ccc8f524a00de8f527f9f6f8f141e2e"
+          },
+          "kind": "action"
+        },
+        "subject": "did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn"
+      },
+      "projection_jcs": "{\"aithos-operation-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-18T12:00:00Z\",\"authority\":{\"actor\":\"grantee\",\"authorized_by\":\"mandate_01J00000000000000000000071\",\"authorized_via\":[{\"certificate_digest\":\"sha256:7272727272727272727272727272727272727272727272727272727272727272\",\"id\":\"mandate_01J00000000000000000000071\"}],\"key\":\"z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ\"},\"history_heads\":[\"sha256:7171717171717171717171717171717171717171717171717171717171717171\"],\"occurrence\":\"op_01K00000000000000000000071\",\"operation\":{\"facts_ref\":{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:3a363759e984e6b9140e72b82ee24a237ccc8f524a00de8f527f9f6f8f141e2e\"},\"kind\":\"action\"},\"subject\":\"did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn\"}"
+    },
+    "grant": {
+      "kind": "grant",
+      "native": {},
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:6b87d0a6a9d2d85b8a2ee634509c4dacfb2a07c11f8c52562d82210e37d9808d",
+        "occurrence": "op_01K00000000000000000000076"
+      },
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:00:00Z",
+        "authority": {
+          "actor": "grantee",
+          "authorized_by": "mandate_01J00000000000000000000071",
+          "authorized_via": [
+            {
+              "certificate_digest": "sha256:7272727272727272727272727272727272727272727272727272727272727272",
+              "id": "mandate_01J00000000000000000000071"
+            }
+          ],
+          "key": "z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ"
+        },
+        "history_heads": [
+          "sha256:7171717171717171717171717171717171717171717171717171717171717171"
+        ],
+        "occurrence": "op_01K00000000000000000000076",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:4b8b16f3829800e0798c2186b912c34a303f89e4c38f3f55b1f539ebd209ba14"
+          },
+          "kind": "grant"
+        },
+        "subject": "did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn"
+      },
+      "projection_jcs": "{\"aithos-operation-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-18T12:00:00Z\",\"authority\":{\"actor\":\"grantee\",\"authorized_by\":\"mandate_01J00000000000000000000071\",\"authorized_via\":[{\"certificate_digest\":\"sha256:7272727272727272727272727272727272727272727272727272727272727272\",\"id\":\"mandate_01J00000000000000000000071\"}],\"key\":\"z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ\"},\"history_heads\":[\"sha256:7171717171717171717171717171717171717171717171717171717171717171\"],\"occurrence\":\"op_01K00000000000000000000076\",\"operation\":{\"facts_ref\":{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:4b8b16f3829800e0798c2186b912c34a303f89e4c38f3f55b1f539ebd209ba14\"},\"kind\":\"grant\"},\"subject\":\"did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn\"}"
+    },
+    "inference": {
+      "kind": "inference",
+      "native": {
+        "model": "claude-haiku",
+        "provider": "anthropic"
+      },
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+        "occurrence": "op_01K00000000000000000000072"
+      },
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:00:00Z",
+        "authority": {
+          "actor": "grantee",
+          "authorized_by": "mandate_01J00000000000000000000071",
+          "authorized_via": [
+            {
+              "certificate_digest": "sha256:7272727272727272727272727272727272727272727272727272727272727272",
+              "id": "mandate_01J00000000000000000000071"
+            }
+          ],
+          "key": "z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ"
+        },
+        "history_heads": [
+          "sha256:7171717171717171717171717171717171717171717171717171717171717171"
+        ],
+        "occurrence": "op_01K00000000000000000000072",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:0010de9cf5ec92426fc3de2e24cab0fe3cec901ca8d9b71d6db1a90227c5ce47"
+          },
+          "kind": "inference"
+        },
+        "subject": "did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn"
+      },
+      "projection_jcs": "{\"aithos-operation-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-18T12:00:00Z\",\"authority\":{\"actor\":\"grantee\",\"authorized_by\":\"mandate_01J00000000000000000000071\",\"authorized_via\":[{\"certificate_digest\":\"sha256:7272727272727272727272727272727272727272727272727272727272727272\",\"id\":\"mandate_01J00000000000000000000071\"}],\"key\":\"z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ\"},\"history_heads\":[\"sha256:7171717171717171717171717171717171717171717171717171717171717171\"],\"occurrence\":\"op_01K00000000000000000000072\",\"operation\":{\"facts_ref\":{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:0010de9cf5ec92426fc3de2e24cab0fe3cec901ca8d9b71d6db1a90227c5ce47\"},\"kind\":\"inference\"},\"subject\":\"did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn\"}"
+    },
+    "mutation-ethos-edit": {
+      "kind": "mutation",
+      "native": {
+        "domain": "ethos",
+        "verb": "edit"
+      },
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:54f1f3f50d3244cb325d30dfaf1fe0d996469de7a249cda5ee97f2cdb03c71d0",
+        "occurrence": "op_01K00000000000000000000073"
+      },
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:00:00Z",
+        "authority": {
+          "actor": "grantee",
+          "authorized_by": "mandate_01J00000000000000000000071",
+          "authorized_via": [
+            {
+              "certificate_digest": "sha256:7272727272727272727272727272727272727272727272727272727272727272",
+              "id": "mandate_01J00000000000000000000071"
+            }
+          ],
+          "key": "z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ"
+        },
+        "history_heads": [
+          "sha256:7171717171717171717171717171717171717171717171717171717171717171"
+        ],
+        "occurrence": "op_01K00000000000000000000073",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:9dc0167a59a086efcbb8bda08c759c4f1dd78d41047d4d3f099446445b41be58"
+          },
+          "kind": "mutation"
+        },
+        "subject": "did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn"
+      },
+      "projection_jcs": "{\"aithos-operation-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-18T12:00:00Z\",\"authority\":{\"actor\":\"grantee\",\"authorized_by\":\"mandate_01J00000000000000000000071\",\"authorized_via\":[{\"certificate_digest\":\"sha256:7272727272727272727272727272727272727272727272727272727272727272\",\"id\":\"mandate_01J00000000000000000000071\"}],\"key\":\"z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ\"},\"history_heads\":[\"sha256:7171717171717171717171717171717171717171717171717171717171717171\"],\"occurrence\":\"op_01K00000000000000000000073\",\"operation\":{\"facts_ref\":{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:9dc0167a59a086efcbb8bda08c759c4f1dd78d41047d4d3f099446445b41be58\"},\"kind\":\"mutation\"},\"subject\":\"did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn\"}"
+    },
+    "mutation-structure-move": {
+      "kind": "mutation",
+      "native": {
+        "domain": "structure",
+        "verb": "move"
+      },
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:7f27c427d6ea691e4da42f8e1957f661c3d783563dfec35432e6e8027feaeeaf",
+        "occurrence": "op_01K00000000000000000000074"
+      },
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:00:00Z",
+        "authority": {
+          "actor": "grantee",
+          "authorized_by": "mandate_01J00000000000000000000071",
+          "authorized_via": [
+            {
+              "certificate_digest": "sha256:7272727272727272727272727272727272727272727272727272727272727272",
+              "id": "mandate_01J00000000000000000000071"
+            }
+          ],
+          "key": "z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ"
+        },
+        "history_heads": [
+          "sha256:7171717171717171717171717171717171717171717171717171717171717171"
+        ],
+        "occurrence": "op_01K00000000000000000000074",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:2b9f6f7bf0317e4365d557735c2c89275ccbcbd1dcb2b561f6658389614d9b0f"
+          },
+          "kind": "mutation"
+        },
+        "subject": "did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn"
+      },
+      "projection_jcs": "{\"aithos-operation-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-18T12:00:00Z\",\"authority\":{\"actor\":\"grantee\",\"authorized_by\":\"mandate_01J00000000000000000000071\",\"authorized_via\":[{\"certificate_digest\":\"sha256:7272727272727272727272727272727272727272727272727272727272727272\",\"id\":\"mandate_01J00000000000000000000071\"}],\"key\":\"z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ\"},\"history_heads\":[\"sha256:7171717171717171717171717171717171717171717171717171717171717171\"],\"occurrence\":\"op_01K00000000000000000000074\",\"operation\":{\"facts_ref\":{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:2b9f6f7bf0317e4365d557735c2c89275ccbcbd1dcb2b561f6658389614d9b0f\"},\"kind\":\"mutation\"},\"subject\":\"did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn\"}"
+    },
+    "publication-normal": {
+      "kind": "publication",
+      "native": {
+        "mode": "normal"
+      },
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:f9941fd94318ece830de9fb7cf2acbc522158cbd6f03ec6e8b5eae5557d0876b",
+        "occurrence": "op_01K00000000000000000000079"
+      },
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:00:00Z",
+        "authority": {
+          "actor": "grantee",
+          "authorized_by": "mandate_01J00000000000000000000071",
+          "authorized_via": [
+            {
+              "certificate_digest": "sha256:7272727272727272727272727272727272727272727272727272727272727272",
+              "id": "mandate_01J00000000000000000000071"
+            }
+          ],
+          "key": "z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ"
+        },
+        "history_heads": [
+          "sha256:7171717171717171717171717171717171717171717171717171717171717171"
+        ],
+        "occurrence": "op_01K00000000000000000000079",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:708ce0d2055cf8bbf899a28aade3e1bbbdbae86dd67f488c7fd71b758d2c74cb"
+          },
+          "kind": "publication"
+        },
+        "subject": "did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn"
+      },
+      "projection_jcs": "{\"aithos-operation-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-18T12:00:00Z\",\"authority\":{\"actor\":\"grantee\",\"authorized_by\":\"mandate_01J00000000000000000000071\",\"authorized_via\":[{\"certificate_digest\":\"sha256:7272727272727272727272727272727272727272727272727272727272727272\",\"id\":\"mandate_01J00000000000000000000071\"}],\"key\":\"z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ\"},\"history_heads\":[\"sha256:7171717171717171717171717171717171717171717171717171717171717171\"],\"occurrence\":\"op_01K00000000000000000000079\",\"operation\":{\"facts_ref\":{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:708ce0d2055cf8bbf899a28aade3e1bbbdbae86dd67f488c7fd71b758d2c74cb\"},\"kind\":\"publication\"},\"subject\":\"did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn\"}"
+    },
+    "read-ethos": {
+      "kind": "read",
+      "native": {
+        "domain": "ethos"
+      },
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:ffd9c40c07c9919723374f4fc4ac4eef4f43bb339283fc00aa61fbd430933b73",
+        "occurrence": "op_01K00000000000000000000075"
+      },
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:00:00Z",
+        "authority": {
+          "actor": "grantee",
+          "authorized_by": "mandate_01J00000000000000000000071",
+          "authorized_via": [
+            {
+              "certificate_digest": "sha256:7272727272727272727272727272727272727272727272727272727272727272",
+              "id": "mandate_01J00000000000000000000071"
+            }
+          ],
+          "key": "z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ"
+        },
+        "history_heads": [
+          "sha256:7171717171717171717171717171717171717171717171717171717171717171"
+        ],
+        "occurrence": "op_01K00000000000000000000075",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:15c3d65c26e7e2138a7cc7d1130093c9c6a5659e1717c93ef4fbac2c6bc685cf"
+          },
+          "kind": "read"
+        },
+        "subject": "did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn"
+      },
+      "projection_jcs": "{\"aithos-operation-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-18T12:00:00Z\",\"authority\":{\"actor\":\"grantee\",\"authorized_by\":\"mandate_01J00000000000000000000071\",\"authorized_via\":[{\"certificate_digest\":\"sha256:7272727272727272727272727272727272727272727272727272727272727272\",\"id\":\"mandate_01J00000000000000000000071\"}],\"key\":\"z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ\"},\"history_heads\":[\"sha256:7171717171717171717171717171717171717171717171717171717171717171\"],\"occurrence\":\"op_01K00000000000000000000075\",\"operation\":{\"facts_ref\":{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:15c3d65c26e7e2138a7cc7d1130093c9c6a5659e1717c93ef4fbac2c6bc685cf\"},\"kind\":\"read\"},\"subject\":\"did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn\"}"
+    },
+    "revoke": {
+      "kind": "revoke",
+      "native": {},
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:765d728d159e40f431397b4c1659c86dae82f012a43fc144b71dda785cb808e5",
+        "occurrence": "op_01K00000000000000000000077"
+      },
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:00:00Z",
+        "authority": {
+          "actor": "grantee",
+          "authorized_by": "mandate_01J00000000000000000000071",
+          "authorized_via": [
+            {
+              "certificate_digest": "sha256:7272727272727272727272727272727272727272727272727272727272727272",
+              "id": "mandate_01J00000000000000000000071"
+            }
+          ],
+          "key": "z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ"
+        },
+        "history_heads": [
+          "sha256:7171717171717171717171717171717171717171717171717171717171717171"
+        ],
+        "occurrence": "op_01K00000000000000000000077",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:f360139e8fc15871f70a6454a669826a3838391c42c151afb4c22d1247992dda"
+          },
+          "kind": "revoke"
+        },
+        "subject": "did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn"
+      },
+      "projection_jcs": "{\"aithos-operation-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-18T12:00:00Z\",\"authority\":{\"actor\":\"grantee\",\"authorized_by\":\"mandate_01J00000000000000000000071\",\"authorized_via\":[{\"certificate_digest\":\"sha256:7272727272727272727272727272727272727272727272727272727272727272\",\"id\":\"mandate_01J00000000000000000000071\"}],\"key\":\"z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ\"},\"history_heads\":[\"sha256:7171717171717171717171717171717171717171717171717171717171717171\"],\"occurrence\":\"op_01K00000000000000000000077\",\"operation\":{\"facts_ref\":{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:f360139e8fc15871f70a6454a669826a3838391c42c151afb4c22d1247992dda\"},\"kind\":\"revoke\"},\"subject\":\"did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn\"}"
+    },
+    "rotate-vault": {
+      "kind": "rotate",
+      "native": {
+        "domain": "vault"
+      },
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:c1f4581d6f6fa7681ca3b9a4fb3cc90cf84d81c77c748f12aaf45995ceb55355",
+        "occurrence": "op_01K00000000000000000000078"
+      },
+      "projection": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "at": "2026-07-18T12:00:00Z",
+        "authority": {
+          "actor": "grantee",
+          "authorized_by": "mandate_01J00000000000000000000071",
+          "authorized_via": [
+            {
+              "certificate_digest": "sha256:7272727272727272727272727272727272727272727272727272727272727272",
+              "id": "mandate_01J00000000000000000000071"
+            }
+          ],
+          "key": "z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ"
+        },
+        "history_heads": [
+          "sha256:7171717171717171717171717171717171717171717171717171717171717171"
+        ],
+        "occurrence": "op_01K00000000000000000000078",
+        "operation": {
+          "facts_ref": {
+            "aithos-operation-facts-core": "1.0.0-draft.1",
+            "digest": "sha256:63f51d48fc688976a6a921ca469a90f0402d2c3c1d49072ce0bb641c471536f5"
+          },
+          "kind": "rotate"
+        },
+        "subject": "did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn"
+      },
+      "projection_jcs": "{\"aithos-operation-core\":\"1.0.0-draft.1\",\"at\":\"2026-07-18T12:00:00Z\",\"authority\":{\"actor\":\"grantee\",\"authorized_by\":\"mandate_01J00000000000000000000071\",\"authorized_via\":[{\"certificate_digest\":\"sha256:7272727272727272727272727272727272727272727272727272727272727272\",\"id\":\"mandate_01J00000000000000000000071\"}],\"key\":\"z6MkhTPbkJ6JwtVgYLTq6hESXvXuSUKymUrEqmmVQjUC7aUQ\"},\"history_heads\":[\"sha256:7171717171717171717171717171717171717171717171717171717171717171\"],\"occurrence\":\"op_01K00000000000000000000078\",\"operation\":{\"facts_ref\":{\"aithos-operation-facts-core\":\"1.0.0-draft.1\",\"digest\":\"sha256:63f51d48fc688976a6a921ca469a90f0402d2c3c1d49072ce0bb641c471536f5\"},\"kind\":\"rotate\"},\"subject\":\"did:aithos:z6Mkrhc4JBqxxDoXNgUcxcCmYayVq6aLmwzHY1MmLPB6m2Qn\"}"
+    }
+  },
+  "description": "Independent Python cryptography oracle for exact R2 obligation and U1 action/inference receipts, operation-bound Ed25519 signatures, historical v1 non-regression and the closed homogeneous-draft3 non-action obligation matcher.",
+  "deterministic_private_seed_hex": {
+    "attestor_a": "7171717171717171717171717171717171717171717171717171717171717171",
+    "attestor_b": "7272727272727272727272727272727272727272727272727272727272727272",
+    "grantee": "7575757575757575757575757575757575757575757575757575757575757575",
+    "root": "7676767676767676767676767676767676767676767676767676767676767676",
+    "stranger": "7474747474747474747474747474747474747474747474747474747474747474",
+    "usage": "7373737373737373737373737373737373737373737373737373737373737373"
+  },
+  "draft3_obligation_chain": [
+    {
+      "aithos-mandate-core": "1.0.0-draft.3",
+      "constraints": {
+        "obligations": [
+          {
+            "applies_to_operation": {
+              "domain": "ethos",
+              "kind": "mutation",
+              "verb": "edit"
+            },
+            "attestor": [
+              "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+              "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+            ],
+            "check": "human.approve",
+            "id": "edit-approval",
+            "max_age": "5m",
+            "verdict": "approve"
+          }
+        ]
+      },
+      "id": "mandate_01J00000000000000000000081",
+      "parent": null
+    },
+    {
+      "aithos-mandate-core": "1.0.0-draft.3",
+      "constraints": {
+        "obligations": [
+          {
+            "applies_to_operation": {
+              "domain": "ethos",
+              "kind": "mutation",
+              "verb": "edit"
+            },
+            "attestor": [
+              "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+              "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+            ],
+            "check": "human.approve",
+            "id": "edit-approval",
+            "max_age": "5m",
+            "verdict": "approve"
+          },
+          {
+            "applies_to_operation": {
+              "domain": "ethos",
+              "kind": "read"
+            },
+            "attestor": [
+              "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL"
+            ],
+            "check": "guardrail.audit",
+            "id": "audit-read",
+            "verdict": "pass"
+          }
+        ]
+      },
+      "id": "mandate_01J00000000000000000000082",
+      "parent": "mandate_01J00000000000000000000081"
+    }
+  ],
+  "historical_vector_sha256": {
+    "cb2-operation-facts-action-inference.json": "4e1f319439ec4cc5faef2012a2a8aa198ba8d62fced2f330d2bbd13580c78b71",
+    "cb2-operation-projection.json": "99bc175e0b4f07dece0afa828fff22be9be75d4b66f8b00fee3e7d427021e14c",
+    "eplus-attenuation.json": "9822d9da417487740b50efc1a760883addf8fffcaa0fa2008e029ab473d1db8c",
+    "fplus-constraints.json": "36ef0237501a3911487057a86c5022da7d254f19750b71b38a5150ec6830dc98",
+    "gplus-obligations.json": "f74f6c2b4611e798c0c00bd35ccdfb056e26de2d558efc0e2c3ad04ae57a7285"
+  },
+  "inventory": {
+    "historical_v1_is_not_reinterpreted": true,
+    "matcher_chain_negative_ids": [
+      "dropped-inherited-obligation",
+      "altered-inherited-obligation",
+      "mixed-version-matcher-chain",
+      "wrong-parent-matcher-chain"
+    ],
+    "matcher_error_variant": "InvalidMandate",
+    "matcher_negative_ids": [
+      "draft1-non-action-selector",
+      "draft2-non-action-selector",
+      "both-selectors",
+      "missing-selector",
+      "null-selector",
+      "extra-obligation-member",
+      "empty-obligation-id",
+      "empty-attestor-set",
+      "duplicate-attestor",
+      "unknown-profile",
+      "unknown-matcher-kind",
+      "action-matcher-kind",
+      "read-missing-domain",
+      "read-unknown-domain",
+      "mutation-missing-verb",
+      "mutation-invalid-combination",
+      "inference-extra-domain",
+      "rotate-unknown-domain",
+      "publication-unknown-mode",
+      "matcher-null-member"
+    ],
+    "r2_error_variant": "GammaObligationUnsatisfied",
+    "r2_negative_ids": [
+      "missing-receipt",
+      "duplicate-receipt",
+      "missing-version",
+      "historical-v1-version",
+      "unknown-version",
+      "boolean-version",
+      "unknown-family",
+      "extra-member",
+      "null-verdict",
+      "missing-operation-ref",
+      "operation-ref-extra",
+      "operation-ref-malformed-commitment",
+      "operation-ref-other-occurrence",
+      "wrong-obligation",
+      "wrong-verdict",
+      "invalid-at",
+      "stale-before",
+      "stale-after",
+      "bad-presented-digest",
+      "malformed-signature",
+      "tampered-after-sign",
+      "stranger-signature",
+      "copied-v1-mandate-id",
+      "copied-v1-action",
+      "copied-v1-args-hash"
+    ],
+    "receipts_are_not_operation_projection_inputs": true,
+    "sig_is_omitted_from_preimage": true,
+    "u1_error_variant": "InvalidGammaEntry",
+    "u1_negative_ids": [
+      "action-missing-receipt",
+      "action-duplicate-receipt",
+      "action-missing-version",
+      "action-historical-v1-version",
+      "action-unknown-version",
+      "action-boolean-version",
+      "action-wrong-family",
+      "action-extra-member",
+      "action-null-model",
+      "action-empty-model",
+      "action-model-not-allowed",
+      "action-negative-tokens",
+      "action-float-tokens",
+      "action-boolean-tokens",
+      "action-missing-tokens",
+      "action-wrong-operation",
+      "action-reference-extra",
+      "action-malformed-signature",
+      "action-tampered-after-sign",
+      "action-stranger-signature",
+      "action-copied-v1-args-hash",
+      "inference-missing-tokens-in",
+      "inference-missing-tokens-out",
+      "inference-negative-tokens-in",
+      "inference-float-tokens-out",
+      "inference-total-overflow",
+      "inference-wrong-family",
+      "inference-action-model-member",
+      "inference-action-tokens-member",
+      "inference-wrong-operation",
+      "inference-tampered-after-sign"
+    ]
+  },
+  "matcher_cases": [
+    {
+      "context": "read-ethos",
+      "expected_applicable": true,
+      "id": "matcher-1",
+      "matcher": {
+        "domain": "ethos",
+        "kind": "read"
+      }
+    },
+    {
+      "context": "mutation-ethos-edit",
+      "expected_applicable": true,
+      "id": "matcher-2",
+      "matcher": {
+        "domain": "ethos",
+        "kind": "mutation",
+        "verb": "edit"
+      }
+    },
+    {
+      "context": "mutation-structure-move",
+      "expected_applicable": true,
+      "id": "matcher-3",
+      "matcher": {
+        "domain": "structure",
+        "kind": "mutation",
+        "verb": "move"
+      }
+    },
+    {
+      "context": "inference",
+      "expected_applicable": true,
+      "id": "matcher-4",
+      "matcher": {
+        "kind": "inference"
+      }
+    },
+    {
+      "context": "grant",
+      "expected_applicable": true,
+      "id": "matcher-5",
+      "matcher": {
+        "kind": "grant"
+      }
+    },
+    {
+      "context": "revoke",
+      "expected_applicable": true,
+      "id": "matcher-6",
+      "matcher": {
+        "kind": "revoke"
+      }
+    },
+    {
+      "context": "rotate-vault",
+      "expected_applicable": true,
+      "id": "matcher-7",
+      "matcher": {
+        "domain": "vault",
+        "kind": "rotate"
+      }
+    },
+    {
+      "context": "publication-normal",
+      "expected_applicable": true,
+      "id": "matcher-8",
+      "matcher": {
+        "kind": "publication",
+        "mode": "normal"
+      }
+    },
+    {
+      "context": "mutation-structure-move",
+      "expected_applicable": false,
+      "id": "matcher-9",
+      "matcher": {
+        "domain": "ethos",
+        "kind": "mutation",
+        "verb": "edit"
+      }
+    }
+  ],
+  "negative_matcher_cases": [
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "ethos",
+            "kind": "mutation",
+            "verb": "edit"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.1"
+      },
+      "id": "draft1-non-action-selector",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "ethos",
+            "kind": "mutation",
+            "verb": "edit"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.2"
+      },
+      "id": "draft2-non-action-selector",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to": "act.x.mail.send",
+          "applies_to_operation": {
+            "domain": "ethos",
+            "kind": "mutation",
+            "verb": "edit"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "both-selectors",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "missing-selector",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": null,
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "null-selector",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "ethos",
+            "kind": "mutation",
+            "verb": "edit"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "extra": true,
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "extra-obligation-member",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "ethos",
+            "kind": "mutation",
+            "verb": "edit"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "empty-obligation-id",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "ethos",
+            "kind": "mutation",
+            "verb": "edit"
+          },
+          "attestor": [],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "empty-attestor-set",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "ethos",
+            "kind": "mutation",
+            "verb": "edit"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "duplicate-attestor",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "ethos",
+            "kind": "mutation",
+            "verb": "edit"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.4"
+      },
+      "id": "unknown-profile",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "kind": "future"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "unknown-matcher-kind",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "kind": "action"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "action-matcher-kind",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "kind": "read"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "read-missing-domain",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "self",
+            "kind": "read"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "read-unknown-domain",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "ethos",
+            "kind": "mutation"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "mutation-missing-verb",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "vault-config",
+            "kind": "mutation",
+            "verb": "move"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "mutation-invalid-combination",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "provider",
+            "kind": "inference"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "inference-extra-domain",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "connector",
+            "kind": "rotate"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "rotate-unknown-domain",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "kind": "publication",
+            "mode": "genesis"
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "publication-unknown-mode",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": {
+        "obligation": {
+          "applies_to_operation": {
+            "domain": "ethos",
+            "kind": "mutation",
+            "verb": null
+          },
+          "attestor": [
+            "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+          ],
+          "check": "human.approve",
+          "id": "edit-approval",
+          "max_age": "5m",
+          "verdict": "approve"
+        },
+        "profile": "1.0.0-draft.3"
+      },
+      "id": "matcher-null-member",
+      "must_fail": "InvalidMandate"
+    }
+  ],
+  "negative_matcher_chain_cases": [
+    {
+      "candidate": [
+        {
+          "aithos-mandate-core": "1.0.0-draft.3",
+          "constraints": {
+            "obligations": [
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "mutation",
+                  "verb": "edit"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+                  "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+                ],
+                "check": "human.approve",
+                "id": "edit-approval",
+                "max_age": "5m",
+                "verdict": "approve"
+              }
+            ]
+          },
+          "id": "mandate_01J00000000000000000000081",
+          "parent": null
+        },
+        {
+          "aithos-mandate-core": "1.0.0-draft.3",
+          "constraints": {
+            "obligations": [
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "read"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL"
+                ],
+                "check": "guardrail.audit",
+                "id": "audit-read",
+                "verdict": "pass"
+              }
+            ]
+          },
+          "id": "mandate_01J00000000000000000000082",
+          "parent": "mandate_01J00000000000000000000081"
+        }
+      ],
+      "id": "dropped-inherited-obligation",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": [
+        {
+          "aithos-mandate-core": "1.0.0-draft.3",
+          "constraints": {
+            "obligations": [
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "mutation",
+                  "verb": "edit"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+                  "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+                ],
+                "check": "human.approve",
+                "id": "edit-approval",
+                "max_age": "5m",
+                "verdict": "approve"
+              }
+            ]
+          },
+          "id": "mandate_01J00000000000000000000081",
+          "parent": null
+        },
+        {
+          "aithos-mandate-core": "1.0.0-draft.3",
+          "constraints": {
+            "obligations": [
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "mutation",
+                  "verb": "edit"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+                  "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+                ],
+                "check": "human.approve",
+                "id": "edit-approval",
+                "max_age": "1h",
+                "verdict": "approve"
+              },
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "read"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL"
+                ],
+                "check": "guardrail.audit",
+                "id": "audit-read",
+                "verdict": "pass"
+              }
+            ]
+          },
+          "id": "mandate_01J00000000000000000000082",
+          "parent": "mandate_01J00000000000000000000081"
+        }
+      ],
+      "id": "altered-inherited-obligation",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": [
+        {
+          "aithos-mandate-core": "1.0.0-draft.3",
+          "constraints": {
+            "obligations": [
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "mutation",
+                  "verb": "edit"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+                  "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+                ],
+                "check": "human.approve",
+                "id": "edit-approval",
+                "max_age": "5m",
+                "verdict": "approve"
+              }
+            ]
+          },
+          "id": "mandate_01J00000000000000000000081",
+          "parent": null
+        },
+        {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "obligations": [
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "mutation",
+                  "verb": "edit"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+                  "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+                ],
+                "check": "human.approve",
+                "id": "edit-approval",
+                "max_age": "5m",
+                "verdict": "approve"
+              },
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "read"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL"
+                ],
+                "check": "guardrail.audit",
+                "id": "audit-read",
+                "verdict": "pass"
+              }
+            ]
+          },
+          "id": "mandate_01J00000000000000000000082",
+          "parent": "mandate_01J00000000000000000000081"
+        }
+      ],
+      "id": "mixed-version-matcher-chain",
+      "must_fail": "InvalidMandate"
+    },
+    {
+      "candidate": [
+        {
+          "aithos-mandate-core": "1.0.0-draft.3",
+          "constraints": {
+            "obligations": [
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "mutation",
+                  "verb": "edit"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+                  "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+                ],
+                "check": "human.approve",
+                "id": "edit-approval",
+                "max_age": "5m",
+                "verdict": "approve"
+              }
+            ]
+          },
+          "id": "mandate_01J00000000000000000000081",
+          "parent": null
+        },
+        {
+          "aithos-mandate-core": "1.0.0-draft.3",
+          "constraints": {
+            "obligations": [
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "mutation",
+                  "verb": "edit"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+                  "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+                ],
+                "check": "human.approve",
+                "id": "edit-approval",
+                "max_age": "5m",
+                "verdict": "approve"
+              },
+              {
+                "applies_to_operation": {
+                  "domain": "ethos",
+                  "kind": "read"
+                },
+                "attestor": [
+                  "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL"
+                ],
+                "check": "guardrail.audit",
+                "id": "audit-read",
+                "verdict": "pass"
+              }
+            ]
+          },
+          "id": "mandate_01J00000000000000000000082",
+          "parent": "mandate_01J00000000000000000000099"
+        }
+      ],
+      "id": "wrong-parent-matcher-chain",
+      "must_fail": "InvalidMandate"
+    }
+  ],
+  "negative_r2_cases": [
+    {
+      "candidate": [],
+      "id": "missing-receipt",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        },
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "duplicate-receipt",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "verdict": "approve"
+        }
+      ],
+      "id": "missing-version",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 1,
+          "verdict": "approve"
+        }
+      ],
+      "id": "historical-v1-version",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 3,
+          "verdict": "approve"
+        }
+      ],
+      "id": "unknown-version",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": true,
+          "verdict": "approve"
+        }
+      ],
+      "id": "boolean-version",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "approval",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "unknown-family",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "extra": true,
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "extra-member",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": null
+        }
+      ],
+      "id": "null-verdict",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "missing-operation-ref",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "extra": true,
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "operation-ref-extra",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:00",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "operation-ref-malformed-commitment",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "operation-ref-other-occurrence",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "other-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "wrong-obligation",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "reject"
+        }
+      ],
+      "id": "wrong-verdict",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00+00:00",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "invalid-at",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:54:59Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "stale-before",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T12:05:01Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "stale-after",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "presented_digest": "sha256:00",
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "bad-presented-digest",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "00",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "malformed-signature",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:59:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "tampered-after-sign",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "33c74e0242edc217d3f3009d78168a3b3e485f1473f629998fd54388ee4857de2af87cf1299193b795b5a4f07661c0ab7a543d617286bb8bd4374b99e2a99c0c",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "stranger-signature",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "mandate_id": "mandate_01J00000000000000000000071",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "copied-v1-mandate-id",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "action": "send",
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "copied-v1-action",
+      "must_fail": "GammaObligationUnsatisfied"
+    },
+    {
+      "candidate": [
+        {
+          "args_hash": "sha256:0101010101010101010101010101010101010101010101010101010101010101",
+          "at": "2026-07-18T11:58:00Z",
+          "family": "obligation",
+          "obligation": "send-approval",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+          "v": 2,
+          "verdict": "approve"
+        }
+      ],
+      "id": "copied-v1-args-hash",
+      "must_fail": "GammaObligationUnsatisfied"
+    }
+  ],
+  "negative_u1_cases": [
+    {
+      "candidate": [],
+      "id": "action-missing-receipt",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 2
+        },
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-duplicate-receipt",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412
+        }
+      ],
+      "id": "action-missing-version",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 1
+        }
+      ],
+      "id": "action-historical-v1-version",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 3
+        }
+      ],
+      "id": "action-unknown-version",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": true
+        }
+      ],
+      "id": "action-boolean-version",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.inference",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-wrong-family",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "extra": true,
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-extra-member",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": null,
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-null-model",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-empty-model",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "gpt-oss",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-model-not-allowed",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": -1,
+          "v": 2
+        }
+      ],
+      "id": "action-negative-tokens",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 1.5,
+          "v": 2
+        }
+      ],
+      "id": "action-float-tokens",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": true,
+          "v": 2
+        }
+      ],
+      "id": "action-boolean-tokens",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "v": 2
+        }
+      ],
+      "id": "action-missing-tokens",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-wrong-operation",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "extra": true,
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-reference-extra",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "00",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-malformed-signature",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8413,
+          "v": 2
+        }
+      ],
+      "id": "action-tampered-after-sign",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "9ef77a15cf442d280b2e75a4795f85314db85ed6794174f7edefbdb7d8fae8d65265bf8807f188e00249fde0dc03bf7d6dcc1d68a7f8368d49b458efbf750c0b",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-stranger-signature",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "args_hash": "sha256:0101010101010101010101010101010101010101010101010101010101010101",
+          "family": "usage.action",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+          "tokens": 8412,
+          "v": 2
+        }
+      ],
+      "id": "action-copied-v1-args-hash",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.inference",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+          "tokens_out": 300,
+          "v": 2
+        }
+      ],
+      "id": "inference-missing-tokens-in",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.inference",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+          "tokens_in": 1200,
+          "v": 2
+        }
+      ],
+      "id": "inference-missing-tokens-out",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.inference",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+          "tokens_in": -1,
+          "tokens_out": 300,
+          "v": 2
+        }
+      ],
+      "id": "inference-negative-tokens-in",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.inference",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+          "tokens_in": 1200,
+          "tokens_out": 0.5,
+          "v": 2
+        }
+      ],
+      "id": "inference-float-tokens-out",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.inference",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+          "tokens_in": 18446744073709551615,
+          "tokens_out": 1,
+          "v": 2
+        }
+      ],
+      "id": "inference-total-overflow",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.action",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+          "tokens_in": 1200,
+          "tokens_out": 300,
+          "v": 2
+        }
+      ],
+      "id": "inference-wrong-family",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.inference",
+          "model": "claude-haiku",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+          "tokens_in": 1200,
+          "tokens_out": 300,
+          "v": 2
+        }
+      ],
+      "id": "inference-action-model-member",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.inference",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+          "tokens": 1500,
+          "tokens_in": 1200,
+          "tokens_out": 300,
+          "v": 2
+        }
+      ],
+      "id": "inference-action-tokens-member",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.inference",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+            "occurrence": "op_01K00000000000000000000071"
+          },
+          "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+          "tokens_in": 1200,
+          "tokens_out": 300,
+          "v": 2
+        }
+      ],
+      "id": "inference-wrong-operation",
+      "must_fail": "InvalidGammaEntry"
+    },
+    {
+      "candidate": [
+        {
+          "family": "usage.inference",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+            "occurrence": "op_01K00000000000000000000072"
+          },
+          "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+          "tokens_in": 1200,
+          "tokens_out": 301,
+          "v": 2
+        }
+      ],
+      "id": "inference-tampered-after-sign",
+      "must_fail": "InvalidGammaEntry"
+    }
+  ],
+  "obligations": {
+    "action": {
+      "applies_to": "act.x.mail.send",
+      "attestor": [
+        "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+        "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+      ],
+      "check": "human.approve",
+      "id": "send-approval",
+      "max_age": "5m",
+      "verdict": "approve"
+    },
+    "audit": {
+      "applies_to_operation": {
+        "domain": "ethos",
+        "kind": "read"
+      },
+      "attestor": [
+        "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL"
+      ],
+      "check": "guardrail.audit",
+      "id": "audit-read",
+      "verdict": "pass"
+    },
+    "mutation": {
+      "applies_to_operation": {
+        "domain": "ethos",
+        "kind": "mutation",
+        "verb": "edit"
+      },
+      "attestor": [
+        "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+        "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX"
+      ],
+      "check": "human.approve",
+      "id": "edit-approval",
+      "max_age": "5m",
+      "verdict": "approve"
+    }
+  },
+  "positive_receipts": {
+    "r2_draft3_mutation": {
+      "preimage_jcs": "{\"at\":\"2026-07-18T11:58:00Z\",\"family\":\"obligation\",\"obligation\":\"edit-approval\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:54f1f3f50d3244cb325d30dfaf1fe0d996469de7a249cda5ee97f2cdb03c71d0\",\"occurrence\":\"op_01K00000000000000000000073\"},\"presented_digest\":\"sha256:7979797979797979797979797979797979797979797979797979797979797979\",\"v\":2,\"verdict\":\"approve\"}",
+      "receipt": {
+        "at": "2026-07-18T11:58:00Z",
+        "family": "obligation",
+        "obligation": "edit-approval",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:54f1f3f50d3244cb325d30dfaf1fe0d996469de7a249cda5ee97f2cdb03c71d0",
+          "occurrence": "op_01K00000000000000000000073"
+        },
+        "presented_digest": "sha256:7979797979797979797979797979797979797979797979797979797979797979",
+        "sig": "e04a1f67b167b5f76f276e353faa1966305bd425cdb5decd0cec3205ab392dc0d706ebf500b1e6c995e334617b48803e09f5b647a4cdb5c2f445710bf1d46f0c",
+        "v": 2,
+        "verdict": "approve"
+      }
+    },
+    "r2_with_presented_digest": {
+      "preimage_jcs": "{\"at\":\"2026-07-18T11:58:00Z\",\"family\":\"obligation\",\"obligation\":\"send-approval\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d\",\"occurrence\":\"op_01K00000000000000000000071\"},\"presented_digest\":\"sha256:7979797979797979797979797979797979797979797979797979797979797979\",\"v\":2,\"verdict\":\"approve\"}",
+      "receipt": {
+        "at": "2026-07-18T11:58:00Z",
+        "family": "obligation",
+        "obligation": "send-approval",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+          "occurrence": "op_01K00000000000000000000071"
+        },
+        "presented_digest": "sha256:7979797979797979797979797979797979797979797979797979797979797979",
+        "sig": "374908b7c07823921458682d0e4fae8531aa3dbd24763b99723b75bc179daa9c28e8356dd73600a5dc8a34372df701bc74a2428c81acce1f35146bab51efa803",
+        "v": 2,
+        "verdict": "approve"
+      }
+    },
+    "r2_without_presented_digest": {
+      "preimage_jcs": "{\"at\":\"2026-07-18T11:58:00Z\",\"family\":\"obligation\",\"obligation\":\"send-approval\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d\",\"occurrence\":\"op_01K00000000000000000000071\"},\"v\":2,\"verdict\":\"approve\"}",
+      "receipt": {
+        "at": "2026-07-18T11:58:00Z",
+        "family": "obligation",
+        "obligation": "send-approval",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+          "occurrence": "op_01K00000000000000000000071"
+        },
+        "sig": "0396b6bbcc60937758d93d1915c8d969c543e0ad9f0789bb4efccf95d67058660d31dd18f8002e0b15b70031d1d2de7fc933547f62519b0bc0e5c4fd9aea2703",
+        "v": 2,
+        "verdict": "approve"
+      }
+    },
+    "u1_action": {
+      "actual_tokens": 8412,
+      "preimage_jcs": "{\"family\":\"usage.action\",\"model\":\"claude-haiku\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d\",\"occurrence\":\"op_01K00000000000000000000071\"},\"tokens\":8412,\"v\":2}",
+      "receipt": {
+        "family": "usage.action",
+        "model": "claude-haiku",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:1cc06211cad029910411ff03ffc6defde1edc659a3bcbdb0a8cbd83a4fd1a82d",
+          "occurrence": "op_01K00000000000000000000071"
+        },
+        "sig": "de7bf9a7bc2ae0432fab347943ecfdf9789dddd8b58b1078fa37a664129a6e695dea3953cc5d512937e9984bcc427c52aac575c1dabf826be30653f0231d660d",
+        "tokens": 8412,
+        "v": 2
+      }
+    },
+    "u1_inference": {
+      "actual_tokens": 1500,
+      "preimage_jcs": "{\"family\":\"usage.inference\",\"operation_ref\":{\"aithos-operation-core\":\"1.0.0-draft.1\",\"commitment\":\"sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8\",\"occurrence\":\"op_01K00000000000000000000072\"},\"tokens_in\":1200,\"tokens_out\":300,\"v\":2}",
+      "receipt": {
+        "family": "usage.inference",
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:fb4cab3d27defe07573da29f836f3cf64094408a3c67dcf82c2f6587c9cf73d8",
+          "occurrence": "op_01K00000000000000000000072"
+        },
+        "sig": "4540b3e666c08f0a0f4b225b269bc79303bfbaa434b67830a16b85e9bacd82b54e3f1645487b0d135b2e6659d62a59adfa269529798f30372c69adc70112e50f",
+        "tokens_in": 1200,
+        "tokens_out": 300,
+        "v": 2
+      }
+    }
+  },
+  "profiles": {
+    "matcher_mandate": "1.0.0-draft.3",
+    "operation": "1.0.0-draft.1",
+    "receipt": 2
+  },
+  "public_keys": {
+    "attestor_a": "z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+    "attestor_b": "z6Mkkc24aWH6Lrj4bqjG3q41v3Smcw9DdhMz4NgdrJ7iw4sX",
+    "stranger": "z6MkkCWxm7r858s4P8uHCZ6LJ8PHChWDEFrod2Yg3UwoSktg",
+    "usage": "z6MkwbiX9wGtoF7TrG6uRKL6YfdcawhAQVtixrqSo3mpXCLe"
+  },
+  "vector": "CB2-R2-U1-OPERATION-RECEIPTS-1"
+}
