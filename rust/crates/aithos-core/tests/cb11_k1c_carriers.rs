@@ -109,6 +109,7 @@ fn context(vector: &Value) -> K1cVerificationContext {
             .as_array()
             .expect("operation facts")
             .clone(),
+        authority_documents: vec![positive["authority_certificate"]["document"].clone()],
         publication_ref: context["publication_ref"].clone(),
         required_receipts,
         delegated_counts: context["delegated_counts"].clone(),

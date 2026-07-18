@@ -252,7 +252,8 @@ pub struct EvidenceSet {
 
 /// One normal edition has exactly one actor. A grantee actor carries one
 /// complete authority chain; partial or alternate chains are not representable.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "actor", rename_all = "lowercase")]
 pub enum K1cActor {
     Owner { key: String },
     Grantee {
@@ -276,12 +277,23 @@ impl K1cActor {
             } => authority_chain,
         }
     }
+
+    #[must_use]
+    pub fn public_key(&self) -> &str {
+        self.key()
+    }
+
+    #[must_use]
+    pub fn authority_references(&self) -> &[Value] {
+        self.authority_chain()
+    }
 }
 
 /// Public replay material supplied by Bundle after Store/layout verification.
 /// It deliberately contains bytes and public proofs, never a signing/opening
 /// capability or private key.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct K1cVerificationContext {
     pub subject: String,
     pub actor: K1cActor,
@@ -293,6 +305,7 @@ pub struct K1cVerificationContext {
     pub contained_operations: Vec<Value>,
     pub operation_projections: Vec<Value>,
     pub operation_facts: Vec<Value>,
+    pub authority_documents: Vec<Value>,
     pub publication_ref: Value,
     pub required_receipts: Vec<Value>,
     pub delegated_counts: Value,
@@ -524,6 +537,76 @@ fn validate_authority(authority: &Value, actor: &K1cActor) -> Result<()> {
     Ok(())
 }
 
+fn validate_authority_documents(context: &K1cVerificationContext) -> Result<()> {
+    let references = context.actor.authority_chain();
+    if references.is_empty() {
+        if !context.authority_documents.is_empty() {
+            return Err(invalid("owner edition carries delegated authority documents"));
+        }
+        return Ok(());
+    }
+    if references.len() != context.authority_documents.len() {
+        return Err(invalid("authority certificate chain is incomplete"));
+    }
+    let mut parent_id: Option<String> = None;
+    let mut parent_key: Option<String> = None;
+    for (reference, document) in references.iter().zip(&context.authority_documents) {
+        let reference = exact_object(
+            reference,
+            &["id", "certificate_digest"],
+            "authority reference",
+        )?;
+        let document_object = document
+            .as_object()
+            .ok_or_else(|| invalid("authority certificate is not an object"))?;
+        let id = document_object["id"]
+            .as_str()
+            .ok_or_else(|| invalid("authority certificate id is invalid"))?;
+        if reference["id"].as_str() != Some(id)
+            || reference["certificate_digest"].as_str()
+                != Some(&sha256_prefixed(&canonical(document, "authority certificate")?))
+            || document_object["subject"].as_str() != Some(&context.subject)
+        {
+            return Err(invalid("authority certificate/reference mismatch"));
+        }
+        match (&parent_id, document_object.get("parent")) {
+            (None, Some(Value::Null)) => {}
+            (Some(expected), Some(Value::String(parent))) if parent == expected => {}
+            _ => return Err(invalid("authority certificate chain is not contiguous")),
+        }
+        let signature = exact_object(
+            document_object
+                .get("signature")
+                .ok_or_else(|| invalid("authority certificate signature is missing"))?,
+            &["alg", "key", "value"],
+            "authority certificate signature",
+        )?;
+        let signer = match &parent_key {
+            Some(key) => key.as_str(),
+            None => context
+                .subject
+                .strip_prefix("did:aithos:")
+                .ok_or_else(|| invalid("authority subject is not an Aithos DID"))?,
+        };
+        let expected_label = parent_key.as_deref().unwrap_or("#root");
+        if signature["alg"] != "ed25519" || signature["key"].as_str() != Some(expected_label) {
+            return Err(invalid("authority certificate signer label mismatch"));
+        }
+        verify_blank_value_signature(document, signer, "authority certificate")?;
+        parent_id = Some(id.to_owned());
+        parent_key = Some(
+            document_object["grantee"]["pubkey"]
+                .as_str()
+                .ok_or_else(|| invalid("authority certificate grantee key is invalid"))?
+                .to_owned(),
+        );
+    }
+    if parent_key.as_deref() != Some(context.actor.key()) {
+        return Err(invalid("authority chain leaf differs from edition actor"));
+    }
+    Ok(())
+}
+
 /// Enforce the normal-edition v1 invariant independently of any manifest:
 /// every contained operation has the same actor and, for a grantee, the same
 /// one complete mandate chain.
@@ -542,6 +625,7 @@ pub fn verify_normal_edition_actor(actor: &K1cActor, authorities: &[Value]) -> R
 fn validate_operation_inventory(
     context: &K1cVerificationContext,
 ) -> Result<OperationInventory<'_>> {
+    validate_authority_documents(context)?;
     if context.contained_operations.len() != context.operation_projections.len()
         || context.contained_operations.len() != context.operation_facts.len()
     {
