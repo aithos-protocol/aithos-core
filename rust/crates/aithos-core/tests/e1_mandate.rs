@@ -6,7 +6,9 @@ use aithos_core::did::DidDocument;
 use aithos_core::ids::Sid;
 use aithos_core::jcs;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
-use aithos_core::mandate::{verify_chain, Mandate, MandateSpec, PerimeterEntry, Verb};
+use aithos_core::mandate::{
+    verify_chain, Mandate, MandateSpec, PerimeterEntry, Verb, MANDATE_VERSION_DRAFT1,
+};
 use aithos_core::path::Zone;
 use ed25519_dalek::SigningKey;
 use serde::Deserialize;
@@ -40,8 +42,9 @@ fn built(v: &E1) -> (Mandate, OwnerKeys) {
     let owner = OwnerKeys::genesis(&MasterSeed::from_bytes(b32(&v.seed_hex)));
     let agent = SigningKey::from_bytes(&b32(&v.agent_sk_hex));
     let dir: Vec<Sid> = v.dir_sids.iter().map(|s| Sid::parse(s).unwrap()).collect();
-    let m = Mandate::build_root(
+    let m = Mandate::build_root_with_version(
         &owner.root_sign,
+        MANDATE_VERSION_DRAFT1,
         &MandateSpec {
             id: v.mandate_id.clone(),
             subject: aithos_core::wire::did_aithos(&owner.root_sign.verifying_key().to_bytes()),

@@ -76,7 +76,6 @@ Feature: Mandates and the offline verifier
 
   Rule: The signed verb lattice maps operations without a create wire verb
 
-    @wip
     Scenario Outline: Existing verbs decide each section operation exactly
       Given an agent granted "<grant>" on one section perimeter
       When Core authorizes the canonical "<operation>" operation on that section
@@ -107,7 +106,6 @@ Feature: Mandates and the offline verifier
 
   Rule: Mandate form is closed before signature trust
 
-    @wip
     Scenario Outline: A signed mandate with invalid form is rejected before its signature can authorize
       Given a mandate whose signature bytes are otherwise valid
       When its "<field>" has "<invalid form>"

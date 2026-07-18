@@ -40,12 +40,10 @@ Feature: Section-precise mandates — the id= selector
 
   Rule: id composes with nothing
 
-    @wip
     Scenario: A perimeter entry mixing id with dir or tag is rejected
       When a mandate carries a perimeter entry combining id= with dir= or tag=
       Then the mandate is rejected at parse
 
-    @wip
     Scenario: A dir= parent does not cover an id= child
       Given an agent granted read on circle folder "projets" with issue depth 1
       When the agent delegates read on a section of "projets" by id
@@ -58,7 +56,6 @@ Feature: Section-precise mandates — the id= selector
       Then the helper's chain verifies
       And the helper reads "note1" but nothing else
 
-    @wip
     Scenario: An id= parent covers the identical id= and nothing wider
       Given an agent granted read on circle section "note1" by id with issue depth 1
       When the agent delegates read on section "note1" by id
@@ -68,13 +65,11 @@ Feature: Section-precise mandates — the id= selector
 
   Rule: The op carries the section — covers_op confronts it
 
-    @wip
     Scenario: A read op outside the granted section is not covered
       Given an agent granted read on section "note1" by id
       When the agent attempts a read op on section "note2"
       Then the op is not covered
 
-    @wip
     Scenario Outline: An exact id operation stays exact in every zone
       Given an agent granted "<verb>" on "<zone>" section "note1" by id
       When the agent attempts "<operation>" on the same SID
@@ -93,7 +88,6 @@ Feature: Section-precise mandates — the id= selector
         | self   | edit   | edit      |
         | self   | delete | delete    |
 
-    @wip
     Scenario Outline: A dir or tag parent never covers an id child
       Given an agent granted "<selector>" on a zone with issue depth 1
       When the agent delegates the apparently related section by id
@@ -110,7 +104,6 @@ Feature: Section-precise mandates — the id= selector
         | read.circle#dir=projects&tag=toto |
         | read.self#dir=sealed&tag=private |
 
-    @wip
     Scenario Outline: A whole-zone parent covers an id child in every zone
       Given an agent granted read on all of "<zone>" with issue depth 1
       When the agent delegates one section of that zone by id
@@ -123,13 +116,12 @@ Feature: Section-precise mandates — the id= selector
         | circle |
         | self   |
 
-    @wip
     Scenario Outline: A duplicated selector dimension is invalid form
-      When a mandate carries one perimeter entry with "<duplicate selector>"
+      When a mandate carries one perimeter entry with "<duplicate_selector>"
       Then the mandate is rejected before signature verification
 
       Examples:
-        | duplicate selector   |
+        | duplicate_selector   |
         | dir=a&dir=b          |
         | tag=a&tag=b          |
         | id=one&id=two        |

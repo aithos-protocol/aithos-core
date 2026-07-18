@@ -316,17 +316,18 @@ fn cb2_id_selector_containment_parse_gate_inventory_preliminary() {
             .len(),
         ID_CONTAINMENT_PARSE_GATES.len() + 1
     );
-    let mut parse_blocked = Vec::new();
     for case_name in ID_CONTAINMENT_PARSE_GATES {
         let case = named(&vector["id_selector"]["containment"], case_name);
-        assert!(case["expected_covers"].is_boolean());
-        let parent = PerimeterEntry::parse(case["parent"].as_str().expect("parent entry"));
-        let child = PerimeterEntry::parse(case["child"].as_str().expect("child entry"));
-        if parent.is_err() || child.is_err() {
-            parse_blocked.push(case_name);
-        }
+        let parent = PerimeterEntry::parse(case["parent"].as_str().expect("parent entry"))
+            .expect("CB3 parent selector parses");
+        let child = PerimeterEntry::parse(case["child"].as_str().expect("child entry"))
+            .expect("CB3 child selector parses");
+        assert_eq!(
+            parent.covers(&child),
+            case["expected_covers"].as_bool().expect("covers verdict"),
+            "{case_name}"
+        );
     }
-    assert_eq!(parse_blocked, ID_CONTAINMENT_PARSE_GATES);
 }
 
 #[test]
@@ -639,9 +640,9 @@ fn cb2_t3_non_string_nonce_serde_gate_preliminary() {
     let document_jcs = case["document_jcs"].as_str().expect("form-case JCS");
     let document: Value = serde_json::from_str(document_jcs).expect("raw form-case JSON");
     assert!(!document["nonce"].is_string());
-    assert!(
-        serde_json::from_str::<Mandate>(document_jcs).is_err(),
-        "CB2 API-GATE-PRELIMINARY: non-string nonce unexpectedly reaches verify_chain"
+    expect_invalid_mandate(
+        document_jcs.parse::<Mandate>(),
+        "non-string nonce is typed invalid form",
     );
 }
 

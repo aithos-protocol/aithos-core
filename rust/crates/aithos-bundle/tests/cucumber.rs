@@ -14,7 +14,9 @@ use aithos_core::header::{Header, Line, Recipient, Wrap};
 use aithos_core::ids::Sid;
 use aithos_core::keys::ed2x;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
-use aithos_core::mandate::{verify_chain, Mandate, PerimeterEntry, Verb};
+use aithos_core::mandate::{
+    covers_section_op, verify_chain, Mandate, MandateSpec, PerimeterEntry, SectionOp, Verb,
+};
 use aithos_core::path::{NodePath, Zone};
 use aithos_core::wire;
 use cucumber::{given, then, when, World};
@@ -33,6 +35,7 @@ const NA7: &str = "2026-07-08T00:00:00Z";
 const NA30: &str = "2026-07-31T00:00:00Z";
 const DAY1: &str = "2026-07-02T00:00:00Z";
 const DAY8: &str = "2026-07-09T00:00:00Z";
+const CB2_MANDATE_CONTRACTS: &str = include_str!("../../../../vectors/cb2-mandate-contracts.json");
 
 fn agent_sk(b: u8) -> SigningKey {
     SigningKey::from_bytes(&[b; 32])
@@ -149,6 +152,11 @@ pub struct ProtocolWorld {
     chain_result: Option<Result<(), String>>,
     granted_folder: String,
     e_folders: Vec<String>,
+    cb3_perimeter: Vec<PerimeterEntry>,
+    cb3_verdict: Option<bool>,
+    cb3_operation: Option<Verb>,
+    cb3_form_result: Option<Result<Mandate, String>>,
+    cb3_secondary_verdicts: Vec<bool>,
     // --- step F: gamma ---
     gamma_result: Option<Result<String, String>>,
     audit_chain: Vec<Mandate>,
@@ -250,6 +258,103 @@ impl ProtocolWorld {
             )
             .unwrap();
     }
+
+    fn cb3_root_with_perimeter(&mut self, mut perimeter: Vec<PerimeterEntry>) {
+        self.init_bundle();
+        perimeter.push(PerimeterEntry::Issue { depth: 1 });
+        let owner = self.owner(0);
+        let mandate = Mandate::build_root(
+            &owner.root_sign,
+            &MandateSpec {
+                id: format!("mandate_{}", sid(800)),
+                subject: self.bundle.as_ref().expect("CB3 bundle").did.clone(),
+                grantee_id: "urn:aithos:agent:agent".into(),
+                grantee_label: "agent".into(),
+                grantee_pub: &agent_sk(AGENT).verifying_key(),
+                perimeter,
+                constraints: MandateSpec::no_constraints(),
+                not_before: NB.into(),
+                not_after: NA7.into(),
+                issued_at: NB.into(),
+                nonce: "cb3-root".into(),
+            },
+        )
+        .expect("CB3 root mandate builds");
+        self.chain = vec![mandate];
+    }
+
+    fn cb3_child_candidate(
+        &self,
+        entry: PerimeterEntry,
+        serial: u128,
+    ) -> (Vec<Mandate>, Result<(), String>) {
+        let parent = self.chain.first().expect("CB3 parent").clone();
+        let child = Mandate::build_sub(
+            &parent,
+            &agent_sk(AGENT),
+            &MandateSpec {
+                id: format!("mandate_{}", sid(serial)),
+                subject: parent.subject.clone(),
+                grantee_id: "urn:aithos:agent:helper".into(),
+                grantee_label: "helper".into(),
+                grantee_pub: &agent_sk(HELPER).verifying_key(),
+                perimeter: vec![entry],
+                constraints: MandateSpec::no_constraints(),
+                not_before: NB.into(),
+                not_after: NA7.into(),
+                issued_at: NB.into(),
+                nonce: format!("cb3-child-{serial}"),
+            },
+        )
+        .expect("CB3 child mandate builds");
+        let chain = vec![parent, child];
+        let verdict = self.verify_chain_at(&chain, DAY1);
+        (chain, verdict)
+    }
+
+    fn cb3_delegate(&mut self, entry: PerimeterEntry) {
+        let (chain, verdict) = self.cb3_child_candidate(entry, 801);
+        self.helper_chain = chain;
+        self.chain_result = Some(verdict);
+    }
+}
+
+fn cb3_operation_verb(value: &str) -> Verb {
+    match value {
+        "create" => Verb::Append,
+        "edit" => Verb::Edit,
+        "delete" => Verb::Delete,
+        "read" => Verb::Read,
+        other => panic!("unknown CB3 operation {other}"),
+    }
+}
+
+fn cb3_section_sid(name: &str) -> Sid {
+    match name {
+        "note1" => sid(1),
+        "note2" => sid(2),
+        other => panic!("unknown CB3 section fixture {other}"),
+    }
+}
+
+fn cb3_normalize_selector(entry: &str) -> String {
+    entry
+        .replace("projects", &sid(10).to_string())
+        .replace("sealed", &sid(11).to_string())
+}
+
+fn cb3_form_document(case_name: &str) -> String {
+    let vector: serde_json::Value =
+        serde_json::from_str(CB2_MANDATE_CONTRACTS).expect("CB2 mandate contracts parse");
+    vector["form_cases"]
+        .as_array()
+        .expect("form cases")
+        .iter()
+        .find(|case| case["case"].as_str() == Some(case_name))
+        .unwrap_or_else(|| panic!("missing CB3 form case {case_name}"))["document_jcs"]
+        .as_str()
+        .expect("form-case document")
+        .to_owned()
 }
 
 impl ProtocolWorld {
@@ -1173,6 +1278,333 @@ fn helper_chain_rejected(w: &mut ProtocolWorld) {
     assert!(w.chain_result.clone().unwrap().is_err());
 }
 
+// ---------------------------------------------------------- CB3 mandates
+
+#[given(expr = "an agent granted {string} on one section perimeter")]
+fn cb3_lattice_grant(w: &mut ProtocolWorld, grant: String) {
+    w.cb3_perimeter =
+        vec![
+            PerimeterEntry::parse(&format!("{grant}.circle#id={}", cb3_section_sid("note1")))
+                .expect("CB3 lattice perimeter"),
+        ];
+}
+
+#[when(expr = "Core authorizes the canonical {string} operation on that section")]
+fn cb3_authorize_canonical_operation(w: &mut ProtocolWorld, operation: String) {
+    let verb = cb3_operation_verb(&operation);
+    w.cb3_operation = Some(verb);
+    w.cb3_verdict = Some(covers_section_op(
+        &w.cb3_perimeter,
+        &SectionOp {
+            verb,
+            zone: Zone::Circle,
+            sid: cb3_section_sid("note1"),
+            folders: &[],
+            tags: &[],
+        },
+    ));
+}
+
+#[then(expr = "the verdict is {string}")]
+fn cb3_verdict_is(w: &mut ProtocolWorld, expected: String) {
+    assert_eq!(
+        w.cb3_verdict.expect("CB3 verdict"),
+        expected == "allowed",
+        "CB3 verdict {expected}"
+    );
+}
+
+#[then("the signed perimeter contains no create verb")]
+fn cb3_no_create_wire_verb(w: &mut ProtocolWorld) {
+    assert!(w
+        .cb3_perimeter
+        .iter()
+        .all(|entry| !entry.to_entry_string().starts_with("create.")));
+}
+
+#[given("a mandate whose signature bytes are otherwise valid")]
+fn cb3_signed_mandate_fixture(_w: &mut ProtocolWorld) {}
+
+#[when(expr = "its {string} has {string}")]
+fn cb3_invalidate_form(w: &mut ProtocolWorld, field: String, invalid_form: String) {
+    let case_name = match field.as_str() {
+        "protocol version" => "unsupported protocol version",
+        "signature algorithm" => "signature algorithm other than ed25519",
+        "announced signer key" => "root announced signer key differs from issuer",
+        "mandate id" => "malformed mandate identifier",
+        "subject id" => "malformed subject identifier",
+        "parent and issued_by" => "child issued_by differs from parent grantee",
+        "grantee public key" => "malformed grantee signing key",
+        "kex public key" => "grantee kex key does not match signing key",
+        "nonce" => "empty nonce",
+        "not_before" => "timestamp is not a calendar instant",
+        "not_after" => "validity window is inverted",
+        "issued_at" => "timestamp uses an offset instead of Zulu",
+        "selector" if invalid_form.contains("duplicate") => "duplicate dir selector",
+        "selector" => "id mixed with dir",
+        "issue depth" => "issue depth zero",
+        other => panic!("unknown CB3 form field {other}"),
+    };
+    w.cb3_form_result = Some(
+        cb3_form_document(case_name)
+            .parse::<Mandate>()
+            .map_err(|error| error.to_string()),
+    );
+}
+
+#[then("mandate form validation is refused")]
+fn cb3_form_is_refused(w: &mut ProtocolWorld) {
+    assert!(w
+        .cb3_form_result
+        .as_ref()
+        .expect("CB3 form result")
+        .is_err());
+}
+
+#[then("no authorization helper returns a partial Allow")]
+fn cb3_no_partial_allow(w: &mut ProtocolWorld) {
+    assert!(
+        w.cb3_form_result
+            .as_ref()
+            .expect("CB3 form result")
+            .is_err(),
+        "an invalid raw mandate must not become a typed authorization input"
+    );
+}
+
+#[when("a mandate carries a perimeter entry combining id= with dir= or tag=")]
+fn cb3_mixed_id_entry(w: &mut ProtocolWorld) {
+    let target = cb3_section_sid("note1");
+    let folder = sid(10);
+    w.cb3_verdict = Some(
+        PerimeterEntry::parse(&format!("read.circle#id={target}&dir={folder}")).is_err()
+            && PerimeterEntry::parse(&format!("read.circle#id={target}&tag=toto")).is_err(),
+    );
+}
+
+#[then("the mandate is rejected at parse")]
+fn cb3_parse_is_rejected(w: &mut ProtocolWorld) {
+    assert_eq!(w.cb3_verdict, Some(true));
+}
+
+#[given("an agent granted read on circle with issue depth 1")]
+fn cb3_whole_circle_parent(w: &mut ProtocolWorld) {
+    let entry = PerimeterEntry::parse("read.circle").expect("whole circle perimeter");
+    w.cb3_perimeter = vec![entry.clone()];
+    w.cb3_root_with_perimeter(vec![entry]);
+}
+
+#[given(expr = "an agent granted read on circle section {string} by id with issue depth 1")]
+fn cb3_exact_circle_parent(w: &mut ProtocolWorld, section: String) {
+    let entry = PerimeterEntry::parse(&format!("read.circle#id={}", cb3_section_sid(&section)))
+        .expect("exact circle perimeter");
+    w.cb3_perimeter = vec![entry.clone()];
+    w.cb3_root_with_perimeter(vec![entry]);
+}
+
+#[given(expr = "an agent granted read on section {string} by id")]
+fn cb3_exact_read_grant(w: &mut ProtocolWorld, section: String) {
+    w.cb3_perimeter =
+        vec![
+            PerimeterEntry::parse(&format!("read.circle#id={}", cb3_section_sid(&section)))
+                .expect("exact read perimeter"),
+        ];
+}
+
+#[given(expr = "an agent granted {string} on {string} section {string} by id")]
+fn cb3_exact_zone_grant(w: &mut ProtocolWorld, verb: String, zone: String, section: String) {
+    w.cb3_perimeter =
+        vec![
+            PerimeterEntry::parse(&format!("{verb}.{zone}#id={}", cb3_section_sid(&section)))
+                .expect("exact zone perimeter"),
+        ];
+}
+
+#[given(expr = "an agent granted {string} on a zone with issue depth 1")]
+fn cb3_selector_parent(w: &mut ProtocolWorld, selector: String) {
+    let entry = PerimeterEntry::parse(&cb3_normalize_selector(&selector)).expect("selector parent");
+    w.cb3_perimeter = vec![entry.clone()];
+    w.cb3_root_with_perimeter(vec![entry]);
+}
+
+#[given(expr = "an agent granted read on all of {string} with issue depth 1")]
+fn cb3_whole_zone_parent(w: &mut ProtocolWorld, zone: String) {
+    let entry =
+        PerimeterEntry::parse(&format!("read.{zone}")).expect("whole-zone parent perimeter");
+    w.cb3_perimeter = vec![entry.clone()];
+    w.cb3_root_with_perimeter(vec![entry]);
+}
+
+#[when(expr = "the agent delegates read on a section of {string} by id")]
+fn cb3_delegate_circle_id(w: &mut ProtocolWorld, _folder: String) {
+    w.cb3_delegate(
+        PerimeterEntry::parse(&format!("read.circle#id={}", cb3_section_sid("note1")))
+            .expect("circle id child"),
+    );
+}
+
+#[when(expr = "the agent delegates read on section {string} by id")]
+fn cb3_delegate_named_id(w: &mut ProtocolWorld, section: String) {
+    w.cb3_delegate(
+        PerimeterEntry::parse(&format!("read.circle#id={}", cb3_section_sid(&section)))
+            .expect("named id child"),
+    );
+}
+
+#[when("the agent delegates the apparently related section by id")]
+fn cb3_delegate_apparently_related(w: &mut ProtocolWorld) {
+    let zone = match w.cb3_perimeter.first().expect("CB3 parent perimeter") {
+        PerimeterEntry::Ethos { zone, .. } | PerimeterEntry::EthosId { zone, .. } => *zone,
+        other => panic!("unexpected CB3 parent {other:?}"),
+    };
+    w.cb3_delegate(
+        PerimeterEntry::parse(&format!(
+            "read.{}#id={}",
+            zone.as_str(),
+            cb3_section_sid("note1")
+        ))
+        .expect("apparently related id child"),
+    );
+}
+
+#[when("the agent delegates one section of that zone by id")]
+fn cb3_delegate_one_in_zone(w: &mut ProtocolWorld) {
+    cb3_delegate_apparently_related(w);
+}
+
+#[when(expr = "the agent attempts a read op on section {string}")]
+fn cb3_read_other_section(w: &mut ProtocolWorld, section: String) {
+    w.cb3_operation = Some(Verb::Read);
+    w.cb3_verdict = Some(covers_section_op(
+        &w.cb3_perimeter,
+        &SectionOp {
+            verb: Verb::Read,
+            zone: Zone::Circle,
+            sid: cb3_section_sid(&section),
+            folders: &[],
+            tags: &[],
+        },
+    ));
+}
+
+#[when(expr = "the agent attempts {string} on the same SID")]
+fn cb3_operate_same_sid(w: &mut ProtocolWorld, operation: String) {
+    let verb = cb3_operation_verb(&operation);
+    let zone = match w.cb3_perimeter.first().expect("CB3 grant") {
+        PerimeterEntry::EthosId { zone, .. } => *zone,
+        other => panic!("expected exact CB3 grant, got {other:?}"),
+    };
+    w.cb3_operation = Some(verb);
+    w.cb3_verdict = Some(covers_section_op(
+        &w.cb3_perimeter,
+        &SectionOp {
+            verb,
+            zone,
+            sid: cb3_section_sid("note1"),
+            folders: &[],
+            tags: &[],
+        },
+    ));
+}
+
+#[then("the op is not covered")]
+fn cb3_op_not_covered(w: &mut ProtocolWorld) {
+    assert_eq!(w.cb3_verdict, Some(false));
+}
+
+#[then("the operation is covered")]
+fn cb3_operation_covered(w: &mut ProtocolWorld) {
+    assert_eq!(w.cb3_verdict, Some(true));
+}
+
+#[then(expr = "the identical operation on sibling SID {string} is not covered")]
+fn cb3_sibling_not_covered(w: &mut ProtocolWorld, sibling: String) {
+    let zone = match w.cb3_perimeter.first().expect("CB3 grant") {
+        PerimeterEntry::EthosId { zone, .. } => *zone,
+        other => panic!("expected exact CB3 grant, got {other:?}"),
+    };
+    assert!(!covers_section_op(
+        &w.cb3_perimeter,
+        &SectionOp {
+            verb: w.cb3_operation.expect("CB3 operation"),
+            zone,
+            sid: cb3_section_sid(&sibling),
+            folders: &[],
+            tags: &[],
+        },
+    ));
+}
+
+#[then("the helper's chain is rejected without resolving the SID position")]
+fn cb3_chain_rejected_without_resolver(w: &mut ProtocolWorld) {
+    assert!(w.chain_result.as_ref().expect("CB3 chain result").is_err());
+}
+
+#[then("no other section is covered by the child")]
+fn cb3_child_covers_no_other_section(w: &mut ProtocolWorld) {
+    let perimeter = w
+        .helper_chain
+        .last()
+        .expect("CB3 child")
+        .parsed_perimeter()
+        .expect("CB3 child perimeter");
+    let zone = match perimeter.first().expect("CB3 child entry") {
+        PerimeterEntry::EthosId { zone, .. } => *zone,
+        other => panic!("expected exact CB3 child, got {other:?}"),
+    };
+    assert!(!covers_section_op(
+        &perimeter,
+        &SectionOp {
+            verb: Verb::Read,
+            zone,
+            sid: cb3_section_sid("note2"),
+            folders: &[],
+            tags: &[],
+        },
+    ));
+}
+
+#[then(expr = "delegating section {string} by id is rejected")]
+fn cb3_other_id_child_rejected(w: &mut ProtocolWorld, section: String) {
+    let (_, verdict) = w.cb3_child_candidate(
+        PerimeterEntry::parse(&format!("read.circle#id={}", cb3_section_sid(&section)))
+            .expect("other exact child"),
+        802,
+    );
+    w.cb3_secondary_verdicts.push(verdict.is_err());
+    assert_eq!(w.cb3_secondary_verdicts.last(), Some(&true));
+}
+
+#[then(expr = "delegating the whole folder of {string} is rejected")]
+fn cb3_folder_child_rejected(w: &mut ProtocolWorld, _section: String) {
+    let (_, verdict) = w.cb3_child_candidate(
+        PerimeterEntry::parse(&format!("read.circle#dir={}", sid(10))).expect("folder child"),
+        803,
+    );
+    w.cb3_secondary_verdicts.push(verdict.is_err());
+    assert_eq!(w.cb3_secondary_verdicts.last(), Some(&true));
+}
+
+#[when(expr = "a mandate carries one perimeter entry with {string}")]
+fn cb3_duplicate_selector(w: &mut ProtocolWorld, selector: String) {
+    let entry = match selector.as_str() {
+        "dir=a&dir=b" => format!("read.circle#dir={}&dir={}", sid(10), sid(11)),
+        "tag=a&tag=b" => "read.circle#tag=a&tag=b".to_owned(),
+        "id=one&id=two" => format!(
+            "read.circle#id={}&id={}",
+            cb3_section_sid("note1"),
+            cb3_section_sid("note2")
+        ),
+        other => panic!("unknown duplicate selector {other}"),
+    };
+    w.cb3_verdict = Some(PerimeterEntry::parse(&entry).is_err());
+}
+
+#[then("the mandate is rejected before signature verification")]
+fn cb3_duplicate_rejected_before_signature(w: &mut ProtocolWorld) {
+    assert_eq!(w.cb3_verdict, Some(true));
+}
+
 // ----------------------------------------------------------------- thens
 
 #[then("both derivations yield the same public identity")]
@@ -1937,7 +2369,7 @@ fn scoped_auditor(w: &mut ProtocolWorld, action: String) {
     let m = Mandate::build_root(
         &owner.root_sign,
         &aithos_core::mandate::MandateSpec {
-            id: "mandate_000000000000000000000AUDIT".into(),
+            id: format!("mandate_{}", sid(901)),
             subject: w.bundle.as_ref().unwrap().did.clone(),
             grantee_id: "urn:aithos:agent:auditor".into(),
             grantee_label: "auditor".into(),
@@ -2215,7 +2647,7 @@ fn grant_auditor(w: &mut ProtocolWorld) {
     let m = Mandate::build_root(
         &owner.root_sign,
         &aithos_core::mandate::MandateSpec {
-            id: "mandate_00000000000000000000AUDIT2".into(),
+            id: format!("mandate_{}", sid(902)),
             subject: w.bundle.as_ref().unwrap().did.clone(),
             grantee_id: "urn:aithos:agent:auditor".into(),
             grantee_label: "auditor".into(),
@@ -4043,7 +4475,7 @@ fn two_unrelated_agents(w: &mut ProtocolWorld) {
     let m = aithos_core::mandate::Mandate::build_root(
         &owner.root_sign,
         &aithos_core::mandate::MandateSpec {
-            id: "mandate_0000000000000000000000SURV".into(),
+            id: format!("mandate_{}", sid(903)),
             subject: w.bundle.as_ref().unwrap().did.clone(),
             grantee_id: "urn:aithos:agent:other".into(),
             grantee_label: "other".into(),

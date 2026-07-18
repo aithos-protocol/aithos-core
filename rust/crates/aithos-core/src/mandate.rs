@@ -14,7 +14,9 @@ use crate::wire;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-pub const MANDATE_VERSION: &str = "1.0.0-draft.1";
+pub const MANDATE_VERSION_DRAFT1: &str = "1.0.0-draft.1";
+pub const MANDATE_VERSION_DRAFT2: &str = "1.0.0-draft.2";
+pub const MANDATE_VERSION: &str = MANDATE_VERSION_DRAFT2;
 
 // ------------------------------------------------------------- perimeter
 
@@ -50,14 +52,15 @@ impl Verb {
         }
     }
 
-    /// Verb lattice (§04.2): read ⊑ edit ⊑ append ⊑ write, delete ⊑ write.
+    /// Verb lattice (§04.2): read ⊑ edit ⊑ append ⊑ write and
+    /// read ⊑ delete ⊑ write.
     fn covers(self, child: Verb) -> bool {
         use Verb::*;
         match (self, child) {
             (a, b) if a == b => true,
             (Write, _) => true,
             (Append, Read | Edit) => true,
-            (Edit, Read) => true,
+            (Edit | Delete, Read) => true,
             _ => false,
         }
     }
@@ -73,6 +76,12 @@ pub enum PerimeterEntry {
         dir: Vec<Sid>,
         /// Folder-local (or zone-root) tag restriction.
         tag: Option<String>,
+    },
+    /// Exact section selector. `id=` composes with no other selector (D1).
+    EthosId {
+        verb: Verb,
+        zone: Zone,
+        id: Sid,
     },
     /// Connector action right: `act.x.<connector>.<action|*>`.
     Act {
@@ -111,6 +120,9 @@ impl PerimeterEntry {
                 None if rest.is_empty() => 1,
                 _ => return Err(err("bad issue entry")),
             };
+            if depth == 0 {
+                return Err(err("issue depth must be at least one"));
+            }
             return Ok(PerimeterEntry::Issue { depth });
         }
         if let Some(rest) = s.strip_prefix("act.x.") {
@@ -147,16 +159,35 @@ impl PerimeterEntry {
             .ok_or_else(|| err("want <verb>.<zone>"))?;
         let (verb, zone) = (Verb::parse(verb)?, Zone::parse(zone)?);
         let mut dir = Vec::new();
+        let mut id = None;
         let mut tag = None;
+        let mut seen_dir = false;
+        let mut seen_id = false;
+        let mut seen_tag = false;
         if let Some(sel) = selector {
             for part in sel.split('&') {
                 match part.split_once('=') {
                     Some(("dir", p)) => {
+                        if seen_dir {
+                            return Err(err("duplicate dir selector"));
+                        }
+                        seen_dir = true;
                         for seg in p.split('/').filter(|x| !x.is_empty()) {
                             dir.push(Sid::parse(seg)?);
                         }
                     }
+                    Some(("id", value)) => {
+                        if seen_id {
+                            return Err(err("duplicate id selector"));
+                        }
+                        seen_id = true;
+                        id = Some(Sid::parse(value)?);
+                    }
                     Some(("tag", t)) => {
+                        if seen_tag {
+                            return Err(err("duplicate tag selector"));
+                        }
+                        seen_tag = true;
                         validate_tag(t)?;
                         tag = Some(t.to_owned());
                     }
@@ -164,12 +195,19 @@ impl PerimeterEntry {
                 }
             }
         }
-        Ok(PerimeterEntry::Ethos {
-            verb,
-            zone,
-            dir,
-            tag,
-        })
+        if let Some(id) = id {
+            if seen_dir || seen_tag {
+                return Err(err("id selector composes with nothing"));
+            }
+            Ok(PerimeterEntry::EthosId { verb, zone, id })
+        } else {
+            Ok(PerimeterEntry::Ethos {
+                verb,
+                zone,
+                dir,
+                tag,
+            })
+        }
     }
 
     fn parse_gamma(selector: &str) -> Result<Self> {
@@ -286,6 +324,9 @@ impl PerimeterEntry {
                 }
                 out
             }
+            PerimeterEntry::EthosId { verb, zone, id } => {
+                format!("{}.{}#id={id}", verb.as_str(), zone.as_str())
+            }
             PerimeterEntry::Revoke { scope: None } => "revoke".to_owned(),
             PerimeterEntry::Revoke { scope: Some(s) } => {
                 // Render the inner ethos scope, then swap read→revoke.
@@ -380,6 +421,29 @@ impl PerimeterEntry {
                         (Some(_), None) => false,
                     }
             }
+            (
+                PerimeterEntry::Ethos {
+                    verb: pv,
+                    zone: pz,
+                    dir,
+                    tag,
+                },
+                PerimeterEntry::EthosId {
+                    verb: cv, zone: cz, ..
+                },
+            ) => pz == cz && pv.covers(*cv) && dir.is_empty() && tag.is_none(),
+            (
+                PerimeterEntry::EthosId {
+                    verb: pv,
+                    zone: pz,
+                    id: pi,
+                },
+                PerimeterEntry::EthosId {
+                    verb: cv,
+                    zone: cz,
+                    id: ci,
+                },
+            ) => pz == cz && pv.covers(*cv) && pi == ci,
             (PerimeterEntry::Revoke { scope: ps }, PerimeterEntry::Revoke { scope: cs }) => {
                 match (ps, cs) {
                     (None, _) => true, // a bare revoke covers any revoke scope
@@ -423,6 +487,41 @@ pub struct Op<'a> {
     pub folders: &'a [Sid],
     /// Clear tags of the target section (empty for none).
     pub tags: &'a [String],
+}
+
+/// A section-precise Ethos operation (§04.2, D1).
+///
+/// Unlike the historical location-only [`Op`], this input carries the target
+/// SID explicitly so an `id=` grant can be decided without a resolver.
+#[derive(Debug, Clone)]
+pub struct SectionOp<'a> {
+    pub verb: Verb,
+    pub zone: Zone,
+    pub sid: Sid,
+    pub folders: &'a [Sid],
+    pub tags: &'a [String],
+}
+
+/// Decide a section-precise operation against a perimeter.
+#[must_use]
+pub fn covers_section_op(perimeter: &[PerimeterEntry], op: &SectionOp<'_>) -> bool {
+    perimeter.iter().any(|entry| match entry {
+        PerimeterEntry::Ethos {
+            verb,
+            zone,
+            dir,
+            tag,
+        } => {
+            *zone == op.zone
+                && verb.covers(op.verb)
+                && dir_covers(dir, op.folders)
+                && tag.as_ref().is_none_or(|value| op.tags.contains(value))
+        }
+        PerimeterEntry::EthosId { verb, zone, id } => {
+            *zone == op.zone && verb.covers(op.verb) && *id == op.sid
+        }
+        _ => false,
+    })
 }
 
 /// Does any leaf entry cover the operation? `op.folders` is the target's
@@ -523,6 +622,137 @@ pub struct Mandate {
     pub signature: SignatureBlock,
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct TimestampPrefix {
+    year: u16,
+    month: u8,
+    day: u8,
+    hour: u8,
+    minute: u8,
+    second: u8,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct CanonicalTimestamp {
+    prefix: TimestampPrefix,
+    fractional: Vec<u8>,
+}
+
+impl CanonicalTimestamp {
+    fn parse(value: &str) -> core::result::Result<Self, ()> {
+        let body = value.strip_suffix('Z').ok_or(())?;
+        let (date, time) = body.split_once('T').ok_or(())?;
+        if time.contains('T') {
+            return Err(());
+        }
+
+        let mut date_parts = date.split('-');
+        let year = parse_fixed_u16(date_parts.next().ok_or(())?, 4)?;
+        let month = parse_fixed_u8(date_parts.next().ok_or(())?, 2)?;
+        let day = parse_fixed_u8(date_parts.next().ok_or(())?, 2)?;
+        if date_parts.next().is_some() || !(1..=12).contains(&month) {
+            return Err(());
+        }
+        let leap =
+            year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
+        let days = match month {
+            2 if leap => 29,
+            2 => 28,
+            4 | 6 | 9 | 11 => 30,
+            _ => 31,
+        };
+        if !(1..=days).contains(&day) {
+            return Err(());
+        }
+
+        let mut time_parts = time.split(':');
+        let hour = parse_fixed_u8(time_parts.next().ok_or(())?, 2)?;
+        let minute = parse_fixed_u8(time_parts.next().ok_or(())?, 2)?;
+        let second_and_fraction = time_parts.next().ok_or(())?;
+        if time_parts.next().is_some() || hour > 23 || minute > 59 {
+            return Err(());
+        }
+        let (second_raw, fractional_raw) = match second_and_fraction.split_once('.') {
+            Some((second, fractional)) if !fractional.is_empty() => (second, fractional),
+            Some(_) => return Err(()),
+            None => (second_and_fraction, ""),
+        };
+        let second = parse_fixed_u8(second_raw, 2)?;
+        if second > 59 || !fractional_raw.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(());
+        }
+
+        Ok(Self {
+            prefix: TimestampPrefix {
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second,
+            },
+            fractional: fractional_raw.bytes().map(|byte| byte - b'0').collect(),
+        })
+    }
+
+    fn compare(&self, other: &Self) -> core::cmp::Ordering {
+        self.prefix.cmp(&other.prefix).then_with(|| {
+            let length = self.fractional.len().max(other.fractional.len());
+            (0..length)
+                .map(|index| {
+                    (
+                        self.fractional.get(index).copied().unwrap_or(0),
+                        other.fractional.get(index).copied().unwrap_or(0),
+                    )
+                })
+                .find_map(|(left, right)| (left != right).then(|| left.cmp(&right)))
+                .unwrap_or(core::cmp::Ordering::Equal)
+        })
+    }
+}
+
+fn parse_fixed_u8(value: &str, width: usize) -> core::result::Result<u8, ()> {
+    if value.len() != width || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(());
+    }
+    value.parse().map_err(|_| ())
+}
+
+fn parse_fixed_u16(value: &str, width: usize) -> core::result::Result<u16, ()> {
+    if value.len() != width || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(());
+    }
+    value.parse().map_err(|_| ())
+}
+
+fn mandate_id_is_valid(value: &str) -> bool {
+    value
+        .strip_prefix("mandate_")
+        .is_some_and(|suffix| Sid::parse(suffix).is_ok())
+}
+
+fn grantee_id_is_valid(value: &str) -> bool {
+    value
+        .strip_prefix("urn:aithos:agent:")
+        .is_some_and(|suffix| {
+            !suffix.is_empty()
+                && suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_graphic() && byte != b'#')
+        })
+}
+
+impl core::str::FromStr for Mandate {
+    type Err = Error;
+
+    fn from_str(document: &str) -> Result<Self> {
+        let mandate: Self = serde_json::from_str(document)
+            .map_err(|error| Error::InvalidMandate(format!("invalid JSON form: {error}")))?;
+        mandate.validate_form()?;
+        Ok(mandate)
+    }
+}
+
 pub struct MandateSpec<'a> {
     pub id: String,
     pub subject: String,
@@ -579,10 +809,121 @@ fn grantee_block(spec: &MandateSpec<'_>) -> Grantee {
 }
 
 impl Mandate {
+    fn validate_form(&self) -> Result<()> {
+        let invalid = |reason: &str| Error::InvalidMandate(format!("{}: {reason}", self.id));
+
+        if !matches!(
+            self.version.as_str(),
+            MANDATE_VERSION_DRAFT1 | MANDATE_VERSION_DRAFT2
+        ) {
+            return Err(invalid("unsupported mandate profile"));
+        }
+        if !mandate_id_is_valid(&self.id) {
+            return Err(invalid("malformed mandate identifier"));
+        }
+        if self
+            .parent
+            .as_deref()
+            .is_some_and(|parent| !mandate_id_is_valid(parent))
+        {
+            return Err(invalid("malformed parent mandate identifier"));
+        }
+        let subject_key = self
+            .subject
+            .strip_prefix("did:aithos:")
+            .ok_or_else(|| invalid("malformed subject identifier"))?;
+        wire::multibase_to_ed25519_pub(subject_key)
+            .map_err(|_| invalid("malformed subject identifier"))?;
+        if !grantee_id_is_valid(&self.grantee.id) {
+            return Err(invalid("malformed grantee identifier"));
+        }
+        self.grantee_pub()
+            .map_err(|_| invalid("malformed grantee signing key"))?;
+        let kex = wire::multibase_to_x25519_pub(&self.grantee.kex_pubkey)
+            .map_err(|_| invalid("malformed grantee kex key"))?;
+        let expected_kex = wire::multibase_to_x25519_pub(&wire::x25519_pub_to_multibase(
+            &ed2x(
+                &self
+                    .grantee_pub()
+                    .map_err(|_| invalid("malformed grantee signing key"))?,
+            )
+            .to_bytes(),
+        ))
+        .expect("locally encoded X25519 key parses");
+        if kex != expected_kex {
+            return Err(invalid("grantee kex binding mismatch"));
+        }
+        if self.nonce.is_empty() {
+            return Err(invalid("nonce is empty"));
+        }
+        if !self.constraints.is_object() {
+            return Err(invalid("constraints is not an object"));
+        }
+        for entry in &self.perimeter {
+            PerimeterEntry::parse(entry).map_err(|_| invalid("malformed perimeter entry"))?;
+        }
+
+        let not_before = CanonicalTimestamp::parse(&self.not_before)
+            .map_err(|()| invalid("not_before is not an RFC 3339 Z instant"))?;
+        let not_after = CanonicalTimestamp::parse(&self.not_after)
+            .map_err(|()| invalid("not_after is not an RFC 3339 Z instant"))?;
+        CanonicalTimestamp::parse(&self.issued_at)
+            .map_err(|()| invalid("issued_at is not an RFC 3339 Z instant"))?;
+        if not_before.compare(&not_after).is_gt() {
+            return Err(invalid("validity window is inverted"));
+        }
+        if self.signature.alg != "ed25519" {
+            return Err(invalid("signature algorithm is not ed25519"));
+        }
+        let signature_length = hex::decode(&self.signature.value)
+            .map_err(|_| invalid("malformed signature value"))?
+            .len();
+        if signature_length != 64 {
+            return Err(invalid("malformed signature value"));
+        }
+
+        match &self.parent {
+            None => {
+                if self.issued_by != format!("{}#root", self.subject) {
+                    return Err(invalid("root issuer differs from subject root"));
+                }
+                if self.signature.key != "#root" {
+                    return Err(invalid("root announced signer key is not #root"));
+                }
+            }
+            Some(_) => {
+                wire::multibase_to_ed25519_pub(&self.issued_by)
+                    .map_err(|_| invalid("child issuer is not an Ed25519 key"))?;
+                if self.signature.key != self.issued_by {
+                    return Err(invalid("child announced signer key differs from issuer"));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Root mandate: issued and signed by the owner's root key (§04.1).
     pub fn build_root(root_sign: &SigningKey, spec: &MandateSpec<'_>) -> Result<Self> {
+        Self::build_root_with_version(root_sign, MANDATE_VERSION, spec)
+    }
+
+    /// Root mandate under an explicitly selected supported profile.
+    ///
+    /// Normal issuance uses [`Self::build_root`] and the current profile. This
+    /// entry point exists for byte-exact historical replay and explicit
+    /// reissuance migrations.
+    pub fn build_root_with_version(
+        root_sign: &SigningKey,
+        version: &str,
+        spec: &MandateSpec<'_>,
+    ) -> Result<Self> {
+        if !matches!(version, MANDATE_VERSION_DRAFT1 | MANDATE_VERSION_DRAFT2) {
+            return Err(Error::InvalidMandate(format!(
+                "unsupported mandate profile {version}"
+            )));
+        }
         let mut m = Mandate {
-            version: MANDATE_VERSION.to_owned(),
+            version: version.to_owned(),
             id: spec.id.clone(),
             subject: spec.subject.clone(),
             parent: None,
@@ -615,7 +956,7 @@ impl Mandate {
         spec: &MandateSpec<'_>,
     ) -> Result<Self> {
         let mut m = Mandate {
-            version: MANDATE_VERSION.to_owned(),
+            version: parent.version.clone(),
             id: spec.id.clone(),
             subject: spec.subject.clone(),
             parent: Some(parent.id.clone()),
@@ -693,6 +1034,14 @@ pub fn verify_chain_revocable(
     if chain.is_empty() {
         return Err(err("empty chain".into()));
     }
+    for mandate in chain {
+        mandate.validate_form()?;
+    }
+    let at_timestamp = CanonicalTimestamp::parse(at).map_err(|()| {
+        err(format!(
+            "verification time is not an RFC 3339 Z instant: {at}"
+        ))
+    })?;
     crate::revocation::chain_revoked_at(chain, revocations, at)?;
     did_doc.verify()?;
 
@@ -718,13 +1067,23 @@ pub fn verify_chain_revocable(
     for (i, m) in chain.iter().enumerate() {
         m.check_kex()?;
         // Window at T, for every mandate in the chain (§04.5 step 3).
-        if at < m.not_before.as_str() || at > m.not_after.as_str() {
+        let not_before = CanonicalTimestamp::parse(&m.not_before)
+            .expect("form-valid not_before was parsed above");
+        let not_after =
+            CanonicalTimestamp::parse(&m.not_after).expect("form-valid not_after was parsed above");
+        if at_timestamp.compare(&not_before).is_lt() || at_timestamp.compare(&not_after).is_gt() {
             return Err(err(format!("{}: outside validity window at {at}", m.id)));
         }
         if i == 0 {
             continue;
         }
         let parent = &chain[i - 1];
+        if m.version != parent.version {
+            return Err(err(format!(
+                "{}: mandate profile differs from its parent",
+                m.id
+            )));
+        }
         // Link identity (§05.3 rule 5).
         if m.parent.as_deref() != Some(parent.id.as_str()) {
             return Err(err(format!("{}: parent id mismatch", m.id)));

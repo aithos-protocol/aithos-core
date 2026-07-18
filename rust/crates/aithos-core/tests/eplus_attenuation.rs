@@ -8,7 +8,9 @@ use aithos_core::did::DidDocument;
 use aithos_core::error::Error;
 use aithos_core::jcs;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
-use aithos_core::mandate::{verify_chain, Mandate, MandateSpec, PerimeterEntry};
+use aithos_core::mandate::{
+    verify_chain, Mandate, MandateSpec, PerimeterEntry, MANDATE_VERSION_DRAFT1,
+};
 use ed25519_dalek::SigningKey;
 use serde_json::Value;
 
@@ -67,8 +69,9 @@ fn eplus_signed_chain_bytes_match_python() {
     assert_eq!(did, sc["did"].as_str().unwrap(), "DID vs Python");
 
     let parent_json: Value = serde_json::from_str(sc["parent_jcs"].as_str().unwrap()).unwrap();
-    let parent = Mandate::build_root(
+    let parent = Mandate::build_root_with_version(
         &owner.root_sign,
+        MANDATE_VERSION_DRAFT1,
         &MandateSpec {
             id: parent_json["id"].as_str().unwrap().to_owned(),
             subject: did.clone(),

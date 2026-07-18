@@ -12,7 +12,7 @@ use aithos_core::gamma::{
 use aithos_core::ids::Sid;
 use aithos_core::jcs;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
-use aithos_core::mandate::{Mandate, MandateSpec, PerimeterEntry};
+use aithos_core::mandate::{Mandate, MandateSpec, PerimeterEntry, MANDATE_VERSION_DRAFT1};
 use aithos_core::path::{NodePath, Zone};
 use ed25519_dalek::SigningKey;
 use serde::Deserialize;
@@ -158,8 +158,9 @@ fn mandate_rebuilds_and_chain_verifies() {
     let agent = SigningKey::from_bytes(&hex32(&v.agent_sk_hex));
     let expected: Mandate = serde_json::from_str(&v.mandate_jcs).unwrap();
 
-    let rebuilt = Mandate::build_root(
+    let rebuilt = Mandate::build_root_with_version(
         &owner.root_sign,
+        MANDATE_VERSION_DRAFT1,
         &MandateSpec {
             id: expected.id.clone(),
             subject: doc.id.clone(),
