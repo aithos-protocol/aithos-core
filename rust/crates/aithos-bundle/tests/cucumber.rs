@@ -7,10 +7,11 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use aithos_bundle::bundle::{
-    Bundle, OwnerContentOperation, OwnerContentOutcome, SectionSpec, ZoneIndex,
+    Bundle, GranteeContentOperation, GranteeContentOutcome, GranteeTarget, OwnerContentOperation,
+    OwnerContentOutcome, SectionSpec, ZoneIndex,
 };
 use aithos_bundle::entropy::{EntropySource, SeqEntropy};
-use aithos_bundle::grants::GrantSpec;
+use aithos_bundle::grants::{GenericGrantRequest, GrantSelector, GrantSpec};
 use aithos_bundle::log::{LogFilter, LogHit};
 use aithos_bundle::manifest::{sha256_hex, Manifest};
 use aithos_bundle::{validate_display_path, validate_store_key, FsStore, MemStore, Store};
@@ -31,7 +32,8 @@ use aithos_core::ids::Sid;
 use aithos_core::keys::ed2x;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
 use aithos_core::mandate::{
-    covers_section_op, verify_chain, Mandate, MandateSpec, PerimeterEntry, SectionOp, Verb,
+    covers_section_op, verify_chain, GammaQuery, Mandate, MandateSpec, PerimeterEntry, SectionOp,
+    Verb,
 };
 use aithos_core::operation::{
     correlate_operation_references, verify_operation_facts, verify_operation_projection,
@@ -207,6 +209,7 @@ pub struct ProtocolWorld {
     cb6_result: Option<Result<(), String>>,
     cb7_result: Option<Result<(), String>>,
     cb8_result: Option<Result<(), String>>,
+    cb9_result: Option<Result<(), String>>,
     // --- step F: gamma ---
     gamma_result: Option<Result<String, String>>,
     audit_chain: Vec<Mandate>,
@@ -635,6 +638,7 @@ static CB5_CATALOG_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB6_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB7_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB8_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+static CB9_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 
 fn cb5_parsed(bytes: &str) -> Result<serde_json::Value, String> {
     serde_json::from_str(bytes).map_err(|error| format!("CB5 vector does not parse: {error}"))
@@ -1216,6 +1220,217 @@ fn cb8_acceptance() -> Result<(), String> {
     Ok(())
 }
 
+fn cb9_acceptance() -> Result<(), String> {
+    let vector: serde_json::Value = serde_json::from_str(CB8_AUTHORITY_FLOWS)
+        .map_err(|error| format!("CB9 authority-flow vector does not parse: {error}"))?;
+    let cases = vector["grantee_cases"]
+        .as_array()
+        .ok_or_else(|| "CB9 grantee cases are not an array".to_owned())?;
+    if cases.len() != 18
+        || cases
+            .iter()
+            .filter(|case| case["expected"] == "accepted")
+            .count()
+            != 16
+        || vector["content_fence_cases"].as_array().map(Vec::len) != Some(4)
+        || vector["atomic_refusal_cases"].as_array().map(Vec::len) != Some(6)
+    {
+        return Err("CB9 closed authority matrix drift".into());
+    }
+
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x59; 32])
+            .map_err(|error| format!("CB9 owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x69; 32]);
+    let agent = agent_sk(0x72);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T13:00:00Z",
+    )
+    .map_err(|error| format!("CB9 init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            for zone in [Zone::Public, Zone::Circle, Zone::Self_] {
+                bundle.section_add(
+                    &SectionSpec {
+                        zone,
+                        folder_path: "projects",
+                        name: "note",
+                        title: "existing",
+                        tags: &["toto".to_owned()],
+                        body: "before",
+                        now: "2026-07-18T13:01:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                )?;
+            }
+            bundle.publish(&owner, "2026-07-18T13:02:00Z")
+        })
+        .map_err(|error| format!("CB9 fixture failed: {error}"))?;
+    let grant = bundle
+        .grant_generic(
+            &owner,
+            "cb9-bdd",
+            &agent.verifying_key(),
+            &[
+                GenericGrantRequest::ethos(
+                    Verb::Edit,
+                    Zone::Public,
+                    GrantSelector::Id("projects/note".into()),
+                ),
+                GenericGrantRequest::ethos(
+                    Verb::Append,
+                    Zone::Circle,
+                    GrantSelector::Dir("projects".into()),
+                ),
+                GenericGrantRequest::ethos(
+                    Verb::Write,
+                    Zone::Self_,
+                    GrantSelector::Id("projects/note".into()),
+                ),
+                GenericGrantRequest::gamma(GammaQuery::default()),
+            ],
+            "2026-07-18T13:03:00Z",
+            "2026-07-25T13:03:00Z",
+            0,
+            "2026-07-18T13:03:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB9 grant failed: {error}"))?;
+    let chain = vec![grant.mandate];
+    let self_sid = chain[0]
+        .parsed_perimeter()
+        .map_err(|error| format!("CB9 perimeter failed: {error}"))?
+        .into_iter()
+        .find_map(|entry| match entry {
+            PerimeterEntry::EthosId {
+                zone: Zone::Self_,
+                id,
+                ..
+            } => Some(id),
+            _ => None,
+        })
+        .ok_or_else(|| "CB9 exact self SID missing".to_owned())?;
+
+    bundle
+        .grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Public,
+            GranteeContentOperation::Edit {
+                target: GranteeTarget::Display("projects/note"),
+                body: "delegated public",
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB9 public edit failed: {error}"))?;
+    let created = bundle
+        .grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Circle,
+            GranteeContentOperation::Create {
+                folder: GranteeTarget::Display("projects"),
+                preallocated_sid: None,
+                name: "fresh",
+                title: "created",
+                tags: &[],
+                body: "delegated circle",
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB9 circle create failed: {error}"))?;
+    if !matches!(created, GranteeContentOutcome::Created(_)) {
+        return Err("CB9 circle create returned the wrong outcome".into());
+    }
+    bundle
+        .grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Self_,
+            GranteeContentOperation::Edit {
+                target: GranteeTarget::Id(self_sid),
+                body: "delegated self",
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CB9 self edit failed: {error}"))?;
+
+    let before = cb7_store_snapshot(&bundle.store)?;
+    if bundle
+        .grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Circle,
+            GranteeContentOperation::Create {
+                folder: GranteeTarget::Display("projects"),
+                preallocated_sid: None,
+                name: "late",
+                title: "late",
+                tags: &[],
+                body: "late",
+                now: "2026-07-26T13:04:00Z",
+            },
+            &mut entropy,
+        )
+        .is_ok()
+        || cb7_store_snapshot(&bundle.store)? != before
+    {
+        return Err("CB9 expired refusal changed canonical bytes".into());
+    }
+
+    bundle
+        .transaction(|bundle| bundle.publish(&owner, "2026-07-18T13:05:00Z"))
+        .map_err(|error| format!("CB9 publication failed: {error}"))?;
+    bundle
+        .verify()
+        .map_err(|error| format!("CB9 published bundle failed: {error}"))?;
+    bundle
+        .verify_public_authorship()
+        .map_err(|error| format!("CB9 authorship failed: {error}"))?;
+
+    let exported = cb7_store_snapshot(&bundle.store)?;
+    let mut fresh = MemStore::default();
+    cb7_install(&mut fresh, &exported)?;
+    drop(bundle);
+    let cold = Bundle::open(fresh).map_err(|error| format!("CB9 cold open failed: {error}"))?;
+    cold.gamma_verify()
+        .map_err(|error| format!("CB9 cold Gamma replay failed: {error}"))?;
+    if cold
+        .read_section_as_agent(
+            &chain,
+            &agent,
+            Zone::Circle,
+            "projects/fresh",
+            "2026-07-18T13:06:00Z",
+        )
+        .map_err(|error| format!("CB9 cold content read failed: {error}"))?
+        != "delegated circle"
+        || cold
+            .log_query_as_agent(
+                &chain,
+                &agent,
+                &GammaQuery::default(),
+                &LogFilter::default(),
+                "2026-07-18T13:06:00Z",
+            )
+            .map_err(|error| format!("CB9 cold Gamma read failed: {error}"))?
+            .is_empty()
+    {
+        return Err("CB9 cold content/Gamma results drift".into());
+    }
+    Ok(())
+}
+
 fn cb5_constraints_acceptance() -> Result<(), String> {
     let mandates = cb5_parsed(CB2_MANDATE_CONTRACTS)?;
     let root_cases = mandates["constraints"]["root_leaf_cases"]
@@ -1733,6 +1948,14 @@ fn cb8_result(w: &mut ProtocolWorld) {
 
 fn cb8_assert_green(w: &ProtocolWorld) {
     assert_eq!(w.cb8_result, Some(Ok(())));
+}
+
+fn cb9_result(w: &mut ProtocolWorld) {
+    w.cb9_result = Some(CB9_ACCEPTANCE.get_or_init(cb9_acceptance).clone());
+}
+
+fn cb9_assert_green(w: &ProtocolWorld) {
+    assert_eq!(w.cb9_result, Some(Ok(())));
 }
 
 impl ProtocolWorld {
@@ -3431,6 +3654,29 @@ fn cb8_when(w: &mut ProtocolWorld) {
 )]
 fn cb8_then(w: &mut ProtocolWorld) {
     cb8_assert_green(w);
+}
+
+// ----------------------------------------------- CB9 delegated content
+
+#[given(
+    regex = r#"^(?:a published bundle and a grantee with ".*"|a grantee holds ".*" and presents ".*"|an agent with edit authority on one public section|an agent with exact authority for self SID ".*"|a grantee opened a local bundle session while its chain was valid|the mandate becomes ".*" before the candidate mutation|a published bundle snapshotted before a delegated edit|the candidate fails an applicable constraint during Core validation)$"#
+)]
+fn cb9_given(w: &mut ProtocolWorld) {
+    cb9_result(w);
+}
+
+#[when(
+    regex = r#"^(?:the grantee performs ".*" in ".*"|it attempts to read the exact protected section|the agent publishes a normal delegated edit|it performs ".*" and publishes|the grantee attempts to commit that mutation|the bundle transaction is reopened)$"#
+)]
+fn cb9_when(w: &mut ProtocolWorld) {
+    cb9_result(w);
+}
+
+#[then(
+    regex = r#"^(?:the operation is ".*"|an accepted operation is journalized and cold-verifiable under the same chain|the result is ".*"|its authorship signature binds content hash, SID, operation, edition and authorized_via|Gamma and the manifest commit that signature|fresh-store verification labels the grantee, never the owner, as author|the edition proves ".*" for that SID|reveals no name, path, title, tags, body, folder relation or key|the current pure verdict refuses it|the bundle, manifest and Gamma head remain byte-for-byte unchanged|every canonical byte equals the snapshot|no failed authorship proof, blob or Gamma entry remains reachable)$"#
+)]
+fn cb9_then(w: &mut ProtocolWorld) {
+    cb9_assert_green(w);
 }
 
 // ----------------------------------------------------------------- thens

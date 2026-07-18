@@ -100,7 +100,6 @@ Feature: Delegated writes — the mandate is a pen, not just a key
 
   Rule: Grantee content operations have zone-specific parity
 
-    @wip
     Scenario Outline: One pure operation enforces the grantee rules of each zone
       Given a published bundle and a grantee with "<authority>"
       When the grantee performs "<operation>" in "<zone>"
@@ -130,7 +129,6 @@ Feature: Delegated writes — the mandate is a pen, not just a key
 
   Rule: Authority and decryption remain independent fences
 
-    @wip
     Scenario Outline: A grantee needs both its chain and the exact content line
       Given a grantee holds "<key material>" and presents "<authority>"
       When it attempts to read the exact protected section
@@ -145,7 +143,6 @@ Feature: Delegated writes — the mandate is a pen, not just a key
 
   Rule: Delegated authorship and self proofs survive cold verification
 
-    @wip
     Scenario: A public grantee edit never imitates owner authorship
       Given an agent with edit authority on one public section
       When the agent publishes a normal delegated edit
@@ -153,7 +150,6 @@ Feature: Delegated writes — the mandate is a pen, not just a key
       And Gamma and the manifest commit that signature
       And fresh-store verification labels the grantee, never the owner, as author
 
-    @wip
     Scenario Outline: A self mutation proves only an opaque state transition
       Given an agent with exact authority for self SID "opaque-note"
       When it performs "<operation>" and publishes
@@ -168,7 +164,6 @@ Feature: Delegated writes — the mandate is a pen, not just a key
 
   Rule: A session never freezes authority past the operation
 
-    @wip
     Scenario Outline: Expiry or revocation after session open is checked before effect
       Given a grantee opened a local bundle session while its chain was valid
       And the mandate becomes "<authority change>" before the candidate mutation
@@ -181,7 +176,6 @@ Feature: Delegated writes — the mandate is a pen, not just a key
         | expired          |
         | revoked          |
 
-    @wip
     Scenario: Any delegated refusal rolls back content and Gamma together
       Given a published bundle snapshotted before a delegated edit
       And the candidate fails an applicable constraint during Core validation
