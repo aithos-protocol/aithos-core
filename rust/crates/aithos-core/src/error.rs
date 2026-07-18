@@ -38,6 +38,18 @@ pub enum Error {
     #[error("invalid mandate: {0}")]
     InvalidMandate(String),
 
+    #[error("invalid operation facts: {0}")]
+    InvalidOperationFacts(String),
+
+    #[error("invalid state fact: {0}")]
+    InvalidStateFact(String),
+
+    #[error("invalid operation: {0}")]
+    InvalidOperation(String),
+
+    #[error("invalid session: {0}")]
+    InvalidSession(String),
+
     #[error("I3 violated — header without an owner line: {0}")]
     MissingOwnerLine(String),
 

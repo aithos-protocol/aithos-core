@@ -633,13 +633,13 @@ struct TimestampPrefix {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct CanonicalTimestamp {
+pub(crate) struct CanonicalTimestamp {
     prefix: TimestampPrefix,
     fractional: Vec<u8>,
 }
 
 impl CanonicalTimestamp {
-    fn parse(value: &str) -> core::result::Result<Self, ()> {
+    pub(crate) fn parse(value: &str) -> core::result::Result<Self, ()> {
         let body = value.strip_suffix('Z').ok_or(())?;
         let (date, time) = body.split_once('T').ok_or(())?;
         if time.contains('T') {
@@ -695,7 +695,7 @@ impl CanonicalTimestamp {
         })
     }
 
-    fn compare(&self, other: &Self) -> core::cmp::Ordering {
+    pub(crate) fn compare(&self, other: &Self) -> core::cmp::Ordering {
         self.prefix.cmp(&other.prefix).then_with(|| {
             let length = self.fractional.len().max(other.fractional.len());
             (0..length)
@@ -785,7 +785,7 @@ fn sign_doc(m: &mut Mandate, key: &SigningKey) -> Result<()> {
     Ok(())
 }
 
-fn verify_sig(m: &Mandate, key: &VerifyingKey) -> Result<()> {
+pub(crate) fn verify_sig(m: &Mandate, key: &VerifyingKey) -> Result<()> {
     let mut unsigned = m.clone();
     unsigned.signature.value = String::new();
     let sig: [u8; 64] = hex::decode(&m.signature.value)

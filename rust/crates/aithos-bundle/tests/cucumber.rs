@@ -17,6 +17,11 @@ use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
 use aithos_core::mandate::{
     covers_section_op, verify_chain, Mandate, MandateSpec, PerimeterEntry, SectionOp, Verb,
 };
+use aithos_core::operation::{
+    correlate_operation_references, verify_operation_facts, verify_operation_projection,
+    verify_session, verify_state_fact, MutationNode, OperationFactsEvidence, OperationFactsInput,
+    OperationProjectionEvidence, SessionEvidence, StateFactInput,
+};
 use aithos_core::path::{NodePath, Zone};
 use aithos_core::wire;
 use cucumber::{given, then, when, World};
@@ -36,6 +41,15 @@ const NA30: &str = "2026-07-31T00:00:00Z";
 const DAY1: &str = "2026-07-02T00:00:00Z";
 const DAY8: &str = "2026-07-09T00:00:00Z";
 const CB2_MANDATE_CONTRACTS: &str = include_str!("../../../../vectors/cb2-mandate-contracts.json");
+const CB4_MUTATION: &str = include_str!("../../../../vectors/cb2-operation-facts-mutation.json");
+const CB4_READ: &str = include_str!("../../../../vectors/cb2-operation-facts-read.json");
+const CB4_ACTION_INFERENCE: &str =
+    include_str!("../../../../vectors/cb2-operation-facts-action-inference.json");
+const CB4_STRUCTURAL: &str =
+    include_str!("../../../../vectors/cb2-operation-facts-structural.json");
+const CB4_PROJECTION: &str = include_str!("../../../../vectors/cb2-operation-projection.json");
+const CB4_SESSION: &str = include_str!("../../../../vectors/cb2-session-proof.json");
+const CB4_NATIVE_LEAF_TEST_DOMAIN: &[u8] = b"aithos-core/cb2/native-leaf-proof\0";
 
 fn agent_sk(b: u8) -> SigningKey {
     SigningKey::from_bytes(&[b; 32])
@@ -157,6 +171,8 @@ pub struct ProtocolWorld {
     cb3_operation: Option<Verb>,
     cb3_form_result: Option<Result<Mandate, String>>,
     cb3_secondary_verdicts: Vec<bool>,
+    cb4_case: String,
+    cb4_result: Option<Result<(), String>>,
     // --- step F: gamma ---
     gamma_result: Option<Result<String, String>>,
     audit_chain: Vec<Mandate>,
@@ -355,6 +371,227 @@ fn cb3_form_document(case_name: &str) -> String {
         .as_str()
         .expect("form-case document")
         .to_owned()
+}
+
+fn cb4_vector(bytes: &str) -> serde_json::Value {
+    serde_json::from_str(bytes).expect("CB4 vector parses")
+}
+
+fn cb4_named<'a>(cases: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
+    cases
+        .as_array()
+        .expect("CB4 cases array")
+        .iter()
+        .find(|case| case["id"].as_str() == Some(id))
+        .unwrap_or_else(|| panic!("missing CB4 vector case {id}"))
+}
+
+fn cb4_optional_object(value: &serde_json::Value) -> Option<&serde_json::Value> {
+    value.is_object().then_some(value)
+}
+
+fn cb4_error_name(error: aithos_core::Error) -> String {
+    match error {
+        aithos_core::Error::InvalidOperationFacts(_) => "InvalidOperationFacts".into(),
+        aithos_core::Error::InvalidStateFact(_) => "InvalidStateFact".into(),
+        aithos_core::Error::InvalidOperation(_) => "InvalidOperation".into(),
+        aithos_core::Error::InvalidSession(_) => "InvalidSession".into(),
+        other => format!("unexpected:{other}"),
+    }
+}
+
+fn cb4_capture<T>(w: &mut ProtocolWorld, result: aithos_core::Result<T>) {
+    w.cb4_result = Some(result.map(|_| ()).map_err(cb4_error_name));
+}
+
+fn cb4_mutation_nodes(vector: &serde_json::Value) -> Vec<MutationNode> {
+    let sids = &vector["fixture_sids"];
+    let sid = |name: &str| {
+        Sid::parse(sids[name].as_str().expect("CB4 fixture SID")).expect("canonical CB4 SID")
+    };
+    vec![
+        MutationNode::new(sid("circle_root"), Zone::Circle, None),
+        MutationNode::new(sid("circle_parent"), Zone::Circle, Some(sid("circle_root"))),
+        MutationNode::new(sid("circle_destination"), Zone::Circle, None),
+        MutationNode::new(
+            sid("circle_destination_child"),
+            Zone::Circle,
+            Some(sid("circle_destination")),
+        ),
+        MutationNode::new(sid("self_root"), Zone::Self_, None),
+        MutationNode::new(
+            sid("ethos_target"),
+            Zone::Circle,
+            Some(sid("circle_parent")),
+        ),
+        MutationNode::new(
+            sid("section_target"),
+            Zone::Circle,
+            Some(sid("circle_parent")),
+        ),
+        MutationNode::new(
+            sid("folder_target"),
+            Zone::Circle,
+            Some(sid("circle_parent")),
+        ),
+        MutationNode::new(sid("folder_create"), Zone::Circle, None),
+    ]
+}
+
+fn cb4_validate_mutation(id: &str) -> aithos_core::Result<()> {
+    let vector = cb4_vector(CB4_MUTATION);
+    let nodes = cb4_mutation_nodes(&vector);
+    let case = cb4_named(&vector["negative_cases"]["operation_facts"], id);
+    verify_operation_facts(OperationFactsInput {
+        document: &case["candidate"],
+        facts_ref: cb4_optional_object(&case["facts_ref"]),
+        evidence: OperationFactsEvidence::Mutation {
+            state_facts: &vector["states"],
+            nodes: &nodes,
+            vault_record_key: vector["vault_record_key"].as_str().expect("vault key"),
+        },
+    })
+    .map(|_| ())
+}
+
+fn cb4_validate_state(id: &str) -> aithos_core::Result<()> {
+    let vector = cb4_vector(CB4_MUTATION);
+    let case = cb4_named(&vector["negative_cases"]["state_facts"], id);
+    let expected_keys: Option<Vec<String>> = case
+        .get("expected_key_commitments")
+        .and_then(serde_json::Value::as_array)
+        .map(|keys| {
+            keys.iter()
+                .map(|key| key.as_str().expect("expected state key").to_owned())
+                .collect()
+        });
+    let input = match case["scope"].as_str().expect("state scope") {
+        "logical_state" => StateFactInput::LogicalState {
+            state: &case["candidate"],
+            state_facts: None,
+        },
+        "state_document" => StateFactInput::Document {
+            document: &case["candidate"],
+            expected_key_commitments: expected_keys.as_deref(),
+        },
+        "state_reference" => StateFactInput::Reference {
+            state: &case["candidate"]["logical_state"],
+            document: &case["candidate"]["document"],
+        },
+        other => panic!("unknown CB4 state scope {other}"),
+    };
+    verify_state_fact(input).map(|_| ())
+}
+
+fn cb4_validate_read(id: &str) -> aithos_core::Result<()> {
+    let vector = cb4_vector(CB4_READ);
+    let case = cb4_named(&vector["negative_cases"], id);
+    verify_operation_facts(OperationFactsInput {
+        document: &case["candidate"],
+        facts_ref: cb4_optional_object(&case["facts_ref"]),
+        evidence: OperationFactsEvidence::Read {
+            context: &case["context"],
+            fixtures: &vector["fixtures"],
+        },
+    })
+    .map(|_| ())
+}
+
+fn cb4_validate_action_inference(id: &str) -> aithos_core::Result<()> {
+    let vector = cb4_vector(CB4_ACTION_INFERENCE);
+    let case = cb4_named(&vector["negative_cases"], id);
+    verify_operation_facts(OperationFactsInput {
+        document: &case["candidate"],
+        facts_ref: cb4_optional_object(&case["facts_ref"]),
+        evidence: OperationFactsEvidence::ActionInference {
+            context: &case["context"],
+        },
+    })
+    .map(|_| ())
+}
+
+fn cb4_validate_structural(id: &str) -> aithos_core::Result<()> {
+    let vector = cb4_vector(CB4_STRUCTURAL);
+    let case = cb4_named(&vector["negative_cases"], id);
+    verify_operation_facts(OperationFactsInput {
+        document: &case["candidate"],
+        facts_ref: cb4_optional_object(&case["facts_ref"]),
+        evidence: OperationFactsEvidence::Structural {
+            context: &case["context"],
+        },
+    })
+    .map(|_| ())
+}
+
+fn cb4_projection_facts<'a>(
+    mutation: &'a serde_json::Value,
+    structural: &'a serde_json::Value,
+) -> Vec<&'a serde_json::Value> {
+    mutation["positive_cases"]
+        .as_array()
+        .expect("mutation positives")
+        .iter()
+        .chain(
+            structural["positive_cases"]
+                .as_array()
+                .expect("structural positives"),
+        )
+        .map(|case| &case["document"])
+        .collect()
+}
+
+fn cb4_validate_all_projection_negatives() -> aithos_core::Result<()> {
+    let vector = cb4_vector(CB4_PROJECTION);
+    let mutation = cb4_vector(CB4_MUTATION);
+    let structural = cb4_vector(CB4_STRUCTURAL);
+    let facts = cb4_projection_facts(&mutation, &structural);
+    let certificates = [&vector["fixtures"]["certificate"]];
+    let evidence = OperationProjectionEvidence {
+        facts_documents: &facts,
+        certificates: &certificates,
+    };
+    for case in vector["negative_projection_cases"]
+        .as_array()
+        .expect("projection negatives")
+    {
+        let expected = case["must_fail"].as_str().expect("expected error");
+        let error = verify_operation_projection(&case["candidate"], evidence)
+            .expect_err("negative projection must fail");
+        if cb4_error_name(error) != expected {
+            return Err(aithos_core::Error::InvalidOperation(format!(
+                "{} returned the wrong typed error",
+                case["id"]
+            )));
+        }
+    }
+    for case in vector["correlation_cases"]
+        .as_array()
+        .expect("correlation cases")
+    {
+        if case["must_fail"] == "InvalidOperation" {
+            correlate_operation_references(&case["first"], &case["second"])
+                .expect_err("equivocation must fail");
+        }
+    }
+    Err(aithos_core::Error::InvalidOperation(
+        "all registered projection and correlation defects refused".into(),
+    ))
+}
+
+fn cb4_validate_session(id: &str) -> aithos_core::Result<()> {
+    let vector = cb4_vector(CB4_SESSION);
+    let case = cb4_named(&vector["negative_cases"], id);
+    let candidate = &case["candidate"];
+    verify_session(SessionEvidence {
+        mandate: &candidate["mandate"],
+        certificate: &candidate["certificate"],
+        projection: &candidate["operation_projection"],
+        operation_ref: &candidate["operation_ref"],
+        native_leaf_proof: candidate.get("native_leaf_proof_fixture"),
+        native_leaf_domain: CB4_NATIVE_LEAF_TEST_DOMAIN,
+        session_proof: candidate.get("session_proof"),
+    })
+    .map(|_| ())
 }
 
 impl ProtocolWorld {
@@ -1603,6 +1840,299 @@ fn cb3_duplicate_selector(w: &mut ProtocolWorld, selector: String) {
 #[then("the mandate is rejected before signature verification")]
 fn cb3_duplicate_rejected_before_signature(w: &mut ProtocolWorld) {
     assert_eq!(w.cb3_verdict, Some(true));
+}
+
+// ---------------------------------------------------------- CB4 operations
+
+#[given("a complete operation-facts document F for one registered kind")]
+fn cb4_complete_facts_document(_w: &mut ProtocolWorld) {}
+
+#[when("Core derives its facts reference")]
+fn cb4_derive_facts_reference(w: &mut ProtocolWorld) {
+    let vector = cb4_vector(CB4_MUTATION);
+    let nodes = cb4_mutation_nodes(&vector);
+    let case = &vector["positive_cases"][0];
+    cb4_capture(
+        w,
+        verify_operation_facts(OperationFactsInput {
+            document: &case["document"],
+            facts_ref: Some(&case["facts_ref"]),
+            evidence: OperationFactsEvidence::Mutation {
+                state_facts: &vector["states"],
+                nodes: &nodes,
+                vault_record_key: vector["vault_record_key"].as_str().expect("vault key"),
+            },
+        }),
+    );
+}
+
+#[then("F has exactly aithos-operation-facts-core, kind and facts")]
+fn cb4_facts_envelope_exact(w: &mut ProtocolWorld) {
+    assert_eq!(w.cb4_result, Some(Ok(())));
+}
+
+#[then("its profile equals facts_ref and its kind equals operation.kind")]
+fn cb4_facts_profile_and_kind(w: &mut ProtocolWorld) {
+    assert_eq!(w.cb4_result, Some(Ok(())));
+}
+
+#[then(
+    "facts_ref.digest is lowercase SHA-256 of \"aithos-core/v1/operation-facts\", NUL and RFC8785-JCS of F"
+)]
+fn cb4_facts_digest_exact(w: &mut ProtocolWorld) {
+    assert_eq!(w.cb4_result, Some(Ok(())));
+}
+
+#[then("null, an extra member or a different selected family is refused")]
+fn cb4_facts_envelope_negatives(_w: &mut ProtocolWorld) {
+    for id in [
+        "missing-envelope-profile",
+        "extra-envelope-member",
+        "kind-family-mismatch",
+    ] {
+        assert!(matches!(
+            cb4_validate_mutation(id),
+            Err(aithos_core::Error::InvalidOperationFacts(_))
+        ));
+    }
+}
+
+#[given(expr = "a candidate state-fact document with {string}")]
+fn cb4_state_candidate(w: &mut ProtocolWorld, defect: String) {
+    w.cb4_case = defect;
+}
+
+#[when("Core validates it before operation commitment comparison")]
+fn cb4_validate_state_candidate(w: &mut ProtocolWorld) {
+    let id = match w.cb4_case.as_str() {
+        "unknown state-fact profile" => "unknown-state-fact-profile",
+        "empty objects array" => "empty-objects",
+        "unsorted objects array" => "unsorted-objects",
+        "duplicate key commitment" => "duplicate-key-commitment",
+        "malformed or non-lowercase commitment" => "malformed-byte-commitment",
+        "missing affected object" => "missing-affected-object",
+        "unrelated extra object" => "unrelated-extra-object",
+        "extra object member" => "extra-object-member",
+        "state digest mismatch" => "state-digest-mismatch",
+        other => panic!("unknown CB4 state defect {other}"),
+    };
+    cb4_capture(w, cb4_validate_state(id));
+}
+
+#[then("the state fact is refused")]
+fn cb4_state_refused(w: &mut ProtocolWorld) {
+    assert_eq!(
+        w.cb4_result,
+        Some(Err("InvalidStateFact".into())),
+        "{}",
+        w.cb4_case
+    );
+}
+
+#[then("no operation commitment or operation_ref is emitted")]
+fn cb4_no_operation_reference(w: &mut ProtocolWorld) {
+    assert!(w.cb4_result.as_ref().expect("CB4 result").is_err());
+}
+
+#[then(
+    "no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact"
+)]
+fn cb4_no_clear_state_coordinate(w: &mut ProtocolWorld) {
+    assert!(w.cb4_result.as_ref().expect("CB4 state result").is_err());
+}
+
+#[given(expr = "a candidate read facts object with {string}")]
+fn cb4_read_candidate(w: &mut ProtocolWorld, defect: String) {
+    w.cb4_case = defect;
+}
+
+#[when("Core validates it before operation commitment")]
+fn cb4_validate_read_candidate(w: &mut ProtocolWorld) {
+    let id = match w.cb4_case.as_str() {
+        "unknown read domain" => "unknown-read-domain",
+        "unknown zone or non-canonical SID" => "unknown-ethos-zone",
+        "malformed or mismatched source edition" => "mismatched-source-edition",
+        "empty or malformed source head" => "empty-source-head",
+        "non-canonical Gamma query encoding" => "noncanonical-gamma-query",
+        "mismatched Gamma request digest" => "mismatched-request-digest",
+        "mismatched vault record-key commitment" => "mismatched-vault-record-key",
+        "clear display path or vault record name" => "clear-display-path",
+        other => panic!("unknown CB4 read defect {other}"),
+    };
+    cb4_capture(w, cb4_validate_read(id));
+}
+
+#[then("the read facts are refused as InvalidOperationFacts")]
+fn cb4_read_refused(w: &mut ProtocolWorld) {
+    assert_eq!(
+        w.cb4_result,
+        Some(Err("InvalidOperationFacts".into())),
+        "{}",
+        w.cb4_case
+    );
+}
+
+#[given(expr = "a candidate mutation facts object with {string}")]
+fn cb4_mutation_candidate(w: &mut ProtocolWorld, defect: String) {
+    w.cb4_case = defect;
+}
+
+#[when("Core validates its closed family")]
+fn cb4_validate_mutation_candidate(w: &mut ProtocolWorld) {
+    let id = match w.cb4_case.as_str() {
+        "unknown domain" => "unknown-domain",
+        "unknown verb for the selected domain" => "unknown-domain-verb",
+        "unknown zone or node kind" => "unknown-node-kind",
+        "null source or destination" => "null-source",
+        "source or destination on the wrong variant" => "destination-on-rename",
+        "duplicate or non-canonical SID coordinate" => "duplicate-source-sid",
+        "invalid before and after transition" => "invalid-create-transition",
+        "equal state digests for a mutation" => "equal-present-state-digests",
+        "mismatched vault record-key commitment" => "mismatched-vault-record-key",
+        "clear display path or vault record name" => "clear-display-path",
+        other => panic!("unknown CB4 mutation defect {other}"),
+    };
+    cb4_capture(w, cb4_validate_mutation(id));
+}
+
+#[then("the mutation facts are refused")]
+fn cb4_mutation_refused(w: &mut ProtocolWorld) {
+    assert_eq!(
+        w.cb4_result,
+        Some(Err("InvalidOperationFacts".into())),
+        "{}",
+        w.cb4_case
+    );
+}
+
+#[given(expr = "candidate action or inference facts with {string}")]
+fn cb4_action_inference_candidate(w: &mut ProtocolWorld, defect: String) {
+    w.cb4_case = defect;
+}
+
+#[when("Core validates them before operation commitment")]
+fn cb4_validate_action_inference_candidate(w: &mut ProtocolWorld) {
+    let id = match w.cb4_case.as_str() {
+        "malformed or mismatched catalog reference" => "mismatched-catalog-digest",
+        "mismatched action arguments" => "mismatched-action-arguments",
+        "mismatched inference request bytes" => "mismatched-inference-request",
+        "action carrying request_digest" => "extra-action-member",
+        "inference carrying args_hash" => "inference-args-hash",
+        "wrong budget applicability variant" => "missing-applicable-budget",
+        "wrong purpose applicability variant" => "missing-applicable-purpose",
+        "tokens or a usage receipt before effect" => "action-post-effect-tokens",
+        other => panic!("unknown CB4 action/inference defect {other}"),
+    };
+    cb4_capture(w, cb4_validate_action_inference(id));
+}
+
+#[then("the facts are refused as InvalidOperationFacts")]
+fn cb4_operation_facts_refused(w: &mut ProtocolWorld) {
+    assert_eq!(
+        w.cb4_result,
+        Some(Err("InvalidOperationFacts".into())),
+        "{}",
+        w.cb4_case
+    );
+}
+
+#[then("no operation commitment, operation_ref or external effect is emitted")]
+fn cb4_no_external_effect(w: &mut ProtocolWorld) {
+    assert!(w.cb4_result.as_ref().expect("CB4 result").is_err());
+}
+
+#[given(expr = "candidate grant, revoke, rotate or publication facts with {string}")]
+fn cb4_structural_candidate(w: &mut ProtocolWorld, defect: String) {
+    w.cb4_case = defect;
+}
+
+#[when("Core validates the selected family")]
+fn cb4_validate_structural_candidate(w: &mut ProtocolWorld) {
+    let id = match w.cb4_case.as_str() {
+        "mandate id and certificate mismatch" => "mismatched-mandate-id",
+        "revoke reason mismatch" => "reason-view-mismatch",
+        "unknown rotation domain or mode" => "unknown-rotate-domain",
+        "equal rotation state digests" => "equal-rotate-states",
+        "derived rotation represented twice" => "derived-rotate-double-occurrence",
+        "wrong predecessor cardinality or order" => "merge-one-predecessor",
+        "resolution winner outside predecessors" => "resolution-winner-outside",
+        "omitted or duplicate contained operation" => "omitted-contained-operation",
+        "publication self-reference" => "publication-self-reference",
+        other => panic!("unknown CB4 structural defect {other}"),
+    };
+    cb4_capture(w, cb4_validate_structural(id));
+}
+
+#[then("no operation commitment, counter or canonical effect is emitted")]
+fn cb4_no_structural_effect(w: &mut ProtocolWorld) {
+    assert!(w.cb4_result.as_ref().expect("CB4 result").is_err());
+}
+
+#[given(
+    "canonical-operation material with an invalid projection, authority, reference or cross-view correlation"
+)]
+fn cb4_invalid_projection_material(_w: &mut ProtocolWorld) {}
+
+#[when("Core validates it before effect or during semantic replay")]
+fn cb4_validate_projection_material(w: &mut ProtocolWorld) {
+    cb4_capture(w, cb4_validate_all_projection_negatives());
+}
+
+#[then("it is refused as InvalidOperation")]
+fn cb4_projection_refused(w: &mut ProtocolWorld) {
+    assert_eq!(w.cb4_result, Some(Err("InvalidOperation".into())));
+}
+
+#[then("an invalid selected facts document keeps its specific facts error")]
+fn cb4_projection_facts_error_is_specific(_w: &mut ProtocolWorld) {
+    let vector = cb4_vector(CB4_PROJECTION);
+    assert!(vector["negative_projection_cases"]
+        .as_array()
+        .expect("projection negatives")
+        .iter()
+        .any(|case| case["must_fail"] == "InvalidOperationFacts"));
+}
+
+#[then("no accepted operation_ref is emitted")]
+fn cb4_no_accepted_operation_ref(w: &mut ProtocolWorld) {
+    assert!(w.cb4_result.as_ref().expect("CB4 result").is_err());
+}
+
+#[given(expr = "session-bound material with {string}")]
+fn cb4_session_candidate(w: &mut ProtocolWorld, defect: String) {
+    w.cb4_case = defect;
+}
+
+#[when("Core validates the operation before effect or during cold replay")]
+fn cb4_validate_session_candidate(w: &mut ProtocolWorld) {
+    let id = match w.cb4_case.as_str() {
+        "certificate signed by another key" => "certificate-signed-by-stranger",
+        "subject or leaf mandate mismatch" => "certificate-subject-mismatch",
+        "session key different from session_bind" => "certificate-session-key-mismatch",
+        "interval outside the leaf mandate" => "certificate-before-mandate",
+        "operation outside the session interval" => "operation-before-certificate",
+        "missing leaf possession proof" => "missing-native-leaf-proof",
+        "missing session proof" => "missing-session-proof",
+        "session proof for another operation_ref" => "session-proof-wrong-operation",
+        "certificate digest mismatch" => "certificate-digest-mismatch",
+        other => panic!("unknown CB4 session defect {other}"),
+    };
+    cb4_capture(w, cb4_validate_session(id));
+}
+
+#[then("it is refused as InvalidSession")]
+fn cb4_session_refused(w: &mut ProtocolWorld) {
+    assert_eq!(
+        w.cb4_result,
+        Some(Err("InvalidSession".into())),
+        "{}",
+        w.cb4_case
+    );
+}
+
+#[then("no perimeter or authority is derived from SC1")]
+fn cb4_session_conveys_no_authority(w: &mut ProtocolWorld) {
+    assert!(w.cb4_result.as_ref().expect("CB4 result").is_err());
 }
 
 // ----------------------------------------------------------------- thens

@@ -249,7 +249,6 @@ Feature: The gamma log
         | malformed or non-lowercase facts digest    |
         | facts family different from operation kind |
 
-    @wip
     Scenario: K1.1-B fixes the operation-facts envelope and digest preimage
       Given a complete operation-facts document F for one registered kind
       When Core derives its facts reference
@@ -281,7 +280,6 @@ Feature: The gamma log
       And objects are sorted by lowercase key_commitment with no duplicate key
       And state_ref.digest is lowercase SHA-256 of "aithos-core/v1/state-fact", NUL and RFC8785-JCS of S
 
-    @wip
     Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
       Given a candidate state-fact document with "<defect>"
       When Core validates it before operation commitment comparison
@@ -338,7 +336,6 @@ Feature: The gamma log
         | Gamma query             |
         | vault-config read       |
 
-    @wip
     Scenario Outline: K1.2-R-B read facts fail closed without disclosing protected coordinates
       Given a candidate read facts object with "<defect>"
       When Core validates it before operation commitment
@@ -406,7 +403,6 @@ Feature: The gamma log
       And self dir, source, destination and tag claims grant no write authority
       And an opaque proof binds every claimed target and state transition
 
-    @wip
     Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
       Given a candidate mutation facts object with "<defect>"
       When Core validates its closed family
@@ -469,7 +465,6 @@ Feature: The gamma log
         | purpose | absent        | state=not-applicable             |
         | purpose | present       | state=cited plus exact purpose_ref |
 
-    @wip
     Scenario Outline: K1.2-AI-B facts fail closed before any external effect
       Given candidate action or inference facts with "<defect>"
       When Core validates them before operation commitment
@@ -559,7 +554,6 @@ Feature: The gamma log
       And contained_operations equals the derived causal order without duplicates
       But neither the publication operation_ref nor candidate manifest hash is included
 
-    @wip
     Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
       Given candidate grant, revoke, rotate or publication facts with "<defect>"
       When Core validates the selected family
@@ -608,7 +602,6 @@ Feature: The gamma log
       And no existing args_hash, Gamma identifier or edition hash is reinterpreted as that commitment
       And commitment material is refused under a historical or unknown protocol version, or without a version
 
-    @wip
     Scenario: Invalid operation projection and correlation have one typed refusal
       Given canonical-operation material with an invalid projection, authority, reference or cross-view correlation
       When Core validates it before effect or during semantic replay
@@ -636,7 +629,6 @@ Feature: The gamma log
       And both independent proofs bind the same exact operation_ref
       And the SC1 certificate signature substitutes for neither possession proof
 
-    @wip
     Scenario Outline: SC1 fails closed without creating session authority
       Given session-bound material with "<defect>"
       When Core validates the operation before effect or during cold replay
