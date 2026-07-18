@@ -387,8 +387,11 @@ volunteered session fact is invalid.
   digest;
 - an Ethos mutation, structural mutation, or vault-config operation, bound to its
   exact verb, target and applicable source/destination plus before/after facts;
-- a connector action or inference, bound to connector, action, approved catalog,
-  `args_hash`, and every applicable budget, purpose, and usage fact;
+- a connector action or inference, bound before effect to every applicable
+  connector, action, approved-catalog, argument, budget, and purpose fact already
+  known at authorization time. Actual `tokens`, `tokens_in`, and `tokens_out` are
+  post-effect facts: they MUST NOT enter the pre-effect operation projection or its
+  commitment, and are bound afterward by the usage receipt v2 of §4.12.1;
 - a grant, revoke, or rotation, bound to its affected identifiers and certificate
   commitments;
 - a publication, merge, or resolution, bound to height, predecessors or winner,
@@ -443,6 +446,9 @@ own `operation_ref`, and no digest transitively dependent on that carrier. In
 particular, a publication projection cannot include its current manifest or edition
 hash. Predecessor hashes and independently defined factual state or changeset
 commitments are not self-references.
+
+A receipt, its `sig`, actual `tokens`, `tokens_in`, or `tokens_out`, and any digest
+derived from them are likewise never inputs to the pre-effect operation projection.
 
 Historical artifacts remain byte-identical and are verified solely under their
 declared historical profiles. A verifier MUST NOT synthesize an `operation_ref` for
@@ -626,7 +632,8 @@ Semantics (normative):
 
 ### 4.11.1 Attestation receipts
 
-The optional bridge from X back to V: a provider-signed usage receipt.
+The optional bridge from X back to V is a provider-signed usage receipt. The
+historical v1 action shape is:
 
 ```jsonc
 "receipt": { "args_hash": "sha256:…",   // MUST equal the entry's args_hash
@@ -635,8 +642,8 @@ The optional bridge from X back to V: a provider-signed usage receipt.
              "sig": "<hex ed25519 over JCS of the three fields above>" }
 ```
 
-A profile with `require_attestation: true` rejects any citing entry without
-a receipt that verifies under the profile's `attestation_key`.
+Under the historical v1 profile, `require_attestation: true` rejects a citing entry
+without a receipt that verifies under the profile's `attestation_key`.
 
 For the historical v1 shape, `args_hash` prevents substitution of different
 arguments; it does not identify an occurrence and therefore does not make the
@@ -644,10 +651,29 @@ receipt single-use. The same signed usage statement can verify more than one v1
 entry carrying the same hash, model, and usage facts, subject to every other
 applicable rule. Historical verification preserves that limitation.
 
-Newly committed operations use the operation-bound usage receipt v2 of §4.12.1.
-Where a receipt is valid, tallies use the attested `tokens`, not the declaration.
-(This receipt *meters*; gating receipts — guardrail, approval, and `counter_sign` —
-are obligations, §4.12.)
+U1 defines two closed usage-receipt v2 families: one for an `action` occurrence and
+one for an `inference` occurrence. The applicable family is determined by the
+independently reconstructed operation; a receipt cannot relabel one family as the
+other. Both follow the common `v`, `operation_ref`, `sig`, signature, closure, and
+downgrade rules of §4.12.1.
+
+Actual usage is learned after the effect. The action family binds its post-effect
+usage to the already-fixed action occurrence; the inference family binds its
+post-effect `tokens_in` and `tokens_out` to the already-fixed inference occurrence.
+Neither family changes or extends the pre-effect operation commitment.
+
+The inference family is not the historical action receipt with renamed counters. A
+verifier MUST NOT synthesize a missing native `args_hash` from a prompt, response,
+receipt, or other artifact merely to make an inference fit the action family.
+
+Under U1, `require_attestation: true` rejects a final accepted evidence set without
+the applicable valid usage receipt. Where that receipt is valid, its actual usage
+overrides the corresponding declaration for tallying. The exact remaining members
+of the action and inference families are reserved for the closed receipt member
+table; no implementation may infer them from v1.
+
+Usage receipts meter post-effect usage. Pre-effect gating receipts — guardrail,
+approval, and `counter_sign` — are obligations (§4.12).
 
 ## 4.12 Obligations (the general gate)
 
@@ -662,14 +688,18 @@ may *consume* (append its `action` entry) only if it carries a valid **receipt**
 from a pinned attestor whose verdict satisfies the predicate.
 
 The signed v1 shape below is historical and targets connector actions only. Its
-existing `action` and `args_hash` fields MUST NOT be reinterpreted as an occurrence
-or operation commitment.
+existing `action` and `args_hash` fields MUST NOT be reinterpreted as an occurrence,
+an operation commitment, or a receipt-v2 discriminator.
 
-W1 supplies a common operation identity, but does not by itself define the signed
-obligation matcher that would make a declaration applicable to a mutation, grant,
-revoke, vault-config operation, or publication. Until that separate matcher wire is
-human-validated and independently vectored, those non-action operations cannot
-claim an obligation discharged merely because they carry an `operation_ref`.
+Under mandate `draft.2`, obligations still have only the existing connector-action
+matcher. W1 supplies a common operation identity and R2 binds a receipt to that
+identity; neither defines how an obligation declaration matches a mutation, grant,
+revoke, vault-config operation, publication, or any other non-action operation.
+
+A closed non-action matcher is reserved for mandate `draft.3`. A `draft.2`
+declaration cannot become applicable to a non-action operation merely because the
+candidate carries an `operation_ref` or a receipt with `v: 2`. A later `draft.3`
+matcher MUST NOT reinterpret existing `draft.1` or `draft.2` mandate bytes.
 
 ```jsonc
 "obligations": [
@@ -709,28 +739,54 @@ identity. `mandate_id` remains the entry's `authorized_by`, so the historical
 receipt never transfers between sibling sub-mandates. When present,
 `presented_digest` remains inside the signed set.
 
-### 4.12.1 Operation-bound receipts v2 (R1)
+### 4.12.1 Closed operation-bound receipts v2 (R2 and U1)
 
-> **R1 protocol decision — human-validated on 2026-07-18.**
+> **R2/U1 protocol decision — human-validated on 2026-07-18.**
 
-Every newly issued usage-attestation or obligation receipt for an operation under
-the W1 profile MUST sign that operation's exact `operation_ref`. The reference binds
-the receipt to one occurrence; every legacy fact retained by that receipt family
-continues to be signed and is cross-checked against the reconstructed operation.
+Every receipt v2 is a closed object with the common top-level members `v`,
+`operation_ref`, and `sig`, plus exactly the members of one selected closed receipt
+family. `v` is the JSON number `2`. `operation_ref` is the exact W1 reference of the
+independently reconstructed operation. `sig` is the receipt signature. A missing or
+unknown version, malformed or mismatched reference, wrong family, or member outside
+the selected closed family fails before signature trust.
 
-Copying one receipt across Gamma, authorship, and edition views of the same
-occurrence is evidence correlation, not another consumption. Reusing it in a second
-consuming Gamma entry is replay and is rejected before the entry changes accepted
-history or any tally.
+For every receipt-v2 family, the Ed25519 signed message is exactly:
 
-After transition to the operation-commitment profile, emitters MUST NOT issue a new
-v1 receipt and a new-profile candidate carrying only a v1 receipt fails closed.
-Historical v1 receipts remain valid only under their historical carrier/profile and
-are never rewritten, upgraded, or assigned a synthetic occurrence.
+```text
+RFC8785-JCS(receipt object with its top-level `sig` member omitted)
+```
 
-The exact receipt-v2 discriminator, member placement, and signed payload ordering
-remain reserved with the closed nested wire table. This section authorizes no
-implementation-defined receipt bytes.
+`sig` is omitted from the signed object, not replaced by an empty string or `null`.
+The complete nested `operation_ref` and every selected-family member are inside the
+signed JCS.
+
+R2 defines the closed obligation-receipt v2 family. It is pre-effect gating evidence
+from the pinned attestor and binds one obligation discharge to one exact operation
+occurrence. Under mandate `draft.2`, R2 can discharge only an obligation selected by
+the existing connector-action matcher. It does not define or imply a non-action
+matcher.
+
+U1 defines the two closed post-effect usage-receipt v2 families of §4.11.1:
+`action` and `inference`. Their actual usage is signed against the already-fixed
+`operation_ref` and never enters or changes the pre-effect operation commitment.
+
+Receipt versions do not downgrade. Historical v1 receipts retain their exact bytes
+and verify only under their historical carrier/profile. A receipt required for a W1
+operation is v2: a v1-only receipt, absent `v`, `v != 2`, or unknown version fails
+closed. A v2 receipt presented as historical v1 material also fails closed. No
+verifier upgrades v1, synthesizes `operation_ref`, or treats a missing version as
+v2.
+
+Copying one receipt across the applicable native evidence views of the same
+occurrence is correlation, not another consumption. Reusing it for a second
+consuming occurrence, changing its `operation_ref`, or pairing it with facts that
+reconstruct a different operation is replay or mismatch and fails closed.
+
+The exact members beyond the approved common `v`, `operation_ref`, and `sig` remain
+reserved for the R2 obligation family and both U1 usage families. Until their closed
+member tables are human-validated and independently vectored, no producer may emit
+a complete receipt v2 and no implementation may borrow, omit, or invent members
+from the historical v1 action shape.
 
 **The attestor holds the logic; the protocol holds a signature.** `check` is opaque
 to the verifier — PII guardrail, policy engine, or a human tapping *approve* is
@@ -810,12 +866,11 @@ actor row below and never consumes these mandate constraints or counters.
 | Approved connector catalog version/class pin and wildcard rule | — | — | P | — | — | — | — | — |
 | Unknown root-leaf extension under G-E | F¶ | F¶ | F¶ | F¶ | F¶ | F¶ | F¶ | F¶ |
 
-`*` An obligation applies only when its signed declaration explicitly targets the
-canonical operation. `operation_ref` correlates evidence and receipts; it is not an
-obligation matcher and cannot make an otherwise unencodable declaration applicable.
-Existing connector-action encodings stay byte-identical. Non-action cells remain
-unencodable until the separate matcher wire and vectors are approved. Once
-explicitly encodable, absence of the required operation-bound receipt is a refusal.
+`*` Under mandate `draft.2`, an obligation applies only through the existing signed
+connector-action matcher. `operation_ref` correlates operation evidence and R2
+receipts; it is not itself a matcher. Non-action applicability is reserved for a
+closed mandate `draft.3` matcher and MUST NOT be inferred from current fields.
+Existing connector-action and v1 receipt bytes remain unchanged.
 
 `†` A private read that leaves no protocol artifact cannot be cold-replayed or
 metered by physics. A Bundle Ethos or config read API still checks the chain at
