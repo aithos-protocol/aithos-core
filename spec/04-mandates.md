@@ -1219,6 +1219,13 @@ declared historical profiles. A verifier MUST NOT synthesize an `operation_ref` 
 them. Commitment material under a historical, absent, or unknown profile is refused
 closed.
 
+Malformed canonical-operation projection material, an invalid authority,
+`operation_ref` form or commitment mismatch, replay, equivocation, or cross-view
+correlation failure returns `Error::InvalidOperation(String)`. A selected
+operation-facts or state-fact defect retains its more specific
+`Error::InvalidOperationFacts(String)` or `Error::InvalidStateFact(String)`
+variant. No failure path emits an accepted `operation_ref`.
+
 ## 4.6 Counter-signature and binding actions — the owner-approval obligation
 
 The approved connector manifest is the sole source of the canonical `binding`

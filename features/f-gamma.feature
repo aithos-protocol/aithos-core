@@ -608,6 +608,14 @@ Feature: The gamma log
       And no existing args_hash, Gamma identifier or edition hash is reinterpreted as that commitment
       And commitment material is refused under a historical or unknown protocol version, or without a version
 
+    @wip
+    Scenario: Invalid operation projection and correlation have one typed refusal
+      Given canonical-operation material with an invalid projection, authority, reference or cross-view correlation
+      When Core validates it before effect or during semantic replay
+      Then it is refused as InvalidOperation
+      And an invalid selected facts document keeps its specific facts error
+      And no accepted operation_ref is emitted
+
   Rule: Gamma v2 is a monotone operation-evidence profile
 
     @wip
