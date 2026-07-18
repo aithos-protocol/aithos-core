@@ -287,6 +287,104 @@ To verify grantee G may do `OP` on subject `DID` at time `T` from a presented ch
 Fail any ⇒ reject. Every step reads files (DID doc, certs, gamma — revocation state
 included, §06.5); none needs a live server.
 
+### 4.5.1 Canonical operation occurrence and commitment
+
+> **W1 protocol decision — human-validated on 2026-07-18.**
+
+A canonical-operation commitment is an independent protocol profile. It does not
+change a mandate profile, reinterpret a Gamma v1 entry, or derive an identifier
+from an existing Gamma id, `args_hash`, edition hash, or receipt.
+
+Its projection has exactly these top-level members:
+
+```jsonc
+{ "aithos-operation-core": "1.0.0-draft.1",
+  "occurrence": "op_<ULID>",
+  "subject": "did:aithos:…",
+  "at": "2026-07-18T12:00:00Z",
+  "history_heads": ["sha256:…"],
+  "authority": { … },
+  "operation": { … } }
+```
+
+`occurrence` is allocated before any native evidence is signed. Its ULID timestamp
+is ordering convenience only and conveys no authority or trusted time. Two
+otherwise identical effects with different occurrence anchors are distinct
+operations.
+
+Every `history_heads` member is `sha256:<64 lowercase hex>`. The array is empty
+when no prior Gamma head exists, carries one head for an ordinary operation, or
+two distinct heads sorted by ASCII bytes for a merge. Candidate entry hashes and
+the resulting Gamma head are outputs and never projection inputs.
+
+`authority` is a closed owner-or-grantee variant. The owner variant is exactly
+`{"actor":"owner"}`. The grantee variant commits the acting key, leaf mandate, the
+issuer-ordered chain of `{id, certificate_digest}`, and the applicable session
+fact. `operation` is a closed variant covering only:
+
+- a read or presentation, bound to its source edition/head, zone, and SID or request
+  digest;
+- an Ethos mutation, structural mutation, or vault-config operation, bound to its
+  exact verb, target and applicable source/destination plus before/after facts;
+- a connector action or inference, bound to connector, action, approved catalog,
+  `args_hash`, and every applicable budget, purpose, and usage fact;
+- a grant, revoke, or rotation, bound to its affected identifiers and certificate
+  commitments;
+- a publication, merge, or resolution, bound to height, predecessors or winner,
+  factual changeset commitment, and contained operation references.
+
+These are typed closed objects, never extension maps. Their nested member names,
+discriminants, optionality, absence encoding, digest inputs, and session encoding
+are not fixed by W1. No producer may emit a commitment and no independent vector
+may invent those bytes until that remaining wire table is human-validated.
+
+The public reference has exactly this shape:
+
+```jsonc
+"operation_ref": {
+  "aithos-operation-core": "1.0.0-draft.1",
+  "occurrence": "op_<ULID>",
+  "commitment": "sha256:<64 lowercase hex>"
+}
+```
+
+For a completed projection `P`:
+
+```text
+commitment =
+  "sha256:" ||
+  lowercase_hex(
+    SHA-256(
+      ASCII("aithos-core/v1/operation-commitment")
+      || 0x00
+      || RFC8785-JCS(P)
+    )
+  )
+```
+
+Every applicable append-time, Gamma, authorship, and edition view of one occurrence
+MUST carry the same `operation_ref`, and a verifier MUST independently reconstruct
+the projection from that view. A mismatched version, occurrence, commitment, native
+fact, or authority fact invalidates the view.
+
+Several native view types may evidence one occurrence without creating another
+consumption. Two distinct consuming Gamma entries reusing one occurrence or
+operation-bound receipt are instead a replay and the later candidate is rejected
+before admission or tally. Reusing an occurrence with a different commitment is
+equivocation and is invalid.
+
+The projection contains no private argument, body, credential, content key, or
+private key. It also contains no digest or signature of a carrier containing its
+own `operation_ref`, and no digest transitively dependent on that carrier. In
+particular, a publication projection cannot include its current manifest or edition
+hash. Predecessor hashes and independently defined factual state or changeset
+commitments are not self-references.
+
+Historical artifacts remain byte-identical and are verified solely under their
+declared historical profiles. A verifier MUST NOT synthesize an `operation_ref` for
+them. Commitment material under a historical, absent, or unknown profile is refused
+closed.
+
 ## 4.6 Counter-signature and binding actions — the owner-approval obligation
 
 The approved connector manifest is the sole source of the canonical `binding`
@@ -303,15 +401,20 @@ but a commitment needs me in the loop" is expressed.
 
 Both mandate shorthands desugar to the reserved obligation id **`co_sign`** —
 attestor = the owner content key, `verdict: "approve"`, `max_age` = Δ_cosign
-(normative default **5 minutes**). The receipt signs the full §4.12 payload
+(normative default **5 minutes**).
+
+The historical v1 receipt signs
 `{obligation: "co_sign", mandate_id, action, args_hash, verdict,
-presented_digest?, at}` — **one wire shape** (decided 2026-07-10): *implicit*
-lives in the shorthand declaration, never in the signed bytes. Every
-anti-replay property is §4.12's: one-shot (`args_hash`-bound), logged, and
-fresh-bound — valid only if `|entry.at − receipt.at| ≤ max_age`, so a stored
-"fresh" co-signature cannot be replayed later. Enforcement is **tier V** (§4.5
-step 7): a signed file artifact verified offline like any obligation, not handed to
-a runtime executor.
+presented_digest?, at}`. Its `args_hash`, mandate, action, and freshness bindings
+prevent transfer to different signed facts and bound later reuse, but do **not**
+make it one-shot by occurrence: v1 carries no occurrence identity. A second v1
+candidate with the same leaf, action, arguments, and still-fresh receipt cannot be
+rejected merely as receipt replay. Existing v1 bytes and verification semantics are
+never reinterpreted.
+
+A newly committed operation under the W1 profile instead uses the
+operation-bound receipt v2 of §4.12.1. Enforcement remains **tier V** (§4.5 step 7):
+the receipt is verified offline and is never delegated to a runtime executor.
 
 ## 4.7 Session binding
 
@@ -437,11 +540,18 @@ The optional bridge from X back to V: a provider-signed usage receipt.
 ```
 
 A profile with `require_attestation: true` rejects any citing entry without
-a receipt that verifies under the profile's `attestation_key`. The
-`args_hash` binding makes receipts single-use: a receipt never transfers to
-another action. Where receipts exist, tallies use the attested `tokens`,
-not the declaration. (This receipt *meters*; the *gating* receipts that share
-its crypto skeleton — guardrail, approval, counter_sign — are obligations, §4.12.)
+a receipt that verifies under the profile's `attestation_key`.
+
+For the historical v1 shape, `args_hash` prevents substitution of different
+arguments; it does not identify an occurrence and therefore does not make the
+receipt single-use. The same signed usage statement can verify more than one v1
+entry carrying the same hash, model, and usage facts, subject to every other
+applicable rule. Historical verification preserves that limitation.
+
+Newly committed operations use the operation-bound usage receipt v2 of §4.12.1.
+Where a receipt is valid, tallies use the attested `tokens`, not the declaration.
+(This receipt *meters*; gating receipts — guardrail, approval, and `counter_sign` —
+are obligations, §4.12.)
 
 ## 4.12 Obligations (the general gate)
 
@@ -455,13 +565,15 @@ An **obligation** attaches a discharge requirement to a permit: an in-scope acti
 may *consume* (append its `action` entry) only if it carries a valid **receipt**
 from a pinned attestor whose verdict satisfies the predicate.
 
-The signed v1 shape below targets connector actions. D3/D7 reserve the same
-fail-closed receipt semantics for an explicitly targeted mutation, grant, revoke,
-vault-config operation, or publication, but CB1 introduces no matcher or generalized
-receipt field for them. Until approved Gherkin and an independent CB2 vector freeze
-that encoding, a non-action operation cannot claim such an obligation discharged,
-and an implementation MUST NOT reinterpret the existing `action`/`args_hash` fields
-to manufacture support.
+The signed v1 shape below is historical and targets connector actions only. Its
+existing `action` and `args_hash` fields MUST NOT be reinterpreted as an occurrence
+or operation commitment.
+
+W1 supplies a common operation identity, but does not by itself define the signed
+obligation matcher that would make a declaration applicable to a mutation, grant,
+revoke, vault-config operation, or publication. Until that separate matcher wire is
+human-validated and independently vectored, those non-action operations cannot
+claim an obligation discharged merely because they carry an `operation_ref`.
 
 ```jsonc
 "obligations": [
@@ -485,20 +597,44 @@ The **receipt** rides in the action entry (`checks: [...]`, §07.4):
     "sig": "<ed25519 over JCS of {obligation, mandate_id, action, args_hash, verdict, presented_digest?, at}>" } ]
 ```
 
-**Verifier rule (tier V, offline).** For every `action` entry, for every obligation
-in the chain whose `applies_to` covers the entry's action, the entry MUST carry a
-`checks[]` receipt with matching `obligation`, `args_hash` equal to the entry's,
-`verdict` satisfying the predicate, `sig` verifying under a pinned `attestor`, and
-— if `max_age` is set — `|entry.at − receipt.at| ≤ max_age`. Any failure invalidates
-the entry. The signed payload `{obligation, mandate_id, action, args_hash, verdict,
-presented_digest?, at}` is a **superset** of the §4.6 `co_sign` payload: binding
-`args_hash` makes the receipt single-use, binding `mandate_id`+`action` blocks
-cross-mandate and cross-action replay. `mandate_id` is the **entry's
-`authorized_by`** — the leaf mandate acting (decided 2026-07-10) — so a receipt
-never transfers between sibling sub-mandates, even when the obligation is
-declared on a shared ancestor. When present, `presented_digest` sits inside
-the signed set, so the rendered-vs-executed (WYSIWYS) binding cannot be altered
-after the fact; comparing it to a re-render is an off-protocol audit step.
+**Historical v1 verifier rule (tier V, offline).** For every v1 `action` entry, for
+every obligation in the chain whose `applies_to` covers the entry's action, the
+entry MUST carry a `checks[]` receipt with matching `obligation`, `args_hash` equal
+to the entry's, `verdict` satisfying the predicate, `sig` verifying under a pinned
+`attestor`, and — if `max_age` is set —
+`|entry.at − receipt.at| ≤ max_age`. Any failure invalidates the entry.
+
+The signed payload
+`{obligation, mandate_id, action, args_hash, verdict, presented_digest?, at}`
+binds the leaf mandate, action, arguments, verdict, presentation, and freshness. It
+blocks cross-mandate, cross-action, altered-argument, and stale transfer, but it does
+not block an exact replay within the freshness window because v1 has no occurrence
+identity. `mandate_id` remains the entry's `authorized_by`, so the historical
+receipt never transfers between sibling sub-mandates. When present,
+`presented_digest` remains inside the signed set.
+
+### 4.12.1 Operation-bound receipts v2 (R1)
+
+> **R1 protocol decision — human-validated on 2026-07-18.**
+
+Every newly issued usage-attestation or obligation receipt for an operation under
+the W1 profile MUST sign that operation's exact `operation_ref`. The reference binds
+the receipt to one occurrence; every legacy fact retained by that receipt family
+continues to be signed and is cross-checked against the reconstructed operation.
+
+Copying one receipt across Gamma, authorship, and edition views of the same
+occurrence is evidence correlation, not another consumption. Reusing it in a second
+consuming Gamma entry is replay and is rejected before the entry changes accepted
+history or any tally.
+
+After transition to the operation-commitment profile, emitters MUST NOT issue a new
+v1 receipt and a new-profile candidate carrying only a v1 receipt fails closed.
+Historical v1 receipts remain valid only under their historical carrier/profile and
+are never rewritten, upgraded, or assigned a synthetic occurrence.
+
+The exact receipt-v2 discriminator, member placement, and signed payload ordering
+remain reserved with the closed nested wire table. This section authorizes no
+implementation-defined receipt bytes.
 
 **The attestor holds the logic; the protocol holds a signature.** `check` is opaque
 to the verifier — PII guardrail, policy engine, or a human tapping *approve* is
@@ -578,12 +714,12 @@ actor row below and never consumes these mandate constraints or counters.
 | Approved connector catalog version/class pin and wildcard rule | — | — | P | — | — | — | — | — |
 | Unknown root-leaf extension under G-E | F¶ | F¶ | F¶ | F¶ | F¶ | F¶ | F¶ | F¶ |
 
-`*` An obligation applies only when its signed declaration explicitly targets that
-canonical operation. Otherwise it is non-applicable. Existing connector-action
-encodings stay byte-identical. Non-action cells state the validated semantic
-contract but remain unencodable WIP until the CB2 matcher/receipt vector; they
-cannot be silently inferred from current fields. Once explicitly encodable, lack of
-the public receipt is a refusal, including on a delegated mutation or publication.
+`*` An obligation applies only when its signed declaration explicitly targets the
+canonical operation. `operation_ref` correlates evidence and receipts; it is not an
+obligation matcher and cannot make an otherwise unencodable declaration applicable.
+Existing connector-action encodings stay byte-identical. Non-action cells remain
+unencodable until the separate matcher wire and vectors are approved. Once
+explicitly encodable, absence of the required operation-bound receipt is a refusal.
 
 `†` A private read that leaves no protocol artifact cannot be cold-replayed or
 metered by physics. A Bundle Ethos or config read API still checks the chain at
@@ -599,11 +735,12 @@ protocol consumptions, not artifacts: Gamma evidence and an edition reference fo
 the same mutation count once, and an existing `kind:"merge"` entry plus its merge
 publication envelope count once when they express the same publisher decision. A
 resolution envelope and any canonical evidence for that same resolution likewise
-count once; no distinct resolution kind is implied. A
-manifest/changeset proof and any other canonical representation of the same logical
-publication authority are evidence for that unit, never additional units. The
-public correlation/proof representation is reserved for CB2 and MUST NOT be
-invented as a new Gamma kind.
+count once; no distinct resolution kind is implied. A manifest/changeset proof and
+any other canonical representation of the same logical publication authority are
+evidence for that unit, never additional units. The public correlation
+representation is `operation_ref` (§4.5.1). It correlates native evidence for one
+logical publication occurrence without creating a Gamma kind, changing historical
+tallies, or assigning names to the reserved meters.
 
 `‡` `max_children` counts direct children of the exact minting mandate only, and is
 checked before the grant becomes usable. It never counts all descendants.
