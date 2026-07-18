@@ -250,6 +250,58 @@ Feature: The gamma log
         | facts family different from operation kind |
 
     @wip
+    Scenario: K1.1-B fixes the operation-facts envelope and digest preimage
+      Given a complete operation-facts document F for one registered kind
+      When Core derives its facts reference
+      Then F has exactly aithos-operation-facts-core, kind and facts
+      And its profile equals facts_ref and its kind equals operation.kind
+      And facts_ref.digest is lowercase SHA-256 of "aithos-core/v1/operation-facts", NUL and RFC8785-JCS of F
+      And null, an extra member or a different selected family is refused
+
+    @wip
+    Scenario Outline: K1.1-B state presence has one exact closed shape
+      Given a logical operation state is "<state>"
+      When its K1.1-B state fact is projected
+      Then its exact top-level members are "<members>"
+      And state_ref is "<reference>"
+      And null or any extra member is refused
+
+      Examples:
+        | state   | members         | reference                                   |
+        | absent  | state           | forbidden                                   |
+        | present | state,state_ref | exact profile and lowercase SHA-256 digest |
+
+    @wip
+    Scenario: K1.1-B commits the exact protected current object set
+      Given one present logical state with affected canonical store objects
+      When its state-fact document S is encoded
+      Then S has exactly aithos-state-fact-core and a non-empty objects array
+      And every object has exactly key_commitment and byte_commitment
+      And the commitments use the state-key and state-bytes domains over the exact UTF-8 key and stored bytes
+      And objects are sorted by lowercase key_commitment with no duplicate key
+      And state_ref.digest is lowercase SHA-256 of "aithos-core/v1/state-fact", NUL and RFC8785-JCS of S
+
+    @wip
+    Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
+      Given a candidate state-fact document with "<defect>"
+      When Core validates it before operation commitment comparison
+      Then the state fact is refused
+      And no operation commitment or operation_ref is emitted
+      And no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact
+
+      Examples:
+        | defect                                  |
+        | unknown state-fact profile              |
+        | empty objects array                     |
+        | unsorted objects array                  |
+        | duplicate key commitment                |
+        | malformed or non-lowercase commitment   |
+        | missing affected object                 |
+        | unrelated extra object                  |
+        | extra object member                     |
+        | state digest mismatch                   |
+
+    @wip
     Scenario: Append-time and public evidence identify the same operation occurrence
       Given one fresh typed operation occurrence
       When its append-time, Gamma, authorship and edition views are projected

@@ -285,6 +285,14 @@ operation, Gamma entry, chain, roots, and edition without exposing a name, path,
 title, tag, body, folder relation, or key. A signed assertion without a proof tied to
 the prior state is insufficient.
 
+K1.1-B represents a present logical state by the exact protected object-set
+commitment of §4.5.1 and absence by the closed `{"state":"absent"}` variant. The
+state-fact document contains only domain-separated commitments to canonical store
+keys and exact stored bytes; it carries no clear target or store key and creates no
+new public sidecar. The later family-specific proof table MUST bind the opaque
+target to exactly that committed object set before any operation commitment can be
+produced.
+
 For a `self` folder delete or move, that opaque proof covers the exact set of
 affected commitments and the authority for each of them. Delete proves coverage and
 removal of every descendant commitment; move proves source edit authority,

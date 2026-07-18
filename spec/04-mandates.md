@@ -441,13 +441,120 @@ Actual `tokens`, `tokens_in`, and `tokens_out` remain post-effect facts: they MU
 NOT enter the pre-effect `action` or `inference` facts document or its digest and
 are bound afterward by the applicable usage receipt v2 of §4.12.1.
 
+> **K1.1-B facts and protected-state commitments — human-validated on
+> 2026-07-18.**
+
+The document selected by `facts_ref` is exactly this closed three-member object,
+where `facts` is the closed object selected by `kind`:
+
+```json
+{
+  "aithos-operation-facts-core": "1.0.0-draft.1",
+  "kind": "mutation",
+  "facts": {}
+}
+```
+
+The profile literal MUST equal the profile in the enclosing `facts_ref`, and `kind`
+MUST equal `operation.kind`. No member is optional or nullable, and no extra member
+is permitted. The exact members of each selected `facts` object remain independently
+gated by K1.2.
+
+For any byte string `x`, define the domain-separated SHA-256 commitment:
+
+```text
+C(domain, x) =
+  "sha256:" ||
+  lowercase_hex(
+    SHA-256(
+      ASCII(domain)
+      || 0x00
+      || x
+    )
+  )
+```
+
+If `F` is the complete operation-facts document above, its reference digest is
+exactly:
+
+```text
+facts_ref.digest =
+  C("aithos-core/v1/operation-facts", RFC8785-JCS(F))
+```
+
+A logical before or after state is one of exactly two closed variants. Absence has
+one member and no state document:
+
+```json
+{"state":"absent"}
+```
+
+Presence has exactly these two members:
+
+```json
+{
+  "state": "present",
+  "state_ref": {
+    "aithos-state-fact-core": "1.0.0-draft.1",
+    "digest": "sha256:<64 lowercase hex>"
+  }
+}
+```
+
+The nested `state_ref` has exactly the two members shown. The state-fact document
+it selects is exactly:
+
+```json
+{
+  "aithos-state-fact-core": "1.0.0-draft.1",
+  "objects": [
+    {
+      "key_commitment": "sha256:<64 lowercase hex>",
+      "byte_commitment": "sha256:<64 lowercase hex>"
+    }
+  ]
+}
+```
+
+For each affected canonical store object with exact UTF-8 store key `K` and exact
+stored bytes `B`:
+
+```text
+key_commitment  = C("aithos-core/v1/state-key", UTF8(K))
+byte_commitment = C("aithos-core/v1/state-bytes", B)
+```
+
+`objects` is non-empty, contains each affected current store key exactly once, and
+is sorted by ascending lexicographic order of the exact ASCII `key_commitment`
+string. A duplicate `key_commitment`, a missing or unrelated object, an empty array,
+an unsorted array, or an extra object member fails closed. Equal stored bytes under
+different keys MAY have equal `byte_commitment` values.
+
+If `S` is the complete state-fact document, the reference digest is exactly:
+
+```text
+state_ref.digest =
+  C("aithos-core/v1/state-fact", RFC8785-JCS(S))
+```
+
+The state-fact object carries commitments only: no clear store key, path, SID,
+vault record name, target, protected content, credential, DK, or private key. This
+gate defines a logical committed document and its reference, not a public sidecar
+path or a new disclosure rule. Only the references required by the applicable
+public carrier are public. The selected K1.2 family binds the operation target to
+the exact expected store keys; opaque `self` and vault evidence proves their
+correspondence without disclosing those keys.
+
 A1 fixes the complete `authority` member set, absence rules, digest input, and
 reconstruction equalities above. K1-B fixes the complete `operation` and
-`facts_ref` member sets, the kind registry, and the family split above. The complete
-facts-document member tables, digest preimage and domain, state reference,
-changeset, catalog, SC1, receipt, authorship, presentation, and carrier bytes remain
-reserved until their own independent tables are human-validated. No producer may
-invent those remaining bytes or emit a completed operation commitment before then.
+`facts_ref` member sets, the kind registry, and the family split above. K1.1-B fixes
+the operation-facts envelope and digest, both logical-state variants, the state-fact
+envelope and object-entry table, all four digest domains, and the state-object
+ordering and privacy rules. The selected-family `facts` member tables, exact
+target-to-store-key derivations, changeset, catalog, SC1, receipt, authorship,
+presentation, and carrier bytes remain reserved until their own independent tables
+are human-validated. No producer may invent those remaining bytes or emit a
+completed operation commitment before then.
 
 The public reference has exactly this shape:
 
