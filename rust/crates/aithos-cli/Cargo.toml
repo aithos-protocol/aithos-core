@@ -2,7 +2,10 @@
 name = "aithos-cli"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "aithos-core CLI (spec §09.1) — everything local, no network needed."
+publish = false
 
 [[bin]]
 name = "aithos-core"

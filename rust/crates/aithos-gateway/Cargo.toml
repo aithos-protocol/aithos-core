@@ -2,7 +2,10 @@
 name = "aithos-gateway"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Containerised runner gateway: sits between an agent and its dependencies, enforces the mandate, logs every act to the gamma, and holds the keys the agent never sees"
+publish = false
 
 [dependencies]
 # the trust engine, consumed as a library — only `core_bridge` (and its

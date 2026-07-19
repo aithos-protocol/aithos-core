@@ -10,8 +10,10 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2021"
+license = "BUSL-1.1"
+repository = "https://github.com/aithos-protocol/aithos-core"
 
 [workspace.dependencies]
 # crypto — audited, spec §00.3
@@ -84,8 +86,8 @@ aws-sdk-route53 = "1"
 instant-acme = { version = "0.7", default-features = false, features = ["hyper-rustls", "ring"] }
 
 # internal
-aithos-core = { path = "crates/aithos-core" }
-aithos-bundle = { path = "crates/aithos-bundle" }
+aithos-core = { version = "0.1.0-alpha.1", path = "crates/aithos-core" }
+aithos-bundle = { version = "0.1.0-alpha.1", path = "crates/aithos-bundle" }
 
 [profile.release]
 lto = true

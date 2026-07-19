@@ -23,7 +23,7 @@ dependencies = [
 
 [[package]]
 name = "aithos-bundle"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aithos-core",
  "blake3",
@@ -42,7 +42,7 @@ dependencies = [
 
 [[package]]
 name = "aithos-cli"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aithos-bundle",
  "aithos-core",
@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "aithos-core"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "blake3",
  "bs58",
@@ -78,7 +78,7 @@ dependencies = [
 
 [[package]]
 name = "aithos-gateway"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aithos-bundle",
  "aithos-core",
@@ -103,7 +103,7 @@ dependencies = [
 
 [[package]]
 name = "aithos-provider"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aithos-core",
  "assert_cmd",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "aithos-wasm"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aithos-core",
  "hex",

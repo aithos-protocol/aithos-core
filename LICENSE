@@ -1,0 +1,31 @@
+# Aithos Core licensing
+
+Copyright 2026 Innoestate Holdings.
+
+This repository is source-available. It is not distributed as Open Source
+software under the Open Source Definition.
+
+The following terms apply by path:
+
+- `rust/crates/aithos-core`, `rust/crates/aithos-bundle`,
+  `rust/crates/aithos-cli`, `rust/crates/aithos-wasm`, `features/`,
+  `docker/`, `.github/`, and `ui-mockup/` are licensed under the Business
+  Source License 1.1 with the Aithos Core Additional Use Grant found in
+  `rust/crates/aithos-core/LICENSE`.
+- `rust/crates/aithos-provider` and `rust/crates/aithos-gateway` are licensed
+  under the Business Source License 1.1 with the Aithos Service Additional
+  Use Grant found in `rust/crates/aithos-provider/LICENSE`.
+- `spec/`, `vectors/`, `docs/`, and Markdown documentation at the repository
+  root are licensed under Creative Commons Attribution 4.0 International. See
+  `LICENSE-DOCUMENTATION.md`.
+
+Where a file contains a more specific license notice, that notice controls.
+Third-party dependencies remain under their respective licenses.
+
+Commercial licenses for uses outside the applicable Additional Use Grant are
+available from:
+
+Innoestate Holdings
+6 boulevard Berthelot
+34000 Montpellier
+France

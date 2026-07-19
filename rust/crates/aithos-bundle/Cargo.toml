@@ -2,7 +2,12 @@
 name = "aithos-bundle"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Aithos Core bundle layout and storage — the only crate that touches I/O."
+readme = "README.md"
+keywords = ["aithos", "protocol", "bundle", "storage", "cryptography"]
+categories = ["authentication", "cryptography", "filesystem"]
 
 [dependencies]
 aithos-core.workspace = true

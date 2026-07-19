@@ -2,7 +2,10 @@
 name = "aithos-wasm"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Thin WASM bindings over aithos-core — surface only, no logic. Packaged locally as @aithos/core; publishing is a separate, explicit decision."
+publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]

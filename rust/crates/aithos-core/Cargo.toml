@@ -2,7 +2,12 @@
 name = "aithos-core"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Aithos Core protocol — pure logic: no I/O, no clock, no network."
+readme = "README.md"
+keywords = ["aithos", "protocol", "identity", "authorization", "cryptography"]
+categories = ["authentication", "cryptography", "data-structures"]
 
 [dependencies]
 blake3.workspace = true

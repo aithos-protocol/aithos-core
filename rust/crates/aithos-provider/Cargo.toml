@@ -2,7 +2,10 @@
 name = "aithos-provider"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Aithos provider services (piste P): the store, the relay and the witness — moves bytes and verifies signatures, never holds a client secret, never decides"
+publish = false
 
 [dependencies]
 # the trust engine, consumed as a library — the provider verifies with the

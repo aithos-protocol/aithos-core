@@ -3,6 +3,11 @@ node_modules/
 *.log
 dist/
 
+# local credentials — never commit registry, GitHub, npm, or cloud tokens
+*.env
+.*.env
+.npmrc
+
 # cargo build artifacts (any platform)
 rust/target*/
 rust/cargo-linux/
