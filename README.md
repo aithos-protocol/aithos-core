@@ -7,7 +7,7 @@ a trust party.
 
 > Status: pre-release. The current manifest issuance profile is
 > `aithos-core: 1.0.0-draft.2`; historical draft profiles remain verifiable.
-> Rust packages start at `0.1.0-alpha.1`.
+> The first Rust packages were published as `0.1.0-alpha.1` on 2026-07-19.
 
 ## Repository layout
 
@@ -66,16 +66,19 @@ packages.
 Implementation follows [`docs/EXECUTION-PLAN.md`](docs/EXECUTION-PLAN.md):
 vectors first, TDD/BDD, a living end-to-end scenario, and explicit gates.
 
-## Published package plan
+## Published packages
 
-| Artifact | First version | Registry status |
+| Artifact | Version | Registry status |
 |---|---:|---|
-| `aithos-core` | `0.1.0-alpha.1` | publish first to crates.io |
-| `aithos-bundle` | `0.1.0-alpha.1` | publish after `aithos-core` |
-| `aithos-cli` | — | not published yet |
-| `@aithos/core` (WASM) | — | not published yet |
+| [`aithos-core`](https://crates.io/crates/aithos-core) | `0.1.0-alpha.1` | published on crates.io |
+| [`aithos-bundle`](https://crates.io/crates/aithos-bundle) | `0.1.0-alpha.1` | published on crates.io |
+| `aithos-cli` | — | API alignment pending; not published |
+| `@aithos/core` (WASM) | — | Core reader binding alignment pending; not published |
 | `aithos-gateway` | — | service component; registry publishing disabled |
 | `aithos-provider` | — | service component; registry publishing disabled |
+
+The matching source release is
+[`v0.1.0-alpha.1`](https://github.com/aithos-protocol/aithos-core/releases/tag/v0.1.0-alpha.1).
 
 ## License
 
