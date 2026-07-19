@@ -1,0 +1,25 @@
+# Rust half of the p7/p8 vector generator (piste P, gate contrat P2).
+#
+# DOCTRINE: this helper re-invents NO publication cryptography. It calls the
+# aithos-bundle keyless façade (assemble_draft2_candidate / export_keyless /
+# verify_for_cas) exactly as a client would, and emits the resulting public
+# packages as JSON for gen-p7.py / gen-p8.py to wrap into wire cases (the
+# A.2 envelopes and the CAS states stay Python-signed, like p1..p6).
+#
+# Standalone on purpose ([workspace] below): the rust/ workspace and its
+# Cargo.lock are NOT touched by this tool.
+[package]
+name = "gen-p7-bundle"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+aithos-bundle = { path = "../../rust/crates/aithos-bundle" }
+aithos-core = { path = "../../rust/crates/aithos-core" }
+serde_json = "1"
+hex = "0.4"
+ed25519-dalek = "2"
+sha2 = "0.10"
