@@ -1,4 +1,4 @@
-@wip @cold
+@cold
 Feature: Cold roundtrip — a virgin store ingests and cold-verifies a published edition
   # INFRA-PROVIDER annexe A + the aithos-bundle keyless façade
   # (publication.rs): import_keyless / cold_verify / cold_verify_for_cas.
@@ -24,20 +24,20 @@ Feature: Cold roundtrip — a virgin store ingests and cold-verifies a published
   # logical commit point, and refuses anything else.
   # ============================================================
 
-  @import
+  @wip @import
   Scenario: A keyless package installs into a fresh empty store in one transaction
     Given a fresh empty store
     When the package is imported into the store
     Then the request is accepted
     And every pinned object of the package is present in the store
 
-  @import @fail-closed
+  @wip @import @fail-closed
   Scenario: import_keyless refuses a store that is not already empty
     Given a store that already holds one object
     When the package is imported into the store
     Then import is refused because the store is not empty
 
-  @import @keyless
+  @wip @import @keyless
   Scenario: The exported package carries no private material
     When the package is inspected for forbidden shapes
     # reject_private_shape: no seed, private_key, secret_key, owner_keys, dk,
@@ -49,7 +49,7 @@ Feature: Cold roundtrip — a virgin store ingests and cold-verifies a published
   # into a SECOND virgin store, cold-verify owner and grantee from bytes alone.
   # ============================================================
 
-  @e2e
+  @wip @e2e
   Scenario: A published edition survives a restart and cold-verifies in a virgin store
     Given a fresh empty store served over HTTP by the provider
     And the package edition is published to the provider under the CAS
@@ -59,7 +59,7 @@ Feature: Cold roundtrip — a virgin store ingests and cold-verifies a published
     And the second store cold-verifies the grantee sub-tree
     And the cold CAS facts equal the published manifest and gamma heads
 
-  @e2e @reads
+  @wip @e2e @reads
   Scenario: The owner and the grantee each read their covered objects from the provider
     Given a fresh empty store served over HTTP by the provider
     And the package edition is published to the provider under the CAS
@@ -73,19 +73,19 @@ Feature: Cold roundtrip — a virgin store ingests and cold-verifies a published
   # only because the bytes reproduce the pinned hashes.
   # ============================================================
 
-  @e2e @fail-closed
+  @wip @e2e @fail-closed
   Scenario: A substituted object fails cold verification
     Given a second virgin store downloaded from the provider
     When one downloaded object is substituted for different bytes
     Then cold verification fails closed
 
-  @e2e @fail-closed
+  @wip @e2e @fail-closed
   Scenario: A missing pinned object fails cold verification
     Given a second virgin store downloaded from the provider
     When one pinned object is dropped from the download
     Then cold verification fails closed
 
-  @e2e @fail-closed
+  @wip @e2e @fail-closed
   Scenario: A store whose manifest is not the edition tip fails cold verification
     Given a second virgin store downloaded from the provider
     When the manifest.json no longer equals the edition history tip

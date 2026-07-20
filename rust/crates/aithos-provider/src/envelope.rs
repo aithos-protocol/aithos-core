@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use crate::control::ControlPlane;
 use crate::nonces::{NonceStore, Reservation};
 use crate::objects::ObjectStore;
-use crate::pathmap::{anonymous_covers, DataTarget, TargetKind};
+use crate::pathmap::{anonymous_covers, DataTarget, ObjectPath, TargetKind};
 use crate::time::parse_rfc3339z_ms;
 
 /// Anti-abuse bound of annexe A.8: the envelope header value is ≤ 8 KiB.
@@ -150,13 +150,20 @@ pub struct EnvelopeSignature {
     pub value: String,
 }
 
-/// Who the envelope proved. P2 adds `Mandated { chain, leaf }`.
+/// Who the envelope proved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Principal {
     /// No envelope, on an A2-exception GET.
     Anonymous,
     /// The DID's owner, under `#root` or `#content`.
     Owner,
+    /// A verified mandate chain (#7–#10 all green): the leaf signed the
+    /// envelope, the chain verified at `at`, revocation cleared at
+    /// `now_serveur`, and the path-map covered the request. Carries the
+    /// verified chain (root first, leaf last — the stored certs the ids
+    /// named): the A.4 deposit checks compare it to the artifact's own
+    /// displayed authority (§02.6.1 — one actor, one chain).
+    Mandated(Vec<aithos_core::mandate::Mandate>),
 }
 
 /// The raw request facts the envelope binds (A.2 #3/#4), byte-exact as
@@ -173,12 +180,18 @@ pub struct RequestFacts<'a> {
 }
 
 /// Checks #2–#10 of annexe A.2, in normative order, fail-closed.
+/// `heads` names the appended gamma segments the #9 revocation scan
+/// merges with the `did.json`'s own `revocations` pointer (étape 4 —
+/// POST `/gamma` appends live in `gamma/<YYYY-MM>.jsonl`; the
+/// pointer-vs-segments tension is arbitrage ③ of the gate).
+#[allow(clippy::too_many_arguments)] // the normative order names its seams
 pub async fn verify(
     header: Option<&str>,
     facts: &RequestFacts<'_>,
     route: &DataTarget,
     control: &ControlPlane,
     objects: &dyn ObjectStore,
+    heads: &dyn crate::heads::HeadsTable,
     nonces: &dyn NonceStore,
     now_ms: i64,
 ) -> Result<Principal, Refusal> {
@@ -239,23 +252,58 @@ pub async fn verify(
         return Err(Refusal::DidNotBound);
     }
     let owner_fragment = matches!(envelope.key.as_str(), "#root" | "#content");
+    let mut chain: Vec<aithos_core::mandate::Mandate> = Vec::new();
+    let mut chain_raws: Vec<Vec<u8>> = Vec::new();
     let verifying_key = if owner_fragment {
-        let doc = objects
-            .get(&route.tenant, &route.did, "did.json")
-            .await
-            .ok_or(Refusal::ChainInvalid)?;
-        let doc: DidDocument = serde_json::from_slice(&doc).map_err(|_| Refusal::ChainInvalid)?;
-        let mb = if envelope.key == "#root" {
-            &doc.keys.root
-        } else {
-            &doc.keys.content
-        };
-        decode_key(mb)?
+        match objects.get(&route.tenant, &route.did, "did.json").await {
+            Some(doc) => {
+                let doc: DidDocument =
+                    serde_json::from_slice(&doc).map_err(|_| Refusal::ChainInvalid)?;
+                let mb = if envelope.key == "#root" {
+                    &doc.keys.root
+                } else {
+                    &doc.keys.content
+                };
+                decode_key(mb)?
+            }
+            // The A.4 GENESIS exception (étape 5): the first `did.json`
+            // of a bound DID resolves `#root` against the DEPOSITED
+            // document itself — the enrollment (#1/#7 binding) always
+            // precedes, so this is never an open door: only a PUT of
+            // `did.json` under `#root`, only while nothing is stored.
+            None if envelope.key == "#root"
+                && facts.method == "PUT"
+                && matches!(route.kind, TargetKind::Object(ObjectPath::DidJson)) =>
+            {
+                let doc: DidDocument =
+                    serde_json::from_slice(facts.body).map_err(|_| Refusal::ChainInvalid)?;
+                decode_key(&doc.keys.root)?
+            }
+            None => return Err(Refusal::ChainInvalid),
+        }
     } else {
-        // Multibase leaf key: a chain must be presented (empty ⇒ refusal);
-        // the `feuille.grantee.pubkey == key` check needs the certs and
-        // lands with the P2 chain machinery.
+        // Multibase leaf key (A.2 #7): a chain must be presented, its ids
+        // must be grammar-clean, its certs must all be STORED artifacts
+        // (`certs/<id>.json`, §04.9 world-readable), and the envelope key
+        // must be the leaf `grantee.pubkey`. Any gap is a chain fault.
         if envelope.mandate.is_empty() {
+            return Err(Refusal::ChainInvalid);
+        }
+        for id in &envelope.mandate {
+            if !crate::pathmap::mandate_id_is_valid(id) {
+                return Err(Refusal::ChainInvalid);
+            }
+            let bytes = objects
+                .get(&route.tenant, &route.did, &format!("certs/{id}.json"))
+                .await
+                .ok_or(Refusal::ChainInvalid)?;
+            let mandate: aithos_core::mandate::Mandate =
+                serde_json::from_slice(&bytes).map_err(|_| Refusal::ChainInvalid)?;
+            chain.push(mandate);
+            chain_raws.push(bytes);
+        }
+        let leaf = chain.last().expect("chain checked non-empty");
+        if leaf.grantee.pubkey != envelope.key {
             return Err(Refusal::ChainInvalid);
         }
         decode_key(&envelope.key)?
@@ -265,16 +313,94 @@ pub async fn verify(
     // `signature.value = ""` (the shared §01.4 convention).
     verify_envelope_signature(&envelope, &verifying_key)?;
 
-    // #9 — the chain. P1 has no `verify_chain`: a mandated envelope fails
-    // closed here, it is NEVER accepted on an unverified authority. P2
-    // replaces this arm with §04.5 steps 1–6 + revocation at now.
+    // #9 — the chain (mandated only): §04.5 steps 1–6 delegated to core
+    // for the typed profiles (link signatures, subject == <did>, windows
+    // at `at`, attenuation §05.3), the A.4-literal composed path for a
+    // homogeneous draft.3 chain ([`crate::artifacts::verify_chain_composed`]
+    // — the arbitrage note lives there) — then revocation evaluated at
+    // `now_serveur` on the STORED logs (the did.json's `revocations`
+    // pointer UNION the appended month segments).
     if !owner_fragment {
-        return Err(Refusal::ChainInvalid);
+        let doc = objects
+            .get(&route.tenant, &route.did, "did.json")
+            .await
+            .ok_or(Refusal::ChainInvalid)?;
+        let did_doc: DidDocument =
+            serde_json::from_slice(&doc).map_err(|_| Refusal::ChainInvalid)?;
+        crate::artifacts::verify_chain_composed(&chain, &chain_raws, &did_doc, &envelope.at)
+            .map_err(|()| Refusal::ChainInvalid)?;
+        let revocations =
+            stored_revocations(objects, heads, &route.tenant, &route.did, &did_doc).await?;
+        aithos_core::revocation::chain_revoked_at(
+            &chain,
+            &revocations,
+            &crate::time::render_rfc3339z(now_ms),
+        )
+        .map_err(|_| Refusal::ChainRevoked)?;
     }
 
-    // #10 — path-map. The owner (`#root`/`#content`) covers everything on
-    // their own DID (annexe A.3); mandated perimeters arrive with P2.
-    Ok(Principal::Owner)
+    // #10 — path-map (annexe A.3, anti-abuse, never the authority). The
+    // owner covers everything on their own DID; a mandated request is
+    // served only where the LEAF perimeter's A.3 row reaches (attenuation
+    // was core's #9 concern: the leaf is already ⊆ its ancestors). A
+    // draft.3 (K1-C) leaf writes its perimeter in the carrier grammar the
+    // typed parser does not speak: only the any-chain rows of A.3 can
+    // serve it (deny stays the default; nothing is interpreted).
+    if owner_fragment {
+        return Ok(Principal::Owner);
+    }
+    let leaf = chain.last().expect("chain checked non-empty");
+    let perimeter = match leaf.parsed_perimeter() {
+        Ok(perimeter) => perimeter,
+        Err(_) if leaf.version == aithos_core::mandate::MANDATE_VERSION_DRAFT3 => Vec::new(),
+        Err(_) => return Err(Refusal::ChainInvalid),
+    };
+    if crate::pathmap::mandated_covers(&perimeter, &route.kind, facts.method) {
+        Ok(Principal::Mandated(chain))
+    } else {
+        Err(Refusal::NotCovered)
+    }
+}
+
+/// The active revocation set read from the STORED log: the key the
+/// did.json itself names (`revocations`), UNION every month segment the
+/// heads table saw an append land in (étape 4 — a revoke accepted through
+/// POST `/gamma` bites here without waiting for any pointer rewrite; the
+/// pointer-vs-segments tension stays arbitrage ③, resolved by redline,
+/// never here). Fail-closed asymmetry: an ABSENT log is a provable empty
+/// state (nothing was ever revoked — accepted); an UNPARSEABLE log cannot
+/// prove non-revocation and refuses. Entry signatures were verified at
+/// deposit (A.4); anti-rollback of the log is the witness's domain
+/// (annexe C), not this check's.
+async fn stored_revocations(
+    objects: &dyn ObjectStore,
+    heads: &dyn crate::heads::HeadsTable,
+    tenant: &str,
+    did: &str,
+    did_doc: &DidDocument,
+) -> Result<Vec<aithos_core::revocation::Revocation>, Refusal> {
+    let mut entries = Vec::new();
+    let mut logs = vec![did_doc.revocations.clone()];
+    if let Some(record) = heads.read(tenant, did).await {
+        for month in record.gamma_segments {
+            let key = format!("gamma/{month}.jsonl");
+            if key != did_doc.revocations {
+                logs.push(key);
+            }
+        }
+    }
+    for key in logs {
+        let Some(bytes) = objects.get(tenant, did, &key).await else {
+            continue;
+        };
+        let text = core::str::from_utf8(&bytes).map_err(|_| Refusal::ChainInvalid)?;
+        for line in text.lines().filter(|line| !line.is_empty()) {
+            let entry: aithos_core::gamma::Entry =
+                serde_json::from_str(line).map_err(|_| Refusal::ChainInvalid)?;
+            entries.push(entry);
+        }
+    }
+    Ok(aithos_core::revocation::revocations(&entries))
 }
 
 /// The #2 form block, shared verbatim by the data plane (A.2) and the

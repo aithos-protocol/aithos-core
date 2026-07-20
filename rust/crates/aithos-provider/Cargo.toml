@@ -11,12 +11,16 @@ publish = false
 # the trust engine, consumed as a library — the provider verifies with the
 # same primitives the clients sign with (aithos-core stays pure: no I/O)
 aithos-core = { workspace = true }
+# the publication layout façade (étape 4): Manifest::verify_form /
+# verify_signature / verify_delegate_signature composed at the A.4 deposit
+aithos-bundle = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_jcs = { workspace = true }
 thiserror = { workspace = true }
 hex = { workspace = true }
+sha2 = { workspace = true }
 blake3 = { workspace = true }
 ed25519-dalek = { workspace = true }
 base64 = { workspace = true }

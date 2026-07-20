@@ -20,7 +20,7 @@
 //! path, a body excerpt or an envelope. One log line per data request,
 //! through [`crate::redact`] only.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use axum::body::Body;
@@ -30,9 +30,11 @@ use axum::routing::get;
 use axum::Router;
 
 use crate::acme::{self, AcmeState};
+use crate::artifacts::{self, DepositRefusal};
 use crate::control::{ControlPlane, TenantState};
 use crate::dns::DnsTxt;
 use crate::envelope::{self, Principal, Refusal, RequestFacts};
+use crate::heads::HeadsTable;
 use crate::nonces::NonceStore;
 use crate::objects::ObjectStore;
 use crate::pathmap::{self, DataTarget, ObjectPath, TargetKind};
@@ -43,11 +45,36 @@ use crate::STORE_WIRE_VERSION;
 /// Anti-abuse default of annexe A.8: object ≤ 32 MiB.
 pub const MAX_OBJECT_BYTES: usize = 32 * 1024 * 1024;
 
+/// Per-`(tenant, did)` deposit serialization for the in-process backends:
+/// the CAS of the heads table stays the contract's serialization point
+/// (A.5); this lock only prevents one process from interleaving the
+/// segment read-append-write around it. The DynamoDB/S3 backends (étape
+/// 6) rely on the conditional write alone, behind the same seams.
+type LockMap = std::collections::HashMap<(String, String), Arc<tokio::sync::Mutex<()>>>;
+
+#[derive(Default)]
+pub struct DepositLocks(Mutex<LockMap>);
+
+impl DepositLocks {
+    fn of(&self, tenant: &str, did: &str) -> Arc<tokio::sync::Mutex<()>> {
+        self.0
+            .lock()
+            .expect("deposit locks poisoned")
+            .entry((tenant.to_owned(), did.to_owned()))
+            .or_default()
+            .clone()
+    }
+}
+
 /// Everything the handlers need. All trust decisions flow through the
 /// injected seams — the surface itself holds no policy and no secret.
 pub struct AppState {
     pub control: ControlPlane,
     pub objects: Arc<dyn ObjectStore>,
+    /// The A.5 heads table — the CAS seam (memory now, DynamoDB étape 6).
+    pub heads: Arc<dyn HeadsTable>,
+    /// In-process deposit serialization (see [`DepositLocks`]).
+    pub deposit_locks: DepositLocks,
     pub nonces: Arc<dyn NonceStore>,
     /// The DNS TXT seam of the B.5 surface (Route 53 in the task, memory
     /// in tests, disabled by default — every effect then refuses 503).
@@ -221,6 +248,7 @@ async fn decide(
         &target,
         &state.control,
         state.objects.as_ref(),
+        state.heads.as_ref(),
         state.nonces.as_ref(),
         now_ms,
     )
@@ -230,25 +258,187 @@ async fn decide(
         Err(refusal) => return refused(Some(target), refusal, req_bytes),
     };
 
+    // The A.5 CAS header, raw. Its closed grammar (`none` |
+    // `sha256:<64hex>`) is the deposit's concern, not the router's.
+    let if_head = parts
+        .headers
+        .get("if-head")
+        .and_then(|value| value.to_str().ok());
+
     // Dispatch.
     let (response, resp_bytes) = match (&target.kind, parts.method.as_str()) {
         (TargetKind::Object(object), "GET") => serve_object(state, &target, object, now_ms).await,
-        (TargetKind::Object(object), "PUT") => {
-            // Defensive fail-closed: only the owner writes in P1. The
-            // anonymous principal cannot reach here (a PUT without an
-            // envelope died at #2), but the refusal stays explicit.
-            if principal != Principal::Owner {
-                refuse(Refusal::NotCovered, now_ms)
-            } else {
+        // Publish (A.4/A.5): CAS mandatory, deposit verified by
+        // composition — under the in-process deposit lock.
+        (TargetKind::Object(ObjectPath::Manifest), "PUT") => match &principal {
+            Principal::Anonymous => refuse(Refusal::NotCovered, now_ms),
+            Principal::Owner | Principal::Mandated(_) => {
+                let chain = match &principal {
+                    Principal::Mandated(chain) => Some(chain.as_slice()),
+                    _ => None,
+                };
+                let lock = state.deposit_locks.of(&target.tenant, &target.did);
+                let _guard = lock.lock().await;
+                match artifacts::deposit_manifest(
+                    state.objects.as_ref(),
+                    state.heads.as_ref(),
+                    &target.tenant,
+                    &target.did,
+                    chain,
+                    if_head,
+                    &body,
+                )
+                .await
+                {
+                    Ok(accepted) => accepted_json(serde_json::json!({
+                        "head": accepted.head,
+                        "height": accepted.height,
+                    })),
+                    Err(refusal) => refuse_deposit(refusal, now_ms),
+                }
+            }
+        },
+        // Cert deposit (A.4): id == filename, subject == did, chain
+        // resolved from the stored certs, verified at now_serveur.
+        (TargetKind::Object(ObjectPath::Cert(id)), "PUT") => match &principal {
+            Principal::Anonymous => refuse(Refusal::NotCovered, now_ms),
+            Principal::Owner | Principal::Mandated(_) => {
+                match artifacts::deposit_cert(
+                    state.objects.as_ref(),
+                    &target.tenant,
+                    &target.did,
+                    id,
+                    &render_rfc3339z(now_ms),
+                    &body,
+                )
+                .await
+                {
+                    Ok(()) => no_content(),
+                    Err(refusal) => refuse_deposit(refusal, now_ms),
+                }
+            }
+        },
+        // did.json deposit (A.4, étape 5): genesis under the deposited
+        // root key (the #7 exception already resolved it), replacement
+        // under the stored succession key.
+        (TargetKind::Object(ObjectPath::DidJson), "PUT") => match &principal {
+            Principal::Anonymous => refuse(Refusal::NotCovered, now_ms),
+            Principal::Owner | Principal::Mandated(_) => {
+                let lock = state.deposit_locks.of(&target.tenant, &target.did);
+                let _guard = lock.lock().await;
+                match artifacts::deposit_did(
+                    state.objects.as_ref(),
+                    &target.tenant,
+                    &target.did,
+                    &body,
+                )
+                .await
+                {
+                    Ok(()) => no_content(),
+                    Err(refusal) => refuse_deposit(refusal, now_ms),
+                }
+            }
+        },
+        // Segment replica (A.4/A.5, mode A, étape 5): byte-exact prefix,
+        // per-entry verification, segment-head CAS — under the lock.
+        (TargetKind::Object(ObjectPath::GammaSegment(month)), "PUT") => match &principal {
+            Principal::Anonymous => refuse(Refusal::NotCovered, now_ms),
+            Principal::Owner | Principal::Mandated(_) => {
+                let lock = state.deposit_locks.of(&target.tenant, &target.did);
+                let _guard = lock.lock().await;
+                match artifacts::deposit_replica(
+                    state.objects.as_ref(),
+                    state.heads.as_ref(),
+                    &target.tenant,
+                    &target.did,
+                    month,
+                    if_head,
+                    &body,
+                )
+                .await
+                {
+                    Ok(accepted) => accepted_json(serde_json::json!({
+                        "head": accepted.head,
+                    })),
+                    Err(refusal) => refuse_deposit(refusal, now_ms),
+                }
+            }
+        },
+        // K1-C sidecars (redline gate 5): light form + content addressing.
+        (TargetKind::Object(ObjectPath::Changeset(hash)), "PUT")
+        | (TargetKind::Object(ObjectPath::Evidence(hash)), "PUT") => match &principal {
+            Principal::Anonymous => refuse(Refusal::NotCovered, now_ms),
+            Principal::Owner | Principal::Mandated(_) => {
+                let kind = if matches!(target.kind, TargetKind::Object(ObjectPath::Changeset(_))) {
+                    artifacts::SidecarKind::Changeset
+                } else {
+                    artifacts::SidecarKind::Evidence
+                };
+                match artifacts::deposit_sidecar(
+                    state.objects.as_ref(),
+                    &target.tenant,
+                    &target.did,
+                    kind,
+                    hash,
+                    &body,
+                )
+                .await
+                {
+                    Ok(()) => no_content(),
+                    Err(refusal) => refuse_deposit(refusal, now_ms),
+                }
+            }
+        },
+        // The edition slot has NO write line, owner included (redline
+        // gate 5): in the grammar (not path_invalid), never client-written.
+        (TargetKind::Object(ObjectPath::ManifestSlot(_)), "PUT") => {
+            refuse(Refusal::NotCovered, now_ms)
+        }
+        (TargetKind::Object(object), "PUT") => match principal {
+            // Owner and covered mandated writes share the same A.4
+            // light-form deposit; #10 already gated the mandated rows
+            // (pass L).
+            Principal::Owner | Principal::Mandated(_) => {
                 store_object(state, &target, object, body.to_vec(), now_ms).await
             }
+            // Anonymous cannot reach here (a PUT without an envelope died
+            // at #2); the refusal stays explicit.
+            Principal::Anonymous => refuse(Refusal::NotCovered, now_ms),
+        },
+        // Gamma append (A.4/A.5): one entry, CAS mandatory, entry
+        // verification delegated to core — under the deposit lock.
+        (TargetKind::Gamma, "POST") => match &principal {
+            Principal::Anonymous => refuse(Refusal::NotCovered, now_ms),
+            Principal::Owner | Principal::Mandated(_) => {
+                let lock = state.deposit_locks.of(&target.tenant, &target.did);
+                let _guard = lock.lock().await;
+                match artifacts::deposit_gamma(
+                    state.objects.as_ref(),
+                    state.heads.as_ref(),
+                    &target.tenant,
+                    &target.did,
+                    if_head,
+                    &body,
+                )
+                .await
+                {
+                    Ok(accepted) => accepted_json(serde_json::json!({
+                        "head": accepted.head,
+                    })),
+                    Err(refusal) => refuse_deposit(refusal, now_ms),
+                }
+            }
+        },
+        // The read surface (A.3, étape 5).
+        (TargetKind::Heads, "GET") => serve_heads(state, &target).await,
+        (TargetKind::List, "GET") => {
+            serve_list(state, &target, &target_raw, &principal, now_ms).await
         }
+        (TargetKind::Batch, "POST") => serve_batch(state, &target, &principal, &body, now_ms).await,
+        (TargetKind::Sync, "POST") => serve_sync(state, &target, &principal, &body, now_ms).await,
         // A verb the A.3 table does not define on this target: the
         // path-map's default deny.
-        (TargetKind::Object(_), _) => refuse(Refusal::NotCovered, now_ms),
-        // Grammar-valid routes the P1 skeleton does not carry: heads,
-        // batch, gamma append, sync, list — wired for real in P2.
-        _ => refuse(Refusal::NotImplemented, now_ms),
+        _ => refuse(Refusal::NotCovered, now_ms),
     };
     Outcome::of_target(Some(target), verb, response, req_bytes, resp_bytes)
 }
@@ -373,6 +563,22 @@ async fn store_object(
             serde_json::from_slice::<serde_json::Value>(&bytes).is_ok()
         }
         ObjectPath::Public(segs) | ObjectPath::X(_, segs) => json_where_json(segs),
+        // K1-C aliases (redline gate 5): same light form as their `e/**`
+        // equivalents — the `.md` section is opaque, the JSON carriers
+        // must parse.
+        ObjectPath::PublicSectionAlias(_) => true,
+        ObjectPath::CircleBlobAlias(_)
+        | ObjectPath::IndicesPublic
+        | ObjectPath::RootsPublic
+        | ObjectPath::VaultCatalogPins => {
+            serde_json::from_slice::<serde_json::Value>(&bytes).is_ok()
+        }
+        // Dispatched before this function (their own deposits / the
+        // no-write-line slot); kept refusing here so nothing can drift
+        // into an unverified store.
+        ObjectPath::ManifestSlot(_) | ObjectPath::Changeset(_) | ObjectPath::Evidence(_) => {
+            return refuse(Refusal::NotCovered, now_ms)
+        }
     };
     if !acceptable {
         return refuse(Refusal::ArtifactInvalid, now_ms);
@@ -388,11 +594,350 @@ async fn store_object(
     (response, 0)
 }
 
+// ------------------------------------------------- the read surface (A.3)
+
+/// A.8 bounds of the collection routes.
+const MAX_BATCH_PATHS: usize = 256;
+const MAX_LIST_PAGE: u64 = 1000;
+const MAX_PACK_BYTES: usize = 32 * 1024 * 1024;
+
+/// Can this principal READ this object? The same `covers()` rows as a
+/// direct GET — the coarse filter of the collection routes (a shorter
+/// answer, never a different authority; §3.1).
+fn principal_reads(principal: &Principal, object: &ObjectPath) -> bool {
+    match principal {
+        Principal::Owner => true,
+        Principal::Anonymous => pathmap::anonymous_covers(object),
+        Principal::Mandated(chain) => {
+            let leaf = chain.last().expect("a mandated chain is non-empty");
+            // Draft.3 (K1-C) leaf parses no typed perimeter: only the
+            // any-chain rows serve (the same fallback as the envelope's
+            // #10) — an empty perimeter by default.
+            let perimeter = leaf.parsed_perimeter().unwrap_or_default();
+            pathmap::mandated_covers(&perimeter, &TargetKind::Object(object.clone()), "GET")
+        }
+    }
+}
+
+/// GET `/heads` — the two hot heads, exactly the values the accepts
+/// served (A.5): `{"height", "manifest": "sha256:…"|null, "gamma":
+/// "sha256:…"|null, "segment": "YYYY-MM"|null}`.
+async fn serve_heads(state: &AppState, target: &DataTarget) -> (Response<Body>, usize) {
+    let record = state
+        .heads
+        .read(&target.tenant, &target.did)
+        .await
+        .unwrap_or_default();
+    let null_if_empty = |value: String| {
+        if value.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::String(value)
+        }
+    };
+    accepted_json(serde_json::json!({
+        "height": record.height,
+        "manifest": null_if_empty(if record.manifest_chain_hash.is_empty() {
+            String::new()
+        } else {
+            format!("sha256:{}", record.manifest_chain_hash)
+        }),
+        "gamma": null_if_empty(record.gamma_head),
+        "segment": null_if_empty(record.gamma_segment),
+    }))
+}
+
+/// GET `?list=<prefix>[&after=<chemin>][&limit=<n>]` — the stored paths
+/// under the prefix, FILTERED to the covered perimeter (coarse: the same
+/// `covers()` rows as a direct GET — a shorter 200, never an error),
+/// lexicographic, paginated. `limit` above the A.8 page bound refuses
+/// `413`, never a silent clamp.
+async fn serve_list(
+    state: &AppState,
+    target: &DataTarget,
+    target_raw: &str,
+    principal: &Principal,
+    now_ms: i64,
+) -> (Response<Body>, usize) {
+    let Some(query) = target_raw
+        .split_once('?')
+        .and_then(|(_, q)| pathmap::parse_list_query(q))
+    else {
+        return refuse(Refusal::PathInvalid, now_ms);
+    };
+    let limit = query.limit.unwrap_or(MAX_LIST_PAGE);
+    if limit == 0 || limit > MAX_LIST_PAGE {
+        return refuse(Refusal::PayloadTooLarge, now_ms);
+    }
+    let all = state.objects.list(&target.tenant, &target.did).await;
+    let visible: Vec<String> = all
+        .into_iter()
+        .filter(|chemin| chemin.starts_with(&query.prefix))
+        .filter(|chemin| {
+            query
+                .after
+                .as_deref()
+                .is_none_or(|after| chemin.as_str() > after)
+        })
+        .filter(|chemin| {
+            // Only grammar-parseable, covered paths are ever named — an
+            // out-of-grammar stored key (impossible by construction) or
+            // an uncovered one is silently absent, never an error.
+            pathmap::parse_chemin_public(chemin)
+                .is_some_and(|object| principal_reads(principal, &object))
+        })
+        .collect();
+    let page: Vec<&String> = visible.iter().take(limit as usize).collect();
+    let truncated = visible.len() > page.len();
+    accepted_json(serde_json::json!({
+        "paths": page,
+        "truncated": truncated,
+    }))
+}
+
+/// POST `/batch` — body `{"paths": […]}` (≤ 256), one multipart part per
+/// path IN REQUEST ORDER: `Content-Location` + `X-Aithos-Status:
+/// 200|403|404`, body only on 200 (A.3/A.8).
+async fn serve_batch(
+    state: &AppState,
+    target: &DataTarget,
+    principal: &Principal,
+    body: &[u8],
+    now_ms: i64,
+) -> (Response<Body>, usize) {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct BatchBody {
+        paths: Vec<String>,
+    }
+    // The request form is part of the closed wire form (named arbitrage,
+    // gate contrat 5): a malformed body is `envelope_invalid` — the A.7
+    // registry stays closed.
+    let Ok(request) = serde_json::from_slice::<BatchBody>(body) else {
+        return refuse(Refusal::EnvelopeInvalid, now_ms);
+    };
+    if request.paths.len() > MAX_BATCH_PATHS {
+        return refuse(Refusal::PayloadTooLarge, now_ms);
+    }
+    let mut parts = Vec::with_capacity(request.paths.len());
+    let mut total = 0usize;
+    for chemin in &request.paths {
+        let (status, bytes) = match pathmap::parse_chemin_public(chemin) {
+            // Out-of-grammar or uncovered: the default deny, per part.
+            None => (403u16, None),
+            Some(object) if !principal_reads(principal, &object) => (403, None),
+            Some(object) => match state
+                .objects
+                .get(&target.tenant, &target.did, &object.key())
+                .await
+            {
+                Some(bytes) => (200, Some(bytes)),
+                None => (404, None),
+            },
+        };
+        total += bytes.as_ref().map_or(0, Vec::len);
+        if total > MAX_PACK_BYTES {
+            return refuse(Refusal::PayloadTooLarge, now_ms);
+        }
+        parts.push(Part {
+            location: format!("/t/{}/{}/{chemin}", target.tenant, target.did),
+            status,
+            bytes,
+        });
+    }
+    multipart_response(&parts)
+}
+
+/// POST `/sync` — body `{"have_edition": N}`: the changed-paths pack
+/// since the held edition (frozen rule, gate contrat 5: `manifest.json`
+/// first, then the lexicographic diff of the pinned files maps held →
+/// current), coverage-filtered per part like `/batch`. A held edition
+/// whose `manifests/<N>.json` slot is gone answers `410 edition_gone`.
+async fn serve_sync(
+    state: &AppState,
+    target: &DataTarget,
+    principal: &Principal,
+    body: &[u8],
+    now_ms: i64,
+) -> (Response<Body>, usize) {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SyncBody {
+        have_edition: u64,
+    }
+    let Ok(request) = serde_json::from_slice::<SyncBody>(body) else {
+        return refuse(Refusal::EnvelopeInvalid, now_ms);
+    };
+    let Some(tip_bytes) = state
+        .objects
+        .get(&target.tenant, &target.did, "manifest.json")
+        .await
+    else {
+        return refuse(Refusal::NotFound, now_ms);
+    };
+    let Ok(tip) = serde_json::from_slice::<aithos_bundle::manifest::Manifest>(&tip_bytes) else {
+        // A stored tip the server cannot read is an ops fault, never a
+        // silent answer.
+        return refuse(Refusal::Unavailable, now_ms);
+    };
+    let height = tip.edition.height;
+    if request.have_edition == 0 || request.have_edition > height {
+        return refuse(Refusal::EditionGone, now_ms);
+    }
+    let changed: Vec<String> = if request.have_edition == height {
+        Vec::new()
+    } else {
+        let held_key = format!("manifests/{}.json", request.have_edition);
+        let Some(held_bytes) = state
+            .objects
+            .get(&target.tenant, &target.did, &held_key)
+            .await
+        else {
+            return refuse(Refusal::EditionGone, now_ms);
+        };
+        let Ok(held) = serde_json::from_slice::<aithos_bundle::manifest::Manifest>(&held_bytes)
+        else {
+            return refuse(Refusal::Unavailable, now_ms);
+        };
+        tip.files
+            .iter()
+            .filter(|(key, hash)| held.files.get(*key) != Some(*hash))
+            .map(|(key, _)| key.clone())
+            .collect() // BTreeMap iteration is already lexicographic
+    };
+    let mut parts = vec![Part {
+        location: format!("/t/{}/{}/manifest.json", target.tenant, target.did),
+        status: 200,
+        bytes: Some(tip_bytes.to_vec()),
+    }];
+    let mut total = parts[0].bytes.as_ref().map_or(0, Vec::len);
+    for chemin in &changed {
+        let (status, bytes) = match pathmap::parse_chemin_public(chemin) {
+            None => (403u16, None),
+            Some(object) if !principal_reads(principal, &object) => (403, None),
+            Some(object) => match state
+                .objects
+                .get(&target.tenant, &target.did, &object.key())
+                .await
+            {
+                Some(bytes) => (200, Some(bytes)),
+                None => (404, None),
+            },
+        };
+        total += bytes.as_ref().map_or(0, Vec::len);
+        if total > MAX_PACK_BYTES {
+            return refuse(Refusal::PayloadTooLarge, now_ms);
+        }
+        parts.push(Part {
+            location: format!("/t/{}/{}/{chemin}", target.tenant, target.did),
+            status,
+            bytes,
+        });
+    }
+    multipart_response(&parts)
+}
+
+struct Part {
+    location: String,
+    status: u16,
+    bytes: Option<Vec<u8>>,
+}
+
+/// One `multipart/mixed` response: per part `Content-Location` +
+/// `X-Aithos-Status`, body only on 200 (A.3). The boundary is a fixed
+/// server token — nothing in a part body is interpreted, so no boundary
+/// collision can change what a part MEANS (lengths are delimited by the
+/// closed header block; a hostile body is served as opaque bytes).
+const PART_BOUNDARY: &str = "aithos-store-part";
+
+fn multipart_response(parts: &[Part]) -> (Response<Body>, usize) {
+    let mut wire = Vec::new();
+    for part in parts {
+        wire.extend_from_slice(format!("--{PART_BOUNDARY}\r\n").as_bytes());
+        wire.extend_from_slice(format!("Content-Location: {}\r\n", part.location).as_bytes());
+        wire.extend_from_slice(format!("X-Aithos-Status: {}\r\n\r\n", part.status).as_bytes());
+        if let Some(bytes) = &part.bytes {
+            wire.extend_from_slice(bytes);
+        }
+        wire.extend_from_slice(b"\r\n");
+    }
+    wire.extend_from_slice(format!("--{PART_BOUNDARY}--\r\n").as_bytes());
+    let len = wire.len();
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .header(
+            header::CONTENT_TYPE,
+            format!("multipart/mixed; boundary={PART_BOUNDARY}"),
+        )
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(wire))
+        .expect("static response");
+    (response, len)
+}
+
 /// The refusal's registry code, carried on the response so the log line
 /// names exactly what was answered (codes are `&'static str` from the
 /// closed registry — the log can never carry free text).
 #[derive(Clone, Copy)]
 struct ErrorCode(&'static str);
+
+/// An accepted deposit's typed facts (the values `/heads` will serve):
+/// `200` + a closed JSON body — never an artifact echo, never a path.
+fn accepted_json(body: serde_json::Value) -> (Response<Body>, usize) {
+    let body = body.to_string();
+    let len = body.len();
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(body))
+        .expect("static response");
+    (response, len)
+}
+
+fn no_content() -> (Response<Body>, usize) {
+    let response = Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .body(Body::empty())
+        .expect("static response");
+    (response, 0)
+}
+
+/// A deposit refusal on the wire: the A.7 body plus its typed extras —
+/// `head` (+ `height` on the manifest head) on `cas_mismatch`, the closed
+/// short `reason` on `artifact_invalid`. Nothing else, ever.
+fn refuse_deposit(refusal: DepositRefusal, now_ms: i64) -> (Response<Body>, usize) {
+    let (registry, extras): (Refusal, Vec<(&str, serde_json::Value)>) = match refusal {
+        DepositRefusal::Plain(code) => (code, vec![]),
+        DepositRefusal::CasMismatch { head, height } => {
+            let mut extras = vec![("head", serde_json::Value::String(head))];
+            if let Some(height) = height {
+                extras.push(("height", serde_json::json!(height)));
+            }
+            (Refusal::CasMismatch, extras)
+        }
+        DepositRefusal::Artifact(reason) => (
+            Refusal::ArtifactInvalid,
+            vec![("reason", serde_json::Value::String(reason.code().into()))],
+        ),
+    };
+    let mut body = serde_json::json!({
+        "error": registry.code(),
+        "at": render_rfc3339z(now_ms),
+    });
+    for (key, value) in extras {
+        body[key] = value;
+    }
+    let body = body.to_string();
+    let len = body.len();
+    let mut response = Response::builder()
+        .status(StatusCode::from_u16(registry.status()).expect("registry status"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body))
+        .expect("static response");
+    response.extensions_mut().insert(ErrorCode(registry.code()));
+    (response, len)
+}
 
 /// `{"error": <code>, "at": <now>}` — the A.7 error body, nothing else.
 fn refuse(refusal: Refusal, now_ms: i64) -> (Response<Body>, usize) {

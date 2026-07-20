@@ -34,6 +34,17 @@ pub trait ObjectStore: Send + Sync {
         chemin: &'a str,
         bytes: Vec<u8>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+
+    /// Every stored chemin of one `(tenant, did)`, sorted lexicographic
+    /// (étape 5 — the `?list=` and `/sync` surfaces; the S3 backend maps
+    /// this onto ListObjectsV2). A plain read, DELIBERATELY no filter
+    /// semantics here: the coarse perimeter filtering is the path-map's
+    /// (`covers()`), never the storage layer's.
+    fn list<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + 'a>>;
 }
 
 /// The P1 in-memory backend. Per-instance and ephemeral by design — a dev
@@ -77,6 +88,25 @@ impl ObjectStore for MemObjects {
                 (tenant.to_owned(), did.to_owned(), chemin.to_owned()),
                 bytes,
             );
+        })
+    }
+
+    fn list<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + 'a>> {
+        Box::pin(async move {
+            let mut paths: Vec<String> = self
+                .map
+                .lock()
+                .expect("object map poisoned")
+                .keys()
+                .filter(|(t, d, _)| t == tenant && d == did)
+                .map(|(_, _, chemin)| chemin.clone())
+                .collect();
+            paths.sort();
+            paths
         })
     }
 }

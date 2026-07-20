@@ -102,7 +102,7 @@ async fn main() {
     });
     let acceptor = tokio_rustls::TlsAcceptor::from(tls_config);
 
-    let (control, _preloads) = match ControlPlane::load_bootstrap(&bootstrap) {
+    let (control, _preloads, _heads) = match ControlPlane::load_bootstrap(&bootstrap) {
         Ok(loaded) => loaded,
         Err(e) => {
             eprintln!("fatal: bootstrap rejected: {e}");

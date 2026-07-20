@@ -32,6 +32,23 @@ pub enum ObjectPath {
     Cert(String),
     /// `gamma/<YYYY-MM>.jsonl`.
     GammaSegment(String),
+    /// `manifests/<h>.json` — the edition-history slot (redline gate 5).
+    /// Server-written on an accepted publish; NO write line covers it.
+    ManifestSlot(u64),
+    /// `changesets/<64hex>.json` — K1-C sidecar (redline gate 5).
+    Changeset(String),
+    /// `evidence/<64hex>.json` — K1-C sidecar (redline gate 5).
+    Evidence(String),
+    /// `public/sections/<sid>.md` — K1-C alias of the public zone.
+    PublicSectionAlias(Sid),
+    /// `circle/blobs/<sid>.json` — K1-C alias of the circle blob.
+    CircleBlobAlias(Sid),
+    /// `indices/public.json` (K1-C literal).
+    IndicesPublic,
+    /// `roots/public.json` (K1-C literal).
+    RootsPublic,
+    /// `vault/catalog-pins.json` (K1-C literal).
+    VaultCatalogPins,
 }
 
 impl ObjectPath {
@@ -48,6 +65,14 @@ impl ObjectPath {
             ObjectPath::X(id, segs) => format!("x/{id}/{}", segs.join("/")),
             ObjectPath::Cert(id) => format!("certs/{id}.json"),
             ObjectPath::GammaSegment(m) => format!("gamma/{m}.jsonl"),
+            ObjectPath::ManifestSlot(h) => format!("manifests/{h}.json"),
+            ObjectPath::Changeset(hash) => format!("changesets/{hash}.json"),
+            ObjectPath::Evidence(hash) => format!("evidence/{hash}.json"),
+            ObjectPath::PublicSectionAlias(sid) => format!("public/sections/{sid}.md"),
+            ObjectPath::CircleBlobAlias(sid) => format!("circle/blobs/{sid}.json"),
+            ObjectPath::IndicesPublic => "indices/public.json".into(),
+            ObjectPath::RootsPublic => "roots/public.json".into(),
+            ObjectPath::VaultCatalogPins => "vault/catalog-pins.json".into(),
         }
     }
 }
@@ -133,6 +158,19 @@ fn valid_did(did: &str) -> bool {
         .is_some_and(|mb| aithos_core::wire::multibase_to_ed25519_pub(mb).is_ok())
 }
 
+/// A bare `<chemin>` through the same closed grammar — the collection
+/// routes (`?list=`, `/batch`, `/sync`) only ever name what a direct GET
+/// could address (étape 5).
+pub(crate) fn parse_chemin_public(chemin: &str) -> Option<ObjectPath> {
+    if chemin.contains('%')
+        || chemin.contains('\\')
+        || chemin.bytes().any(|b| b < 0x20 || b == 0x7f)
+    {
+        return None;
+    }
+    parse_chemin(chemin)
+}
+
 fn parse_chemin(chemin: &str) -> Option<ObjectPath> {
     let segs: Vec<&str> = chemin.split('/').collect();
     match segs.as_slice() {
@@ -163,8 +201,57 @@ fn parse_chemin(chemin: &str) -> Option<ObjectPath> {
             let month = file.strip_suffix(".jsonl")?;
             valid_month(month).then(|| ObjectPath::GammaSegment(month.to_owned()))
         }
+        // ---- draft.2 servable layout (redline gate 5, 2026-07-20) ----
+        // ADDITIVE and closed: the exact K1-B/K1-C subset of the bundle's
+        // own `validate_store_key` grammar. The bundle-internal keys
+        // (`tree-`, `index-`, `-alt`, `gateway/**`, `gamma/gamma.jsonl`)
+        // stay OUTSIDE the wire — path_invalid.
+        ["manifests", file] => {
+            let stem = file.strip_suffix(".json")?;
+            if !valid_height_stem(stem) {
+                return None;
+            }
+            Some(ObjectPath::ManifestSlot(stem.parse().ok()?))
+        }
+        ["changesets", file] => {
+            let hash = file.strip_suffix(".json")?;
+            valid_hash64(hash).then(|| ObjectPath::Changeset(hash.to_owned()))
+        }
+        ["evidence", file] => {
+            let hash = file.strip_suffix(".json")?;
+            valid_hash64(hash).then(|| ObjectPath::Evidence(hash.to_owned()))
+        }
+        ["public", "sections", file] => {
+            let sid = Sid::parse(file.strip_suffix(".md")?).ok()?;
+            Some(ObjectPath::PublicSectionAlias(sid))
+        }
+        ["circle", "blobs", file] => {
+            let sid = Sid::parse(file.strip_suffix(".json")?).ok()?;
+            Some(ObjectPath::CircleBlobAlias(sid))
+        }
+        ["indices", "public.json"] => Some(ObjectPath::IndicesPublic),
+        ["roots", "public.json"] => Some(ObjectPath::RootsPublic),
+        ["vault", "catalog-pins.json"] => Some(ObjectPath::VaultCatalogPins),
         _ => None,
     }
+}
+
+/// `<h>` of `manifests/<h>.json`: a decimal integer ≥ 1, no leading zero
+/// (redline gate 5). `tree-…`/`index-…`/`…-alt` stems are bundle-internal
+/// and fail this on their first non-digit byte.
+fn valid_height_stem(stem: &str) -> bool {
+    !stem.is_empty()
+        && stem.len() <= 19
+        && stem.bytes().all(|b| b.is_ascii_digit())
+        && !stem.starts_with('0')
+}
+
+/// 64 lowercase hex — the K1-C digest suffix (§02.6.3).
+fn valid_hash64(hash: &str) -> bool {
+    hash.len() == 64
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn own(segs: &[&str]) -> Vec<String> {
@@ -227,10 +314,235 @@ fn valid_month(s: &str) -> bool {
 }
 
 /// Anonymous perimeter — the A2 exceptions (annexe A.2): `e/public/**` and
-/// `did.json`, GET only. `certs/**` + revoke entries join when the P7
-/// `certs_public` toggle exists (default: false, so not before P7).
+/// `did.json`, GET only, plus the K1-C aliases of the public zone
+/// (`public/sections/**`, `indices/public.json`, `roots/public.json` —
+/// redline gate 5, 2026-07-20: the alias of a public zone IS public).
+/// `certs/**` + revoke entries join when the P7 `certs_public` toggle
+/// exists (default: false, so not before P7).
 pub fn anonymous_covers(object: &ObjectPath) -> bool {
-    matches!(object, ObjectPath::Public(_) | ObjectPath::DidJson)
+    matches!(
+        object,
+        ObjectPath::Public(_)
+            | ObjectPath::DidJson
+            | ObjectPath::PublicSectionAlias(_)
+            | ObjectPath::IndicesPublic
+            | ObjectPath::RootsPublic
+    )
+}
+
+/// The MANDATED path-map of annexe A.3 (check #10) — anti-abuse
+/// availability gate over the LEAF perimeter, never the authority (§3.1).
+///
+/// Étape 3 lands the READ rows literally:
+/// - any valid chain: GET `/heads`, `manifest.json`, `did.json`,
+///   `certs/**` — and `e/public/**` (public never narrows under a chain);
+/// - `read.gamma[#…]`: GET `gamma/**`, filtered by the COARSE
+///   `since`/`until` window only (a segment is refused only when the
+///   window can exclude the whole month — finer kind filtering is
+///   client/export-side, per the annexe);
+/// - `read.<zone>[#sel]`: GET the zone index, `e/<zone>/hdr/**` and
+///   `e/<zone>/blobs/**`. `dir`/`tag` selectors cannot exclude a path
+///   server-side without the tree (graved note in A.3): the server serves,
+///   the client enforces. The exact `id=` selector CAN exclude and does.
+/// - `act.x.<id>.*`: GET `x/<id>/**`.
+///
+/// Étape 4 lands the WRITE rows (pass L + the publish row), literally:
+/// - `verbe d'écriture (edit|append|write|delete)` on the zone: PUT
+///   `e/<zone>/blobs/**`, `e/<zone>/hdr/**`, the zone index — and POST
+///   `/gamma` (the entry itself is verified at A.4). Same graved selector
+///   rule as reads: a selector that cannot exclude server-side SERVES
+///   (`dir`/`tag` are nodal; only `id=` excludes, by sid);
+/// - `act.x.<id>.*`: PUT `x/<id>/**` and POST `/gamma` (its
+///   `action`/`inference` entries — the entry-level check is A.4's);
+/// - `owner, ou délégué avec authorized_by (§02.6)`: PUT `manifest.json`
+///   (CAS), `did.json`, `certs/**`, `gamma/<YYYY-MM>.jsonl` (réplique) —
+///   any valid chain reaches the deposit, where A.4 verifies the
+///   artifact's OWN displayed authority (coverage is anti-abuse, the
+///   authority never lives here);
+/// - `e/public/**` writes have no A.3 row (the draft.2 `public/sections/`
+///   alias is the pending A.1 redline ④): default deny.
+///
+/// The collection routes (batch, sync, list) land with gate 5; until then
+/// this map denies them — the default deny of A.3, always a clean 403.
+pub fn mandated_covers(
+    perimeter: &[aithos_core::mandate::PerimeterEntry],
+    kind: &TargetKind,
+    method: &str,
+) -> bool {
+    use aithos_core::mandate::{PerimeterEntry, Verb};
+    let zone_covered = |zone: &str, sid: Option<&Sid>, want_write: bool| {
+        // Reads want `read`; writes want any of `edit|append|write|delete`
+        // (the A.3 write-verb set is « everything but read »).
+        let verb_fits = |verb: &Verb| {
+            if want_write {
+                !matches!(verb, Verb::Read)
+            } else {
+                matches!(verb, Verb::Read)
+            }
+        };
+        perimeter.iter().any(|entry| match entry {
+            PerimeterEntry::Ethos { verb, zone: z, .. } => verb_fits(verb) && z.as_str() == zone,
+            PerimeterEntry::EthosId { verb, zone: z, id } => {
+                verb_fits(verb) && z.as_str() == zone && sid.is_some_and(|s| s == id)
+            }
+            _ => false,
+        })
+    };
+    let any_write_verb = || {
+        perimeter.iter().any(|entry| {
+            matches!(entry,
+                PerimeterEntry::Ethos { verb, .. } | PerimeterEntry::EthosId { verb, .. }
+                    if !matches!(verb, Verb::Read))
+        })
+    };
+    let any_act = || {
+        perimeter
+            .iter()
+            .any(|entry| matches!(entry, PerimeterEntry::Act { .. }))
+    };
+    let act_connector = |id: &str| {
+        perimeter
+            .iter()
+            .any(|entry| matches!(entry, PerimeterEntry::Act { connector, .. } if connector == id))
+    };
+    // Header nodes are sid-or-hash stems; only a parseable sid can be
+    // matched by an `id=` selector — hash stems serve under the zone-wide
+    // right (the selector cannot exclude them).
+    let hdr_covered = |zone: &str, node: &str, want_write: bool| match Sid::parse(node) {
+        Ok(sid) => zone_covered(zone, Some(&sid), want_write),
+        Err(_) => zone_covered(zone, None, want_write),
+    };
+    match (kind, method) {
+        (TargetKind::Heads, "GET") => true,
+        // The collection routes (gate 5): any valid chain may call; the
+        // RESULTS are filtered per-path through this same map (coarse
+        // perimeter filtering — a shorter 200, never an error).
+        (TargetKind::List, "GET") => true,
+        (TargetKind::Batch | TargetKind::Sync, "POST") => true,
+        (TargetKind::Gamma, "POST") => any_write_verb() || any_act(),
+        (TargetKind::Object(object), "GET") => match object {
+            ObjectPath::Manifest | ObjectPath::DidJson | ObjectPath::Cert(_) => true,
+            // Redline gate 5: proof material for the cold verify —
+            // « toute chaîne valide du DID ».
+            ObjectPath::ManifestSlot(_)
+            | ObjectPath::Changeset(_)
+            | ObjectPath::Evidence(_)
+            | ObjectPath::VaultCatalogPins => true,
+            // Public never narrows under a chain — canonical or alias.
+            ObjectPath::Public(_)
+            | ObjectPath::PublicSectionAlias(_)
+            | ObjectPath::IndicesPublic
+            | ObjectPath::RootsPublic => true,
+            ObjectPath::GammaSegment(month) => perimeter.iter().any(|entry| {
+                matches!(entry, PerimeterEntry::Gamma { since, until, .. }
+                    if gamma_window_may_reach(month, since.as_deref(), until.as_deref()))
+            }),
+            ObjectPath::ZoneIndex(zone) => zone_covered(zone, None, false),
+            ObjectPath::Blob(zone, sid) => zone_covered(zone, Some(sid), false),
+            // The K1-C blob alias follows its zone's row (the frozen p8
+            // read plan: read.circle covers circle/blobs/<sid>.json).
+            ObjectPath::CircleBlobAlias(sid) => zone_covered("circle", Some(sid), false),
+            ObjectPath::Hdr(zone, node) => hdr_covered(zone, node, false),
+            ObjectPath::X(id, _) => act_connector(id),
+        },
+        (TargetKind::Object(object), "PUT") => match object {
+            // The publish row: coverage for any valid chain; the deposit
+            // (A.4) verifies the artifact's own displayed authority. The
+            // draft.2 sidecars and publication derivatives join with the
+            // redline gate 5 (deposited BEFORE the publish pinning them).
+            ObjectPath::Manifest
+            | ObjectPath::DidJson
+            | ObjectPath::Cert(_)
+            | ObjectPath::GammaSegment(_)
+            | ObjectPath::Changeset(_)
+            | ObjectPath::Evidence(_)
+            | ObjectPath::IndicesPublic
+            | ObjectPath::RootsPublic
+            | ObjectPath::VaultCatalogPins => true,
+            // NO write line, owner included: the slot is written by the
+            // server on an accepted publish only (redline gate 5).
+            ObjectPath::ManifestSlot(_) => false,
+            // Pass L — write verbs on the zone (canonical and alias).
+            ObjectPath::ZoneIndex(zone) => zone_covered(zone, None, true),
+            ObjectPath::Blob(zone, sid) => zone_covered(zone, Some(sid), true),
+            ObjectPath::CircleBlobAlias(sid) => zone_covered("circle", Some(sid), true),
+            // The public write line arrives via its K1-C alias (redline
+            // gate 5): a write verb on `public` covers the alias section.
+            ObjectPath::PublicSectionAlias(sid) => zone_covered("public", Some(sid), true),
+            ObjectPath::Hdr(zone, node) => hdr_covered(zone, node, true),
+            ObjectPath::X(id, _) => act_connector(id),
+            // Canonical `e/public/**` writes keep no A.3 row (the redline
+            // opened the ALIAS only — §5.4 of the acted redline).
+            ObjectPath::Public(_) => false,
+        },
+        // Everything else: default deny.
+        _ => false,
+    }
+}
+
+/// Can a `read.gamma` window still reach the `YYYY-MM` segment? Refuse
+/// only when `until` ends strictly before the month begins or `since`
+/// starts at/after the next month — RFC 3339 Z strings compare
+/// lexicographically, so no clock math is needed.
+fn gamma_window_may_reach(month: &str, since: Option<&str>, until: Option<&str>) -> bool {
+    if !valid_month(month) {
+        return false;
+    }
+    let month_start = format!("{month}-01T00:00:00Z");
+    let (year, number): (i64, i64) = (month[..4].parse().unwrap(), month[5..7].parse().unwrap());
+    let (next_year, next_number) = if number == 12 {
+        (year + 1, 1)
+    } else {
+        (year, number + 1)
+    };
+    let next_start = format!("{next_year:04}-{next_number:02}-01T00:00:00Z");
+    let excluded = until.is_some_and(|u| u < month_start.as_str())
+        || since.is_some_and(|s| s >= next_start.as_str());
+    !excluded
+}
+
+/// The `certs/<id>.json` id grammar, exposed for the #7 chain loader — a
+/// malformed id never becomes a storage key.
+pub(crate) fn mandate_id_is_valid(id: &str) -> bool {
+    valid_mandate_id(id)
+}
+
+/// The parsed `?list=` query (A.3): `list=<prefix>[&after=<chemin>]
+/// [&limit=<n>]`, in that order, each at most once — a closed grammar,
+/// anything else is `path_invalid`. The `limit ≤ 1000` bound is A.8's and
+/// answers `413`, not a grammar refusal — the caller enforces it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListQuery {
+    pub prefix: String,
+    pub after: Option<String>,
+    pub limit: Option<u64>,
+}
+
+pub fn parse_list_query(query: &str) -> Option<ListQuery> {
+    let mut params = query.split('&');
+    let prefix = params.next()?.strip_prefix("list=")?.to_owned();
+    let mut after = None;
+    let mut limit = None;
+    for param in params {
+        if let Some(value) = param.strip_prefix("after=") {
+            if after.is_some() || limit.is_some() || value.is_empty() {
+                return None;
+            }
+            after = Some(value.to_owned());
+        } else if let Some(value) = param.strip_prefix("limit=") {
+            if limit.is_some() || value.is_empty() || value.len() > 6 {
+                return None;
+            }
+            limit = Some(value.parse().ok()?);
+        } else {
+            return None;
+        }
+    }
+    Some(ListQuery {
+        prefix,
+        after,
+        limit,
+    })
 }
 
 #[cfg(test)]
@@ -328,13 +640,105 @@ mod tests {
     }
 
     #[test]
+    fn redline_gate5_paths_parse_and_bundle_grammar_agrees() {
+        // The redline grammar is a SUBSET of the bundle's own closed
+        // grammar (`validate_store_key`) — composition as verification:
+        // every wire-accepted redline key must also be a canonical bundle
+        // object key. Never the reverse (bundle-internal keys stay out).
+        for chemin in [
+            "manifests/1.json",
+            "manifests/42.json",
+            &format!("changesets/{}.json", "a".repeat(64)),
+            &format!("evidence/{}.json", "0".repeat(64)),
+            "public/sections/01000000000000000000000P81.md",
+            "circle/blobs/01000000000000000000000P82.json",
+            "indices/public.json",
+            "roots/public.json",
+            "vault/catalog-pins.json",
+        ] {
+            let target = parse_target(&t(chemin)).unwrap_or_else(|| panic!("accept: {chemin}"));
+            let TargetKind::Object(object) = target.kind else {
+                panic!("expected object: {chemin}");
+            };
+            assert_eq!(object.key(), *chemin);
+            aithos_bundle::validate_store_key(chemin)
+                .unwrap_or_else(|e| panic!("bundle grammar disagrees on {chemin}: {e}"));
+        }
+    }
+
+    #[test]
+    fn bundle_internal_keys_stay_outside_the_wire() {
+        for chemin in [
+            "manifests/tree-2.json",
+            "manifests/index-public-2.json",
+            "manifests/2-alt.json",
+            "manifests/0.json",
+            "manifests/01.json",
+            &format!("changesets/{}.json", "A".repeat(64)),
+            &format!("changesets/{}.json", "a".repeat(63)),
+            "gateway/state.json",
+            "gateway/keys.json",
+            "gamma/gamma.jsonl",
+            "public/sections/notasid.md",
+            "circle/blobs/01000000000000000000000P82.enc",
+            "indices/circle.json",
+            "roots/circle.json",
+            "vault/other.json",
+        ] {
+            assert!(parse_target(&t(chemin)).is_none(), "reject: {chemin}");
+        }
+    }
+
+    #[test]
+    fn list_query_grammar_is_closed() {
+        assert_eq!(
+            parse_list_query("list="),
+            Some(ListQuery {
+                prefix: String::new(),
+                after: None,
+                limit: None
+            })
+        );
+        assert_eq!(
+            parse_list_query("list=e/&after=e/circle/index.json&limit=2"),
+            Some(ListQuery {
+                prefix: "e/".into(),
+                after: Some("e/circle/index.json".into()),
+                limit: Some(2)
+            })
+        );
+        for bad in [
+            "other=1",
+            "list=&bogus=1",
+            "list=&limit=",
+            "list=&limit=abc",
+            "list=&limit=2&limit=3",
+            "list=&limit=2&after=x", // wrong order
+            "list=&after=",
+        ] {
+            assert!(parse_list_query(bad).is_none(), "reject: {bad}");
+        }
+    }
+
+    #[test]
     fn anonymous_covers_the_a2_exceptions_only() {
         assert!(anonymous_covers(&ObjectPath::DidJson));
         assert!(anonymous_covers(&ObjectPath::Public(vec![
             "hello.md".into()
         ])));
+        // Redline gate 5: the public-zone aliases are public too.
+        assert!(anonymous_covers(&ObjectPath::PublicSectionAlias(
+            Sid::parse("01000000000000000000000P81").unwrap()
+        )));
+        assert!(anonymous_covers(&ObjectPath::IndicesPublic));
+        assert!(anonymous_covers(&ObjectPath::RootsPublic));
         for denied in [
             ObjectPath::Manifest,
+            ObjectPath::ManifestSlot(1),
+            ObjectPath::Changeset("a".repeat(64)),
+            ObjectPath::Evidence("a".repeat(64)),
+            ObjectPath::VaultCatalogPins,
+            ObjectPath::CircleBlobAlias(Sid::parse("01000000000000000000000P82").unwrap()),
             ObjectPath::ZoneIndex("circle".into()),
             ObjectPath::Blob(
                 "circle".into(),

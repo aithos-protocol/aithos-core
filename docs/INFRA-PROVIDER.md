@@ -298,6 +298,18 @@ courts — opt-in client, plus tard).
   `certs/<mandate_id>.json`, `gamma/<YYYY-MM>.jsonl`). Tout chemin hors
   grammaire → `path_invalid`, avant même l'enveloppe (fail-closed, zéro
   interprétation).
+- **Layout draft.2 servable (redline gate 5, 2026-07-20).** La grammaire
+  admet ADDITIVEMENT les chemins du layout porteur K1-B/K1-C, sous-ensemble
+  exact de la grammaire fermée du bundle (`validate_store_key`) :
+  `manifests/<h>.json` (`<h>` = entier décimal ≥ 1, sans zéro de tête — le
+  slot d'édition écrit par le publish A.5, jamais par un PUT client) ;
+  `changesets/<64hex>.json` et `evidence/<64hex>.json` (64 hex minuscules =
+  le suffixe du digest K1-C §02.6.3) ; les alias K1-C `public/sections/<sid>.md`,
+  `circle/blobs/<sid>.json` (même grammaire `<sid>` que `e/<zone>/blobs/`),
+  et les trois clés littérales `indices/public.json`, `roots/public.json`,
+  `vault/catalog-pins.json`. Rien d'autre : les clés internes du bundle
+  (`manifests/tree-…`, `manifests/index-…`, suffixe `-alt`, `gateway/**`,
+  `gamma/gamma.jsonl`) restent HORS grammaire wire — `path_invalid`.
 
 ### A.2 L'enveloppe signée `X-Aithos-Auth`
 
@@ -316,7 +328,7 @@ X-Aithos-Auth: base64url-sans-padding( JCS(enveloppe) )
   "path": "/t/acme/did:aithos:z6Mk…/manifest.json",  // request-target exact, query incluse
   "body_b3": "<hex BLAKE3(corps brut)>",  // "" si la requête n'a pas de corps
   "at": "2026-07-16T12:00:00Z",           // RFC 3339 Z
-  "nonce": "<opaque, 16–64 car., ≥ 96 bits d'entropie>",
+  "nonce": "<opaque ; guidance CLIENT : 16–64 car., ≥ 96 bits d'entropie ; le serveur n'impose que la borne haute ≤ 64 (anti-abus) — redline gate 4, 2026-07-20>",
   "mandate": ["mandate_<racine>", "…", "mandate_<feuille>"],  // [] pour l'owner
   "key": "#root" | "#content" | "z6Mk…",  // fragment DID (owner) | pubkey feuille (mandaté)
   "signature": { "alg": "ed25519", "value": "<hex>" } }
@@ -373,17 +385,23 @@ Path-map (`covers()` serveur — reprend §3.3, grammaire §04.2) :
 
 | Périmètre de la chaîne | Chemins servis |
 |---|---|
-| — (anonyme, A2) | GET `e/public/**`, `did.json` ; + `certs/**` et entrées `revoke` si `certs_public` |
-| toute chaîne valide du DID | GET `/heads`, `manifest.json`, `did.json`, `certs/**` |
+| — (anonyme, A2) | GET `e/public/**`, `did.json` ; + `certs/**` et entrées `revoke` si `certs_public` ; + GET `public/sections/**`, `indices/public.json`, `roots/public.json` (alias K1-C de la zone publique — même statut que `e/public/**` ; redline gate 5, 2026-07-20) |
+| toute chaîne valide du DID | GET `/heads`, `manifest.json`, `did.json`, `certs/**` ; + GET `manifests/<h>.json`, `changesets/**`, `evidence/**`, `vault/catalog-pins.json` (matériel de preuve public par construction K1-B — nécessaire au cold verify sans capacité privée ; redline gate 5, 2026-07-20) |
 | `read.gamma[#…]` | GET `gamma/**` (filtrage fin des kinds côté client/export ; le serveur filtre par sélecteurs grossiers `since`/`until` → segments) |
-| `read.<zone>[#sel]` | GET index de zone, `e/<zone>/hdr/**`, `e/<zone>/blobs/**` du sous-arbre couvert (`dir=` nodal §04.2 ; sans index chargé le serveur sert le fichier si le sélecteur ne peut exclure le chemin — anti-abus, jamais l'autorité) |
-| verbe d'écriture (`edit\|append\|write\|delete`) sur la zone (pass L) | PUT `e/<zone>/blobs/**`, `e/<zone>/hdr/**`, index de zone ; POST `/gamma` (A.4) |
-| owner, ou délégué avec `authorized_by` (§02.6) | PUT `manifest.json` (CAS), `did.json`, `certs/**`, `gamma/<YYYY-MM>.jsonl` (réplique) |
+| `read.<zone>[#sel]` | GET index de zone, `e/<zone>/hdr/**`, `e/<zone>/blobs/**` du sous-arbre couvert (`dir=` nodal §04.2 ; sans index chargé le serveur sert le fichier si le sélecteur ne peut exclure le chemin — anti-abus, jamais l'autorité) ; + GET `circle/blobs/<sid>.json` pour `read.circle` (l'alias K1-C du blob de zone — mêmes règles de sélecteur que `e/circle/blobs/**` ; redline gate 5, 2026-07-20) |
+| verbe d'écriture (`edit\|append\|write\|delete`) sur la zone (pass L) | PUT `e/<zone>/blobs/**`, `e/<zone>/hdr/**`, index de zone ; POST `/gamma` (A.4) ; + PUT `circle/blobs/<sid>.json` (zone `circle`) et `public/sections/**` (zone `public` — la ligne d'écriture publique qui manquait ; redline gate 5, 2026-07-20) |
+| owner, ou délégué avec `authorized_by` (§02.6) | PUT `manifest.json` (CAS), `did.json`, `certs/**`, `gamma/<YYYY-MM>.jsonl` (réplique) ; + PUT `changesets/<64hex>.json`, `evidence/<64hex>.json`, `indices/public.json`, `roots/public.json`, `vault/catalog-pins.json` (sidecars et dérivés d'une publication draft.2, déposés AVANT le publish qui les épingle ; redline gate 5, 2026-07-20) |
 | `act.x.<id>.*` | GET/PUT `x/<id>/**` ; POST `/gamma` pour ses entrées `action`/`inference` |
 
 Défaut : refus (`not_covered`). L'owner (`#root`/`#content`) couvre tout sur
 son DID. Le serveur ne « comprend » jamais un contenu — il vérifie des
 signatures et des périmètres sur des chemins.
+
+**`manifests/<h>.json` n'a pas de ligne d'écriture (redline gate 5,
+2026-07-20)** — le slot est écrit par le serveur lors d'un publish accepté
+(A.5) ; tout PUT client sur `manifests/**` répond `not_covered` (le chemin
+est dans la grammaire A.1 — ce n'est pas `path_invalid` — mais aucune
+chaîne, owner compris, ne le couvre en écriture).
 
 ### A.4 Vérification des artefacts au dépôt (« le serveur vérifie avant d'accepter »)
 
@@ -425,6 +443,20 @@ corrige, ne complète, ne réécrit **jamais**.
   aucun contrôle de contenu — l'intégrité opposable arrive au publish
   (roots §02.10) et à la vérification cliente. Le ciphertext est opaque par
   design.
+- **`changesets/<64hex>.json`, `evidence/<64hex>.json` (redline gate 5,
+  2026-07-20)** : contrôle de forme léger (JSON parsable, tailles A.8)
+  **+ adressage par contenu** : le nom de fichier doit égaler le digest
+  K1-C recalculé sur les octets déposés — `C("aithos-core/v1/changeset"` |
+  `"aithos-core/v1/evidence", JCS(objet))`, §02.6.3 — sinon
+  `artifact_invalid` + `reason: "id_mismatch"` (registre A.7 inchangé).
+  Aucune vérification sémantique du contenu : la cohérence
+  changeset/evidence/manifest est l'affaire du verifier (K1-B), jamais du
+  store — anti-abus, pas l'autorité.
+- **Alias K1-C (redline gate 5, 2026-07-20)** (`public/sections/*.md`,
+  `circle/blobs/*.json`, `indices/public.json`, `roots/public.json`,
+  `vault/catalog-pins.json`) : même contrôle léger que leurs équivalents
+  `e/**` (JSON parsable là où c'est du JSON ; le `.md` public et le porteur
+  de blob restent opaques).
 
 Tout PUT/append accepté déclenche le hook témoin (annexe C) selon le mode.
 
@@ -449,13 +481,39 @@ manifest_chain_hash, gamma_head, gamma_segment}` ; écritures conditionnelles
   (+ `"height"` pour le manifest) : le client rebase/merge (§02.6) et
   republie. La réplique de segment (PUT, mode A) suit la même règle sur la
   tête du segment stocké.
+- **Réponses d'accept (redline gate 4, 2026-07-20).** Un publish accepté
+  répond `200` + `{"head": "sha256:…", "height": N}` — les valeurs mêmes
+  que `/heads` servira ; un append gamma accepté répond `200` +
+  `{"head": "sha256:…"}` ; un dépôt de `certs/<id>.json` accepté répond
+  `204` sans corps. Jamais un écho d'artefact, jamais un chemin.
+- **Grammaire `If-Head` fermée (redline gate 4, 2026-07-20).** Une valeur
+  hors grammaire (`none` | `sha256:<64 hex minuscule>`) ne peut égaler
+  aucune tête stockée : elle reçoit la réponse du mismatch — `409` + tête
+  courante — jamais un troisième registre d'erreur.
+- **Scan de révocation et segments (redline gate 4, 2026-07-20).** La
+  révocation du A.2 #9 s'évalue sur le log pointé par
+  `did_doc.revocations` **∪ tous les segments mensuels où un append a été
+  accepté** — un `revoke` déposé via POST `/gamma` mord immédiatement,
+  sans réécriture de pointeur. La liste des mois appendés est un détail
+  de backend de la table des têtes (attribut d'implémentation à côté du
+  tuple A.5), jamais exposée sur le wire.
 
 ### A.6 Cache et immuabilité (précise §3.4)
 
 - `Cache-Control: public, max-age=31536000, immutable` : `certs/<id>.json`
-  (I2), segments gamma des mois **révolus**, éditions passées archivées.
+  (I2), segments gamma des mois **révolus**, éditions passées archivées ;
+  + `manifests/<h>.json`, `changesets/<hash>.json`, `evidence/<hash>.json`
+  (adressés par hauteur/contenu, jamais réécrits — le write-once ⑧b de
+  l'étape 6 rend la classe opposable ; redline gate 5, 2026-07-20).
 - `Cache-Control: no-store` : `manifest.json`, `/heads`, segment gamma
-  courant, `hdr/*.json`, index de zone.
+  courant, `hdr/*.json`, index de zone ; + `indices/public.json`,
+  `roots/public.json`, `vault/catalog-pins.json` (avancent à chaque
+  publication ; redline gate 5, 2026-07-20).
+- **Alias K1-C (redline gate 5, 2026-07-20)** : `public/sections/<sid>.md` :
+  `Cache-Control: public, max-age=0, must-revalidate` + ETag fort (SHA-256
+  des octets) — le sid est stable, le contenu peut être réédité.
+  `circle/blobs/<sid>.json` : même classe que `e/<zone>/blobs/<sid>.enc`
+  (`private, max-age=0, must-revalidate` + ETag fort).
 - `e/<zone>/blobs/<sid>.enc` : `Cache-Control: private, max-age=0,
   must-revalidate` + ETag fort (SHA-256 des octets) — le chemin ne porte pas
   `key_version` (§02.3), une ré-encryption (rung 3) réécrit l'objet ; le
@@ -463,7 +521,9 @@ manifest_chain_hash, gamma_head, gamma_segment}` ; écritures conditionnelles
   L'immuable logique de §3.4 (« blob par `(sid, key_version)` ») vit côté
   client.
 - CloudFront ne fronte que le public : `e/public/**`, `did.json`,
-  `certs/**` si `certs_public`, et le feed témoin (annexe C).
+  `certs/**` si `certs_public`, et le feed témoin (annexe C) ; +
+  `public/sections/**`, `indices/public.json`, `roots/public.json`
+  (redline gate 5, 2026-07-20).
 
 ### A.7 Registre d'erreurs
 
@@ -471,6 +531,13 @@ Corps d'erreur : `{"error": "<code>", "at": "<now serveur>"}` +
 `head`/`height` sur `cas_mismatch`, `reason` court sur `artifact_invalid`.
 Jamais un chemin, un extrait de corps ou une enveloppe dans une réponse
 d'erreur ni dans un log (A.8).
+
+**Registre fermé des `reason` d'`artifact_invalid` (redline gate 5,
+2026-07-20)** : `form`, `signature`, `chain`, `prev_hash_mismatch`,
+`id_mismatch`, `subject_mismatch`, `entry_signature`, `prev_mismatch`,
+`prefix_mismatch` (réplique de segment qui ne préserve pas le préfixe
+stocké octet à octet — une réplique ne réécrit jamais l'histoire).
+Rien d'autre, jamais de texte libre ; tout reason nouveau = redline.
 
 | HTTP | `error` | Quand |
 |---|---|---|

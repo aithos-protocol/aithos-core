@@ -25,14 +25,18 @@
 //! - [`service`]  — the axum surface consumed by `bin/store_api` and the tests
 //! - [`time`]     — strict RFC 3339 Zulu parsing (the annexes' instants)
 //!
-//! P2 adds `artifacts` (A.4) and `cas` (A.5); P5 `witness` (annexe C); P6
-//! `tunnel` (annexe B). The arborescence cible is in
-//! `docs/HANDOFF-PROVIDER-AWS.md`.
+//! P2 (étape 4) adds [`artifacts`] — the A.4 deposit verification,
+//! composing core/bundle — and [`heads`] — the A.5 heads table, whose
+//! opaque CAS is the only serialization point (DynamoDB behind the seam
+//! at étape 6). P5 `witness` (annexe C); P6 `tunnel` (annexe B). The
+//! arborescence cible is in `docs/HANDOFF-PROVIDER-AWS.md`.
 
 pub mod acme;
+pub mod artifacts;
 pub mod control;
 pub mod dns;
 pub mod envelope;
+pub mod heads;
 pub mod keepalive;
 pub mod nonces;
 pub mod objects;

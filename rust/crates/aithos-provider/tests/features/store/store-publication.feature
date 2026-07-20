@@ -1,4 +1,4 @@
-@wip @publication
+@publication
 Feature: Publication — mandated authorization, deposit verification and the two-head CAS
   # INFRA-PROVIDER annexe A: A.2 #7-#10 (mandated authorization), A.4 (deposit
   # verification, delegated to core/bundle), A.5 (CAS on the two hot heads:
@@ -36,6 +36,7 @@ Feature: Publication — mandated authorization, deposit verification and the tw
   Scenario: A mandated GET inside the read perimeter is accepted (accept_get_mandated)
     Given the server clock reads "2026-07-16T12:10:30Z"
     And the gamma log carries the mandate grant and its bound action
+    And the covered circle blob of the p1 vector is stored
     When a correctly signed mandated GET arrives for relative path "e/circle/blobs/01000000000000000000000000.enc"
     Then the request is accepted
 
@@ -73,8 +74,11 @@ Feature: Publication — mandated authorization, deposit verification and the tw
 
   @authorization
   Scenario: The owner fragment covers every path on its own DID
+    # e/self/** is exactly the perimeter NEITHER the anonymous reader nor
+    # the p1 mandate reaches — only the owner's total coverage serves it.
     Given the server clock reads "2026-07-16T12:00:00Z"
-    When an owner-signed GET arrives for relative path "manifest.json"
+    And an owner-signed PUT stored "sealed-self-bytes" at relative path "e/self/blobs/01000000000000000000000000.enc"
+    When an owner-signed GET arrives for relative path "e/self/blobs/01000000000000000000000000.enc"
     Then the request is accepted
 
   # ============================================================
@@ -115,7 +119,7 @@ Feature: Publication — mandated authorization, deposit verification and the tw
     # the loser rebases (§02.6); the store never arbitrates
     Then the response is 409 "cas_mismatch" carrying the stored manifest head at height 2
 
-  @cas @publish @delegated
+  @wip @cas @publish @delegated
   Scenario: A delegated author with authorized_by may publish under the CAS
     Given the store holds no manifest head
     And the bundle-exported delegated genesis publication package is loaded from p7
@@ -221,12 +225,104 @@ Feature: Publication — mandated authorization, deposit verification and the tw
     And the stored manifest head becomes the package new_manifest_head at height 3
 
   # ============================================================
+  # A.4 — did.json deposit (étape 5). Genesis: accepted when the #root
+  # envelope verifies under the root key OF THE DEPOSITED DOCUMENT and the
+  # control plane lists the DID for the tenant (the enrollment always
+  # precedes — no chicken-and-egg). Replacement: verified under the stored
+  # document's succession key (interim reading of §01.4 — the §10.4
+  # epoch-artifact question is a named arbitrage, never resolved silently).
+  # ============================================================
+
+  @artifacts @did @genesis
+  Scenario: A genesis did.json verifies under its own deposited root key (p9 did_genesis_ok)
+    Given the tenant binds the p9 genesis DID with no stored document
+    And the p9 genesis did.json is loaded
+    When the genesis owner deposits the loaded did.json
+    Then the request is accepted
+
+  @artifacts @did @genesis
+  Scenario: A genesis did.json whose id is not the path DID is refused (p9 did_genesis_id_mismatch)
+    Given the tenant binds the p9 genesis DID with no stored document
+    And a genesis did.json whose id names a foreign DID is loaded
+    When the genesis owner deposits the loaded did.json
+    Then the response is 400 "artifact_invalid" with reason "id_mismatch"
+
+  @artifacts @did @genesis
+  Scenario: A genesis envelope not signed by the deposited root key is refused (p9 did_genesis_wrong_signer)
+    Given the tenant binds the p9 genesis DID with no stored document
+    And the p9 genesis did.json is loaded
+    When a foreign key deposits the loaded did.json
+    # the genesis exception resolves #root against the DEPOSITED document:
+    # a signature under any other key fails A.2 #8
+    Then the response is 401 "signature_invalid"
+
+  @artifacts @did @rotation
+  Scenario: A did.json replacement verifies under the stored succession key (p9 did_rotation_ok)
+    Given the store holds the vector did.json for the vector DID
+    And a successor did.json signed under the stored succession key is loaded
+    When the owner deposits the loaded did.json
+    Then the request is accepted
+
+  @artifacts @did @rotation
+  Scenario: A did.json replacement signed by #root is refused (p9 did_rotation_root_signer)
+    Given the store holds the vector did.json for the vector DID
+    And a successor did.json signed under the stored root key is loaded
+    When the owner deposits the loaded did.json
+    # a stolen root can never steal the identity's future (§01.4): only the
+    # previous document's succession key authorizes a replacement
+    Then the response is 400 "artifact_invalid" with reason "signature"
+
+  # ============================================================
+  # A.4/A.5 — gamma segment replica (PUT, mode A). The stored segment must
+  # be a byte-exact PREFIX of the new content; every added entry is
+  # verified A.4; the segment head follows the same CAS rule.
+  # ============================================================
+
+  @cas @replica
+  Scenario: A replica extending the stored segment by one verified entry advances the head (p9 replica_extend_ok)
+    Given the store holds the p7 gamma segment after the grant entry
+    And a replica appending the committed bound-action entry is loaded
+    When the owner replicates the loaded segment with If-Head the stored gamma head
+    Then the request is accepted
+    And the stored gamma head becomes the appended entry head
+
+  @cas @replica
+  Scenario: A replica without If-Head is refused (p9 replica_cas_required)
+    Given the store holds the p7 gamma segment after the grant entry
+    And a replica appending the committed bound-action entry is loaded
+    When the owner replicates the loaded segment with no If-Head
+    Then the response is 428 "cas_required"
+
+  @cas @replica
+  Scenario: A replica over a stale segment head is refused with the current head (p9 replica_cas_stale)
+    Given the store holds the p7 gamma segment after the bound action
+    And a replica appending the committed concurrent entry over the grant head is loaded
+    When the owner replicates the loaded segment with If-Head the p7 grant head
+    Then the response is 409 "cas_mismatch" carrying the stored gamma head
+
+  @cas @replica
+  Scenario: A replica that does not preserve the stored prefix is refused (p9 replica_not_prefix)
+    Given the store holds the p7 gamma segment after the grant entry
+    And a replica rewriting the stored first entry is loaded
+    When the owner replicates the loaded segment with If-Head the stored gamma head
+    # the stored content must be a byte-exact prefix of the new content:
+    # a replica never rewrites history (reason named by the p9 vector)
+    Then the response is 400 "artifact_invalid" with reason "prefix_mismatch"
+
+  @cas @replica
+  Scenario: A replica whose added entry does not verify is refused (p9 replica_bad_added_entry)
+    Given the store holds the p7 gamma segment after the grant entry
+    And a replica appending a bound-action entry with a corrupted signature is loaded
+    When the owner replicates the loaded segment with If-Head the stored gamma head
+    Then the response is 400 "artifact_invalid" with reason "entry_signature"
+
+  # ============================================================
   # Annexe C — witness hook. Kept behind its own gate: the observation fires on
   # an accepted publish/replica, but it is NEVER wired onto a publication feed
   # until this chantier freezes the canonical head (interdit). Contract only here.
   # ============================================================
 
-  @witness @gate7
+  @wip @witness @gate7
   Scenario: An accepted publish queues one witness observation of the new head
     Given the store holds no manifest head
     And the bundle-exported genesis publication package is loaded from p7

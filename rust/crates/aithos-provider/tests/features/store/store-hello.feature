@@ -122,6 +122,10 @@ Feature: Store hello — the signed envelope at the door
       Then the response is 401 "signature_invalid"
 
     Scenario: A mandated envelope with a corrupted signature answers signature_invalid
+      # Gate 3 (P2): #7 resolves the leaf against the STORED certs before
+      # #8 (A.2 order) — the chain state must exist for the signature
+      # check to even be reached.
+      Given the gamma log carries the mandate grant and its bound action
       When a mandated GET arrives with its signature corrupted
       Then the response is 401 "signature_invalid"
 

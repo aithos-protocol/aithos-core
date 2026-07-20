@@ -28,6 +28,7 @@ use std::sync::Arc;
 use aithos_provider::acme::AcmeState;
 use aithos_provider::control::ControlPlane;
 use aithos_provider::dns::{DnsTxt, MemDnsTxt, NoDnsTxt, Route53DnsTxt};
+use aithos_provider::heads::{HeadsTable, MemHeads};
 use aithos_provider::nonces::{DynamoDbNonces, MemNonces, NonceStore, MIN_WINDOW_SECS};
 use aithos_provider::objects::{MemObjects, ObjectStore};
 use aithos_provider::service::{build_router, AppState};
@@ -57,7 +58,7 @@ async fn main() {
     let authority = required("AITHOS_STORE_AUTHORITY").to_ascii_lowercase();
     let bootstrap = required("AITHOS_STORE_BOOTSTRAP");
 
-    let (control, preloads) = match ControlPlane::load_bootstrap(&bootstrap) {
+    let (control, preloads, head_seeds) = match ControlPlane::load_bootstrap(&bootstrap) {
         Ok(loaded) => loaded,
         Err(e) => {
             // The bootstrap holds public material only; its errors are
@@ -68,9 +69,16 @@ async fn main() {
     };
 
     let objects: Arc<dyn ObjectStore> = Arc::new(MemObjects::new());
-    for (tenant, did, bytes) in preloads {
-        objects.put(&tenant, &did, "did.json", bytes).await;
+    for (tenant, did, key, bytes) in preloads {
+        objects.put(&tenant, &did, &key, bytes).await;
     }
+    // The A.5 heads table (étape 4): memory backend, DynamoDB at étape 6
+    // behind the same seam. Seeds are replay fixtures only.
+    let mem_heads = MemHeads::new();
+    for (tenant, did, record) in head_seeds {
+        mem_heads.seed(&tenant, &did, record);
+    }
+    let heads: Arc<dyn HeadsTable> = Arc::new(mem_heads);
 
     let window_secs = std::env::var("AITHOS_STORE_NONCE_WINDOW_SECS")
         .ok()
@@ -136,6 +144,8 @@ async fn main() {
     let state = Arc::new(AppState {
         control,
         objects,
+        heads,
+        deposit_locks: Default::default(),
         nonces,
         dns,
         acme: AcmeState::new(),
