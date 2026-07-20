@@ -30,7 +30,7 @@ use std::sync::Mutex;
 
 use serde::Deserialize;
 
-use crate::control::{ControlPlane, TenantState};
+use crate::control::{authorize_gateway, ControlStore, GatewayAuthzRefusal};
 use crate::dns::DnsTxt;
 use crate::envelope::{parse_envelope_form, verify_envelope_signature, Refusal, RequestFacts};
 use crate::nonces::{NonceStore, Reservation};
@@ -172,7 +172,7 @@ fn valid_value(v: &str) -> bool {
 pub async fn decide_acme(
     header: Option<&str>,
     facts: &RequestFacts<'_>,
-    control: &ControlPlane,
+    control: &dyn ControlStore,
     nonces: &dyn NonceStore,
     state: &AcmeState,
     dns: &dyn DnsTxt,
@@ -250,21 +250,18 @@ pub async fn decide_acme(
         return Err(Refusal::EnvelopeInvalid);
     }
 
-    // Mapping — the graved B.5 authority: resolve by gateway_pub, then
-    // suspension (binding, then tenant), then the exact hostname. A key
-    // enrolled nowhere, a binding onto an unknown tenant and a foreign
-    // hostname all answer the SAME mapping_mismatch (no oracle).
-    let Some(binding) = control.resolve_tunnel(&envelope.key) else {
-        return Err(Refusal::MappingMismatch);
+    // Mapping — the graved B.5 authority, through the SHARED helper the
+    // relay's B.2 step 4 adopted at the P7b bascule (one order, one code
+    // path): resolve by gateway_pub, then suspension (binding, then
+    // tenant), then the exact hostname. A key enrolled nowhere, a binding
+    // onto an unknown tenant and a foreign hostname all answer the SAME
+    // mapping_mismatch (no oracle).
+    let binding = match authorize_gateway(control, &envelope.key, now_ms).await {
+        Ok(binding) => binding,
+        Err(GatewayAuthzRefusal::Unavailable) => return Err(Refusal::Unavailable),
+        Err(GatewayAuthzRefusal::MappingMismatch) => return Err(Refusal::MappingMismatch),
+        Err(GatewayAuthzRefusal::Suspended) => return Err(Refusal::Suspended),
     };
-    if binding.suspended {
-        return Err(Refusal::Suspended);
-    }
-    match control.tenant_state(&binding.tenant) {
-        TenantState::Unknown => return Err(Refusal::MappingMismatch),
-        TenantState::Suspended => return Err(Refusal::Suspended),
-        TenantState::Active => {}
-    }
     if binding.hostname != body.hostname {
         return Err(Refusal::MappingMismatch);
     }

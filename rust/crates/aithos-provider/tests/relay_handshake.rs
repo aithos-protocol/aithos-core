@@ -29,6 +29,8 @@ fn gateway() -> (SigningKey, String) {
 
 fn control(gateway_pub: &str, suspended: bool) -> ControlPlane {
     let mut plane = ControlPlane::default();
+    // P7b: the B.2 step 4 joins the tenant state — the fixture names it.
+    plane.seed_tenant("acme", false);
     plane.bind_tunnel(
         gateway_pub.to_owned(),
         TunnelBinding {

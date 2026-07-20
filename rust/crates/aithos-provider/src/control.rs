@@ -13,7 +13,10 @@
 //! before it may resolve an owner key: a bootstrap that does not verify
 //! refuses to load — fail-closed at startup, not at request time.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
 use aithos_core::did::DidDocument;
 use serde::Deserialize;
@@ -23,6 +26,52 @@ pub enum TenantState {
     Unknown,
     Suspended,
     Active,
+}
+
+/// The control backend cannot answer. Fixed cause only (discipline A.8) —
+/// the caller refuses `503 unavailable`, it NEVER invents an
+/// `unknown_tenant` or a `did_not_bound` (P7 gate contrat, pattern of the
+/// étape-6 seams).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ControlUnavailable;
+
+/// Boxed seam future, house style (`objects.rs`, `heads.rs`).
+pub type ControlFuture<'a, T> =
+    Pin<Box<dyn Future<Output = Result<T, ControlUnavailable>> + Send + 'a>>;
+
+/// The store-side control-plane seam (P7): the SAME three lookups
+/// `control.rs` has served since P1, behind a backend. `now_ms` is the
+/// request clock (the injected test instant under `AITHOS_STORE_TEST_NOW`)
+/// — the freshness bound of the cached backend counts against it, so the
+/// < 60 s propagation promise is provable with the test clock, never with
+/// a sleep.
+///
+/// Backends: [`ControlPlane`] (the bootstrap file — dev/tests, and the
+/// relay's P6 shape), [`DynamoDbControl`] (the P7 table) and
+/// [`CachedControl`] (the freshness wrapper the deployed composition
+/// uses). The relay keeps the sync [`ControlPlane`] read-model — its
+/// bascule is a separate lot (arbitrage gate contrat P7, 2026-07-20).
+pub trait ControlStore: Send + Sync {
+    /// Annexe A.2 #1 — the tenant gate.
+    fn tenant_state<'a>(&'a self, tenant: &'a str, now_ms: i64) -> ControlFuture<'a, TenantState>;
+
+    /// Annexe A.2 #7 — the DID binding (only ever named under a valid
+    /// envelope; the anti-enumeration note of A.7 holds at every backend).
+    fn did_bound<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+        now_ms: i64,
+    ) -> ControlFuture<'a, bool>;
+
+    /// Annexe B.2 — the gateway mapping (the store's `/acme/txt`
+    /// authority). `None` = enrolled for no tunnel (`mapping_mismatch`,
+    /// never an enumeration oracle).
+    fn resolve_tunnel<'a>(
+        &'a self,
+        gateway_pub: &'a str,
+        now_ms: i64,
+    ) -> ControlFuture<'a, Option<TunnelBinding>>;
 }
 
 /// The control-plane binding of one gateway key (annexe B.2): the tenant
@@ -246,6 +295,14 @@ impl ControlPlane {
         Ok((plane, preloads, heads))
     }
 
+    /// True when the plane carries neither a tenant nor a tunnel mapping
+    /// — the P7 boot guard's question (`store_api.rs`: a dynamodb control
+    /// backend refuses any bootstrap that carries either).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.tenants.is_empty() && self.tunnels.is_empty()
+    }
+
     pub fn tenant_state(&self, tenant: &str) -> TenantState {
         match self.tenants.get(tenant) {
             None => TenantState::Unknown,
@@ -272,6 +329,334 @@ impl ControlPlane {
     /// writes the real ones to DynamoDB).
     pub fn bind_tunnel(&mut self, gateway_pub: String, binding: TunnelBinding) {
         self.tunnels.insert(gateway_pub, binding);
+    }
+
+    /// Seed a tenant row (test/tooling surface, the `bind_tunnel` twin —
+    /// P7b: the B.2 step 4 joins the TENANT state, so every fixture plane
+    /// that binds a tunnel names its tenant too, exactly as the admin CLI
+    /// demands `create` before `bind-gateway`).
+    pub fn seed_tenant(&mut self, tenant: &str, suspended: bool) {
+        self.tenants.entry(tenant.to_owned()).or_default().suspended = suspended;
+    }
+}
+
+// ----------------------------------------------------- gateway authority
+
+/// A refusal of the graved gateway authority (B.5, adopted by B.2 step 4 —
+/// arbitrage bascule relay P7b, 2026-07-20). The caller maps these onto its
+/// own wire registry (`Refusal` on /acme, `TunnelRefusal` on the tunnel).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GatewayAuthzRefusal {
+    /// The backend cannot answer — refuse, never guess (fail-closed).
+    Unavailable,
+    /// No binding, or a binding onto an unknown tenant (an orphan binding
+    /// never resolves) — the same answer as a foreign hostname, no
+    /// enumeration oracle.
+    MappingMismatch,
+    /// The binding or its tenant is suspended.
+    Suspended,
+}
+
+/// The graved authority order shared by the store's `/acme` surface (B.5)
+/// and the relay's registration step 4 (B.2, P7b): resolve the binding by
+/// `gateway_pub`, then the binding's own suspension, then the TENANT's
+/// state. The caller still performs its exact-match checks (hostname,
+/// claimed tenant) — this helper decides AUTHORITY, not routing.
+pub async fn authorize_gateway(
+    control: &dyn ControlStore,
+    gateway_pub: &str,
+    now_ms: i64,
+) -> Result<TunnelBinding, GatewayAuthzRefusal> {
+    let Some(binding) = control
+        .resolve_tunnel(gateway_pub, now_ms)
+        .await
+        .map_err(|_| GatewayAuthzRefusal::Unavailable)?
+    else {
+        return Err(GatewayAuthzRefusal::MappingMismatch);
+    };
+    if binding.suspended {
+        return Err(GatewayAuthzRefusal::Suspended);
+    }
+    match control
+        .tenant_state(&binding.tenant, now_ms)
+        .await
+        .map_err(|_| GatewayAuthzRefusal::Unavailable)?
+    {
+        TenantState::Unknown => Err(GatewayAuthzRefusal::MappingMismatch),
+        TenantState::Suspended => Err(GatewayAuthzRefusal::Suspended),
+        TenantState::Active => Ok(binding),
+    }
+}
+
+/// The bootstrap read-model IS a control backend — infallible (it lives
+/// in process memory) and clock-blind. This keeps dev/tests and the
+/// committed vectors on the exact P1 semantics behind the P7 seam.
+impl ControlStore for ControlPlane {
+    fn tenant_state<'a>(&'a self, tenant: &'a str, _now_ms: i64) -> ControlFuture<'a, TenantState> {
+        Box::pin(async move { Ok(ControlPlane::tenant_state(self, tenant)) })
+    }
+
+    fn did_bound<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+        _now_ms: i64,
+    ) -> ControlFuture<'a, bool> {
+        Box::pin(async move { Ok(ControlPlane::did_bound(self, tenant, did)) })
+    }
+
+    fn resolve_tunnel<'a>(
+        &'a self,
+        gateway_pub: &'a str,
+        _now_ms: i64,
+    ) -> ControlFuture<'a, Option<TunnelBinding>> {
+        Box::pin(async move { Ok(ControlPlane::resolve_tunnel(self, gateway_pub).cloned()) })
+    }
+}
+
+// ------------------------------------------------------------------ cache
+
+/// The freshness wrapper (P7 arbitrage 2026-07-20: short TTL cache over
+/// the table, bound ≤ 30 s by default — the < 60 s suspension promise
+/// holds with margin). Semantics are strict:
+///
+/// - a FRESH entry (age < TTL against the REQUEST clock) answers without
+///   touching the backend — positive AND negative results cache alike
+///   (an unknown tenant probed in a loop must not hammer the table, and
+///   a CREATION propagates within the same bound as a suspension);
+/// - a stale or absent entry reads through; a backend that cannot answer
+///   is `Err` — the cache NEVER serves a stale value past its TTL
+///   (fail-closed, no stale-while-error).
+pub struct CachedControl<S> {
+    inner: S,
+    ttl_ms: i64,
+    tenants: Mutex<HashMap<String, (i64, TenantState)>>,
+    bindings: Mutex<HashMap<(String, String), (i64, bool)>>,
+    tunnels: Mutex<HashMap<String, (i64, Option<TunnelBinding>)>>,
+}
+
+impl<S: ControlStore> CachedControl<S> {
+    pub fn new(inner: S, ttl_secs: u64) -> Self {
+        Self {
+            inner,
+            ttl_ms: i64::try_from(ttl_secs)
+                .unwrap_or(i64::MAX)
+                .saturating_mul(1000),
+            tenants: Mutex::new(HashMap::new()),
+            bindings: Mutex::new(HashMap::new()),
+            tunnels: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn fresh<K: std::hash::Hash + Eq, V: Clone>(
+        map: &Mutex<HashMap<K, (i64, V)>>,
+        key: &K,
+        now_ms: i64,
+        ttl_ms: i64,
+    ) -> Option<V> {
+        let map = map.lock().expect("control cache poisoned");
+        map.get(key).and_then(|(at, value)| {
+            // The request clock may be re-injected backwards in tests; a
+            // "future" entry is stale too — freshness is a WINDOW.
+            let age = now_ms.saturating_sub(*at);
+            ((0..ttl_ms).contains(&age)).then(|| value.clone())
+        })
+    }
+
+    fn store<K: std::hash::Hash + Eq, V>(
+        map: &Mutex<HashMap<K, (i64, V)>>,
+        key: K,
+        now_ms: i64,
+        value: V,
+    ) {
+        map.lock()
+            .expect("control cache poisoned")
+            .insert(key, (now_ms, value));
+    }
+}
+
+impl<S: ControlStore> ControlStore for CachedControl<S> {
+    fn tenant_state<'a>(&'a self, tenant: &'a str, now_ms: i64) -> ControlFuture<'a, TenantState> {
+        Box::pin(async move {
+            if let Some(state) = Self::fresh(&self.tenants, &tenant.to_owned(), now_ms, self.ttl_ms)
+            {
+                return Ok(state);
+            }
+            let state = self.inner.tenant_state(tenant, now_ms).await?;
+            Self::store(&self.tenants, tenant.to_owned(), now_ms, state);
+            Ok(state)
+        })
+    }
+
+    fn did_bound<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+        now_ms: i64,
+    ) -> ControlFuture<'a, bool> {
+        Box::pin(async move {
+            let key = (tenant.to_owned(), did.to_owned());
+            if let Some(bound) = Self::fresh(&self.bindings, &key, now_ms, self.ttl_ms) {
+                return Ok(bound);
+            }
+            let bound = self.inner.did_bound(tenant, did, now_ms).await?;
+            Self::store(&self.bindings, key, now_ms, bound);
+            Ok(bound)
+        })
+    }
+
+    fn resolve_tunnel<'a>(
+        &'a self,
+        gateway_pub: &'a str,
+        now_ms: i64,
+    ) -> ControlFuture<'a, Option<TunnelBinding>> {
+        Box::pin(async move {
+            if let Some(binding) =
+                Self::fresh(&self.tunnels, &gateway_pub.to_owned(), now_ms, self.ttl_ms)
+            {
+                return Ok(binding);
+            }
+            let binding = self.inner.resolve_tunnel(gateway_pub, now_ms).await?;
+            Self::store(
+                &self.tunnels,
+                gateway_pub.to_owned(),
+                now_ms,
+                binding.clone(),
+            );
+            Ok(binding)
+        })
+    }
+}
+
+// --------------------------------------------------------------- dynamodb
+
+/// The P7 table backend (module Terraform `control-plane-min`, single
+/// table, composite key `pk`/`sk`):
+///
+/// | `pk`                  | `sk`          | attributes                          |
+/// |-----------------------|---------------|-------------------------------------|
+/// | `tenant#<tenant>`     | `meta`        | `s` (BOOL, suspended)               |
+/// | `tenant#<tenant>`     | `did#<did>`   | — (presence is the binding)         |
+/// | `gateway#<gw_pub>`    | `meta`        | `t`, `h` (S), `s` (BOOL, suspended) |
+///
+/// Reads are plain `GetItem` (eventually consistent — well inside the
+/// freshness bound); a malformed item is unanswerable, never a phantom
+/// absence (fail-closed, `heads.rs` precedent). The admin CLI
+/// (`aithos-store-admin`) is the only writer; the task role carries the
+/// reader policy alone.
+pub struct DynamoDbControl {
+    client: aws_sdk_dynamodb::Client,
+    table: String,
+}
+
+impl DynamoDbControl {
+    pub fn new(client: aws_sdk_dynamodb::Client, table: String) -> Self {
+        Self { client, table }
+    }
+
+    async fn get(
+        &self,
+        pk: String,
+        sk: &str,
+    ) -> Result<Option<HashMap<String, aws_sdk_dynamodb::types::AttributeValue>>, ControlUnavailable>
+    {
+        use aws_sdk_dynamodb::types::AttributeValue;
+        let got = self
+            .client
+            .get_item()
+            .table_name(&self.table)
+            .key("pk", AttributeValue::S(pk))
+            .key("sk", AttributeValue::S(sk.to_owned()))
+            .send()
+            .await
+            .map_err(|_| ControlUnavailable)?;
+        Ok(got.item.map(|item| item.into_iter().collect()))
+    }
+
+    fn suspended_of(
+        item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
+    ) -> Result<bool, ControlUnavailable> {
+        match item.get("s") {
+            None => Ok(false),
+            Some(v) => v.as_bool().copied().map_err(|_| ControlUnavailable),
+        }
+    }
+}
+
+impl ControlStore for DynamoDbControl {
+    fn tenant_state<'a>(&'a self, tenant: &'a str, _now_ms: i64) -> ControlFuture<'a, TenantState> {
+        Box::pin(async move {
+            match self.get(format!("tenant#{tenant}"), "meta").await? {
+                None => Ok(TenantState::Unknown),
+                Some(item) if Self::suspended_of(&item)? => Ok(TenantState::Suspended),
+                Some(_) => Ok(TenantState::Active),
+            }
+        })
+    }
+
+    fn did_bound<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+        _now_ms: i64,
+    ) -> ControlFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(self
+                .get(format!("tenant#{tenant}"), &format!("did#{did}"))
+                .await?
+                .is_some())
+        })
+    }
+
+    fn resolve_tunnel<'a>(
+        &'a self,
+        gateway_pub: &'a str,
+        _now_ms: i64,
+    ) -> ControlFuture<'a, Option<TunnelBinding>> {
+        Box::pin(async move {
+            match self.get(format!("gateway#{gateway_pub}"), "meta").await? {
+                None => Ok(None),
+                Some(item) => {
+                    let field = |name: &str| -> Result<String, ControlUnavailable> {
+                        item.get(name)
+                            .and_then(|v| v.as_s().ok())
+                            .map(|v| v.to_owned())
+                            .ok_or(ControlUnavailable)
+                    };
+                    Ok(Some(TunnelBinding {
+                        tenant: field("t")?,
+                        hostname: field("h")?,
+                        suspended: Self::suspended_of(&item)?,
+                    }))
+                }
+            }
+        })
+    }
+}
+
+/// `Arc` delegation — the composition root (and the test harness, which
+/// keeps an admin handle on its double) hands one seam whatever the
+/// backend shape.
+impl<S: ControlStore + ?Sized> ControlStore for Arc<S> {
+    fn tenant_state<'a>(&'a self, tenant: &'a str, now_ms: i64) -> ControlFuture<'a, TenantState> {
+        self.as_ref().tenant_state(tenant, now_ms)
+    }
+
+    fn did_bound<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+        now_ms: i64,
+    ) -> ControlFuture<'a, bool> {
+        self.as_ref().did_bound(tenant, did, now_ms)
+    }
+
+    fn resolve_tunnel<'a>(
+        &'a self,
+        gateway_pub: &'a str,
+        now_ms: i64,
+    ) -> ControlFuture<'a, Option<TunnelBinding>> {
+        self.as_ref().resolve_tunnel(gateway_pub, now_ms)
     }
 }
 
@@ -372,5 +757,253 @@ mod tests {
         assert!(!bound.suspended);
         assert!(plane.resolve_tunnel("z6MkGw2").unwrap().suspended);
         assert!(plane.resolve_tunnel("z6MkNope").is_none());
+    }
+
+    // ------------------------------------------------ P7 freshness cache
+
+    /// A scripted backend: answers from a mutable map, counts reads, and
+    /// refuses when told to — the CachedControl contract under test.
+    struct Scripted {
+        state: Mutex<(TenantState, bool)>, // (state, down)
+        reads: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Default for Scripted {
+        fn default() -> Self {
+            Self {
+                state: Mutex::new((TenantState::Unknown, false)),
+                reads: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl Scripted {
+        fn set(&self, state: TenantState) {
+            self.state.lock().unwrap().0 = state;
+        }
+        fn down(&self, down: bool) {
+            self.state.lock().unwrap().1 = down;
+        }
+        fn reads(&self) -> usize {
+            self.reads.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl ControlStore for Scripted {
+        fn tenant_state<'a>(
+            &'a self,
+            _tenant: &'a str,
+            _now_ms: i64,
+        ) -> ControlFuture<'a, TenantState> {
+            Box::pin(async move {
+                self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let (state, down) = *self.state.lock().unwrap();
+                if down {
+                    return Err(ControlUnavailable);
+                }
+                Ok(state)
+            })
+        }
+
+        fn did_bound<'a>(
+            &'a self,
+            _tenant: &'a str,
+            _did: &'a str,
+            _now_ms: i64,
+        ) -> ControlFuture<'a, bool> {
+            Box::pin(async move { Ok(false) })
+        }
+
+        fn resolve_tunnel<'a>(
+            &'a self,
+            _gateway_pub: &'a str,
+            _now_ms: i64,
+        ) -> ControlFuture<'a, Option<TunnelBinding>> {
+            Box::pin(async move { Ok(None) })
+        }
+    }
+
+    fn block<T>(f: impl std::future::Future<Output = T>) -> T {
+        futures::executor::block_on(f)
+    }
+
+    #[test]
+    fn a_fresh_entry_answers_without_the_backend() {
+        let inner = Arc::new(Scripted::default());
+        inner.set(TenantState::Active);
+        let cached = CachedControl::new(inner.clone(), 30);
+        assert_eq!(
+            block(cached.tenant_state("acme", 1_000)),
+            Ok(TenantState::Active)
+        );
+        // 29.999 s later: still fresh — no second read.
+        assert_eq!(
+            block(cached.tenant_state("acme", 30_999)),
+            Ok(TenantState::Active)
+        );
+        assert_eq!(inner.reads(), 1);
+        // Exactly the bound: stale — the write below is now visible.
+        inner.set(TenantState::Suspended);
+        assert_eq!(
+            block(cached.tenant_state("acme", 31_000)),
+            Ok(TenantState::Suspended)
+        );
+        assert_eq!(inner.reads(), 2);
+    }
+
+    #[test]
+    fn negative_results_cache_and_propagate_within_the_same_bound() {
+        let inner = Arc::new(Scripted::default());
+        inner.set(TenantState::Unknown);
+        let cached = CachedControl::new(inner.clone(), 30);
+        assert_eq!(
+            block(cached.tenant_state("acme", 0)),
+            Ok(TenantState::Unknown)
+        );
+        // The creation lands; within the bound the negative entry serves.
+        inner.set(TenantState::Active);
+        assert_eq!(
+            block(cached.tenant_state("acme", 10_000)),
+            Ok(TenantState::Unknown)
+        );
+        // Past the bound: the creation is live — no redeploy anywhere.
+        assert_eq!(
+            block(cached.tenant_state("acme", 30_000)),
+            Ok(TenantState::Active)
+        );
+    }
+
+    #[test]
+    fn the_cache_never_serves_a_stale_value_past_its_ttl() {
+        let inner = Arc::new(Scripted::default());
+        inner.set(TenantState::Active);
+        let cached = CachedControl::new(inner.clone(), 30);
+        assert_eq!(
+            block(cached.tenant_state("acme", 0)),
+            Ok(TenantState::Active)
+        );
+        // Backend mute + entry expired: refuse — NEVER the stale Active.
+        inner.down(true);
+        assert_eq!(
+            block(cached.tenant_state("acme", 60_000)),
+            Err(ControlUnavailable)
+        );
+        // Within the bound the fresh entry still serves (an outage does
+        // not amputate the freshness window it already paid for).
+        assert_eq!(
+            block(cached.tenant_state("acme", 29_999)),
+            Ok(TenantState::Active)
+        );
+    }
+
+    // ------------------------------------------- P7b gateway authority
+
+    /// The B.5 order adopted by B.2 step 4 (P7b): binding → binding
+    /// suspension → tenant state. An orphan binding (tenant unknown) is a
+    /// mapping_mismatch, a suspended tenant gates its tunnels in ONE
+    /// tenant-level write.
+    #[test]
+    fn gateway_authority_joins_the_tenant_state() {
+        let mut plane = ControlPlane::default();
+        plane.bind_tunnel(
+            "z6MkGw".into(),
+            TunnelBinding {
+                tenant: "acme".into(),
+                hostname: "demo.mcp.aithos.fr".into(),
+                suspended: false,
+            },
+        );
+        // Orphan binding: the tenant row does not exist.
+        assert_eq!(
+            block(authorize_gateway(&plane, "z6MkGw", 0)),
+            Err(GatewayAuthzRefusal::MappingMismatch)
+        );
+        // Active tenant: the binding resolves.
+        plane.seed_tenant("acme", false);
+        let bound = block(authorize_gateway(&plane, "z6MkGw", 0)).expect("authorized");
+        assert_eq!(bound.hostname, "demo.mcp.aithos.fr");
+        // Tenant-level suspension gates the tunnel (one write).
+        plane.seed_tenant("acme", true);
+        assert_eq!(
+            block(authorize_gateway(&plane, "z6MkGw", 0)),
+            Err(GatewayAuthzRefusal::Suspended)
+        );
+        // No binding at all: the same mapping_mismatch as the orphan.
+        assert_eq!(
+            block(authorize_gateway(&plane, "z6MkGhost", 0)),
+            Err(GatewayAuthzRefusal::MappingMismatch)
+        );
+    }
+
+    /// Binding-level suspension still precedes the tenant join (B.2 order).
+    #[test]
+    fn a_suspended_binding_refuses_before_the_tenant_join() {
+        let mut plane = ControlPlane::default();
+        plane.seed_tenant("acme", false);
+        plane.bind_tunnel(
+            "z6MkGw".into(),
+            TunnelBinding {
+                tenant: "acme".into(),
+                hostname: "demo.mcp.aithos.fr".into(),
+                suspended: true,
+            },
+        );
+        assert_eq!(
+            block(authorize_gateway(&plane, "z6MkGw", 0)),
+            Err(GatewayAuthzRefusal::Suspended)
+        );
+    }
+
+    /// An unanswerable backend refuses `Unavailable` — never a phantom
+    /// mismatch (fail-closed, the étape-6 seam pattern).
+    #[test]
+    fn an_unanswerable_backend_refuses_unavailable() {
+        struct DownResolver;
+        impl ControlStore for DownResolver {
+            fn tenant_state<'a>(
+                &'a self,
+                _tenant: &'a str,
+                _now_ms: i64,
+            ) -> ControlFuture<'a, TenantState> {
+                Box::pin(async move { Err(ControlUnavailable) })
+            }
+            fn did_bound<'a>(
+                &'a self,
+                _tenant: &'a str,
+                _did: &'a str,
+                _now_ms: i64,
+            ) -> ControlFuture<'a, bool> {
+                Box::pin(async move { Err(ControlUnavailable) })
+            }
+            fn resolve_tunnel<'a>(
+                &'a self,
+                _gateway_pub: &'a str,
+                _now_ms: i64,
+            ) -> ControlFuture<'a, Option<TunnelBinding>> {
+                Box::pin(async move { Err(ControlUnavailable) })
+            }
+        }
+        assert_eq!(
+            block(authorize_gateway(&DownResolver, "z6MkGw", 0)),
+            Err(GatewayAuthzRefusal::Unavailable)
+        );
+    }
+
+    #[test]
+    fn a_backwards_clock_is_stale_too() {
+        let inner = Arc::new(Scripted::default());
+        inner.set(TenantState::Active);
+        let cached = CachedControl::new(inner.clone(), 30);
+        assert_eq!(
+            block(cached.tenant_state("acme", 100_000)),
+            Ok(TenantState::Active)
+        );
+        // A request clock BEFORE the entry's birth re-reads (freshness is
+        // a window, not a signed distance).
+        assert_eq!(
+            block(cached.tenant_state("acme", 50_000)),
+            Ok(TenantState::Active)
+        );
+        assert_eq!(inner.reads(), 2);
     }
 }

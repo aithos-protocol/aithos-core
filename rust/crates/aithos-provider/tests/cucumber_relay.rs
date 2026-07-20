@@ -16,9 +16,12 @@
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use aithos_provider::control::{ControlPlane, TunnelBinding};
+use aithos_provider::control::{
+    CachedControl, ControlFuture, ControlPlane, ControlStore, ControlUnavailable, TenantState,
+    TunnelBinding,
+};
 use aithos_provider::nonces::{MemNonces, NonceStore};
-use aithos_provider::passthrough::{RelayDoor, SessionRegistry};
+use aithos_provider::passthrough::{reconcile_registry, RelayDoor, SessionRegistry};
 use aithos_provider::sni::TUNNEL_ALPN;
 use aithos_provider::tls::tunnel_server_config_from_pem;
 use aithos_provider::tunnel::{
@@ -140,19 +143,20 @@ fn now_z() -> String {
     aithos_provider::time::render_rfc3339z(now_ms())
 }
 
-fn signed_registration(
+fn signed_registration_at(
     sk: &SigningKey,
     gateway_pub: &str,
     tenant: &str,
     hostname: &str,
     nonce: &str,
+    at: String,
 ) -> String {
     let reg = Registration {
         version: TUNNEL_WIRE_VERSION.into(),
         tenant: tenant.into(),
         hostname: hostname.into(),
         gateway_pub: gateway_pub.into(),
-        at: now_z(),
+        at,
         nonce: nonce.into(),
         signature: RegistrationSignature {
             alg: "ed25519".into(),
@@ -160,6 +164,16 @@ fn signed_registration(
         },
     };
     registration_line(&sign_registration(reg, sk))
+}
+
+fn signed_registration(
+    sk: &SigningKey,
+    gateway_pub: &str,
+    tenant: &str,
+    hostname: &str,
+    nonce: &str,
+) -> String {
+    signed_registration_at(sk, gateway_pub, tenant, hostname, nonce, now_z())
 }
 
 // ------------------------------------------------------- relay + pod
@@ -214,6 +228,30 @@ async fn register_once(
         .await
         .unwrap();
     tls.write_all(signed_registration(sk, gateway_pub, tenant, hostname, nonce).as_bytes())
+        .await
+        .unwrap();
+    tls.flush().await.unwrap();
+    read_answer_line(&mut tls).await
+}
+
+/// One registration round-trip at an EXPLICIT instant (P7b seam scenarios:
+/// the cache freshness bound is proven at the injected clock).
+#[allow(clippy::too_many_arguments)]
+async fn register_once_at(
+    addr: std::net::SocketAddr,
+    relay_ca: &CertificateDer<'static>,
+    sk: &SigningKey,
+    gateway_pub: &str,
+    tenant: &str,
+    hostname: &str,
+    nonce: &str,
+    at_ms: i64,
+) -> serde_json::Value {
+    let mut tls = dial_tunnel_door(addr, relay_ca, &[TUNNEL_ALPN])
+        .await
+        .unwrap();
+    let at = aithos_provider::time::render_rfc3339z(at_ms);
+    tls.write_all(signed_registration_at(sk, gateway_pub, tenant, hostname, nonce, at).as_bytes())
         .await
         .unwrap();
     tls.flush().await.unwrap();
@@ -352,6 +390,80 @@ async fn raw_expect_silent_close(addr: std::net::SocketAddr, bytes: &[u8]) -> bo
     }
 }
 
+// ------------------------------------------------ P7b scripted control
+
+/// The P7b control double: the table's three lookups with interior
+/// mutability (suspend/remove a tenant, drop a binding, outage) — the
+/// `Scripted` pattern of the P7 gate contrat, behind the REAL door, the
+/// REAL freshness cache and the REAL reconciliation sweep.
+#[derive(Default)]
+struct ScriptedControl {
+    state: Mutex<ScriptedState>,
+}
+
+#[derive(Default)]
+struct ScriptedState {
+    /// tenant → suspended
+    tenants: std::collections::HashMap<String, bool>,
+    /// gateway_pub → binding
+    tunnels: std::collections::HashMap<String, TunnelBinding>,
+    down: bool,
+}
+
+impl ScriptedControl {
+    fn with<T>(&self, f: impl FnOnce(&mut ScriptedState) -> T) -> T {
+        f(&mut self.state.lock().unwrap())
+    }
+}
+
+impl ControlStore for ScriptedControl {
+    fn tenant_state<'a>(&'a self, tenant: &'a str, _now_ms: i64) -> ControlFuture<'a, TenantState> {
+        Box::pin(async move {
+            self.with(|s| {
+                if s.down {
+                    return Err(ControlUnavailable);
+                }
+                Ok(match s.tenants.get(tenant) {
+                    None => TenantState::Unknown,
+                    Some(true) => TenantState::Suspended,
+                    Some(false) => TenantState::Active,
+                })
+            })
+        })
+    }
+
+    fn did_bound<'a>(
+        &'a self,
+        _tenant: &'a str,
+        _did: &'a str,
+        _now_ms: i64,
+    ) -> ControlFuture<'a, bool> {
+        Box::pin(async move {
+            self.with(|s| {
+                if s.down {
+                    return Err(ControlUnavailable);
+                }
+                Ok(false)
+            })
+        })
+    }
+
+    fn resolve_tunnel<'a>(
+        &'a self,
+        gateway_pub: &'a str,
+        _now_ms: i64,
+    ) -> ControlFuture<'a, Option<TunnelBinding>> {
+        Box::pin(async move {
+            self.with(|s| {
+                if s.down {
+                    return Err(ControlUnavailable);
+                }
+                Ok(s.tunnels.get(gateway_pub).cloned())
+            })
+        })
+    }
+}
+
 // --------------------------------------------------------------- world
 
 #[derive(cucumber::World)]
@@ -374,6 +486,22 @@ struct RelayWorld {
     echo_ok: Option<bool>,
     fifth_ok: Option<bool>,
     nonce_seq: u64,
+
+    // ---- P7b control-seam scenarios ----
+    scripted: Option<Arc<ScriptedControl>>,
+    seam: Option<Arc<dyn ControlStore>>,
+    seam_addr: Option<std::net::SocketAddr>,
+    seam_registry: Option<Arc<SessionRegistry>>,
+    seam_relay_ca: Option<CertificateDer<'static>>,
+    /// The seam's injected clock (ms) — base = wall now at listener spawn,
+    /// scenario instants offset from it; the registration verifier, the
+    /// cache and the reconcile sweep all read THIS clock.
+    seam_clock: Arc<std::sync::atomic::AtomicI64>,
+    seam_base: i64,
+    seam_tenant: Option<String>,
+    seam_hostname: Option<String>,
+    seam_pod: Option<TestPod>,
+    seam_answer: Option<serde_json::Value>,
 }
 
 impl std::fmt::Debug for RelayWorld {
@@ -404,6 +532,17 @@ impl RelayWorld {
             echo_ok: None,
             fifth_ok: None,
             nonce_seq: 0,
+            scripted: None,
+            seam: None,
+            seam_addr: None,
+            seam_registry: None,
+            seam_relay_ca: None,
+            seam_clock: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            seam_base: 0,
+            seam_tenant: None,
+            seam_hostname: None,
+            seam_pod: None,
+            seam_answer: None,
         }
     }
 
@@ -472,6 +611,9 @@ async fn start_relay(world: &mut RelayWorld, tunnel_name: String) {
 
     let mut control = ControlPlane::default();
     let b = world.binding.clone().unwrap();
+    // P7b: the B.2 step 4 joins the tenant state — the fixture plane
+    // names the bound tenant as active.
+    control.seed_tenant(&b.tenant, false);
     control.bind_tunnel(
         world.gateway_pub.clone(),
         TunnelBinding {
@@ -479,11 +621,12 @@ async fn start_relay(world: &mut RelayWorld, tunnel_name: String) {
             ..b
         },
     );
+    let control: Arc<dyn ControlStore> = Arc::new(control);
 
     let registry = Arc::new(SessionRegistry::new());
     let nonces: Arc<dyn NonceStore> = Arc::new(MemNonces::new(600));
     let mut door = RelayDoor::new(
-        Arc::new(control),
+        control,
         nonces,
         registry.clone(),
         acceptor,
@@ -857,6 +1000,302 @@ async fn no_log_payload(world: &mut RelayWorld) {
         "payload leaked into logs:\n{logs}"
     );
     assert_eq!(world.echo_ok, Some(true));
+}
+
+// --------------------------------------------- P7b control-seam steps
+
+use std::sync::atomic::Ordering;
+
+impl RelayWorld {
+    fn seam_now(&self) -> i64 {
+        self.seam_clock.load(Ordering::SeqCst)
+    }
+
+    async fn seam_register(&mut self, hostname: &str, at_ms: i64) {
+        let nonce = self.fresh_nonce("seam");
+        let tenant = self.seam_tenant.clone().expect("seam tenant");
+        let answer = register_once_at(
+            self.seam_addr.unwrap(),
+            self.seam_relay_ca.as_ref().unwrap(),
+            &self.gateway_sk,
+            &self.gateway_pub,
+            &tenant,
+            hostname,
+            &nonce,
+            at_ms,
+        )
+        .await;
+        self.seam_answer = Some(answer);
+    }
+}
+
+#[given(
+    expr = "a scripted control store binds gateway {string} to tenant {string} and hostname {string}"
+)]
+async fn seam_bind(world: &mut RelayWorld, gateway_pub: String, tenant: String, hostname: String) {
+    assert_eq!(gateway_pub, world.gateway_pub, "fixture gateway key");
+    let scripted = Arc::new(ScriptedControl::default());
+    scripted.with(|s| {
+        s.tunnels.insert(
+            gateway_pub,
+            TunnelBinding {
+                tenant: tenant.clone(),
+                hostname: hostname.clone(),
+                suspended: false,
+            },
+        );
+    });
+    world.scripted = Some(scripted);
+    world.seam_tenant = Some(tenant);
+    world.seam_hostname = Some(hostname);
+}
+
+#[given(expr = "the tenant {string} is active in the control store")]
+async fn seam_tenant_active(world: &mut RelayWorld, tenant: String) {
+    world
+        .scripted
+        .as_ref()
+        .expect("scripted control")
+        .with(|s| s.tenants.insert(tenant, false));
+}
+
+#[given(
+    expr = "a relay listens on the control store through a 30 s freshness cache with tunnel name {string}"
+)]
+async fn seam_start_relay(world: &mut RelayWorld, tunnel_name: String) {
+    let relay_cert = self_signed(&tunnel_name);
+    let acceptor = TlsAcceptor::from(
+        tunnel_server_config_from_pem(
+            relay_cert.cert_pem.as_bytes(),
+            relay_cert.key_pem.as_bytes(),
+        )
+        .unwrap(),
+    );
+
+    // The REAL freshness cache (TTL 30 s) over the scripted table — the
+    // exact deployed composition of bin/relay.rs, double swapped in.
+    let scripted = world.scripted.clone().expect("scripted control");
+    let seam: Arc<dyn ControlStore> = Arc::new(CachedControl::new(scripted, 30));
+    world.seam = Some(seam.clone());
+
+    // Injected clock: base = wall now (the pod fixtures sign at wall
+    // time), scenario instants offset from it.
+    world.seam_base = now_ms();
+    world.seam_clock.store(world.seam_base, Ordering::SeqCst);
+    let clock = world.seam_clock.clone();
+
+    let registry = Arc::new(SessionRegistry::new());
+    let nonces: Arc<dyn NonceStore> = Arc::new(MemNonces::new(600));
+    let door = RelayDoor::new(
+        seam,
+        nonces,
+        registry.clone(),
+        acceptor,
+        tunnel_name.to_ascii_lowercase(),
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let Ok((stream, peer)) = listener.accept().await else {
+                return;
+            };
+            let door = door.clone();
+            let clock = clock.clone();
+            tokio::spawn(async move {
+                let _ = door
+                    .serve(stream, peer.ip().to_string(), clock.load(Ordering::SeqCst))
+                    .await;
+            });
+        }
+    });
+
+    world.seam_addr = Some(addr);
+    world.seam_registry = Some(registry);
+    world.seam_relay_ca = Some(relay_cert.der);
+    world.mark_logs();
+}
+
+#[given(expr = "the tenant {string} is suspended in the control store")]
+#[when(expr = "the tenant {string} is suspended in the control store")]
+async fn seam_tenant_suspended(world: &mut RelayWorld, tenant: String) {
+    world
+        .scripted
+        .as_ref()
+        .expect("scripted control")
+        .with(|s| s.tenants.insert(tenant, true));
+}
+
+#[given(expr = "the tenant {string} is removed from the control store")]
+async fn seam_tenant_removed(world: &mut RelayWorld, tenant: String) {
+    world
+        .scripted
+        .as_ref()
+        .expect("scripted control")
+        .with(|s| s.tenants.remove(&tenant));
+}
+
+#[given("the control store stops answering")]
+async fn seam_down(world: &mut RelayWorld) {
+    world
+        .scripted
+        .as_ref()
+        .expect("scripted control")
+        .with(|s| s.down = true);
+}
+
+#[given("the gateway binding is removed from the control store")]
+async fn seam_binding_removed(world: &mut RelayWorld) {
+    let gw = world.gateway_pub.clone();
+    world
+        .scripted
+        .as_ref()
+        .expect("scripted control")
+        .with(|s| s.tunnels.remove(&gw));
+}
+
+#[given(expr = "the gateway binding is remapped to hostname {string} in the control store")]
+async fn seam_binding_remapped(world: &mut RelayWorld, hostname: String) {
+    // Unbind + rebind onto another hostname between two sweeps: the sweep
+    // can see the NEW binding directly, without ever observing None — the
+    // « remapped » branch of arbitrage ③ (verdict du témoin P7b, D3).
+    let gw = world.gateway_pub.clone();
+    world.scripted.as_ref().expect("scripted control").with(|s| {
+        let binding = s.tunnels.get_mut(&gw).expect("a bound gateway");
+        binding.hostname = hostname;
+    });
+}
+
+#[given(expr = "a control-seam pod is registered and serving {string}")]
+async fn seam_pod_registered(world: &mut RelayWorld, hostname: String) {
+    let nonce = world.fresh_nonce("seam-pod");
+    let pod = TestPod::spawn(
+        world.seam_addr.unwrap(),
+        world.seam_relay_ca.clone().unwrap(),
+        world.gateway_sk.clone(),
+        world.gateway_pub.clone(),
+        world.seam_tenant.clone().unwrap(),
+        hostname.clone(),
+        world.pod_cert.cert_pem.clone(),
+        world.pod_cert.key_pem.clone(),
+        nonce,
+    )
+    .await
+    .expect("seam pod registered");
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    assert!(world
+        .seam_registry
+        .as_ref()
+        .unwrap()
+        .resolve(&hostname)
+        .is_some());
+    world.seam_pod = Some(pod);
+}
+
+#[when(expr = "a control-seam pod registers for hostname {string}")]
+async fn seam_registers(world: &mut RelayWorld, hostname: String) {
+    let at = world.seam_now();
+    world.seam_register(&hostname, at).await;
+}
+
+#[when(expr = "a control-seam pod registers at instant {int} for hostname {string}")]
+async fn seam_registers_at(world: &mut RelayWorld, instant: i64, hostname: String) {
+    let at = world.seam_base + instant * 1000;
+    world.seam_clock.store(at, Ordering::SeqCst);
+    world.seam_register(&hostname, at).await;
+}
+
+#[when("the reconciliation tick runs past the freshness bound")]
+async fn seam_reconcile(world: &mut RelayWorld) {
+    // Advance the injected clock past the 30 s freshness TTL, then run
+    // ONE sweep — the bound is proven at the clock, never at a sleep.
+    let now = world.seam_now() + 31_000;
+    world.seam_clock.store(now, Ordering::SeqCst);
+    reconcile_registry(
+        world.seam_registry.as_ref().unwrap(),
+        world.seam.as_ref().unwrap().as_ref(),
+        now,
+    )
+    .await;
+}
+
+#[then(expr = "the seam registry has an active tunnel for {string}")]
+async fn seam_active(world: &mut RelayWorld, hostname: String) {
+    assert!(
+        world
+            .seam_registry
+            .as_ref()
+            .unwrap()
+            .resolve(&hostname)
+            .is_some(),
+        "expected an active tunnel for {hostname}"
+    );
+}
+
+#[then(expr = "the seam registration is refused with {string}")]
+async fn seam_refused(world: &mut RelayWorld, code: String) {
+    let a = world.seam_answer.as_ref().expect("an answer");
+    assert_eq!(a["ok"], serde_json::Value::Bool(false), "got {a}");
+    assert_eq!(a["error"], code, "got {a}");
+}
+
+#[then("the seam registration is accepted within the freshness bound")]
+async fn seam_accepted_within_bound(world: &mut RelayWorld) {
+    let a = world.seam_answer.as_ref().expect("an answer");
+    assert_eq!(
+        a["ok"],
+        serde_json::Value::Bool(true),
+        "within the TTL the cache still serves the pre-flip state: {a}"
+    );
+}
+
+#[then(expr = "the tunnel stays active for {string}")]
+async fn seam_still_active(world: &mut RelayWorld, hostname: String) {
+    assert!(
+        world
+            .seam_registry
+            .as_ref()
+            .unwrap()
+            .resolve(&hostname)
+            .is_some(),
+        "an outage must never close an active tunnel (arbitrage ② P7b)"
+    );
+}
+
+#[then("a public client is still served through the tunnel")]
+async fn seam_still_served(world: &mut RelayWorld) {
+    let hostname = world.seam_hostname.clone().unwrap();
+    let (mut tls, leaf) = public_tls(world.seam_addr.unwrap(), &world.pod_cert.der, &hostname)
+        .await
+        .expect("public TLS through the surviving tunnel");
+    assert_eq!(leaf, world.pod_cert.der);
+    let payload = b"served-through-outage";
+    tls.write_all(payload).await.unwrap();
+    tls.flush().await.unwrap();
+    let mut got = vec![0u8; payload.len()];
+    tls.read_exact(&mut got).await.unwrap();
+    assert_eq!(&got, payload);
+}
+
+#[then("the seam pod's mux is closed by GoAway")]
+async fn seam_pod_goaway(world: &mut RelayWorld) {
+    let pod = world.seam_pod.as_mut().expect("a seam pod");
+    let got = tokio::time::timeout(Duration::from_secs(2), &mut pod.goaway_rx).await;
+    assert!(got.is_ok(), "the suspended tunnel must receive GoAway");
+}
+
+#[then(expr = "the seam registry has no active tunnel for {string}")]
+async fn seam_no_active(world: &mut RelayWorld, hostname: String) {
+    assert!(
+        world
+            .seam_registry
+            .as_ref()
+            .unwrap()
+            .resolve(&hostname)
+            .is_none(),
+        "expected no active tunnel for {hostname}"
+    );
 }
 
 // ------------------------------------------------------------ p5 hellos

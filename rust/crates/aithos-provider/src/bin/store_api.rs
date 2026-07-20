@@ -11,7 +11,10 @@
 //! |---|---|
 //! | `AITHOS_STORE_LISTEN`       | bind address (default `0.0.0.0:8080`) |
 //! | `AITHOS_STORE_AUTHORITY`    | REQUIRED — the served authority, pinned into every envelope check |
-//! | `AITHOS_STORE_BOOTSTRAP`    | REQUIRED — tenant read-model + tunnel mappings (B.5 authority) + verified public did.json preloads (P7 replaces) |
+//! | `AITHOS_STORE_CONTROL_BACKEND` | `dynamodb` (the P7 control-plane table — tenants, DID bindings, B.5 mappings) or `memory` (default: the bootstrap file rules, dev/tests — an old task definition still boots) |
+//! | `AITHOS_STORE_CONTROL_TABLE`   | REQUIRED when the control backend is dynamodb |
+//! | `AITHOS_STORE_CONTROL_TTL_SECS`| control freshness bound (default 30, arbitrage gate contrat P7 — the < 60 s suspension promise holds with margin) |
+//! | `AITHOS_STORE_BOOTSTRAP`    | REQUIRED when the control backend is memory (tenant read-model + tunnel mappings + verified public did.json preloads). OPTIONAL under dynamodb — and it must then carry ZERO tenant/tunnel/preload: the table is the ONLY source of tenants in prod (P7) |
 //! | `AITHOS_STORE_OBJECTS_BACKEND` | `s3` (the durable layout, étape 6) or `memory` (default: per-task, ephemeral — an old task definition still boots) |
 //! | `AITHOS_STORE_OBJECTS_BUCKET`  | REQUIRED when the objects backend is s3 |
 //! | `AITHOS_STORE_HEADS_BACKEND`   | `dynamodb` (the A.5 CAS table, étape 6) or `memory` (default) |
@@ -30,7 +33,7 @@
 use std::sync::Arc;
 
 use aithos_provider::acme::AcmeState;
-use aithos_provider::control::ControlPlane;
+use aithos_provider::control::{CachedControl, ControlPlane, ControlStore, DynamoDbControl};
 use aithos_provider::dns::{DnsTxt, MemDnsTxt, NoDnsTxt, Route53DnsTxt};
 use aithos_provider::heads::{DynamoDbHeads, HeadsTable, MemHeads};
 use aithos_provider::nonces::{DynamoDbNonces, MemNonces, NonceStore, MIN_WINDOW_SECS};
@@ -60,17 +63,53 @@ async fn main() {
 
     let listen = std::env::var("AITHOS_STORE_LISTEN").unwrap_or_else(|_| "0.0.0.0:8080".into());
     let authority = required("AITHOS_STORE_AUTHORITY").to_ascii_lowercase();
-    let bootstrap = required("AITHOS_STORE_BOOTSTRAP");
 
-    let (control, preloads, head_seeds) = match ControlPlane::load_bootstrap(&bootstrap) {
-        Ok(loaded) => loaded,
-        Err(e) => {
-            // The bootstrap holds public material only; its errors are
-            // startup diagnostics, not request-path logs.
-            eprintln!("fatal: bootstrap rejected: {e}");
+    // P7 — the control-plane seam. Default memory: the bootstrap file
+    // rules, exactly the P1/P6 shape (an old task definition boots the
+    // new binary unchanged). `dynamodb` swaps the SAME three lookups onto
+    // the control table behind the freshness cache.
+    let control_backend =
+        std::env::var("AITHOS_STORE_CONTROL_BACKEND").unwrap_or_else(|_| "memory".into());
+    let bootstrap_env = std::env::var("AITHOS_STORE_BOOTSTRAP")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
+
+    let (bootstrap_plane, preloads, head_seeds) = match (&*control_backend, &bootstrap_env) {
+        // Memory backend: the bootstrap is REQUIRED (fail-closed, P1).
+        ("memory", None) => {
+            eprintln!(
+                "fatal: AITHOS_STORE_BOOTSTRAP is required when the control backend is \
+                 memory (fail-closed startup)"
+            );
             std::process::exit(2);
         }
+        // Dynamodb backend without a bootstrap: the P7 resting state —
+        // the image embarks NO tenant file at all.
+        (_, None) => (ControlPlane::default(), Vec::new(), Vec::new()),
+        (_, Some(path)) => match ControlPlane::load_bootstrap(path) {
+            Ok(loaded) => loaded,
+            Err(e) => {
+                // The bootstrap holds public material only; its errors are
+                // startup diagnostics, not request-path logs.
+                eprintln!("fatal: bootstrap rejected: {e}");
+                std::process::exit(2);
+            }
+        },
     };
+
+    // P7 fail-closed guard (arbitrage gate contrat 2026-07-20): once the
+    // table rules, NO tenant, tunnel mapping, preload or head seed may
+    // ride the image — a bootstrap that carries any refuses to boot.
+    if control_backend == "dynamodb"
+        && (!bootstrap_plane.is_empty() || !preloads.is_empty() || !head_seeds.is_empty())
+    {
+        eprintln!(
+            "fatal: the control backend is dynamodb but the bootstrap carries tenants, \
+             tunnels or preloads — the control table is the only source of tenants \
+             (fail-closed startup, P7 gate contrat)"
+        );
+        std::process::exit(2);
+    }
 
     // Étape 6 — the durable backends behind the seams. Defaults stay
     // memory so an old task definition still boots the new binary; the
@@ -201,6 +240,26 @@ async fn main() {
              NEVER in a deployment"
         );
     }
+
+    let control: Arc<dyn ControlStore> = match control_backend.as_str() {
+        "memory" => Arc::new(bootstrap_plane),
+        "dynamodb" => {
+            let table = required("AITHOS_STORE_CONTROL_TABLE");
+            let ttl_secs = std::env::var("AITHOS_STORE_CONTROL_TTL_SECS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(30);
+            let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+            Arc::new(CachedControl::new(
+                DynamoDbControl::new(aws_sdk_dynamodb::Client::new(&config), table),
+                ttl_secs,
+            ))
+        }
+        other => {
+            eprintln!("fatal: unknown control backend `{other}` (fail-closed startup)");
+            std::process::exit(2);
+        }
+    };
 
     let state = Arc::new(AppState {
         control,

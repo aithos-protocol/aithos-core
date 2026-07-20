@@ -32,7 +32,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{mpsc, oneshot, Notify};
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
-use crate::control::ControlPlane;
+use crate::control::{authorize_gateway, ControlStore, GatewayAuthzRefusal};
 use crate::nonces::NonceStore;
 use crate::relay::log_registration;
 use crate::sni::{
@@ -150,6 +150,67 @@ impl SessionRegistry {
     pub fn active_count(&self) -> usize {
         self.by_hostname.lock().expect("registry poisoned").len()
     }
+
+    /// Snapshot the live sessions (P7b reconciliation sweep input).
+    pub fn sessions(&self) -> Vec<Arc<TunnelSession>> {
+        self.by_hostname
+            .lock()
+            .expect("registry poisoned")
+            .values()
+            .cloned()
+            .collect()
+    }
+}
+
+/// One reconciliation sweep (P7b — the B.4 « fermeture des tunnels
+/// < 60 s »): re-resolve every ACTIVE tunnel's gateway against the control
+/// seam and close (GoAway + unpin) what is no longer enrolled — suspended
+/// binding or tenant, purged enrollment, or a mapping moved to another
+/// (tenant, hostname). Arbitrage ② P7b: an UNANSWERABLE backend closes
+/// NOTHING — a control outage never decapitates live traffic; new
+/// registrations already refuse `unavailable`, and the < 60 s bound counts
+/// from the moment the backend answers again. Returns the number of
+/// tunnels closed.
+///
+/// `now_ms` is injected (wall clock in the binary, a test instant in the
+/// harness) — with the [`crate::control::CachedControl`] seam the bound is
+/// freshness TTL + sweep period, provable at the injected clock, never at
+/// a sleep.
+pub async fn reconcile_registry(
+    registry: &SessionRegistry,
+    control: &dyn ControlStore,
+    now_ms: i64,
+) -> usize {
+    let mut closed = 0usize;
+    for session in registry.sessions() {
+        let facts = &session.facts;
+        let verdict = authorize_gateway(control, &facts.gateway_pub, now_ms).await;
+        let reason = match verdict {
+            // Outage: keep serving (arbitrage ② — never close on an error).
+            Err(GatewayAuthzRefusal::Unavailable) => continue,
+            Err(GatewayAuthzRefusal::Suspended) => "suspended",
+            Err(GatewayAuthzRefusal::MappingMismatch) => "unenrolled",
+            Ok(binding)
+                if binding.tenant != facts.tenant || binding.hostname != facts.hostname =>
+            {
+                "remapped"
+            }
+            Ok(_) => continue, // still enrolled exactly as pinned
+        };
+        session.goaway();
+        if registry.remove_if_current(&facts.hostname, session.id) {
+            closed += 1;
+            // Discipline A.8/B.4: the hostname here is the VERIFIED
+            // routing fact of an accepted registration — the allowed
+            // register (event, hostname, reason class), never a byte more.
+            tracing::info!(
+                target: "aithos_relay::reconcile",
+                "event=tunnel outcome=closed reason={reason} hostname={}",
+                facts.hostname,
+            );
+        }
+    }
+    closed
 }
 
 /// Build the yamux client over a pod tunnel transport and pin it. `T` is
@@ -342,7 +403,7 @@ where
 /// relay process; cloned cheaply per connection.
 #[derive(Clone)]
 pub struct RelayDoor {
-    pub control: Arc<ControlPlane>,
+    pub control: Arc<dyn ControlStore>,
     pub nonces: Arc<dyn NonceStore>,
     pub registry: Arc<SessionRegistry>,
     pub acceptor: tokio_rustls::TlsAcceptor,
@@ -357,7 +418,7 @@ pub struct RelayDoor {
 impl RelayDoor {
     /// A door with the spec hello deadline ([`HELLO_DEADLINE_SECS`]).
     pub fn new(
-        control: Arc<ControlPlane>,
+        control: Arc<dyn ControlStore>,
         nonces: Arc<dyn NonceStore>,
         registry: Arc<SessionRegistry>,
         acceptor: tokio_rustls::TlsAcceptor,
@@ -473,7 +534,8 @@ impl RelayDoor {
         };
 
         let line = read_registration_line(&mut tls).await?;
-        let verdict = verify_registration(&line, &self.control, self.nonces.as_ref(), now_ms).await;
+        let verdict =
+            verify_registration(&line, self.control.as_ref(), self.nonces.as_ref(), now_ms).await;
 
         // Anti-flap (B.2): only an already-verified registration spends a
         // hostname's per-minute budget — a bad signer cannot burn it.

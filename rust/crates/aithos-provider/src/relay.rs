@@ -19,7 +19,7 @@ use std::sync::Mutex;
 
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 
-use crate::control::ControlPlane;
+use crate::control::ControlStore;
 use crate::nonces::NonceStore;
 use crate::tunnel::{answer, verify_registration, Accepted, TunnelRefusal, MAX_REGISTRATION_BYTES};
 
@@ -34,7 +34,7 @@ use crate::tunnel::{answer, verify_registration, Accepted, TunnelRefusal, MAX_RE
 /// connection.
 pub async fn serve_registration<S>(
     stream: S,
-    control: &ControlPlane,
+    control: &dyn ControlStore,
     nonces: &dyn NonceStore,
     now_ms: i64,
 ) -> std::io::Result<Result<Accepted, TunnelRefusal>>

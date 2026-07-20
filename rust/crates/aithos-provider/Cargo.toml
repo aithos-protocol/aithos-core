@@ -91,6 +91,14 @@ path = "src/bin/store_api.rs"
 name = "aithos-relay"
 path = "src/bin/relay.rs"
 
+# P7 — the internal control-plane admin (create / bind-did / suspend /
+# reactivate / purge → DynamoDB, purge sweeps the data plane per the §8 GC
+# runbook). Runs under the OPERATOR's credentials (admin policy, module
+# control-plane-min) — never inside the image, never under the task role.
+[[bin]]
+name = "aithos-store-admin"
+path = "src/bin/store_admin.rs"
+
 # dev/e2e only: a stand-in MCP pod that dials the relay, registers (B.2),
 # runs the yamux server side, and terminates its OWN public TLS — the
 # "reachable MCP" of the M2 joignabilité gate. Never deployed as a provider

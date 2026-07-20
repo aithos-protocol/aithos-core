@@ -258,7 +258,56 @@ egress ; l'immuable caché écrase l'egress répété ; le poste qui scale = le 
 > serverless plus tard sans toucher les wires. Dossier :
 > `DECISION-COMPUTE-STORE-PROPOSITION-GATE6-2026-07-20.md`.
 
-## 8. Métadonnées, conformité, exploitation
+> **Note gravée 2026-07-20 (arbitrage Mathieu, gate déployé P7) — control
+> plane : BASCULE RÉALISÉE.** `control-plane-min` est instancié dans
+> `envs/prod` (table `aithos-provider-prod-control`, single-table
+> `pk`/`sk`, PITR ; policy admin = l'opérateur, policy reader SEULE
+> attachée au task role store). La task def store ne porte plus aucun
+> chemin bootstrap : `AITHOS_STORE_CONTROL_BACKEND=dynamodb` +
+> `AITHOS_STORE_CONTROL_TABLE` — **la table est la seule source de
+> tenants en prod**, et l'image `:prod` n'embarque plus que le binaire et
+> le CA bundle (décision ② P7 ; un retour vers une task def bootstrap
+> repasse par l'image du gate étape 6, épinglée par digest
+> `sha256:187cee4c…aeec3`). Fraîcheur : **cache TTL 30 s**
+> (`AITHOS_STORE_CONTROL_TTL_SECS`, défaut binaire — la task def ne le
+> fixe pas), résultats négatifs cachés aussi ; borne « suspension
+> < 60 s » prouvée sur le wire au gate (0,8 s suspension, 0,5 s
+> réactivation, premier flip). Fail-closed : table injoignable →
+> `503 unavailable` + `Cache-Control: no-store` — jamais un
+> `unknown_tenant` inventé. Le **relay reste HORS LOT** : il garde son
+> bootstrap (`relay.json`) et ses mappings B.2 — sa bascule est un petit
+> lot suivant.
+
+> **Note gravée 2026-07-20 (gate P7b conduit de bout en bout sur
+> délégation Mathieu, témoin de gate adversarial en agent) — bascule
+> relay : RÉALISÉE, le « HORS LOT » ci-dessus est clos.** Le relay lit
+> ses mappings B.2 dans la MÊME table control (couture `ControlStore`,
+> cache TTL 30 s — `AITHOS_RELAY_CONTROL_TTL_SECS`, défaut binaire) avec
+> le join d'autorité B.5 (redline B.2 P7b) ; task def relay `:8` sans
+> AUCUN chemin bootstrap, policy reader seule attachée ; l'image `:prod`
+> relay n'embarque plus que le binaire et le CA bundle (repli M2 épinglé
+> `sha256:d8f93851…58250`). Balayeur B.4 : suspendu/purgé/re-mappé →
+> GoAway en < 60 s (TTL 30 s + période 15 s) ; une panne de la table ne
+> ferme JAMAIS un tunnel actif (arbitrage ② — seuls les nouveaux
+> enregistrements refusent `unavailable`). Enrôlement : `bind-gateway`
+> écrit le miroir `tenant#<t>/gateway#<gw>` AVANT le binding
+> `gateway#<gw>/meta {t,h,s}` (c'est par le miroir que `purge` énumère) ;
+> `purge` supprime les bindings SOUS CONDITION `t = <tenant>` (verdict
+> témoin D1 : un miroir périmé ne détruit jamais le binding vif d'un
+> autre tenant) puis les lignes tenant EN DERNIER. Preuves du
+> 2026-07-20 : 9 scénarios contrat RED→GREEN (dont panne, re-mapping et
+> borne de fraîcheur à l'horloge injectée), rollout COMPLETED, items
+> exacts en table, enregistrement LIVE accepté depuis le réseau Mathieu
+> (`relay-register.py` → `ok:true`), suite déployée
+> `relay-control-p7b` 4/4 depuis le réseau opérateur — bornes MESURÉES
+> du retour de la commande admin au premier verdict wire : suspension
+> **28,9 s**, réactivation **29,5 s**, désenrôlement **31,3 s** (borne
+> 60 s, poll 2 s — cohérent TTL 30 s + balayeur), plan final 0 écart. Consigné sans
+> graver : GoAway perdable dans une fenêtre de course infime
+> (`Notify::notify_waiters` sans permis — un tunnel dépinglé peut garder
+> son mux ; correctif `CancellationToken` au prochain lot relay) ;
+> `suspended_of` traite un `meta` sans attribut `s` comme actif (la CLI
+> seul écrivain pose toujours `s`).
 
 - **Politique de métadonnées (à documenter comme limite, façon chiffrement au
   repos)** : le store voit qui demande quels chemins, quand ; le squelette clair
@@ -300,6 +349,21 @@ egress ; l'immuable caché écrase l'egress répété ; le poste qui scale = le 
 > l'état de repos de la prod jusqu'à P7. L'image prod n'embarque plus
 > `replay.json` (décision ② exécutée) ; le test anti-dérive du bootstrap
 > de rejeu reste sur les cibles dev/test.
+
+> **Note gravée 2026-07-20 (arbitrage Mathieu, gate déployé P7) — tenant
+> de rejeu : la mécanique CLI est LIVE.** La note « RÉALISATION »
+> ci-dessus est close : `aithos-store-admin` (create / bind-did /
+> suspend / reactivate / purge `--yes`) écrit la table control sous les
+> creds de l'OPÉRATEUR (policy `…-control-admin`, jamais attachée à la
+> task) ; `purge` outille le runbook GC §8 — versions S3 du préfixe
+> (+ delete markers) → items heads → lignes control EN DERNIER (un purge
+> interrompu laisse le tenant refusant). Gate déployé du 2026-07-20 :
+> tenant `replay-p7-20260720` créé/lié par la CLI, servi sans
+> redéploiement, deployed-replay 20/20, suite behave complète
+> (control-p7 5/5), purgé — état de repos = **table à zéro item**, plus
+> aucun bootstrap dans le chemin de boot prod. `Cache-Control: no-store`
+> sur **tous** les refus (tranché gate 6, pinné par 2 scénarios P7,
+> observé sur le wire déployé).
 
 ## 9. Hors périmètre (renvois)
 
@@ -684,6 +748,21 @@ une ligne `{"aithos-tunnel": "1.0.0-draft.1", "ok": true}` puis passage en
 mux ; ou `{"ok": false, "error": "<code>"}` puis fermeture. Codes (registre
 A.7 restreint) : `envelope_invalid`, `clock_skew`, `nonce_replayed`,
 `signature_invalid`, `mapping_mismatch`, `suspended`, `rate_limited`.
+
+> **Redline P7b — 2026-07-20 (arbitrage Mathieu, bascule relay), précise
+> l'étape « mapping » ci-dessus :** l'étape 4 adopte l'ordre d'autorité
+> gravé de B.5, un seul chemin de code (`authorize_gateway`) : binding par
+> `gateway_pub` → suspension du binding → **état du TENANT** (tenant
+> inconnu = `mapping_mismatch`, l'orphelin ne résout jamais ; tenant
+> suspendu = `suspended` — la suspension tenant-niveau gate ses tunnels en
+> UNE écriture) → correspondance exacte (tenant, hostname). Un backend
+> control injoignable refuse `unavailable` (hors registre wire, ops
+> fail-closed — même sort que la table nonces) et ne touche QUE les
+> nouveaux enregistrements : les tunnels actifs survivent à la panne. La
+> « fermeture des tunnels < 60 s » de B.4 est réalisée par un balayeur de
+> réconciliation (période = TTL/2 de la fraîcheur control) qui GoAway ce
+> qui est suspendu, purgé ou re-mappé — borne = TTL + période, prouvée à
+> l'horloge injectée.
 
 Un hostname = **un tunnel actif** : un enregistrement valide pour un hostname
 déjà servi **remplace** l'ancien (le pod redémarré ne attend pas un timeout) ;

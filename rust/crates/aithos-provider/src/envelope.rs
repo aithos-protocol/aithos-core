@@ -20,7 +20,7 @@ use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-use crate::control::ControlPlane;
+use crate::control::ControlStore;
 use crate::nonces::{NonceStore, Reservation};
 use crate::objects::ObjectStore;
 use crate::pathmap::{anonymous_covers, DataTarget, ObjectPath, TargetKind};
@@ -189,7 +189,7 @@ pub async fn verify(
     header: Option<&str>,
     facts: &RequestFacts<'_>,
     route: &DataTarget,
-    control: &ControlPlane,
+    control: &dyn ControlStore,
     objects: &dyn ObjectStore,
     heads: &dyn crate::heads::HeadsTable,
     nonces: &dyn NonceStore,
@@ -248,7 +248,13 @@ pub async fn verify(
 
     // #7 — key resolution. The DID-to-tenant binding is only ever named
     // under an envelope that survived #2–#6 (anti-enumeration note, A.7).
-    if !control.did_bound(&route.tenant, &route.did) {
+    // A mute control plane refuses here too — an outage never fabricates
+    // a did_not_bound (P7 gate contrat).
+    if !control
+        .did_bound(&route.tenant, &route.did, now_ms)
+        .await
+        .map_err(|_| Refusal::Unavailable)?
+    {
         return Err(Refusal::DidNotBound);
     }
     let owner_fragment = matches!(envelope.key.as_str(), "#root" | "#content");

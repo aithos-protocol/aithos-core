@@ -18,7 +18,7 @@ use aithos_core::wire;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-use crate::control::ControlPlane;
+use crate::control::{authorize_gateway, ControlStore, GatewayAuthzRefusal};
 use crate::nonces::{NonceStore, Reservation};
 use crate::time::parse_rfc3339z_ms;
 
@@ -98,7 +98,7 @@ pub struct Accepted {
 /// or not — a single trailing LF is tolerated and required-canonical).
 pub async fn verify_registration(
     line: &[u8],
-    control: &ControlPlane,
+    control: &dyn ControlStore,
     nonces: &dyn NonceStore,
     now_ms: i64,
 ) -> Result<Accepted, TunnelRefusal> {
@@ -165,16 +165,20 @@ pub async fn verify_registration(
         .verify(unsigned_jcs.as_bytes(), &Signature::from_bytes(&sig_bytes))
         .map_err(|_| TunnelRefusal::SignatureInvalid)?;
 
-    // Step 4 — control-plane mapping: resolve by gateway_pub, then
-    // suspended, then exact (tenant, hostname) match. A key enrolled for
-    // no tunnel and a key enrolled for a different hostname answer the
-    // SAME `mapping_mismatch` — no enumeration oracle.
-    let Some(binding) = control.resolve_tunnel(&reg.gateway_pub) else {
-        return Err(TunnelRefusal::MappingMismatch);
+    // Step 4 — control-plane mapping through the P7 seam (P7b): the
+    // graved B.5 authority order — binding → binding suspension → TENANT
+    // state (an orphan binding and an unknown tenant answer the same
+    // mapping_mismatch, no enumeration oracle; a suspended tenant gates
+    // its tunnels in one write) — then the exact (tenant, hostname)
+    // match. An unanswerable backend refuses `unavailable`, never a
+    // phantom mismatch (fail-closed, arbitrage ② P7b: only NEW
+    // registrations refuse on an outage — active tunnels survive it).
+    let binding = match authorize_gateway(control, &reg.gateway_pub, now_ms).await {
+        Ok(binding) => binding,
+        Err(GatewayAuthzRefusal::Unavailable) => return Err(TunnelRefusal::Unavailable),
+        Err(GatewayAuthzRefusal::MappingMismatch) => return Err(TunnelRefusal::MappingMismatch),
+        Err(GatewayAuthzRefusal::Suspended) => return Err(TunnelRefusal::Suspended),
     };
-    if binding.suspended {
-        return Err(TunnelRefusal::Suspended);
-    }
     if binding.tenant != reg.tenant || binding.hostname != reg.hostname {
         return Err(TunnelRefusal::MappingMismatch);
     }

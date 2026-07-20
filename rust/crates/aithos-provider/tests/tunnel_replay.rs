@@ -27,13 +27,19 @@ fn load(name: &str) -> Value {
 }
 
 /// A control plane bound exactly as the vector's mapping says, with the
-/// per-case suspended flag applied.
+/// per-case suspended flag applied. P7b: the B.2 step 4 joins the TENANT
+/// state (B.5 authority), so the fixture plane names the mapping's tenant
+/// as active too — a binding implies its enrolled tenant (the admin CLI
+/// demands `create` before `bind-gateway`); the committed vector bytes
+/// are untouched.
 fn control_for(mapping: &Value, suspended: bool) -> ControlPlane {
     let mut plane = ControlPlane::default();
+    let tenant = mapping["tenant"].as_str().unwrap().to_owned();
+    plane.seed_tenant(&tenant, false);
     plane.bind_tunnel(
         mapping["gateway_pub"].as_str().unwrap().to_owned(),
         TunnelBinding {
-            tenant: mapping["tenant"].as_str().unwrap().to_owned(),
+            tenant,
             hostname: mapping["hostname"].as_str().unwrap().to_owned(),
             suspended,
         },

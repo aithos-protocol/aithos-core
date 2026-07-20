@@ -13,7 +13,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use aithos_provider::acme::AcmeState;
-use aithos_provider::control::ControlPlane;
+use aithos_provider::control::{
+    CachedControl, ControlFuture, ControlPlane, ControlStore, ControlUnavailable, TenantState,
+    TunnelBinding,
+};
 use aithos_provider::dns::MemDnsTxt;
 use aithos_provider::envelope::{header_value, sign_envelope, Envelope, EnvelopeSignature};
 use aithos_provider::heads::{
@@ -175,6 +178,11 @@ struct StoreWorld {
     /// continuation against it).
     prev_list_paths: Option<Vec<String>>,
     log_mark: usize,
+    /// P7 — the mutable control double behind `state.control` (admin
+    /// plane of the control scenarios), and the state handle snapshotted
+    /// when it was installed (the "never restarted" Then).
+    control_store: Option<Arc<MutableControl>>,
+    control_state_mark: Option<Arc<AppState>>,
 }
 
 struct Answer {
@@ -294,6 +302,113 @@ impl WHeadsTable for FlakyHeads {
     }
 }
 
+/// P7 — the mutable control double: the admin plane of the control
+/// scenarios (create / bind-did / suspend / reactivate / purge) over
+/// in-process state, with targeted fault injection: the whole backend
+/// (`up`), or the DID-binding lookup alone (`did_bound_up` — the proof
+/// that an outage past the tenant gate still refuses 503, never a
+/// fabricated `did_not_bound`). The deployed composition swaps this for
+/// `DynamoDbControl` behind the SAME `CachedControl` freshness wrapper.
+#[derive(Default)]
+struct MutableControl {
+    /// tenant → (suspended, bound DIDs).
+    tenants: Mutex<std::collections::BTreeMap<String, (bool, std::collections::BTreeSet<String>)>>,
+    down: AtomicBool,
+    did_bound_down: AtomicBool,
+}
+
+impl MutableControl {
+    fn create(&self, tenant: &str) {
+        self.tenants
+            .lock()
+            .expect("control double poisoned")
+            .entry(tenant.to_owned())
+            .or_default();
+    }
+
+    fn bind_did(&self, tenant: &str, did: &str) {
+        self.tenants
+            .lock()
+            .expect("control double poisoned")
+            .entry(tenant.to_owned())
+            .or_default()
+            .1
+            .insert(did.to_owned());
+    }
+
+    fn set_suspended(&self, tenant: &str, suspended: bool) {
+        self.tenants
+            .lock()
+            .expect("control double poisoned")
+            .entry(tenant.to_owned())
+            .or_default()
+            .0 = suspended;
+    }
+
+    fn purge(&self, tenant: &str) {
+        self.tenants
+            .lock()
+            .expect("control double poisoned")
+            .remove(tenant);
+    }
+}
+
+impl ControlStore for MutableControl {
+    fn tenant_state<'a>(&'a self, tenant: &'a str, _now_ms: i64) -> ControlFuture<'a, TenantState> {
+        Box::pin(async move {
+            if self.down.load(Ordering::SeqCst) {
+                return Err(ControlUnavailable);
+            }
+            Ok(
+                match self
+                    .tenants
+                    .lock()
+                    .expect("control double poisoned")
+                    .get(tenant)
+                {
+                    None => TenantState::Unknown,
+                    Some((true, _)) => TenantState::Suspended,
+                    Some((false, _)) => TenantState::Active,
+                },
+            )
+        })
+    }
+
+    fn did_bound<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+        _now_ms: i64,
+    ) -> ControlFuture<'a, bool> {
+        Box::pin(async move {
+            if self.down.load(Ordering::SeqCst) || self.did_bound_down.load(Ordering::SeqCst) {
+                return Err(ControlUnavailable);
+            }
+            Ok(self
+                .tenants
+                .lock()
+                .expect("control double poisoned")
+                .get(tenant)
+                .is_some_and(|(_, dids)| dids.contains(did)))
+        })
+    }
+
+    fn resolve_tunnel<'a>(
+        &'a self,
+        _gateway_pub: &'a str,
+        _now_ms: i64,
+    ) -> ControlFuture<'a, Option<TunnelBinding>> {
+        Box::pin(async move {
+            if self.down.load(Ordering::SeqCst) {
+                return Err(ControlUnavailable);
+            }
+            // The control scenarios enroll no tunnel (the relay bascule
+            // is a separate lot).
+            Ok(None)
+        })
+    }
+}
+
 impl std::fmt::Debug for StoreWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("StoreWorld")
@@ -333,6 +448,8 @@ impl StoreWorld {
             stored_gamma_head: None,
             prev_list_paths: None,
             log_mark: 0,
+            control_store: None,
+            control_state_mark: None,
         }
         .tap(|_| {
             let _ = f;
@@ -396,7 +513,7 @@ impl StoreWorld {
         });
         let dns = Arc::new(MemDnsTxt::new());
         let state = Arc::new(AppState {
-            control,
+            control: Arc::new(control),
             objects,
             heads: flaky_heads,
             deposit_locks: Default::default(),
@@ -2137,7 +2254,7 @@ async fn binds_genesis_did(world: &mut StoreWorld) {
     world.heads = heads.clone();
     world.dns = dns.clone();
     world.state = Arc::new(AppState {
-        control,
+        control: Arc::new(control),
         objects,
         heads,
         deposit_locks: Default::default(),
@@ -2779,10 +2896,13 @@ async fn acme_binding_exists(
     // already carry exactly this binding — the Background asserts it.
     let f = fixtures();
     assert_eq!(gateway_pub, f.gateway_pub, "fixture gateway key");
+    let now_ms = world.now_ms();
     let binding = world
         .state
         .control
-        .resolve_tunnel(&gateway_pub)
+        .resolve_tunnel(&gateway_pub, now_ms)
+        .await
+        .expect("the control backend answers")
         .expect("the demo binding is bootstrapped");
     assert_eq!(binding.tenant, tenant);
     assert_eq!(binding.hostname, hostname);
@@ -3167,6 +3287,283 @@ fn corrupt(hex_sig: &mut String) {
     let tail = if hex_sig.ends_with("00") { "ff" } else { "00" };
     hex_sig.truncate(hex_sig.len() - 2);
     hex_sig.push_str(tail);
+}
+
+// ------------------------------------------------- P7 control plane
+
+/// The freshness bound of the control scenarios — the SAME default the
+/// deployed composition uses (`AITHOS_STORE_CONTROL_TTL_SECS`, arbitrage
+/// gate contrat P7: 30 s, half the < 60 s promise).
+const CONTROL_TTL_SECS: u64 = 30;
+
+impl StoreWorld {
+    fn control_double(&self) -> &Arc<MutableControl> {
+        self.control_store
+            .as_ref()
+            .expect("the scenario installed the mutable control store")
+    }
+
+    /// An owner-signed GET under an arbitrary CONTROL tenant (the vector
+    /// DID and root key; the tenant is the scenario's).
+    async fn fire_control_get(&mut self, tenant: &str, relative: &str) {
+        let f = fixtures();
+        let path = format!("/t/{tenant}/{}/{relative}", f.did);
+        let envelope = self.envelope(
+            "#root",
+            &f.root_sk.clone(),
+            "GET",
+            &path,
+            b"",
+            None,
+            None,
+            vec![],
+            None,
+        );
+        let pending = Pending {
+            method: "GET".into(),
+            path,
+            body: vec![],
+            header: Some(header_value(&envelope).unwrap()),
+            version_header: None,
+            if_head: None,
+        };
+        self.fire(&pending).await;
+    }
+}
+
+#[given(expr = "the control backend is a mutable control store")]
+async fn control_backend_mutable(world: &mut StoreWorld) {
+    // Rebuild the state around the P7 composition: the mutable double
+    // behind the SAME freshness cache the deployed task uses. Everything
+    // else stays the étape-6 memory seams; the object store starts EMPTY
+    // (the control plane, not the bootstrap, will name tenants).
+    let double = Arc::new(MutableControl::default());
+    let control: Arc<dyn ControlStore> =
+        Arc::new(CachedControl::new(double.clone(), CONTROL_TTL_SECS));
+    let heads = Arc::new(MemHeads::new());
+    let dns = Arc::new(MemDnsTxt::new());
+    let objects_up = Arc::new(AtomicBool::new(true));
+    let heads_up = Arc::new(AtomicBool::new(true));
+    let state = Arc::new(AppState {
+        control,
+        objects: Arc::new(FlakyObjects {
+            inner: Arc::new(MemObjects::new()),
+            up: objects_up.clone(),
+        }),
+        heads: Arc::new(FlakyHeads {
+            inner: heads.clone(),
+            up: heads_up.clone(),
+        }),
+        deposit_locks: Default::default(),
+        nonces: Arc::new(MemNonces::new(600)),
+        dns: dns.clone(),
+        acme: AcmeState::new(),
+        authority: world.authority.clone(),
+        test_now_enabled: true,
+    });
+    world.state = state.clone();
+    world.dns = dns;
+    world.heads = heads;
+    world.objects_available = objects_up;
+    world.heads_available = heads_up;
+    world.control_store = Some(double);
+    world.control_state_mark = Some(state);
+}
+
+#[given(expr = "the control backend is the p1 replay bootstrap")]
+async fn control_backend_bootstrap(world: &mut StoreWorld) {
+    // The default world state IS the p1 replay shape — rebuild it fresh
+    // so a prior control-store step never leaks in.
+    let (state, dns, heads, objects_up, heads_up) =
+        StoreWorld::state(&world.authority.clone(), true, Suspension::None);
+    world.state = state;
+    world.dns = dns;
+    world.heads = heads;
+    world.objects_available = objects_up;
+    world.heads_available = heads_up;
+    world.control_store = None;
+    world.control_state_mark = None;
+}
+
+#[given(expr = "the control store holds tenant {string} bound to the vector DID")]
+async fn control_holds_tenant(world: &mut StoreWorld, tenant: String) {
+    let f = fixtures();
+    let double = world.control_double();
+    double.create(&tenant);
+    double.bind_did(&tenant, &f.did);
+    // The vector did.json rides along: the owner key must resolve for the
+    // 200 paths (the control gate itself never reads it).
+    world
+        .state
+        .objects
+        .put(&tenant, &f.did, "did.json", f.did_json.as_bytes().to_vec())
+        .await
+        .expect("objects backend up");
+}
+
+#[given(expr = "the control store holds tenant {string} bound to the vector DID, suspended")]
+async fn control_holds_tenant_suspended(world: &mut StoreWorld, tenant: String) {
+    control_holds_tenant(world, tenant.clone()).await;
+    world.control_double().set_suspended(&tenant, true);
+}
+
+#[given(expr = "the vector did.json is stored for tenant {string}")]
+#[when(expr = "the vector did.json is stored for tenant {string}")]
+async fn control_did_json_stored(world: &mut StoreWorld, tenant: String) {
+    let f = fixtures();
+    world
+        .state
+        .objects
+        .put(&tenant, &f.did, "did.json", f.did_json.as_bytes().to_vec())
+        .await
+        .expect("objects backend up");
+}
+
+#[given(expr = "the control store stops answering")]
+async fn control_store_down(world: &mut StoreWorld) {
+    world.control_double().down.store(true, Ordering::SeqCst);
+}
+
+#[given(expr = "the control store stops answering after the tenant gate")]
+async fn control_store_down_after_tenant(world: &mut StoreWorld) {
+    world
+        .control_double()
+        .did_bound_down
+        .store(true, Ordering::SeqCst);
+}
+
+#[when(expr = "the admin plane creates tenant {string} bound to the vector DID")]
+#[given(expr = "the admin plane created tenant {string} bound to the vector DID")]
+async fn admin_creates_tenant(world: &mut StoreWorld, tenant: String) {
+    let f = fixtures();
+    let double = world.control_double();
+    double.create(&tenant);
+    double.bind_did(&tenant, &f.did);
+}
+
+#[when(expr = "the admin plane suspends tenant {string}")]
+#[given(expr = "the admin plane suspends tenant {string}")]
+async fn admin_suspends_tenant(world: &mut StoreWorld, tenant: String) {
+    world.control_double().set_suspended(&tenant, true);
+}
+
+#[when(expr = "the admin plane reactivates tenant {string}")]
+async fn admin_reactivates_tenant(world: &mut StoreWorld, tenant: String) {
+    world.control_double().set_suspended(&tenant, false);
+}
+
+#[when(expr = "the admin plane purges tenant {string}")]
+async fn admin_purges_tenant(world: &mut StoreWorld, tenant: String) {
+    world.control_double().purge(&tenant);
+}
+
+#[when(expr = "the control freshness bound has elapsed")]
+#[given(expr = "the control freshness bound has elapsed")]
+async fn control_freshness_elapsed(world: &mut StoreWorld) {
+    // The injected request clock advances by exactly the bound — a cache
+    // entry taken "now" is stale on the next request (freshness is the
+    // half-open window [0, TTL)). Never a sleep.
+    world.now = render_rfc3339z(world.now_ms() + (CONTROL_TTL_SECS as i64) * 1000);
+}
+
+#[when(expr = "an owner-signed GET arrives for control tenant {string} and relative path {string}")]
+async fn control_owner_get(world: &mut StoreWorld, tenant: String, relative: String) {
+    world.fire_control_get(&tenant, &relative).await;
+}
+
+#[given(expr = "an owner-signed GET for control tenant {string} answered {int} {string}")]
+async fn control_owner_get_answered(
+    world: &mut StoreWorld,
+    tenant: String,
+    status: u16,
+    code: String,
+) {
+    world.fire_control_get(&tenant, "did.json").await;
+    let answer = world.last.take().expect("the warming request fired");
+    if code.is_empty() {
+        assert_eq!(answer.status, status);
+    } else {
+        world.assert_error(&answer, status, &code);
+    }
+    world.last = Some(answer);
+}
+
+#[given(expr = "an owner-signed GET for control tenant {string} answered {int}")]
+async fn control_owner_get_answered_ok(world: &mut StoreWorld, tenant: String, status: u16) {
+    world.fire_control_get(&tenant, "did.json").await;
+    assert_eq!(world.last().status, status);
+}
+
+#[then(
+    expr = "an owner-signed GET for control tenant {string} and relative path {string} answers {int} {string}"
+)]
+async fn control_owner_get_answers(
+    world: &mut StoreWorld,
+    tenant: String,
+    relative: String,
+    status: u16,
+    code: String,
+) {
+    world.fire_control_get(&tenant, &relative).await;
+    let answer = world.last.take().expect("the request fired");
+    world.assert_error(&answer, status, &code);
+    world.last = Some(answer);
+}
+
+#[then(
+    expr = "an owner-signed GET for control tenant {string} and relative path {string} answers {int}"
+)]
+async fn control_owner_get_answers_ok(
+    world: &mut StoreWorld,
+    tenant: String,
+    relative: String,
+    status: u16,
+) {
+    world.fire_control_get(&tenant, &relative).await;
+    assert_eq!(
+        world.last().status,
+        status,
+        "body: {}",
+        String::from_utf8_lossy(&world.last().body)
+    );
+}
+
+#[when(
+    expr = "an owner-signed GET for a DID the control store never bound arrives with a valid envelope"
+)]
+async fn control_owner_get_unbound_did(world: &mut StoreWorld) {
+    // The fixture tenant IS the control tenant of the scenario ("acme");
+    // the stranger DID is valid but the control store never bound it.
+    owner_get_unbound_did(world).await;
+}
+
+#[when(expr = "an unsigned GET arrives for an unbound DID under tenant {string}")]
+async fn unsigned_get_unbound_did(world: &mut StoreWorld, tenant: String) {
+    // A perfectly valid DID nobody enrolled, on a NON-anonymous route —
+    // presence (#2) refuses before the binding is ever consulted.
+    let stranger = SigningKey::from_bytes(&[0x51; 32]);
+    let did = aithos_core::wire::did_aithos(&stranger.verifying_key().to_bytes());
+    let pending = Pending {
+        method: "GET".into(),
+        path: format!("/t/{tenant}/{did}/manifest.json"),
+        body: vec![],
+        header: None,
+        version_header: None,
+        if_head: None,
+    };
+    world.fire(&pending).await;
+}
+
+#[then(expr = "the service was never restarted")]
+async fn service_never_restarted(world: &mut StoreWorld) {
+    let mark = world
+        .control_state_mark
+        .as_ref()
+        .expect("the control background snapshotted the state");
+    assert!(
+        Arc::ptr_eq(mark, &world.state),
+        "the AppState was rebuilt mid-scenario — the control plane must serve without a restart"
+    );
 }
 
 #[tokio::main]

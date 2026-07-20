@@ -141,6 +141,9 @@ impl TunnelWorld {
 async fn bind(world: &mut TunnelWorld, gateway_pub: String, tenant: String, hostname: String) {
     // The scenario names the vector's gateway; the fixture key must match.
     assert_eq!(gateway_pub, fixtures().gateway_pub, "fixture gateway key");
+    // P7b: the B.2 step 4 joins the tenant state — a bound tunnel names
+    // its enrolled tenant (the CLI demands `create` before `bind-gateway`).
+    world.control.seed_tenant(&tenant, false);
     world.control.bind_tunnel(
         gateway_pub,
         TunnelBinding {
@@ -154,6 +157,9 @@ async fn bind(world: &mut TunnelWorld, gateway_pub: String, tenant: String, host
 #[given("the control-plane binding is suspended")]
 async fn suspend(world: &mut TunnelWorld) {
     let f = fixtures();
+    // Binding-level suspension precedes the tenant join (B.2 order): the
+    // tenant stays active, the binding's own flag refuses.
+    world.control.seed_tenant(&f.tenant, false);
     world.control.bind_tunnel(
         f.gateway_pub.clone(),
         TunnelBinding {

@@ -1,9 +1,8 @@
 # aithos-relay — static musl binary in a FROM scratch image (piste P,
 # lot P6 jalon M1). Build from the repo root:
 #   docker build -f docker/relay.Dockerfile -t aithos-relay:prod .
-# Pushed to the provider relay ECR by CI. NO secret: the bootstrap carries
-# PUBLIC tunnel mappings (gateway_pub ↔ tenant ↔ hostname) only; DynamoDB
-# access rides the Fargate task role. The relay holds no client key.
+# Pushed to the provider relay ECR by CI. NO secret: DynamoDB access rides
+# the Fargate task role. The relay holds no client key.
 
 FROM rust:1.96-alpine AS build
 # musl-dev for the static target; cmake/make/g++/perl for aws-lc-sys
@@ -21,7 +20,12 @@ RUN cargo build --release --locked --manifest-path rust/Cargo.toml \
 FROM scratch
 COPY --from=build /aithos-relay /aithos-relay
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-# The relay control-plane bootstrap: the committed p3 gateway mapping —
-# public material (the p3 gateway key is a committed test key).
-COPY rust/crates/aithos-provider/bootstrap/relay.json /bootstrap/relay.json
+# Bascule P7b (2026-07-20, décision ② P7 appliquée au relay) : sous le
+# backend dynamodb la task def ne porte plus AUCUN chemin bootstrap — la
+# table control-plane est la SEULE source de mappings B.2. relay.json
+# SORT de l'image (il reste au dépôt pour le mode memory dev/tests) :
+# elle n'embarque plus que le binaire et le CA bundle. Un retour vers une
+# task def bootstrap (type M2) repasse par l'image du gate M2, épinglée
+# par son digest en ECR (sha256:d8f93851…58250) — le tag :prod ne la
+# porte plus.
 ENTRYPOINT ["/aithos-relay"]

@@ -31,7 +31,7 @@ use axum::Router;
 
 use crate::acme::{self, AcmeState};
 use crate::artifacts::{self, DepositRefusal};
-use crate::control::{ControlPlane, TenantState};
+use crate::control::{ControlStore, TenantState};
 use crate::dns::DnsTxt;
 use crate::envelope::{self, Principal, Refusal, RequestFacts};
 use crate::heads::HeadsTable;
@@ -69,7 +69,9 @@ impl DepositLocks {
 /// Everything the handlers need. All trust decisions flow through the
 /// injected seams — the surface itself holds no policy and no secret.
 pub struct AppState {
-    pub control: ControlPlane,
+    /// The tenant read-model behind the P7 seam — the bootstrap plane in
+    /// dev/tests, `CachedControl<DynamoDbControl>` in the deployed task.
+    pub control: Arc<dyn ControlStore>,
     pub objects: Arc<dyn ObjectStore>,
     /// The A.5 heads table — the CAS seam (memory now, DynamoDB étape 6).
     pub heads: Arc<dyn HeadsTable>,
@@ -220,10 +222,15 @@ async fn decide(
 
     // #1 — the tenant routes (the DID binding is only ever named at #7,
     // under a valid envelope — anti-enumeration note, A.7).
-    match state.control.tenant_state(&target.tenant) {
-        TenantState::Unknown => return refused(Some(target), Refusal::UnknownTenant, req_bytes),
-        TenantState::Suspended => return refused(Some(target), Refusal::Suspended, req_bytes),
-        TenantState::Active => {}
+    match state.control.tenant_state(&target.tenant, now_ms).await {
+        Ok(TenantState::Unknown) => {
+            return refused(Some(target), Refusal::UnknownTenant, req_bytes)
+        }
+        Ok(TenantState::Suspended) => return refused(Some(target), Refusal::Suspended, req_bytes),
+        Ok(TenantState::Active) => {}
+        // A mute control plane refuses — it NEVER invents an
+        // unknown_tenant (P7 gate contrat, étape-6 seam pattern).
+        Err(_) => return refused(Some(target), Refusal::Unavailable, req_bytes),
     }
 
     // #2–#10 — the envelope, in normative order.
@@ -1023,6 +1030,10 @@ fn refuse_deposit(refusal: DepositRefusal, now_ms: i64) -> (Response<Body>, usiz
     let mut response = Response::builder()
         .status(StatusCode::from_u16(registry.status()).expect("registry status"))
         .header(header::CONTENT_TYPE, "application/json")
+        // Arbitrage gate contrat P7 (2026-07-20): a refusal never caches
+        // — a heuristically-cached 404/403 would outlive the < 60 s
+        // control-plane propagation bound (RFC 9110 §9.3.2).
+        .header(header::CACHE_CONTROL, "no-store")
         .body(Body::from(body))
         .expect("static response");
     response.extensions_mut().insert(ErrorCode(registry.code()));
@@ -1040,6 +1051,9 @@ fn refuse(refusal: Refusal, now_ms: i64) -> (Response<Body>, usize) {
     let mut response = Response::builder()
         .status(StatusCode::from_u16(refusal.status()).expect("registry status"))
         .header(header::CONTENT_TYPE, "application/json")
+        // Arbitrage gate contrat P7: refusals carry no-store (see
+        // refuse_deposit above).
+        .header(header::CACHE_CONTROL, "no-store")
         .body(Body::from(body))
         .expect("static response");
     response.extensions_mut().insert(ErrorCode(refusal.code()));

@@ -24,7 +24,10 @@
 //! | `AITHOS_RELAY_TUNNEL_NAME`    | REQUIRED — the relay's own SNI (the tunnel door), e.g. `relay.aithos.fr` |
 //! | `AITHOS_RELAY_TLS_CERT[_PEM]` | REQUIRED — tunnel-door cert chain: `_PEM` content (Secrets Manager) or a file path |
 //! | `AITHOS_RELAY_TLS_KEY[_PEM]`  | REQUIRED — tunnel-door private key: `_PEM` content (Secrets Manager) or a file path |
-//! | `AITHOS_RELAY_BOOTSTRAP`      | REQUIRED — control-plane mappings (gateway_pub ↔ tenant ↔ hostname); P7 replaces with DynamoDB |
+//! | `AITHOS_RELAY_CONTROL_BACKEND` | `dynamodb` (the P7 control table — B.2 mappings + tenant join) or `memory` (default: the bootstrap file rules, dev/tests — an old task definition still boots) |
+//! | `AITHOS_RELAY_CONTROL_TABLE`   | REQUIRED when the control backend is dynamodb |
+//! | `AITHOS_RELAY_CONTROL_TTL_SECS`| control freshness bound (default 30 — with the reconciliation sweep every TTL/2 the B.4 « fermeture < 60 s » holds with margin) |
+//! | `AITHOS_RELAY_BOOTSTRAP`      | REQUIRED when the control backend is memory (P6 shape). OPTIONAL under dynamodb — and it must then carry ZERO tenant/tunnel: the table is the ONLY source of mappings (P7b) |
 //! | `AITHOS_RELAY_NONCE_BACKEND`  | `dynamodb` (default) or `memory` (dev/tests) |
 //! | `AITHOS_RELAY_NONCE_TABLE`    | REQUIRED when backend is dynamodb |
 //! | `AITHOS_RELAY_NONCE_WINDOW_SECS` | reservation window, clamped ≥ 600 (B.2) |
@@ -34,9 +37,9 @@
 
 use std::sync::Arc;
 
-use aithos_provider::control::ControlPlane;
+use aithos_provider::control::{CachedControl, ControlPlane, ControlStore, DynamoDbControl};
 use aithos_provider::nonces::{DynamoDbNonces, MemNonces, NonceStore, MIN_WINDOW_SECS};
-use aithos_provider::passthrough::{RelayDoor, SessionRegistry};
+use aithos_provider::passthrough::{reconcile_registry, RelayDoor, SessionRegistry};
 use aithos_provider::tls::tunnel_server_config_from_pem;
 use aithos_provider::tunnel::TUNNEL_WIRE_VERSION;
 
@@ -88,7 +91,17 @@ async fn main() {
 
     let listen = std::env::var("AITHOS_RELAY_LISTEN").unwrap_or_else(|_| "0.0.0.0:8443".into());
     let tunnel_name = required("AITHOS_RELAY_TUNNEL_NAME").to_ascii_lowercase();
-    let bootstrap = required("AITHOS_RELAY_BOOTSTRAP");
+
+    // P7b — the control-plane seam (the store's P7 pattern, verbatim).
+    // Default memory: the bootstrap file rules, exactly the P6 shape (an
+    // old task definition boots the new binary unchanged). `dynamodb`
+    // swaps the B.2 mapping + tenant join onto the control table behind
+    // the freshness cache.
+    let control_backend =
+        std::env::var("AITHOS_RELAY_CONTROL_BACKEND").unwrap_or_else(|_| "memory".into());
+    let bootstrap_env = std::env::var("AITHOS_RELAY_BOOTSTRAP")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
 
     // The tunnel-door TLS material (the relay's OWN cert — a provider
     // secret, never a client's). On Fargate it arrives as env CONTENT
@@ -102,14 +115,58 @@ async fn main() {
     });
     let acceptor = tokio_rustls::TlsAcceptor::from(tls_config);
 
-    let (control, _preloads, _heads) = match ControlPlane::load_bootstrap(&bootstrap) {
-        Ok(loaded) => loaded,
-        Err(e) => {
-            eprintln!("fatal: bootstrap rejected: {e}");
+    let bootstrap_plane = match (&*control_backend, &bootstrap_env) {
+        // Memory backend: the bootstrap is REQUIRED (fail-closed, P6).
+        ("memory", None) => {
+            eprintln!(
+                "fatal: AITHOS_RELAY_BOOTSTRAP is required when the control backend is \
+                 memory (fail-closed startup)"
+            );
+            std::process::exit(2);
+        }
+        // Dynamodb backend without a bootstrap: the P7b resting state —
+        // the image embarks NO mapping file at all.
+        (_, None) => ControlPlane::default(),
+        (_, Some(path)) => match ControlPlane::load_bootstrap(path) {
+            Ok((plane, _preloads, _heads)) => plane,
+            Err(e) => {
+                eprintln!("fatal: bootstrap rejected: {e}");
+                std::process::exit(2);
+            }
+        },
+    };
+
+    // P7b fail-closed guard (the P7 store guard, verbatim): once the table
+    // rules, NO tenant or tunnel mapping may ride the image — a bootstrap
+    // that carries any refuses to boot.
+    if control_backend == "dynamodb" && !bootstrap_plane.is_empty() {
+        eprintln!(
+            "fatal: the control backend is dynamodb but the bootstrap carries tenants or \
+             tunnels — the control table is the only source of mappings (fail-closed \
+             startup, P7b gate contrat)"
+        );
+        std::process::exit(2);
+    }
+
+    let control_ttl_secs = std::env::var("AITHOS_RELAY_CONTROL_TTL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(30);
+    let control: Arc<dyn ControlStore> = match control_backend.as_str() {
+        "memory" => Arc::new(bootstrap_plane),
+        "dynamodb" => {
+            let table = required("AITHOS_RELAY_CONTROL_TABLE");
+            let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+            Arc::new(CachedControl::new(
+                DynamoDbControl::new(aws_sdk_dynamodb::Client::new(&config), table),
+                control_ttl_secs,
+            ))
+        }
+        other => {
+            eprintln!("fatal: unknown control backend `{other}` (fail-closed startup)");
             std::process::exit(2);
         }
     };
-    let control = Arc::new(control);
 
     let window_secs = std::env::var("AITHOS_RELAY_NONCE_WINDOW_SECS")
         .ok()
@@ -137,13 +194,36 @@ async fn main() {
         }
     };
 
+    let registry = Arc::new(SessionRegistry::new());
     let door = RelayDoor::new(
-        control,
+        control.clone(),
         nonces,
-        Arc::new(SessionRegistry::new()),
+        registry.clone(),
         acceptor,
         tunnel_name.clone(),
     );
+
+    // P7b — the B.4 reconciliation sweep: every TTL/2 (≥ 1 s), re-resolve
+    // the ACTIVE tunnels against the control seam and GoAway what is
+    // suspended, purged or remapped. Bound: freshness TTL + sweep period
+    // (30 + 15 s default) < 60 s. An unanswerable backend closes nothing
+    // (arbitrage ② — an outage never decapitates live traffic).
+    {
+        let registry = registry.clone();
+        let control = control.clone();
+        let period = std::time::Duration::from_secs((control_ttl_secs / 2).max(1));
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(period);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tick.tick().await;
+                let closed = reconcile_registry(&registry, control.as_ref(), now_ms()).await;
+                if closed > 0 {
+                    tracing::info!("reconcile sweep closed {closed} tunnel(s)");
+                }
+            }
+        });
+    }
 
     let listener = match tokio::net::TcpListener::bind(&listen).await {
         Ok(l) => l,
