@@ -3,7 +3,8 @@ Feature: Reads — heads, listing, batch, sync and the draft.2 servable layout
   # INFRA-PROVIDER annexe A: A.3 (routes /heads, ?list=, /batch, /sync + the
   # path-map coverage lines), A.1 + redline gate 5 2026-07-20 (the draft.2
   # servable layout: manifests/<h>.json, changesets/, evidence/, K1-C aliases),
-  # A.6 (cache classes — asserted at étape 6 with the real backend, not here),
+  # A.6 (cache classes — the @cache @gate6 section: the class is the PATH's,
+  # computed by the service, never by the storage backend),
   # A.7 (closed error registry), A.8 (limits: batch ≤ 256, listing ≤ 1000).
   #
   # This is the P2 read-surface contract, written BEFORE the code (rituel BDD).
@@ -14,7 +15,8 @@ Feature: Reads — heads, listing, batch, sync and the draft.2 servable layout
   # the REAL aithos-bundle packages of p7-bundle-packages.json — never
   # re-invented crypto. The p9-store-reads vector freezes the wire bytes.
   #
-  # Gate map: gate 5 (this étape) lands every scenario of this feature.
+  # Gate map: gate 5 landed every scenario above the @gate6 sections;
+  # étape 6 (backend durable) lands @cache and @fail-closed.
 
   Background:
     Given the tenant "acme" is enrolled and bound to the vector DID
@@ -206,3 +208,103 @@ Feature: Reads — heads, listing, batch, sync and the draft.2 servable layout
     # content-addressing is the path's definition (redline gate 5): the K1-C
     # digest is recomputed on the deposited bytes — anti-abuse, no semantics
     Then the response is 400 "artifact_invalid" with reason "id_mismatch"
+
+  # ============================================================
+  # A.6 — cache classes (étape 6). The class belongs to the PATH:
+  # the service computes it from the grammar and the serving instant,
+  # the storage backend never decides a header. In-process assertions
+  # (headers are wire behavior); CloudFront only ever fronts what A.6
+  # marks public (module cdn-public, deploy gate).
+  # ============================================================
+
+  @cache @gate6
+  Scenario: Immutable artifacts serve the immutable cache class
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    And the gamma log carries the mandate grant and its bound action
+    When a correctly signed mandated GET arrives for the enrollment cert path
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "public, max-age=31536000, immutable"
+    When a correctly signed mandated GET arrives for "manifests/1.json"
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "public, max-age=31536000, immutable"
+    When a correctly signed mandated GET arrives for the p8_cold changeset sidecar path
+    # manifests/<h>, changesets/<hash>, evidence/<hash>: addressed by
+    # height/content, never rewritten — the ⑧b write-once makes the
+    # class opposable (redline gate 5 in A.6)
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "public, max-age=31536000, immutable"
+
+  @cache @gate6
+  Scenario: The current gamma segment is never cached, a past month becomes immutable
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    When an owner-signed GET arrives for relative path "gamma/2026-07.jsonl"
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "no-store"
+    Given the server clock reads "2026-08-16T12:00:00Z"
+    When an owner-signed GET arrives for relative path "gamma/2026-07.jsonl"
+    # the month is révolu at the serving instant: the segment is frozen (A.6)
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "public, max-age=31536000, immutable"
+
+  @cache @gate6
+  Scenario: The hot heads and the mutable carriers are never cached
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    When an owner-signed GET arrives for "/heads"
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "no-store"
+    When an owner-signed GET arrives for relative path "manifest.json"
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "no-store"
+
+  @cache @gate6
+  Scenario: The public section alias revalidates publicly on a strong ETag
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    When an anonymous GET arrives for the p8_cold public section alias path
+    # the sid is stable, the content re-editable: max-age=0 + strong ETag (A.6)
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "public, max-age=0, must-revalidate"
+    And the response carries a strong ETag of its body
+
+  @cache @gate6
+  Scenario: Encrypted blobs and the circle alias revalidate privately on a strong ETag
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    And the gamma log carries the mandate grant and its bound action
+    When a correctly signed mandated GET arrives for relative path "e/circle/blobs/01000000000000000000000000.enc"
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "private, max-age=0, must-revalidate"
+    And the response carries a strong ETag of its body
+    When a correctly signed mandated GET arrives for the p8_cold circle blob alias path
+    # same class as its e/<zone>/blobs equivalent (A.6, redline gate 5)
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "private, max-age=0, must-revalidate"
+    And the response carries a strong ETag of its body
+
+  @cache @gate6 @a6-completion
+  Scenario: did.json and the public zone revalidate publicly (A.6 completion, carried to the gate)
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    And an owner-signed PUT stored "# hello" at relative path "e/public/notes/hello.md"
+    When an anonymous GET arrives for "did.json"
+    # A.6 does not name did.json or e/public/**: both are anonymous-readable,
+    # CloudFront-fronted and mutable — the public must-revalidate class is
+    # the consistent completion, GRAVED ONLY AT THE GATE, never silently
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "public, max-age=0, must-revalidate"
+    And the response carries a strong ETag of its body
+    When an anonymous GET arrives for "e/public/notes/hello.md"
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "public, max-age=0, must-revalidate"
+    And the response carries a strong ETag of its body
+
+  # ============================================================
+  # Étape 6 — the seams fail closed. A store that cannot read its
+  # backend refuses; it never invents an absence (the nonce
+  # precedent: 503 unavailable, operational — A.7 note carried
+  # to the gate).
+  # ============================================================
+
+  @fail-closed @gate6
+  Scenario: An unreachable object backend refuses the read, never a not_found
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    And the object backend becomes unreachable
+    When an owner-signed GET arrives for relative path "manifest.json"
+    Then the response is 503 "unavailable"

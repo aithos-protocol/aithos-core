@@ -24,7 +24,16 @@ RUN cargo build --release --locked --manifest-path rust/Cargo.toml \
 FROM scratch
 COPY --from=build /aithos-store-api /aithos-store-api
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-# The replay bootstrap: the committed p1 vector's tenant/DID/did.json —
-# public material, drift-guarded by a unit test against vectors/.
-COPY rust/crates/aithos-provider/bootstrap/replay.json /bootstrap/replay.json
+# Décision ② du gate P2/étape 6 (2026-07-20, gravée INFRA-PROVIDER §8) :
+# le bootstrap de rejeu `acme` (replay.json, clés des vecteurs committés —
+# publiques) DISPARAÎT de l'image prod dès que les backends deviennent
+# durables. L'image embarque deux bootstraps SANS preloads ni seeds (le
+# binaire refuse de booter autrement, garde fail-closed) :
+#   - prod-replay-<date>.json : le tenant de rejeu jetable du gate déployé
+#     (bindings pré-genèse seuls — la genèse arrive par le wire) ;
+#   - prod-none.json : zéro tenant — l'état de repos post-purge, jusqu'à la
+#     bascule P7 (table control-plane + bin admin).
+# La task def choisit via AITHOS_STORE_BOOTSTRAP (var bootstrap_path).
+COPY rust/crates/aithos-provider/bootstrap/prod-replay-20260720.json /bootstrap/prod-replay-20260720.json
+COPY rust/crates/aithos-provider/bootstrap/prod-none.json /bootstrap/prod-none.json
 ENTRYPOINT ["/aithos-store-api"]

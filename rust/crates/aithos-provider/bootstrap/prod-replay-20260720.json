@@ -1,0 +1,15 @@
+{
+  "tenants": [
+    {
+      "tenant": "replay-20260720",
+      "dids": [
+        {
+          "did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr"
+        },
+        {
+          "did": "did:aithos:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S"
+        }
+      ]
+    }
+  ]
+}

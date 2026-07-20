@@ -9,15 +9,18 @@
 //! captures the service's real `tracing` output and asserts the A.8
 //! register: no path, no body, no envelope material — ever.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use aithos_provider::acme::AcmeState;
 use aithos_provider::control::ControlPlane;
 use aithos_provider::dns::MemDnsTxt;
 use aithos_provider::envelope::{header_value, sign_envelope, Envelope, EnvelopeSignature};
-use aithos_provider::heads::MemHeads;
+use aithos_provider::heads::{
+    HeadsFuture, HeadsRecord as WHeadsRecord, HeadsTable as WHeadsTable, HeadsUnavailable, MemHeads,
+};
 use aithos_provider::nonces::MemNonces;
-use aithos_provider::objects::{MemObjects, ObjectStore};
+use aithos_provider::objects::{MemObjects, ObjectStore, PutOnce, StoreFuture, StoreUnavailable};
 use aithos_provider::service::{build_router, AppState};
 use aithos_provider::time::{parse_rfc3339z_ms, render_rfc3339z};
 use axum::body::Body;
@@ -151,6 +154,10 @@ struct StoreWorld {
     /// Concrete handle on the memory heads table (A.5) — the CAS givens
     /// seed it and the Thens assert it (same Arc `state.heads` erases).
     heads: Arc<MemHeads>,
+    /// Étape 6 fault injection: the flaky seam wrappers read these — a
+    /// cleared flag makes every backend call answer "unavailable".
+    objects_available: Arc<AtomicBool>,
+    heads_available: Arc<AtomicBool>,
     authority: String,
     now: String,
     nonce_counter: u64,
@@ -189,6 +196,104 @@ struct Pending {
     if_head: Option<String>,
 }
 
+/// Étape 6 fault injection — the seam wrappers refuse when the flag is
+/// cleared: the BDD proof that the service FAILS CLOSED on its backends
+/// (503 unavailable, never an invented absence or a silent accept).
+struct FlakyObjects {
+    inner: Arc<MemObjects>,
+    up: Arc<AtomicBool>,
+}
+
+impl ObjectStore for FlakyObjects {
+    fn get<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+        chemin: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Option<Vec<u8>>, StoreUnavailable>> + Send + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            if !self.up.load(Ordering::SeqCst) {
+                return Err(StoreUnavailable);
+            }
+            self.inner.get(tenant, did, chemin).await
+        })
+    }
+
+    fn put<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+        chemin: &'a str,
+        bytes: Vec<u8>,
+    ) -> StoreFuture<'a, ()> {
+        Box::pin(async move {
+            if !self.up.load(Ordering::SeqCst) {
+                return Err(StoreUnavailable);
+            }
+            self.inner.put(tenant, did, chemin, bytes).await
+        })
+    }
+
+    fn put_once<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+        chemin: &'a str,
+        bytes: Vec<u8>,
+    ) -> StoreFuture<'a, PutOnce> {
+        Box::pin(async move {
+            if !self.up.load(Ordering::SeqCst) {
+                return Err(StoreUnavailable);
+            }
+            self.inner.put_once(tenant, did, chemin, bytes).await
+        })
+    }
+
+    fn list<'a>(&'a self, tenant: &'a str, did: &'a str) -> StoreFuture<'a, Vec<String>> {
+        Box::pin(async move {
+            if !self.up.load(Ordering::SeqCst) {
+                return Err(StoreUnavailable);
+            }
+            self.inner.list(tenant, did).await
+        })
+    }
+}
+
+struct FlakyHeads {
+    inner: Arc<MemHeads>,
+    up: Arc<AtomicBool>,
+}
+
+impl WHeadsTable for FlakyHeads {
+    fn read<'a>(&'a self, tenant: &'a str, did: &'a str) -> HeadsFuture<'a, Option<WHeadsRecord>> {
+        Box::pin(async move {
+            if !self.up.load(Ordering::SeqCst) {
+                return Err(HeadsUnavailable);
+            }
+            self.inner.read(tenant, did).await
+        })
+    }
+
+    fn cas<'a>(
+        &'a self,
+        tenant: &'a str,
+        did: &'a str,
+        expected: Option<&'a WHeadsRecord>,
+        next: WHeadsRecord,
+    ) -> HeadsFuture<'a, Result<(), Option<WHeadsRecord>>> {
+        Box::pin(async move {
+            if !self.up.load(Ordering::SeqCst) {
+                return Err(HeadsUnavailable);
+            }
+            self.inner.cas(tenant, did, expected, next).await
+        })
+    }
+}
+
 impl std::fmt::Debug for StoreWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("StoreWorld")
@@ -207,11 +312,14 @@ impl StoreWorld {
     fn new() -> Self {
         let f = fixtures();
         let authority = "store.aithos.fr".to_owned();
-        let (state, dns, heads) = Self::state(&authority, true, Suspension::None);
+        let (state, dns, heads, objects_up, heads_up) =
+            Self::state(&authority, true, Suspension::None);
         Self {
             state,
             dns,
             heads,
+            objects_available: objects_up,
+            heads_available: heads_up,
             authority,
             now: "2026-07-16T12:00:00Z".into(),
             nonce_counter: 0,
@@ -241,7 +349,13 @@ impl StoreWorld {
         authority: &str,
         with_did_json: bool,
         suspension: Suspension,
-    ) -> (Arc<AppState>, Arc<MemDnsTxt>, Arc<MemHeads>) {
+    ) -> (
+        Arc<AppState>,
+        Arc<MemDnsTxt>,
+        Arc<MemHeads>,
+        Arc<AtomicBool>,
+        Arc<AtomicBool>,
+    ) {
         let f = fixtures();
         let bootstrap = serde_json::json!({
             "tenants": [{
@@ -260,21 +374,31 @@ impl StoreWorld {
         });
         let (control, preloads, head_seeds) =
             ControlPlane::from_bootstrap_json(&bootstrap.to_string()).expect("fixture bootstrap");
-        let objects = Arc::new(MemObjects::new());
+        let mem_objects = Arc::new(MemObjects::new());
         if with_did_json {
             for (tenant, did, key, bytes) in preloads {
-                futures::executor::block_on(objects.put(&tenant, &did, &key, bytes));
+                futures::executor::block_on(mem_objects.put(&tenant, &did, &key, bytes)).unwrap();
             }
         }
         let heads = Arc::new(MemHeads::new());
         for (tenant, did, record) in head_seeds {
             heads.seed(&tenant, &did, record);
         }
+        let objects_up = Arc::new(AtomicBool::new(true));
+        let heads_up = Arc::new(AtomicBool::new(true));
+        let objects = Arc::new(FlakyObjects {
+            inner: mem_objects,
+            up: objects_up.clone(),
+        });
+        let flaky_heads = Arc::new(FlakyHeads {
+            inner: heads.clone(),
+            up: heads_up.clone(),
+        });
         let dns = Arc::new(MemDnsTxt::new());
         let state = Arc::new(AppState {
             control,
             objects,
-            heads: heads.clone(),
+            heads: flaky_heads,
             deposit_locks: Default::default(),
             nonces: Arc::new(MemNonces::new(600)),
             dns: dns.clone(),
@@ -282,7 +406,7 @@ impl StoreWorld {
             authority: authority.to_owned(),
             test_now_enabled: true,
         });
-        (state, dns, heads)
+        (state, dns, heads, objects_up, heads_up)
     }
 
     fn fresh_nonce(&mut self) -> String {
@@ -458,6 +582,7 @@ async fn did_json_stored(world: &mut StoreWorld) {
         .objects
         .get(&f.tenant, &f.did, "did.json")
         .await
+        .unwrap()
         .expect("preloaded");
     assert_eq!(stored, f.did_json.as_bytes());
 }
@@ -490,10 +615,13 @@ async fn mandated_refused(world: &mut StoreWorld, nonce: String) {
 
 #[given(expr = "the did.json of the bound DID is absent from the store")]
 async fn did_json_absent(world: &mut StoreWorld) {
-    let (state, dns, heads) = StoreWorld::state(&world.authority, false, Suspension::None);
+    let (state, dns, heads, objects_up, heads_up) =
+        StoreWorld::state(&world.authority, false, Suspension::None);
     world.state = state;
     world.dns = dns;
     world.heads = heads;
+    world.objects_available = objects_up;
+    world.heads_available = heads_up;
 }
 
 #[given(expr = "an owner-signed PUT stored {string} at relative path {string}")]
@@ -1047,6 +1175,7 @@ async fn stored_object_equals(world: &mut StoreWorld, relative: String, content:
         .objects
         .get(&f.tenant, &f.did, &relative)
         .await
+        .unwrap()
         .expect("stored");
     assert_eq!(stored, content.as_bytes());
 }
@@ -1094,7 +1223,8 @@ impl StoreWorld {
         self.state
             .objects
             .put(&f.tenant, &f.did, relative, bytes)
-            .await;
+            .await
+            .unwrap();
     }
 
     /// The mandate cert + the given gamma lines, at the did.json's own
@@ -1303,6 +1433,7 @@ impl StoreWorld {
         self.heads
             .read(&f.tenant, &f.did)
             .await
+            .unwrap()
             .expect("a heads record exists")
     }
 
@@ -1318,7 +1449,7 @@ impl StoreWorld {
 async fn no_manifest_head(world: &mut StoreWorld) {
     let f = fixtures();
     use aithos_provider::heads::HeadsTable as _;
-    let record = world.heads.read(&f.tenant, &f.did).await;
+    let record = world.heads.read(&f.tenant, &f.did).await.unwrap();
     assert!(
         record
             .map(|r| r.manifest_chain_hash.is_empty())
@@ -1331,7 +1462,7 @@ async fn no_manifest_head(world: &mut StoreWorld) {
 async fn gamma_log_empty(world: &mut StoreWorld) {
     let f = fixtures();
     use aithos_provider::heads::HeadsTable as _;
-    let record = world.heads.read(&f.tenant, &f.did).await;
+    let record = world.heads.read(&f.tenant, &f.did).await.unwrap();
     assert!(
         record.map(|r| r.gamma_head.is_empty()).unwrap_or(true),
         "the world starts with an empty gamma log"
@@ -1693,7 +1824,12 @@ impl StoreWorld {
             .unwrap()
             .to_owned();
         use aithos_provider::heads::HeadsTable as _;
-        let current = self.heads.read(&f.tenant, &f.did).await.unwrap_or_default();
+        let current = self
+            .heads
+            .read(&f.tenant, &f.did)
+            .await
+            .unwrap()
+            .unwrap_or_default();
         self.heads.seed(
             &f.tenant,
             &f.did,
@@ -1733,7 +1869,12 @@ impl StoreWorld {
         self.seed_object("gamma/2026-07.jsonl", segment.as_bytes().to_vec())
             .await;
         use aithos_provider::heads::HeadsTable as _;
-        let current = self.heads.read(&f.tenant, &f.did).await.unwrap_or_default();
+        let current = self
+            .heads
+            .read(&f.tenant, &f.did)
+            .await
+            .unwrap()
+            .unwrap_or_default();
         self.heads.seed(
             &f.tenant,
             &f.did,
@@ -1989,7 +2130,7 @@ async fn binds_genesis_did(world: &mut StoreWorld) {
         ControlPlane::from_bootstrap_json(&bootstrap.to_string()).expect("genesis bootstrap");
     let objects = Arc::new(MemObjects::new());
     for (tenant, did, key, bytes) in preloads {
-        futures::executor::block_on(objects.put(&tenant, &did, &key, bytes));
+        futures::executor::block_on(objects.put(&tenant, &did, &key, bytes)).unwrap();
     }
     let heads = Arc::new(MemHeads::new());
     let dns = Arc::new(MemDnsTxt::new());
@@ -2033,6 +2174,7 @@ async fn holds_vector_did_json(world: &mut StoreWorld) {
         .objects
         .get(&f.tenant, &f.did, "did.json")
         .await
+        .unwrap()
         .expect("the Background stored it");
     assert_eq!(stored, f.did_json.as_bytes());
 }
@@ -2229,6 +2371,69 @@ async fn owner_deposit_changeset_wrong(world: &mut StoreWorld) {
     world.fire(&pending).await;
 }
 
+// ------------------------------------------------- étape 6 (cache A.6 + ⑧b)
+
+#[when(expr = "a correctly signed mandated GET arrives for the enrollment cert path")]
+async fn mandated_get_enrollment_cert(world: &mut StoreWorld) {
+    // #10 covers certs/** for any valid chain; the class is the path's.
+    let key = format!("certs/{}.json", fixtures().mandate_id);
+    let pending = world.mandated_pending(&key, None);
+    world.fire(&pending).await;
+}
+
+#[then(expr = "the response carries a strong ETag of its body")]
+fn strong_etag_of_body(world: &mut StoreWorld) {
+    use sha2::{Digest, Sha256};
+    let answer = world.last.as_ref().expect("an answer");
+    let expected = format!("\"{}\"", hex::encode(Sha256::digest(&answer.body)));
+    let etag = answer
+        .headers
+        .get(header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    assert_eq!(
+        etag, expected,
+        "strong ETag = quoted SHA-256 of the served bytes (A.6)"
+    );
+}
+
+#[given(expr = "a byte-different object squats the enrollment cert path")]
+async fn squat_cert_path(world: &mut StoreWorld) {
+    // A harness backdoor write, not a wire deposit: the ⑧b arm defends
+    // whatever is stored, however it got there.
+    let key = format!("certs/{}.json", fixtures().mandate_id);
+    world
+        .seed_object(&key, b"{\"squatted\":true}".to_vec())
+        .await;
+}
+
+#[given(expr = "a byte-different object squats the p8_cold changeset digest path")]
+async fn squat_changeset_path(world: &mut StoreWorld) {
+    let key = p8_key_with_prefix("changesets/");
+    world
+        .seed_object(&key, b"{\"squatted\":true}".to_vec())
+        .await;
+}
+
+#[when(expr = "the owner deposits the loaded certificate")]
+async fn owner_deposits_cert(world: &mut StoreWorld) {
+    // The owner needs no presented chain and no harness cert seed — the
+    // deposited link resolves alone (A.4 certs).
+    let relative = format!("certs/{}.json", fixtures().mandate_id);
+    let pending = world.deposit_pending("PUT", &relative, None, false);
+    world.fire(&pending).await;
+}
+
+#[given(expr = "the object backend becomes unreachable")]
+fn object_backend_unreachable(world: &mut StoreWorld) {
+    world.objects_available.store(false, Ordering::SeqCst);
+}
+
+#[given(expr = "the heads table becomes unreachable")]
+fn heads_table_unreachable(world: &mut StoreWorld) {
+    world.heads_available.store(false, Ordering::SeqCst);
+}
+
 #[when(expr = "the genesis owner deposits the loaded did.json")]
 async fn genesis_owner_deposits(world: &mut StoreWorld) {
     // « The genesis owner » is the owner OF THE DEPOSITED DOCUMENT: the
@@ -2349,7 +2554,7 @@ async fn heads_body_matches(world: &mut StoreWorld) {
 #[then(expr = "the listing carries every stored path in lexicographic order, not truncated")]
 async fn listing_carries_all(world: &mut StoreWorld) {
     let f = fixtures();
-    let stored = world.state.objects.list(&f.tenant, &f.did).await;
+    let stored = world.state.objects.list(&f.tenant, &f.did).await.unwrap();
     let body = world.answer_json();
     let paths: Vec<&str> = body["paths"]
         .as_array()
@@ -2384,7 +2589,7 @@ async fn listing_page(world: &mut StoreWorld, count: usize) {
 #[then(expr = "the listing continues exactly after the previous page")]
 async fn listing_continues(world: &mut StoreWorld) {
     let f = fixtures();
-    let stored = world.state.objects.list(&f.tenant, &f.did).await;
+    let stored = world.state.objects.list(&f.tenant, &f.did).await.unwrap();
     let previous = world.prev_list_paths.clone().expect("a previous page");
     let last = previous.last().expect("non-empty previous page");
     let position = stored.iter().position(|p| p == last).expect("known path");
@@ -2594,19 +2799,25 @@ async fn gateway_posed(world: &mut StoreWorld, value: String, hostname: String) 
 
 #[given(expr = "the binding of the gateway key is suspended")]
 async fn binding_suspended(world: &mut StoreWorld) {
-    let (state, dns, heads) = StoreWorld::state(&world.authority, true, Suspension::Binding);
+    let (state, dns, heads, objects_up, heads_up) =
+        StoreWorld::state(&world.authority, true, Suspension::Binding);
     world.state = state;
     world.dns = dns;
     world.heads = heads;
+    world.objects_available = objects_up;
+    world.heads_available = heads_up;
 }
 
 #[given(expr = "the tenant {string} is suspended")]
 async fn tenant_suspended(world: &mut StoreWorld, tenant: String) {
     assert_eq!(tenant, fixtures().tenant, "fixture tenant");
-    let (state, dns, heads) = StoreWorld::state(&world.authority, true, Suspension::Tenant);
+    let (state, dns, heads, objects_up, heads_up) =
+        StoreWorld::state(&world.authority, true, Suspension::Tenant);
     world.state = state;
     world.dns = dns;
     world.heads = heads;
+    world.objects_available = objects_up;
+    world.heads_available = heads_up;
 }
 
 #[given(expr = "the bound gateway posed 10 challenge values within the hour")]

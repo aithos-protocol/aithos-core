@@ -317,6 +317,69 @@ Feature: Publication — mandated authorization, deposit verification and the tw
     Then the response is 400 "artifact_invalid" with reason "entry_signature"
 
   # ============================================================
+  # ⑧b — write-once (étape 6; arbitrage gate 4 ACTÉ 2026-07-20):
+  # an identical re-deposit is idempotent, different bytes under the
+  # same immutable id refuse — the store never rewrites history.
+  # reason "immutable_conflict" = micro-redline A.7 carried to the
+  # gate (same pattern as prefix_mismatch at gate 5).
+  # ============================================================
+
+  @write-once @gate6 @cert
+  Scenario: An identical certificate re-deposit is idempotent
+    Given the gamma log carries the mandate grant and its bound action
+    And the bundle-exported mandate certificate is loaded from p7
+    When a delegated author deposits the loaded certificate
+    Then the request is accepted
+    When a delegated author deposits the loaded certificate
+    # same id, same bytes: accepted again, nothing rewritten (⑧b)
+    Then the request is accepted
+
+  @write-once @gate6 @cert
+  Scenario: A certificate deposit never rewrites a byte-different stored object
+    # a cosmetic re-serialization dies earlier as `form` (canonical-JCS
+    # discipline). A same-id RE-ISSUE — valid signature, different content
+    # (ids are opaque, not content-derived) — passes every A.4 check and
+    # is EXACTLY what this arm refuses. The squat seeds the stored side
+    # directly (harness backdoor): the wire outcome depends only on the
+    # stored bytes differing, however they got there
+    Given the gamma log carries the mandate grant and its bound action
+    And a byte-different object squats the enrollment cert path
+    And the bundle-exported mandate certificate is loaded from p7
+    When the owner deposits the loaded certificate
+    Then the response is 400 "artifact_invalid" with reason "immutable_conflict"
+
+  @write-once @gate6 @sidecars
+  Scenario: An identical sidecar re-deposit is idempotent
+    Given the store holds the p8_cold edition at height 1 before its draft.2 publication
+    When the owner deposits the p8_cold changeset sidecar at its digest path
+    Then the request is accepted
+    When the owner deposits the p8_cold changeset sidecar at its digest path
+    Then the request is accepted
+
+  @write-once @gate6 @sidecars
+  Scenario: A sidecar deposit never rewrites a byte-different stored object
+    # content-addressing on the deposited octets makes an honest conflict
+    # unreachable (a different body is a different digest → id_mismatch);
+    # ⑧b still refuses to rewrite whatever sits under an immutable name
+    Given the store holds the p8_cold edition at height 1 before its draft.2 publication
+    And a byte-different object squats the p8_cold changeset digest path
+    When the owner deposits the p8_cold changeset sidecar at its digest path
+    Then the response is 400 "artifact_invalid" with reason "immutable_conflict"
+
+  # ============================================================
+  # Étape 6 — the CAS seam fails closed: an unreachable heads table
+  # refuses the publish, never a silent accept (nonce precedent).
+  # ============================================================
+
+  @fail-closed @gate6
+  Scenario: An unreachable heads table refuses a publish, never a silent accept
+    Given the store holds the p7 genesis edition at height 1
+    And the bundle-exported height 2 publication package is loaded from p7
+    And the heads table becomes unreachable
+    When the owner publishes the loaded manifest with If-Head the stored manifest head
+    Then the response is 503 "unavailable"
+
+  # ============================================================
   # Annexe C — witness hook. Kept behind its own gate: the observation fires on
   # an accepted publish/replica, but it is NEVER wired onto a publication feed
   # until this chantier freezes the canonical head (interdit). Contract only here.

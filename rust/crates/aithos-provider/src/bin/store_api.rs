@@ -12,6 +12,10 @@
 //! | `AITHOS_STORE_LISTEN`       | bind address (default `0.0.0.0:8080`) |
 //! | `AITHOS_STORE_AUTHORITY`    | REQUIRED — the served authority, pinned into every envelope check |
 //! | `AITHOS_STORE_BOOTSTRAP`    | REQUIRED — tenant read-model + tunnel mappings (B.5 authority) + verified public did.json preloads (P7 replaces) |
+//! | `AITHOS_STORE_OBJECTS_BACKEND` | `s3` (the durable layout, étape 6) or `memory` (default: per-task, ephemeral — an old task definition still boots) |
+//! | `AITHOS_STORE_OBJECTS_BUCKET`  | REQUIRED when the objects backend is s3 |
+//! | `AITHOS_STORE_HEADS_BACKEND`   | `dynamodb` (the A.5 CAS table, étape 6) or `memory` (default) |
+//! | `AITHOS_STORE_HEADS_TABLE`     | REQUIRED when the heads backend is dynamodb |
 //! | `AITHOS_STORE_NONCE_BACKEND`| `dynamodb` (default) or `memory` (single instance, dev/tests) |
 //! | `AITHOS_STORE_NONCE_TABLE`  | REQUIRED when backend is dynamodb |
 //! | `AITHOS_STORE_NONCE_WINDOW_SECS` | reservation window, clamped ≥ 600 (A.2 #6) |
@@ -28,9 +32,9 @@ use std::sync::Arc;
 use aithos_provider::acme::AcmeState;
 use aithos_provider::control::ControlPlane;
 use aithos_provider::dns::{DnsTxt, MemDnsTxt, NoDnsTxt, Route53DnsTxt};
-use aithos_provider::heads::{HeadsTable, MemHeads};
+use aithos_provider::heads::{DynamoDbHeads, HeadsTable, MemHeads};
 use aithos_provider::nonces::{DynamoDbNonces, MemNonces, NonceStore, MIN_WINDOW_SECS};
-use aithos_provider::objects::{MemObjects, ObjectStore};
+use aithos_provider::objects::{MemObjects, ObjectStore, S3Objects};
 use aithos_provider::service::{build_router, AppState};
 use aithos_provider::STORE_WIRE_VERSION;
 
@@ -68,17 +72,74 @@ async fn main() {
         }
     };
 
-    let objects: Arc<dyn ObjectStore> = Arc::new(MemObjects::new());
-    for (tenant, did, key, bytes) in preloads {
-        objects.put(&tenant, &did, &key, bytes).await;
+    // Étape 6 — the durable backends behind the seams. Defaults stay
+    // memory so an old task definition still boots the new binary; the
+    // Terraform task definition opts into s3/dynamodb explicitly.
+    let objects_backend =
+        std::env::var("AITHOS_STORE_OBJECTS_BACKEND").unwrap_or_else(|_| "memory".into());
+    let heads_backend =
+        std::env::var("AITHOS_STORE_HEADS_BACKEND").unwrap_or_else(|_| "memory".into());
+
+    // Décision ② du gate P2/étape 6 (2026-07-20, gravée INFRA-PROVIDER
+    // §8) : embedded replay material never persists — a durable backend
+    // refuses to boot with bootstrap preloads or head seeds.
+    let durable = objects_backend != "memory" || heads_backend != "memory";
+    if durable && (!preloads.is_empty() || !head_seeds.is_empty()) {
+        eprintln!(
+            "fatal: the bootstrap carries preloads/head seeds but a durable backend is \
+             configured — replay material never persists (fail-closed startup, \
+             décision gate étape 6)"
+        );
+        std::process::exit(2);
     }
-    // The A.5 heads table (étape 4): memory backend, DynamoDB at étape 6
-    // behind the same seam. Seeds are replay fixtures only.
-    let mem_heads = MemHeads::new();
-    for (tenant, did, record) in head_seeds {
-        mem_heads.seed(&tenant, &did, record);
-    }
-    let heads: Arc<dyn HeadsTable> = Arc::new(mem_heads);
+
+    let objects: Arc<dyn ObjectStore> = match objects_backend.as_str() {
+        "memory" => {
+            tracing::warn!("objects backend = memory: per-task, ephemeral (dev/tests only)");
+            let mem = MemObjects::new();
+            for (tenant, did, key, bytes) in preloads {
+                if mem.put(&tenant, &did, &key, bytes).await.is_err() {
+                    eprintln!("fatal: preload rejected (fail-closed startup)");
+                    std::process::exit(2);
+                }
+            }
+            Arc::new(mem)
+        }
+        "s3" => {
+            let bucket = required("AITHOS_STORE_OBJECTS_BUCKET");
+            let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+            Arc::new(S3Objects::new(aws_sdk_s3::Client::new(&config), bucket))
+        }
+        other => {
+            eprintln!("fatal: unknown objects backend `{other}` (fail-closed startup)");
+            std::process::exit(2);
+        }
+    };
+
+    // The A.5 heads table — the CAS seam. Seeds are replay fixtures only
+    // (memory backend; a durable backend refused them above).
+    let heads: Arc<dyn HeadsTable> = match heads_backend.as_str() {
+        "memory" => {
+            tracing::warn!("heads backend = memory: per-task, ephemeral (dev/tests only)");
+            let mem_heads = MemHeads::new();
+            for (tenant, did, record) in head_seeds {
+                mem_heads.seed(&tenant, &did, record);
+            }
+            Arc::new(mem_heads)
+        }
+        "dynamodb" => {
+            let table = required("AITHOS_STORE_HEADS_TABLE");
+            let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+            Arc::new(DynamoDbHeads::new(
+                aws_sdk_dynamodb::Client::new(&config),
+                table,
+            ))
+        }
+        other => {
+            eprintln!("fatal: unknown heads backend `{other}` (fail-closed startup)");
+            std::process::exit(2);
+        }
+    };
 
     let window_secs = std::env::var("AITHOS_STORE_NONCE_WINDOW_SECS")
         .ok()

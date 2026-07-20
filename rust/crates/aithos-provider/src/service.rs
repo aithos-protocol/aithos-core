@@ -430,7 +430,7 @@ async fn decide(
             }
         },
         // The read surface (A.3, étape 5).
-        (TargetKind::Heads, "GET") => serve_heads(state, &target).await,
+        (TargetKind::Heads, "GET") => serve_heads(state, &target, now_ms).await,
         (TargetKind::List, "GET") => {
             serve_list(state, &target, &target_raw, &principal, now_ms).await
         }
@@ -519,20 +519,93 @@ async fn serve_object(
         .get(&target.tenant, &target.did, &object.key())
         .await
     {
-        Some(bytes) => {
+        // An unanswerable backend refuses — never an invented absence.
+        Err(_) => refuse(Refusal::Unavailable, now_ms),
+        Ok(Some(bytes)) => {
             let len = bytes.len();
-            let response = Response::builder()
+            let mut response = Response::builder()
                 .status(StatusCode::OK)
-                // Caching per annexe A.6 arrives with the real backend
-                // (P2); the skeleton stays conservative.
-                .header(header::CACHE_CONTROL, "no-store")
-                .header(header::CONTENT_TYPE, "application/octet-stream")
-                .body(Body::from(bytes))
-                .expect("static response");
-            (response, len)
+                // The A.6 cache class is the PATH's, computed at the
+                // serving instant — never the backend's decision.
+                .header(header::CACHE_CONTROL, cache_class(object, now_ms))
+                .header(header::CONTENT_TYPE, "application/octet-stream");
+            if let Some(etag) = strong_etag(object, &bytes) {
+                response = response.header(header::ETAG, etag);
+            }
+            (
+                response.body(Body::from(bytes)).expect("static response"),
+                len,
+            )
         }
-        None => refuse(Refusal::NotFound, now_ms),
+        Ok(None) => refuse(Refusal::NotFound, now_ms),
     }
+}
+
+/// The A.6 cache classes, verbatim. `did.json`, `e/public/**` and
+/// `x/<id>/**` are the A.6 COMPLETION (carried to the étape-6 gate,
+/// never graved silently): anonymous-readable/CloudFront-fronted paths
+/// take the public revalidate class, connector state the private one.
+fn cache_class(object: &ObjectPath, now_ms: i64) -> &'static str {
+    const IMMUTABLE: &str = "public, max-age=31536000, immutable";
+    const NO_STORE: &str = "no-store";
+    const PUBLIC_REVALIDATE: &str = "public, max-age=0, must-revalidate";
+    const PRIVATE_REVALIDATE: &str = "private, max-age=0, must-revalidate";
+    match object {
+        // Addressed by id/height/content, never rewritten — the ⑧b
+        // write-once makes the class opposable (A.6, redline gate 5).
+        ObjectPath::Cert(_)
+        | ObjectPath::ManifestSlot(_)
+        | ObjectPath::Changeset(_)
+        | ObjectPath::Evidence(_) => IMMUTABLE,
+        // A month segment freezes once the serving instant leaves it
+        // ("segments gamma des mois révolus", A.6).
+        ObjectPath::GammaSegment(month) => {
+            if month.as_str() < current_utc_month(now_ms).as_str() {
+                IMMUTABLE
+            } else {
+                NO_STORE
+            }
+        }
+        // The hot head and the mutable carriers advance with every
+        // publication (A.6 + redline gate 5).
+        ObjectPath::Manifest
+        | ObjectPath::ZoneIndex(_)
+        | ObjectPath::Hdr(_, _)
+        | ObjectPath::IndicesPublic
+        | ObjectPath::RootsPublic
+        | ObjectPath::VaultCatalogPins => NO_STORE,
+        // Stable name, re-editable content: strong-ETag revalidation.
+        ObjectPath::PublicSectionAlias(_) | ObjectPath::DidJson | ObjectPath::Public(_) => {
+            PUBLIC_REVALIDATE
+        }
+        ObjectPath::Blob(_, _) | ObjectPath::CircleBlobAlias(_) | ObjectPath::X(_, _) => {
+            PRIVATE_REVALIDATE
+        }
+    }
+}
+
+/// Strong ETag (quoted SHA-256 of the served bytes) on the revalidate
+/// classes only — the immutable and no-store classes never revalidate.
+fn strong_etag(object: &ObjectPath, bytes: &[u8]) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    matches!(
+        object,
+        ObjectPath::PublicSectionAlias(_)
+            | ObjectPath::DidJson
+            | ObjectPath::Public(_)
+            | ObjectPath::Blob(_, _)
+            | ObjectPath::CircleBlobAlias(_)
+            | ObjectPath::X(_, _)
+    )
+    .then(|| format!("\"{}\"", hex::encode(Sha256::digest(bytes))))
+}
+
+/// The UTC month (`YYYY-MM`) of the serving instant.
+fn current_utc_month(now_ms: i64) -> String {
+    crate::time::render_rfc3339z(now_ms)
+        .get(..7)
+        .unwrap_or_default()
+        .to_owned()
 }
 
 /// P1 writes: the A.4 "light form check" classes only. The classes A.4
@@ -583,10 +656,14 @@ async fn store_object(
     if !acceptable {
         return refuse(Refusal::ArtifactInvalid, now_ms);
     }
-    state
+    if state
         .objects
         .put(&target.tenant, &target.did, &object.key(), bytes)
-        .await;
+        .await
+        .is_err()
+    {
+        return refuse(Refusal::Unavailable, now_ms);
+    }
     let response = Response::builder()
         .status(StatusCode::NO_CONTENT)
         .body(Body::empty())
@@ -622,12 +699,15 @@ fn principal_reads(principal: &Principal, object: &ObjectPath) -> bool {
 /// GET `/heads` — the two hot heads, exactly the values the accepts
 /// served (A.5): `{"height", "manifest": "sha256:…"|null, "gamma":
 /// "sha256:…"|null, "segment": "YYYY-MM"|null}`.
-async fn serve_heads(state: &AppState, target: &DataTarget) -> (Response<Body>, usize) {
-    let record = state
-        .heads
-        .read(&target.tenant, &target.did)
-        .await
-        .unwrap_or_default();
+async fn serve_heads(
+    state: &AppState,
+    target: &DataTarget,
+    now_ms: i64,
+) -> (Response<Body>, usize) {
+    let record = match state.heads.read(&target.tenant, &target.did).await {
+        Err(_) => return refuse(Refusal::Unavailable, now_ms),
+        Ok(record) => record.unwrap_or_default(),
+    };
     let null_if_empty = |value: String| {
         if value.is_empty() {
             serde_json::Value::Null
@@ -669,7 +749,9 @@ async fn serve_list(
     if limit == 0 || limit > MAX_LIST_PAGE {
         return refuse(Refusal::PayloadTooLarge, now_ms);
     }
-    let all = state.objects.list(&target.tenant, &target.did).await;
+    let Ok(all) = state.objects.list(&target.tenant, &target.did).await else {
+        return refuse(Refusal::Unavailable, now_ms);
+    };
     let visible: Vec<String> = all
         .into_iter()
         .filter(|chemin| chemin.starts_with(&query.prefix))
@@ -731,8 +813,9 @@ async fn serve_batch(
                 .get(&target.tenant, &target.did, &object.key())
                 .await
             {
-                Some(bytes) => (200, Some(bytes)),
-                None => (404, None),
+                Err(_) => return refuse(Refusal::Unavailable, now_ms),
+                Ok(Some(bytes)) => (200, Some(bytes)),
+                Ok(None) => (404, None),
             },
         };
         total += bytes.as_ref().map_or(0, Vec::len);
@@ -768,11 +851,14 @@ async fn serve_sync(
     let Ok(request) = serde_json::from_slice::<SyncBody>(body) else {
         return refuse(Refusal::EnvelopeInvalid, now_ms);
     };
-    let Some(tip_bytes) = state
+    let Ok(tip_read) = state
         .objects
         .get(&target.tenant, &target.did, "manifest.json")
         .await
     else {
+        return refuse(Refusal::Unavailable, now_ms);
+    };
+    let Some(tip_bytes) = tip_read else {
         return refuse(Refusal::NotFound, now_ms);
     };
     let Ok(tip) = serde_json::from_slice::<aithos_bundle::manifest::Manifest>(&tip_bytes) else {
@@ -788,11 +874,14 @@ async fn serve_sync(
         Vec::new()
     } else {
         let held_key = format!("manifests/{}.json", request.have_edition);
-        let Some(held_bytes) = state
+        let Ok(held_read) = state
             .objects
             .get(&target.tenant, &target.did, &held_key)
             .await
         else {
+            return refuse(Refusal::Unavailable, now_ms);
+        };
+        let Some(held_bytes) = held_read else {
             return refuse(Refusal::EditionGone, now_ms);
         };
         let Ok(held) = serde_json::from_slice::<aithos_bundle::manifest::Manifest>(&held_bytes)
@@ -820,8 +909,9 @@ async fn serve_sync(
                 .get(&target.tenant, &target.did, &object.key())
                 .await
             {
-                Some(bytes) => (200, Some(bytes)),
-                None => (404, None),
+                Err(_) => return refuse(Refusal::Unavailable, now_ms),
+                Ok(Some(bytes)) => (200, Some(bytes)),
+                Ok(None) => (404, None),
             },
         };
         total += bytes.as_ref().map_or(0, Vec::len);

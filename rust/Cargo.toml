@@ -64,6 +64,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 aws-config = "1"
 aws-sdk-dynamodb = "1"
+aws-sdk-s3 = "1"
 tower = "0.5"
 
 # relay passthrough (piste P, lot P6 jalon M2 — INFRA-PROVIDER annexe B):

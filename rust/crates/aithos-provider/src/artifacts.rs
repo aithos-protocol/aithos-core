@@ -35,7 +35,7 @@ use aithos_core::mandate::Mandate;
 
 use crate::envelope::Refusal;
 use crate::heads::{HeadsRecord, HeadsTable};
-use crate::objects::ObjectStore;
+use crate::objects::{ObjectStore, PutOnce};
 
 /// The closed `reason` register carried by `artifact_invalid` (A.7 — a
 /// short closed word, never free text, never an excerpt).
@@ -66,6 +66,11 @@ pub enum ArtifactReason {
     /// segment as a prefix — a replica never rewrites history (A.4/A.5;
     /// the ONE reason added by the gate-contrat-5 arbitrage ④).
     PrefixMismatch,
+    /// A byte-different deposit under a stored immutable id (certs,
+    /// changesets, evidence) — the ⑧b write-once (étape 6): an identical
+    /// re-deposit is idempotent, different bytes never rewrite history.
+    /// Micro-redline A.7 carried to the étape-6 gate.
+    ImmutableConflict,
 }
 
 impl ArtifactReason {
@@ -81,6 +86,7 @@ impl ArtifactReason {
             ArtifactReason::EntrySignature => "entry_signature",
             ArtifactReason::PrevMismatch => "prev_mismatch",
             ArtifactReason::PrefixMismatch => "prefix_mismatch",
+            ArtifactReason::ImmutableConflict => "immutable_conflict",
         }
     }
 }
@@ -136,6 +142,7 @@ async fn stored_did_doc(
     let bytes = objects
         .get(tenant, did, "did.json")
         .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
         .ok_or(DepositRefusal::Artifact(fault))?;
     serde_json::from_slice(&bytes).map_err(|_| DepositRefusal::Artifact(fault))
 }
@@ -163,6 +170,7 @@ async fn stored_chain(
         let bytes = objects
             .get(tenant, did, &format!("certs/{id}.json"))
             .await
+            .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
             .ok_or_else(|| fault.clone())?;
         let mandate: Mandate = serde_json::from_slice(&bytes).map_err(|_| fault.clone())?;
         chain.push(mandate);
@@ -303,7 +311,10 @@ pub async fn deposit_manifest(
     let Some(if_head) = if_head else {
         return Err(DepositRefusal::Plain(Refusal::CasRequired));
     };
-    let record = heads.read(tenant, did).await;
+    let record = heads
+        .read(tenant, did)
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?;
     let stored = record.clone().unwrap_or_default();
     let current_head = if stored.manifest_chain_hash.is_empty() {
         "none".to_owned()
@@ -387,7 +398,11 @@ pub async fn deposit_manifest(
         manifest_chain_hash: new_hash.clone(),
         ..stored
     };
-    if let Err(current) = heads.cas(tenant, did, record.as_ref(), next).await {
+    if let Err(current) = heads
+        .cas(tenant, did, record.as_ref(), next)
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
+    {
         let current = current.unwrap_or_default();
         return Err(DepositRefusal::CasMismatch {
             head: if current.manifest_chain_hash.is_empty() {
@@ -400,7 +415,8 @@ pub async fn deposit_manifest(
     }
     objects
         .put(tenant, did, "manifest.json", body.to_vec())
-        .await;
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?;
     objects
         .put(
             tenant,
@@ -408,7 +424,8 @@ pub async fn deposit_manifest(
             &format!("manifests/{}.json", manifest.edition.height),
             body.to_vec(),
         )
-        .await;
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?;
     Ok(ManifestAccepted {
         head: format!("sha256:{new_hash}"),
         height: manifest.edition.height,
@@ -469,7 +486,10 @@ pub async fn deposit_gamma(
     let Some(if_head) = if_head else {
         return Err(DepositRefusal::Plain(Refusal::CasRequired));
     };
-    let record = heads.read(tenant, did).await;
+    let record = heads
+        .read(tenant, did)
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?;
     let stored = record.clone().unwrap_or_default();
     let current_head = if stored.gamma_head.is_empty() {
         "none".to_owned()
@@ -508,7 +528,11 @@ pub async fn deposit_gamma(
         gamma_segments: segments,
         ..stored
     };
-    if let Err(current) = heads.cas(tenant, did, record.as_ref(), next).await {
+    if let Err(current) = heads
+        .cas(tenant, did, record.as_ref(), next)
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
+    {
         let current = current.unwrap_or_default();
         return Err(DepositRefusal::CasMismatch {
             head: if current.gamma_head.is_empty() {
@@ -522,10 +546,14 @@ pub async fn deposit_gamma(
     let mut segment = objects
         .get(tenant, did, &segment_key)
         .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
         .unwrap_or_default();
     segment.extend_from_slice(body);
     segment.push(b'\n');
-    objects.put(tenant, did, &segment_key, segment).await;
+    objects
+        .put(tenant, did, &segment_key, segment)
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?;
     Ok(GammaAccepted { head: new_head })
 }
 
@@ -577,6 +605,7 @@ pub async fn deposit_cert(
         let bytes = objects
             .get(tenant, did, &format!("certs/{id}.json"))
             .await
+            .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
             .ok_or_else(|| chain_fault.clone())?;
         let parent: Mandate = serde_json::from_slice(&bytes).map_err(|_| chain_fault.clone())?;
         parent_id = parent.parent.clone();
@@ -598,10 +627,16 @@ pub async fn deposit_cert(
             chain_fault.clone()
         }
     })?;
-    objects
-        .put(tenant, did, &format!("certs/{cert_id}.json"), body.to_vec())
-        .await;
-    Ok(())
+    match objects
+        .put_once(tenant, did, &format!("certs/{cert_id}.json"), body.to_vec())
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
+    {
+        // ⑧b: first write wins, an identical re-deposit is idempotent,
+        // a byte-different stored object is never rewritten.
+        PutOnce::Stored | PutOnce::Identical => Ok(()),
+        PutOnce::Conflict => Err(DepositRefusal::Artifact(ArtifactReason::ImmutableConflict)),
+    }
 }
 
 // ------------------------------------------------------------- did.json
@@ -634,7 +669,11 @@ pub async fn deposit_did(
     if doc.id != did {
         return Err(DepositRefusal::Artifact(ArtifactReason::IdMismatch));
     }
-    match objects.get(tenant, did, "did.json").await {
+    match objects
+        .get(tenant, did, "did.json")
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
+    {
         // Genesis: id ↔ root binding + auto-signature, core's own check.
         None => doc
             .verify()
@@ -652,7 +691,10 @@ pub async fn deposit_did(
                 .map_err(|()| DepositRefusal::Artifact(ArtifactReason::Signature))?;
         }
     }
-    objects.put(tenant, did, "did.json", body.to_vec()).await;
+    objects
+        .put(tenant, did, "did.json", body.to_vec())
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?;
     Ok(())
 }
 
@@ -677,7 +719,10 @@ pub async fn deposit_replica(
     let Some(if_head) = if_head else {
         return Err(DepositRefusal::Plain(Refusal::CasRequired));
     };
-    let record = heads.read(tenant, did).await;
+    let record = heads
+        .read(tenant, did)
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?;
     let stored = record.clone().unwrap_or_default();
     let current_head = if stored.gamma_head.is_empty() {
         "none".to_owned()
@@ -697,6 +742,7 @@ pub async fn deposit_replica(
     let stored_segment = objects
         .get(tenant, did, &segment_key)
         .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
         .unwrap_or_default();
     let stored_text = core::str::from_utf8(&stored_segment)
         .map_err(|_| DepositRefusal::Artifact(ArtifactReason::Form))?;
@@ -746,7 +792,11 @@ pub async fn deposit_replica(
         gamma_segments: segments,
         ..stored
     };
-    if let Err(current) = heads.cas(tenant, did, record.as_ref(), next).await {
+    if let Err(current) = heads
+        .cas(tenant, did, record.as_ref(), next)
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
+    {
         let current = current.unwrap_or_default();
         return Err(DepositRefusal::CasMismatch {
             head: if current.gamma_head.is_empty() {
@@ -757,7 +807,10 @@ pub async fn deposit_replica(
             height: None,
         });
     }
-    objects.put(tenant, did, &segment_key, body.to_vec()).await;
+    objects
+        .put(tenant, did, &segment_key, body.to_vec())
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?;
     Ok(GammaAccepted { head: running_head })
 }
 
@@ -808,10 +861,17 @@ pub async fn deposit_sidecar(
         SidecarKind::Changeset => "changesets",
         SidecarKind::Evidence => "evidence",
     };
-    objects
-        .put(tenant, did, &format!("{dir}/{hash}.json"), body.to_vec())
-        .await;
-    Ok(())
+    match objects
+        .put_once(tenant, did, &format!("{dir}/{hash}.json"), body.to_vec())
+        .await
+        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
+    {
+        // ⑧b — content-addressing makes an honest conflict unreachable
+        // (a different body is a different digest); whatever is stored
+        // under an immutable name still never changes.
+        PutOnce::Stored | PutOnce::Identical => Ok(()),
+        PutOnce::Conflict => Err(DepositRefusal::Artifact(ArtifactReason::ImmutableConflict)),
+    }
 }
 
 #[cfg(test)]

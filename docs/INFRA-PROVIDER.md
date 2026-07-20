@@ -242,6 +242,22 @@ egress ; l'immuable caché écrase l'egress répété ; le poste qui scale = le 
 > le préalable, HA comprise). Le témoin et le plan public peuvent aller
 > serverless plus tard sans toucher les wires.
 
+> **Note gravée 2026-07-20 (arbitrage Mathieu, gate P2/étape 6) — compute du
+> store : TRANCHÉ, Fargate.** L'argument qui tranche seul est le wire : A.8
+> grave le PUT direct ≤ 32 MiB (le corps DANS la requête, signé via
+> `body_b3`), et aucune porte d'entrée Lambda n'accepte plus de 6 Mo en
+> requête (1 Mo via ALB ; le response streaming — 200 Mo depuis 07/2025 —
+> ne couvre que la réponse ; vérifié en ligne 2026-07-20). Servir le wire
+> sur Lambda exigerait une redline A.8 régressive ou un détour presigned
+> qui sortirait le corps de l'enveloppe signée (rupture A.2) — exclu : le
+> wire prime, le compute s'y plie. Renforts convergents, aucun nécessaire :
+> latence §3.6 (append p50 < 120 ms) tenue par le toujours-chaud, infra
+> ALB+Fargate prouvée au gate P1, coût non décisif (~10–15 €/mois, dans le
+> budget MVP), HA = `desired_count 2` une fois l'état externalisé (le
+> contenu même de l'étape 6). Le témoin et le plan public restent éligibles
+> serverless plus tard sans toucher les wires. Dossier :
+> `DECISION-COMPUTE-STORE-PROPOSITION-GATE6-2026-07-20.md`.
+
 ## 8. Métadonnées, conformité, exploitation
 
 - **Politique de métadonnées (à documenter comme limite, façon chiffrement au
@@ -258,6 +274,32 @@ egress ; l'immuable caché écrase l'egress répété ; le poste qui scale = le 
   + purge, à documenter.
 - **Versionnage wire** : `aithos-store` / `aithos-witness` en `1.0.0-draft.1`,
   même convention que le core ; toute rupture = bump + période de double-service.
+
+> **Note gravée 2026-07-20 (arbitrage Mathieu, gate P2/étape 6) — tenant de
+> rejeu `acme` : RETRAIT de l'image prod + tenant jetable.** Le point
+> d'arbitrage n°6 (HANDOFF-PROVIDER-AWS, 2026-07-17) est tranché : dès que
+> l'étape 6 rend les écritures durables (S3), le bootstrap embarqué de
+> l'image prod (tenant `acme` ancré sur les clés des vecteurs committés —
+> publiques par construction) disparaît ; la table control plane (P7,
+> DynamoDB) devient la seule source de tenants en prod. Le rejeu du gate
+> déployé se fait sur un tenant `replay-<date>` créé par la CLI admin juste
+> avant la preuve et purgé juste après (la purge outillée = la mécanique GC
+> que le §8 exige de toute façon) ; le test anti-dérive du bootstrap reste
+> confiné aux cibles dev/test. Dossier :
+> `DECISION-COMPUTE-STORE-PROPOSITION-GATE6-2026-07-20.md`.
+
+> **Note gravée 2026-07-20 (arbitrage Mathieu, gate déployé étape 6) —
+> tenant de rejeu : RÉALISATION.** La mécanique « CLI P7 » de la note
+> ci-dessus n'existait pas au gate (ni bin admin, ni lecture de la table
+> control-plane par le service — la bascule P7 reste un lot à part,
+> `HANDOFF-PROVIDER-AWS` P7) ; le gate a été joué, sur GO Mathieu, avec un
+> bootstrap embarqué **minimal sans preloads ni seeds** : le binding
+> pré-genèse du tenant `replay-20260720` seul, la genèse et tout l'état
+> arrivant par le wire. Purge exécutée en runbook admin (versions S3 du
+> préfixe + item heads), puis bascule sur `prod-none.json` (zéro tenant) —
+> l'état de repos de la prod jusqu'à P7. L'image prod n'embarque plus
+> `replay.json` (décision ② exécutée) ; le test anti-dérive du bootstrap
+> de rejeu reste sur les cibles dev/test.
 
 ## 9. Hors périmètre (renvois)
 
@@ -498,6 +540,19 @@ manifest_chain_hash, gamma_head, gamma_segment}` ; écritures conditionnelles
   de backend de la table des têtes (attribut d'implémentation à côté du
   tuple A.5), jamais exposée sur le wire.
 
+> **Note gravée 2026-07-20 (arbitrage Mathieu, gate déployé étape 6) —
+> ordre des effets et lecture de la « transaction ».** La « transaction
+> avec le dépôt S3 » ci-dessus se lit comme une **discipline d'ordre**,
+> jamais une transaction cross-service (qui n'existe pas) : vérifier (A.4)
+> → CAS DynamoDB (le point de sérialisation unique — un perdant n'écrit
+> RIEN) → écrire S3. Un crash entre le CAS et l'écriture S3 laisse tête >
+> objet : le prochain lecteur/appendeur voit l'incohérence (mismatch côté
+> client) et le serveur ne répare JAMAIS (doctrine) — la réparation est un
+> runbook ops. Les lectures de têtes sont fortement cohérentes (une
+> lecture stale fabriquerait des conflits CAS fantômes) ; le write-once
+> ⑧b est un PUT S3 conditionnel `If-None-Match: *` + relecture/comparaison
+> sur 412 — jamais un CAS A.5.
+
 ### A.6 Cache et immuabilité (précise §3.4)
 
 - `Cache-Control: public, max-age=31536000, immutable` : `certs/<id>.json`
@@ -520,6 +575,13 @@ manifest_chain_hash, gamma_head, gamma_segment}` ; écritures conditionnelles
   client cache par `(chemin, key_version de l'index)` et revalide à l'ETag.
   L'immuable logique de §3.4 (« blob par `(sid, key_version)` ») vit côté
   client.
+- **Complément gate étape 6 (2026-07-20, gravé)** : `did.json` et
+  `e/public/**` → `Cache-Control: public, max-age=0, must-revalidate` +
+  ETag fort (SHA-256 des octets) ; `x/<id>/**` → `private, max-age=0,
+  must-revalidate` + ETag fort. Classes non nommées par l'annexe d'origine,
+  fixées par cohérence (nom stable, contenu rééditable) et prouvées
+  en-têtes réels contre la prod au gate déployé. Les surfaces de collection
+  (`/heads`, listing, batch, réponses de dépôt) restent `no-store`.
 - CloudFront ne fronte que le public : `e/public/**`, `did.json`,
   `certs/**` si `certs_public`, et le feed témoin (annexe C) ; +
   `public/sections/**`, `indices/public.json`, `roots/public.json`
@@ -538,6 +600,14 @@ d'erreur ni dans un log (A.8).
 `prefix_mismatch` (réplique de segment qui ne préserve pas le préfixe
 stocké octet à octet — une réplique ne réécrit jamais l'histoire).
 Rien d'autre, jamais de texte libre ; tout reason nouveau = redline.
+
+**Micro-redline gate étape 6 (2026-07-20, gravée)** : + `immutable_conflict`
+— le write-once ⑧b : un objet **différent** est déjà stocké sous un nom
+immuable (`certs/<id>.json`, `manifests/<h>.json`, `changesets/<hash>.json`,
+`evidence/<hash>.json`). Le re-dépôt octet-identique reste accepté
+(idempotent) ; l'adressage par contenu rend le bras inatteignable autrement
+que par squat de nom. Le registre fermé passe à **dix**. Prouvé sur le wire
+déployé au gate (squat → `400 artifact_invalid` / `immutable_conflict`).
 
 | HTTP | `error` | Quand |
 |---|---|---|

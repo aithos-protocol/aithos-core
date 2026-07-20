@@ -255,7 +255,11 @@ pub async fn verify(
     let mut chain: Vec<aithos_core::mandate::Mandate> = Vec::new();
     let mut chain_raws: Vec<Vec<u8>> = Vec::new();
     let verifying_key = if owner_fragment {
-        match objects.get(&route.tenant, &route.did, "did.json").await {
+        match objects
+            .get(&route.tenant, &route.did, "did.json")
+            .await
+            .map_err(|_| Refusal::Unavailable)?
+        {
             Some(doc) => {
                 let doc: DidDocument =
                     serde_json::from_slice(&doc).map_err(|_| Refusal::ChainInvalid)?;
@@ -296,6 +300,7 @@ pub async fn verify(
             let bytes = objects
                 .get(&route.tenant, &route.did, &format!("certs/{id}.json"))
                 .await
+                .map_err(|_| Refusal::Unavailable)?
                 .ok_or(Refusal::ChainInvalid)?;
             let mandate: aithos_core::mandate::Mandate =
                 serde_json::from_slice(&bytes).map_err(|_| Refusal::ChainInvalid)?;
@@ -324,6 +329,7 @@ pub async fn verify(
         let doc = objects
             .get(&route.tenant, &route.did, "did.json")
             .await
+            .map_err(|_| Refusal::Unavailable)?
             .ok_or(Refusal::ChainInvalid)?;
         let did_doc: DidDocument =
             serde_json::from_slice(&doc).map_err(|_| Refusal::ChainInvalid)?;
@@ -381,7 +387,11 @@ async fn stored_revocations(
 ) -> Result<Vec<aithos_core::revocation::Revocation>, Refusal> {
     let mut entries = Vec::new();
     let mut logs = vec![did_doc.revocations.clone()];
-    if let Some(record) = heads.read(tenant, did).await {
+    if let Some(record) = heads
+        .read(tenant, did)
+        .await
+        .map_err(|_| Refusal::Unavailable)?
+    {
         for month in record.gamma_segments {
             let key = format!("gamma/{month}.jsonl");
             if key != did_doc.revocations {
@@ -390,7 +400,11 @@ async fn stored_revocations(
         }
     }
     for key in logs {
-        let Some(bytes) = objects.get(tenant, did, &key).await else {
+        let Some(bytes) = objects
+            .get(tenant, did, &key)
+            .await
+            .map_err(|_| Refusal::Unavailable)?
+        else {
             continue;
         };
         let text = core::str::from_utf8(&bytes).map_err(|_| Refusal::ChainInvalid)?;
