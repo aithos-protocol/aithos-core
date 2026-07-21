@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use aithos_bundle::bundle::Bundle;
 use aithos_bundle::log::{ActionSpec, InferenceSpec, LogFilter};
+use aithos_bundle::remote::{KeySigner, RemoteStore};
 use aithos_bundle::Store;
 use aithos_core::did::DidDocument;
 use aithos_core::header::{Header, Recipient};
@@ -45,7 +46,7 @@ use crate::config::{ContextTools, GatewayConfig, ToolAccess};
 use crate::hub::{validate_approved, ApprovedManifest, ApprovedTool};
 use crate::keyholder::Keyholder;
 use crate::policy::{hub_op_for_tool, op_for_tool, Policy};
-use crate::store_adapter::GatewayStore;
+use crate::store_adapter::{replicate_owner_history, GatewayStore, OwnerReplicationReport};
 use crate::{GatewayError, Result};
 
 /// Entropy seam, re-exported so surfaces (binary, tests) never import
@@ -2066,6 +2067,50 @@ fn derived_owner(master: &[u8; 32], kind: &str, label: &str) -> OwnerKeys {
     )))
 }
 
+/// Owner-side promotion of the P3 history-seeding seam. The master seed
+/// stays on the operator machine; only signed A.2 requests leave it.
+/// `kind` is deliberately closed to the two derivation domains created
+/// by this gateway's owner tooling.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_replicate_history_to_remote(
+    master: &[u8; 32],
+    kind: &str,
+    label: &str,
+    local_root: &std::path::Path,
+    url: &str,
+    tenant: &str,
+    now: Arc<dyn Fn() -> String + Send + Sync>,
+    entropy: Box<dyn EntropySource + Send>,
+) -> Result<(String, OwnerReplicationReport)> {
+    if !matches!(kind, "journal" | "context") {
+        return Err(GatewayError::ConfigRejected(
+            "owner replication kind must be `journal` or `context`".into(),
+        ));
+    }
+    let owner = derived_owner(master, kind, label);
+    let did = aithos_core::wire::did_aithos(&owner.root_sign.verifying_key().to_bytes());
+    let primary = aithos_bundle::FsStore::new(local_root.to_path_buf());
+    let did_doc = primary
+        .get("did.json")
+        .map_err(|e| GatewayError::BridgeFailed(e.to_string()))?
+        .ok_or_else(|| GatewayError::ConfigRejected("local store has no did.json".into()))?;
+    let local_did = serde_json::from_slice::<serde_json::Value>(&did_doc)
+        .ok()
+        .and_then(|doc| doc.get("id").and_then(|id| id.as_str()).map(str::to_owned))
+        .ok_or_else(|| GatewayError::ConfigRejected("local did.json has no string id".into()))?;
+    if local_did != did {
+        return Err(GatewayError::ConfigRejected(format!(
+            "local DID `{local_did}` does not match {kind} label `{label}`"
+        )));
+    }
+    let signer = Arc::new(KeySigner::owner("#root", owner.root_sign.clone()));
+    let mut remote = RemoteStore::new(url, tenant, &did, signer, now, entropy)
+        .map_err(|e| GatewayError::ConfigRejected(format!("remote store: {e}")))?;
+    let report = replicate_owner_history(local_root, &mut remote)
+        .map_err(|e| GatewayError::BridgeFailed(e.to_string()))?;
+    Ok((did, report))
+}
+
 fn derived_succession(master: &[u8; 32], kind: &str, label: &str) -> SigningKey {
     succession_from_entropy(aithos_core::derive::derive_key(
         &format!("aithos-gw/v1/{kind}/{label}/succession"),
@@ -2550,7 +2595,7 @@ pub fn owner_set_briefing(
     let path = format!("{BRIEFING_FOLDER}/{BRIEFING_SECTION}");
     let exists = bundle.read_section(zone, &path, &owner).is_ok();
     if !exists {
-        return bundle
+        bundle
             .section_add(
                 &aithos_bundle::bundle::SectionSpec {
                     zone,
@@ -2564,7 +2609,8 @@ pub fn owner_set_briefing(
                 &owner,
                 ent,
             )
-            .map_err(bridge_err);
+            .map_err(bridge_err)?;
+        return bundle.publish(&owner, now).map_err(bridge_err);
     }
     if zone != Zone::Circle {
         return Err(GatewayError::ConfigRejected(format!(
@@ -2575,7 +2621,8 @@ pub fn owner_set_briefing(
     }
     bundle
         .section_rewrite(zone, &path, text, &owner, now, ent)
-        .map_err(bridge_err)
+        .map_err(bridge_err)?;
+    bundle.publish(&owner, now).map_err(bridge_err)
 }
 
 /// Owner-side read of one zone's directive (test/ops assertions — the

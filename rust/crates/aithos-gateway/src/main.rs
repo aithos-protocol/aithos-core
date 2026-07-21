@@ -75,6 +75,61 @@ enum Command {
         #[arg(long)]
         store_root: String,
     },
+    /// OWNER SIDE: replay a locally provisioned journal or context onto
+    /// the provider through the signed A.2 wire. This is the deliberate
+    /// seed/promotion step for mode B and mode A demos; local runner state
+    /// never leaves the machine.
+    OwnerReplicateHistory {
+        #[arg(long)]
+        master_seed_hex: String,
+        /// Owner derivation domain: journal | context.
+        #[arg(long)]
+        kind: String,
+        /// `agent-label` for a journal, context label otherwise.
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        store_root: String,
+        #[arg(long, default_value = "https://store.aithos.fr")]
+        url: String,
+        #[arg(long)]
+        tenant: String,
+    },
+    /// Render the no-secret provider-backed configuration for the Léa
+    /// CLI demo (ventes mode A, journal mode B, three Vault references).
+    DemoLeaRenderConfig {
+        #[arg(long)]
+        output: String,
+        #[arg(long, default_value = "127.0.0.1:4890")]
+        listen: String,
+        #[arg(long, default_value = "http://127.0.0.1:8200")]
+        vault_address: String,
+        #[arg(long, default_value = "https://store.aithos.fr")]
+        provider_url: String,
+        #[arg(long)]
+        tenant: String,
+        #[arg(long, default_value = "http://127.0.0.1:9201/mcp")]
+        notion_url: String,
+        #[arg(long, default_value = "http://127.0.0.1:9202/mcp")]
+        gmail_url: String,
+        #[arg(long, default_value = "http://127.0.0.1:9203/mcp")]
+        calendar_url: String,
+        #[arg(long)]
+        context_root: String,
+        #[arg(long)]
+        context_did: String,
+        #[arg(long)]
+        context_mandate: String,
+        #[arg(long)]
+        journal_sidecar: String,
+        #[arg(long)]
+        journal_did: String,
+        #[arg(long)]
+        journal_mandate: String,
+        /// Replace an existing generated file.
+        #[arg(long)]
+        force: bool,
+    },
     /// OWNER SIDE: grant a context to the agent's public key (read
     /// tools + gateway governance + scoped auditor).
     OwnerGrantContext {
@@ -362,6 +417,80 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 &mut OsEntropy,
             )?;
             println!("context_did: {did}");
+            return Ok(());
+        }
+        Command::OwnerReplicateHistory {
+            master_seed_hex,
+            kind,
+            label,
+            store_root,
+            url,
+            tenant,
+        } => {
+            let master = decode_master(master_seed_hex)?;
+            let (did, report) = aithos_gateway::core_bridge::owner_replicate_history_to_remote(
+                &master,
+                kind,
+                label,
+                std::path::Path::new(store_root),
+                url,
+                tenant,
+                Arc::new(|| ts(now_secs())),
+                Box::new(OsEntropy),
+            )?;
+            println!("replicated_did: {did}");
+            println!("protocol_objects: {}", report.protocol_objects);
+            println!("editions: {}", report.editions);
+            println!("gamma_segments: {}", report.gamma_segments);
+            println!("unchanged: {}", report.unchanged);
+            return Ok(());
+        }
+        Command::DemoLeaRenderConfig {
+            output,
+            listen,
+            vault_address,
+            provider_url,
+            tenant,
+            notion_url,
+            gmail_url,
+            calendar_url,
+            context_root,
+            context_did,
+            context_mandate,
+            journal_sidecar,
+            journal_did,
+            journal_mandate,
+            force,
+        } => {
+            let path = std::path::Path::new(output);
+            if path.exists() && !*force {
+                return Err(format!(
+                    "demo config `{}` already exists — pass --force to replace it",
+                    path.display()
+                )
+                .into());
+            }
+            let yaml = aithos_gateway::demo_lea::render_provider_config(
+                &aithos_gateway::demo_lea::DemoLeaConfigInput {
+                    listen: listen.clone(),
+                    vault_address: vault_address.clone(),
+                    provider_url: provider_url.clone(),
+                    tenant: tenant.clone(),
+                    notion_url: notion_url.clone(),
+                    gmail_url: gmail_url.clone(),
+                    calendar_url: calendar_url.clone(),
+                    context_root: context_root.clone(),
+                    context_did: context_did.clone(),
+                    context_mandate: context_mandate.clone(),
+                    journal_sidecar: journal_sidecar.clone(),
+                    journal_did: journal_did.clone(),
+                    journal_mandate: journal_mandate.clone(),
+                },
+            )?;
+            std::fs::write(path, yaml)?;
+            println!("demo_config: {}", path.display());
+            println!("agent_endpoint: http://{listen}/mcp");
+            println!("tenant: {tenant}");
             return Ok(());
         }
         Command::OwnerGrantContext {
@@ -684,6 +813,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::Keygen
         | Command::OwnerInitJournal { .. }
         | Command::OwnerInitContext { .. }
+        | Command::OwnerReplicateHistory { .. }
+        | Command::DemoLeaRenderConfig { .. }
         | Command::OwnerGrantContext { .. }
         | Command::OwnerGrantBriefing { .. }
         | Command::OwnerGrantEthosRead { .. }

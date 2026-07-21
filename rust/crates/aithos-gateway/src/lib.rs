@@ -15,6 +15,7 @@
 pub mod config;
 pub mod core_bridge;
 pub mod credentials;
+pub mod demo_lea;
 pub mod hub;
 pub mod keyholder;
 pub mod oauth;

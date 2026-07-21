@@ -1,9 +1,9 @@
 # Démo « Léa » — un agent commercial borné, briefé et audité
 
-> **Statut : SCÉNARIO À VALIDER (Mathieu).** Une fois validé, ce document
-> est la référence : les quatre contrats Gherkin le traduisent, et rien ne
-> se code hors des contrats. Rituel inchangé : décisions → features `@wip`
-> committées seules → impl lot par lot → détag → e2e → runbook → démo.
+> **Statut : SCÉNARIO VALIDÉ ET AUTOMATISÉ.** Ce document est la
+> référence : les quatre contrats Gherkin le traduisent, les huit beats
+> passent en e2e local et provider, et rien ne se code hors des contrats.
+> Runbook provider courant : `DEMO-LEA-PROVIDER-CLI.md`.
 
 ## 1. Le pitch
 

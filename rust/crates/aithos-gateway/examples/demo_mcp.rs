@@ -33,6 +33,39 @@ struct Args {
     /// If set, REQUIRE exactly this bearer token on every request.
     #[arg(long)]
     bearer: Option<String>,
+    /// Let the owner discover `tools/list` without the runtime bearer;
+    /// every `tools/call` remains authenticated. Demo-only equivalent of
+    /// a connector exposing public metadata but protecting effects.
+    #[arg(long)]
+    allow_unauthenticated_tools_list: bool,
+    /// Canned text for one tool, repeatable: TOOL=TEXT. Useful for the
+    /// Léa demo (`query_database=prospects: a, b, c, d, e`).
+    #[arg(long = "response", value_name = "TOOL=TEXT")]
+    responses: Vec<String>,
+}
+
+fn input_schema(name: &str) -> Value {
+    match name {
+        "send_email" => json!({
+            "type": "object",
+            "properties": {
+                "to": { "type": "array", "items": { "type": "string" } },
+                "bcc": { "type": "array", "items": { "type": "string" } },
+                "subject": { "type": "string" },
+                "body": { "type": "string" }
+            },
+            "additionalProperties": false
+        }),
+        "create_event" => json!({
+            "type": "object",
+            "properties": {
+                "start": { "type": "string" },
+                "title": { "type": "string" }
+            },
+            "additionalProperties": false
+        }),
+        _ => json!({ "type": "object", "additionalProperties": false }),
+    }
 }
 
 fn advertised(tools: &str) -> Vec<Value> {
@@ -44,10 +77,19 @@ fn advertised(tools: &str) -> Vec<Value> {
             json!({
                 "name": name,
                 "description": format!("Demo tool `{name}`"),
-                "inputSchema": { "type": "object", "additionalProperties": false }
+                "inputSchema": input_schema(name)
             })
         })
         .collect()
+}
+
+fn response_text(args: &Args, tool: &str) -> String {
+    args.responses
+        .iter()
+        .filter_map(|entry| entry.split_once('='))
+        .find(|(name, _)| *name == tool)
+        .map(|(_, text)| text.to_owned())
+        .unwrap_or_else(|| format!("{}: `{tool}` ok", args.name))
 }
 
 async fn handle(
@@ -66,8 +108,9 @@ async fn handle(
         .unwrap_or("-");
     println!("[{}] {method} tool={tool} authorization={auth}", args.name);
 
+    let discovery_exception = method == "tools/list" && args.allow_unauthenticated_tools_list;
     if let Some(expected) = &args.bearer {
-        if auth != format!("Bearer {expected}") {
+        if !discovery_exception && auth != format!("Bearer {expected}") {
             println!("[{}] REFUSED: wrong or missing bearer", args.name);
             return (
                 StatusCode::UNAUTHORIZED,
@@ -90,7 +133,7 @@ async fn handle(
             "result": {
                 "content": [{
                     "type": "text",
-                    "text": format!("{}: `{tool}` ok", args.name)
+                    "text": response_text(&args, tool)
                 }],
                 "isError": false
             }

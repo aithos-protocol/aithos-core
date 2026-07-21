@@ -1,5 +1,9 @@
 # Démo « Léa » — runbook jour J
 
+> **Chemin provider + CLI courant :** voir
+> [`DEMO-LEA-PROVIDER-CLI.md`](./DEMO-LEA-PROVIDER-CLI.md). Le présent
+> document reste le runbook manuel détaillé et le repli 100 % local.
+
 **But.** Dérouler à la main, en conditions réelles, ce que la répétition
 générale automatisée prouve déjà deux fois : les 8 beats de
 `DEMO-LEA-SCENARIO.md` §4 sont verts dans `gateway-demo-lea.feature`

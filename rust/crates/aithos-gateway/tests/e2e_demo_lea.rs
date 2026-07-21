@@ -33,7 +33,6 @@ use serde_json::{json, Value};
 
 use aithos_bundle::entropy::EntropySource;
 use aithos_bundle::remote::{KeySigner, RemoteStore, SharedRemoteStore};
-use aithos_bundle::{FsStore, Store};
 use aithos_core::keys::{MasterSeed, OwnerKeys};
 use aithos_gateway::config::StoreConfig;
 use aithos_gateway::core_bridge::{gamma_view, EntryView};
@@ -390,60 +389,26 @@ fn owner_client(url: &str, did: &str, owner: &OwnerKeys, fragment: &str) -> Remo
 /// genesis first (#root), everything else next, gamma segments (diff
 /// base primed), the edition history replayed as publishes LAST — the
 /// spike's motif, byte for byte.
-fn owner_replicate(local_root: &std::path::Path, url: &str, did: &str, owner: &OwnerKeys) {
-    let primary = FsStore::new(local_root.to_path_buf());
-    let mut paths = primary.list("").expect("local list");
-    paths.sort();
-    paths.dedup();
-    let priority = |p: &str| -> u8 {
-        match p {
-            "did.json" => 0,
-            p if p.starts_with("gamma/") => 2,
-            "manifest.json" => 3,
-            _ => 1,
-        }
-    };
-    paths.sort_by_key(|p| priority(p));
-    let mut heights: Vec<u64> = paths
-        .iter()
-        .filter_map(|p| {
-            p.strip_prefix("manifests/")?
-                .strip_suffix(".json")?
-                .parse()
-                .ok()
-        })
-        .collect();
-    heights.sort_unstable();
-    let mut root_client = owner_client(url, did, owner, "#root");
-    for path in paths {
-        // The hybrid split (arbitrage 2026-07-21): runner state and
-        // derived caches never leave the pod — the owner replicates the
-        // PROTOCOL objects only.
-        if path.starts_with("gateway/") || path.starts_with("manifests/") {
-            continue;
-        }
-        let Some(bytes) = primary.get(&path).expect("local get") else {
-            continue;
-        };
-        if path.starts_with("gamma/") {
-            let _ = root_client.get(&path);
-        }
-        if path == "manifest.json" {
-            for h in &heights {
-                let slot = primary
-                    .get(&format!("manifests/{h}.json"))
-                    .expect("local get")
-                    .expect("edition slot");
-                root_client
-                    .put("manifest.json", &slot)
-                    .unwrap_or_else(|e| panic!("owner replicate edition {h}: {e}"));
-            }
-            continue;
-        }
-        root_client
-            .put(&path, &bytes)
-            .unwrap_or_else(|e| panic!("owner replicate {path}: {e}"));
-    }
+fn owner_replicate(local_root: &std::path::Path, url: &str, kind: &str, label: &str) {
+    let output = run_ok(&[
+        "owner-replicate-history",
+        "--master-seed-hex",
+        MASTER,
+        "--kind",
+        kind,
+        "--label",
+        label,
+        "--store-root",
+        local_root.to_str().unwrap(),
+        "--url",
+        url,
+        "--tenant",
+        TENANT,
+    ]);
+    assert!(output.contains("protocol_objects: "));
+    assert!(!output.contains("protocol_objects: 0"));
+    assert!(output.contains("editions: "));
+    assert!(!output.contains("editions: 0"), "{output}");
 }
 
 /// Independent owner reader over the wire — the re-read proofs. The
@@ -796,18 +761,14 @@ async fn dress_rehearsal(mode: StoreMode) {
             let memory_mandate = line_value(&journal_out, "memory_mandate: ");
             let context_did = line_value(&ctx_out, "context_did: ");
             let url = boot_service(&[journal_did.as_str(), context_did.as_str()]).await;
-            let (jr, u1, d1) = (journal_store.clone(), url.clone(), journal_did.clone());
-            tokio::task::spawn_blocking(move || {
-                owner_replicate(&jr, &u1, &d1, &derived_owner("journal", "lea"))
-            })
-            .await
-            .unwrap();
-            let (vr, u2, d2) = (ventes_store.clone(), url.clone(), context_did.clone());
-            tokio::task::spawn_blocking(move || {
-                owner_replicate(&vr, &u2, &d2, &derived_owner("context", "ventes"))
-            })
-            .await
-            .unwrap();
+            let (jr, u1) = (journal_store.clone(), url.clone());
+            tokio::task::spawn_blocking(move || owner_replicate(&jr, &u1, "journal", "lea"))
+                .await
+                .unwrap();
+            let (vr, u2) = (ventes_store.clone(), url.clone());
+            tokio::task::spawn_blocking(move || owner_replicate(&vr, &u2, "context", "ventes"))
+                .await
+                .unwrap();
             Some((url, journal_did, memory_mandate, context_did))
         }
     };
@@ -1105,6 +1066,12 @@ journal:
         .filter(|entry| entry.kind == "ethos.read")
         .count();
     assert_eq!(reads_after_beat7, 2, "both reads are on the record");
+    if let Some((url, _, _, _)) = &remote {
+        let (root, url) = (ventes_store.clone(), url.clone());
+        tokio::task::spawn_blocking(move || owner_replicate(&root, &url, "context", "ventes"))
+            .await
+            .unwrap();
+    }
 
     // Beat 8 — the auditor replays the whole story from the gamma.
     let acts_export = run_ok(&[

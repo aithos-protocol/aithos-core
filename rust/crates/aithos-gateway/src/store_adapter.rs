@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use aithos_bundle::entropy::EntropySource;
-use aithos_bundle::remote::{KeySigner, RemoteStore, SharedRemoteStore};
+use aithos_bundle::remote::{KeySigner, RemoteError, RemoteStore, SharedRemoteStore};
 use aithos_bundle::{FsStore, MemStore, Store};
 
 use crate::config::StoreConfig;
@@ -290,6 +290,217 @@ fn replicate_paths(
         remote.put(&path, &bytes)?;
     }
     Ok(())
+}
+
+/// Result of one deliberate owner-side history replay. This promotes the
+/// P3 DEMO-LEA seeding seam from the test harness to operator tooling.
+/// Counts are safe to print; no key or payload is ever returned.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct OwnerReplicationReport {
+    pub protocol_objects: usize,
+    pub editions: usize,
+    pub gamma_segments: usize,
+    pub unchanged: usize,
+}
+
+/// Replay one locally provisioned owner store through the provider wire.
+///
+/// Ordering is contractual: `did.json` first, protocol objects next,
+/// gamma segments after their diff base is primed, then every saved
+/// edition in ascending height order. Runner-only state (`gateway/**`)
+/// and local edition slots (`manifests/**`) never leave the machine.
+/// The supplied client must carry an owner signer.
+pub fn replicate_owner_history(
+    local_root: &std::path::Path,
+    remote: &mut RemoteStore,
+) -> std::io::Result<OwnerReplicationReport> {
+    let primary = FsStore::new(local_root.to_path_buf());
+    let mut paths = primary.list("")?;
+    paths.sort();
+    paths.dedup();
+    if !paths.iter().any(|path| path == "did.json") {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "owner replication: local store has no did.json",
+        ));
+    }
+
+    let priority = |path: &str| -> u8 {
+        match path {
+            "did.json" => 0,
+            path if path.starts_with("gamma/") => 2,
+            "manifest.json" => 3,
+            _ => 1,
+        }
+    };
+    paths.sort_by_key(|path| priority(path));
+    let mut heights: Vec<u64> = paths
+        .iter()
+        .filter_map(|path| {
+            path.strip_prefix("manifests/")?
+                .strip_suffix(".json")?
+                .parse()
+                .ok()
+        })
+        .collect();
+    heights.sort_unstable();
+    heights.dedup();
+
+    // A fresh DID cannot authenticate a GET before its self-signed
+    // genesis document exists. An existing DID, however, must never be
+    // re-deposited: compare its parsed document and skip it.
+    let did_doc = primary.get("did.json")?.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "owner replication: local store has no did.json",
+        )
+    })?;
+    let mut report = OwnerReplicationReport {
+        protocol_objects: 0,
+        editions: 0,
+        gamma_segments: 0,
+        unchanged: 0,
+    };
+    match remote.get("did.json") {
+        Ok(Some(existing)) => {
+            let local_value =
+                serde_json::from_slice::<serde_json::Value>(&did_doc).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "owner replication: local did.json is not JSON",
+                    )
+                })?;
+            let remote_value =
+                serde_json::from_slice::<serde_json::Value>(&existing).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "owner replication: remote did.json is not JSON",
+                    )
+                })?;
+            if local_value != remote_value {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    "owner replication: remote did.json differs from local",
+                ));
+            }
+            report.unchanged += 1;
+        }
+        Ok(None) => {
+            remote.put("did.json", &did_doc).map_err(|error| {
+                std::io::Error::new(error.kind(), format!("owner replication did.json: {error}"))
+            })?;
+            report.protocol_objects += 1;
+        }
+        Err(error)
+            if matches!(
+                error
+                    .get_ref()
+                    .and_then(|source| source.downcast_ref::<RemoteError>()),
+                Some(RemoteError::Wire { status: 403, code, .. }) if code == "chain_invalid"
+            ) =>
+        {
+            remote.put("did.json", &did_doc).map_err(|put_error| {
+                std::io::Error::new(
+                    put_error.kind(),
+                    format!("owner replication did.json: {put_error}"),
+                )
+            })?;
+            report.protocol_objects += 1;
+        }
+        Err(error) => return Err(error),
+    }
+
+    let remote_manifest = remote.get("manifest.json")?;
+    let manifest_height = |bytes: &[u8]| -> std::io::Result<u64> {
+        serde_json::from_slice::<serde_json::Value>(bytes)
+            .ok()
+            .and_then(|value| value.pointer("/edition/height")?.as_u64())
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "owner replication: manifest has no edition.height",
+                )
+            })
+    };
+    let remote_height = remote_manifest
+        .as_deref()
+        .map(manifest_height)
+        .transpose()?;
+    if let (Some(remote_height), Some(local_height)) = (remote_height, heights.last().copied()) {
+        if remote_height > local_height {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "owner replication: remote edition {remote_height} is ahead of local {local_height}"
+                ),
+            ));
+        }
+    }
+
+    for path in paths {
+        if sidecar_key(&path) {
+            continue;
+        }
+        if path == "did.json" {
+            continue;
+        }
+        let Some(bytes) = primary.get(&path)? else {
+            continue;
+        };
+        if path.starts_with("gamma/") && remote.get(&path)?.as_deref() == Some(bytes.as_slice()) {
+            report.unchanged += 1;
+            continue;
+        }
+        if path == "manifest.json" {
+            if heights.is_empty() {
+                if remote_manifest.as_deref() == Some(bytes.as_slice()) {
+                    report.unchanged += 1;
+                } else {
+                    remote.put("manifest.json", &bytes).map_err(|error| {
+                        std::io::Error::new(
+                            error.kind(),
+                            format!("owner replication manifest.json: {error}"),
+                        )
+                    })?;
+                    report.editions += 1;
+                }
+            } else {
+                for height in heights
+                    .iter()
+                    .filter(|height| remote_height.is_none_or(|remote| **height > remote))
+                {
+                    let slot = primary
+                        .get(&format!("manifests/{height}.json"))?
+                        .ok_or_else(|| {
+                            std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                format!("owner replication: missing edition slot {height}"),
+                            )
+                        })?;
+                    remote.put("manifest.json", &slot).map_err(|error| {
+                        std::io::Error::new(
+                            error.kind(),
+                            format!("owner replication edition {height}: {error}"),
+                        )
+                    })?;
+                    report.editions += 1;
+                }
+            }
+            continue;
+        }
+        if remote.get(&path)?.as_deref() == Some(bytes.as_slice()) {
+            report.unchanged += 1;
+            continue;
+        }
+        remote.put(&path, &bytes).map_err(|error| {
+            std::io::Error::new(error.kind(), format!("owner replication {path}: {error}"))
+        })?;
+        report.protocol_objects += 1;
+        if path.starts_with("gamma/") {
+            report.gamma_segments += 1;
+        }
+    }
+    Ok(report)
 }
 
 /// UTC now, RFC 3339 Zulu, whole seconds — the envelope `at` (A.2). The
