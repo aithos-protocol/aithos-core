@@ -309,6 +309,46 @@ egress ; l'immuable caché écrase l'egress répété ; le poste qui scale = le 
 > `suspended_of` traite un `meta` sans attribut `s` comme actif (la CLI
 > seul écrivain pose toujours `s`).
 
+> **Note gravée 2026-07-20 (lot A conduit en session sur GO Mathieu,
+> arbitrages AskUserQuestion, témoin de gate adversarial en agent) —
+> P5 witness : RÉALISÉ, le dernier contrat (C3) est servi.** Le service
+> `aithos-witness` observe la table heads par son **stream DynamoDB
+> NEW_AND_OLD_IMAGES** (arbitrage ① — le point de sérialisation A.5
+> porte le déclencheur C.2 ; un append gamma seul, hauteur inchangée,
+> n'émet RIEN) ; il va chercher le manifest observé dans le layout
+> (`t/*/manifest.json`, l'unique lecture S3 de sa policy), **recalcule
+> le chain hash et ne signe que ce qui cohère** — un manifest absent ou
+> discordant (fenêtre de crash A.5) reste pendant, jamais un checkpoint
+> inventé, jamais une réparation. Clé **KMS native Ed25519 sign-only**
+> per C.1 (arbitrage ④ — `ED25519_SHA_512`, `MessageType: RAW`) ;
+> publication **S3 + CloudFront sur witness.aithos.fr** (arbitrage ②,
+> OAC, bucket privé) ; **un seul écrivain, desired_count = 1**
+> (arbitrage ③). Idempotence C.2 déduite du feed lui-même (re-lisible
+> au boot, jamais une mémoire de process) ; deux observations
+> incompatibles sont TOUTES DEUX émises — la paire publique EST la
+> preuve C.4. Preuves du 2026-07-20 : gate contrat 12 scénarios
+> RED→GREEN (72 steps, horloge injectée), witness_replay p4 3/3
+> intouché, apply 26 add/1 change/0 destroy (relay INTACT — le
+> depends_on module qui forçait un remplacement de task def à contenu
+> identique a été remplacé par une dépendance ciblée), **checkpoint
+> public en 6,1 s après le publish** (2e édition 11,5 s), vérification
+> PyNaCl indépendante (registre + signature + manifest_hash recalculé +
+> gamma_head copié), behave 3/3, tenant de rejeu purgé, tables control
+> et heads à 0 item, plan final 0 écart. Verdict témoin adversarial :
+> « le vert n'est pas réfuté » ; **D1 (bloquant) corrigé avant clôture**
+> — la racine quotidienne est scellée par un **balayage idempotent à
+> chaque tick et au boot** (`publish_missing_roots` : un rollover
+> manqué sur restart ou une erreur feed ne perd JAMAIS une racine —
+> scénario 12 RED→GREEN, image redéployée). Consignés sans graver :
+> D2-D8 du verdict (handoff P5). Les consignés P7b sont AUSSI embarqués
+> ce lot : GoAway level-triggered (`CancellationToken` remplace
+> `Notify::notify_waiters` — un tunnel dépinglé ne garde plus jamais
+> son mux sur la fenêtre de course, test de course committé),
+> `suspended_of` STRICT (un `meta` sans `s` est malformé → unavailable,
+> jamais un actif fantôme), et `AITHOS_RELAY_CONTROL_TTL_SECS` clampé à
+> [1, 39] (39 + 19,5 = 58,5 s < 60 — la borne B.4 survit à tout réglage
+> opérateur, invariant testé).
+
 - **Politique de métadonnées (à documenter comme limite, façon chiffrement au
   repos)** : le store voit qui demande quels chemins, quand ; le squelette clair
   du gamma. Logs applicatifs sous discipline de rédaction type `credentials.rs` :
@@ -910,6 +950,22 @@ BLAKE3("aithos-witness/v1/mk-leaf" ‖ 0x00 ‖ p)`, `H_node` idem avec
 `H_leaf(octets JCS de la ligne)` sur **toutes** les lignes émises du jour UTC
 (tous DIDs), triées par ordre d'octets du JCS, dédupliquées à l'identique ;
 `n` = leur compte. Un feed qui renie une ligne casse la racine du jour.
+
+> **Additif gravé 2026-07-20 (lot A/P5, délégation en session — le
+> format concret que C.1 nomme sans le fixer).** `keys.json` est un
+> document JSON signé (convention A.1) :
+> `{"aithos-witness-keys": "1.0.0-draft.1", "keys": [<multibase>…],
+> "witness_key": "<clé signataire>", "signature": {alg, value}}` —
+> vérification : version et `alg` épinglés, la clé signataire ∈ `keys`,
+> auto-signature §01.4. À la rotation, la NOUVELLE clé entre dans
+> `keys` tandis que `witness_key` reste la clé sortante (C.1). La
+> confiance d'amorçage reste l'origine `witness.aithos.fr` (un
+> keys.json auto-cohérent forgé hors origine n'est pas distinguable par
+> structure — consigné au gate, verdict D2). Classes de cache servies :
+> `<did>.jsonl` et `keys.json` → `public, max-age=60` (C.3) ;
+> `roots/<date>.json` (adressé par date, jamais réécrit) →
+> `public, max-age=31536000, immutable` ; Content-Type des feeds :
+> `application/x-ndjson`.
 
 ### C.4 Vérification et équivocation
 

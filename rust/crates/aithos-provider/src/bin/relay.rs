@@ -43,6 +43,25 @@ use aithos_provider::passthrough::{reconcile_registry, RelayDoor, SessionRegistr
 use aithos_provider::tls::tunnel_server_config_from_pem;
 use aithos_provider::tunnel::TUNNEL_WIRE_VERSION;
 
+/// Verdict témoin D4b (P7b, embarqué lot A) : la borne B.4 « fermeture
+/// < 60 s » vaut TTL + période de balayage (TTL/2) < 60 — un opérateur
+/// posant AITHOS_RELAY_CONTROL_TTL_SECS trop haut la casserait
+/// SILENCIEUSEMENT. Borne = TTL + période (TTL/2) : STRICTEMENT < 60
+/// exige TTL ≤ 39 (39 + 19 = 58,5 s ; 40 + 20 = 60 tangente la borne).
+/// Le binaire clampe à [1, 39] et le dit au boot.
+const CONTROL_TTL_MAX_SECS: u64 = 39;
+
+fn clamp_control_ttl(requested: u64) -> u64 {
+    let clamped = requested.clamp(1, CONTROL_TTL_MAX_SECS);
+    if clamped != requested {
+        eprintln!(
+            "warn: AITHOS_RELAY_CONTROL_TTL_SECS={requested} clamped to {clamped} \
+             (B.4: TTL + TTL/2 sweep must stay under the 60 s suspension bound)"
+        );
+    }
+    clamped
+}
+
 fn required(name: &str) -> String {
     match std::env::var(name) {
         Ok(v) if !v.trim().is_empty() => v,
@@ -148,10 +167,12 @@ async fn main() {
         std::process::exit(2);
     }
 
-    let control_ttl_secs = std::env::var("AITHOS_RELAY_CONTROL_TTL_SECS")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(30);
+    let control_ttl_secs = clamp_control_ttl(
+        std::env::var("AITHOS_RELAY_CONTROL_TTL_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(30),
+    );
     let control: Arc<dyn ControlStore> = match control_backend.as_str() {
         "memory" => Arc::new(bootstrap_plane),
         "dynamodb" => {
@@ -258,5 +279,29 @@ async fn main() {
                 tracing::debug!("connection dropped: {e}");
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod ttl_tests {
+    use super::{clamp_control_ttl, CONTROL_TTL_MAX_SECS};
+
+    #[test]
+    fn the_b4_bound_survives_any_operator_ttl() {
+        assert_eq!(clamp_control_ttl(30), 30, "default untouched");
+        assert_eq!(clamp_control_ttl(39), 39, "the highest safe TTL");
+        assert_eq!(
+            clamp_control_ttl(40),
+            CONTROL_TTL_MAX_SECS,
+            "40 + 20 = 60 tangente la borne — clampé"
+        );
+        assert_eq!(clamp_control_ttl(3600), CONTROL_TTL_MAX_SECS);
+        assert_eq!(
+            clamp_control_ttl(0),
+            1,
+            "zero would disable the cache floor"
+        );
+        // The invariant the clamp protects: TTL + TTL/2 < 60.
+        assert!(CONTROL_TTL_MAX_SECS + CONTROL_TTL_MAX_SECS / 2 < 60);
     }
 }

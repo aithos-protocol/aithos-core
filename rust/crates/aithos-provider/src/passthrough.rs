@@ -29,8 +29,9 @@ use std::time::Instant;
 
 use futures::future::poll_fn;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
+use tokio_util::sync::CancellationToken;
 
 use crate::control::{authorize_gateway, ControlStore, GatewayAuthzRefusal};
 use crate::nonces::NonceStore;
@@ -58,7 +59,7 @@ pub struct TunnelSession {
     /// fresher tunnel).
     pub id: u64,
     open_tx: mpsc::UnboundedSender<oneshot::Sender<std::io::Result<yamux::Stream>>>,
-    shutdown: Arc<Notify>,
+    shutdown: CancellationToken,
 }
 
 impl TunnelSession {
@@ -74,9 +75,12 @@ impl TunnelSession {
     }
 
     /// Send this tunnel a GoAway and close its mux (B.2: the replaced pod
-    /// does not wait for a timeout).
+    /// does not wait for a timeout). Level-triggered (verdict témoin D2,
+    /// P7b) : `CancellationToken::cancel` reaches a driver that is NOT
+    /// parked on the signal at that instant — `Notify::notify_waiters`
+    /// could lose the wake in that window and leave a depinned mux open.
     pub fn goaway(&self) {
-        self.shutdown.notify_waiters();
+        self.shutdown.cancel();
     }
 }
 
@@ -190,9 +194,7 @@ pub async fn reconcile_registry(
             Err(GatewayAuthzRefusal::Unavailable) => continue,
             Err(GatewayAuthzRefusal::Suspended) => "suspended",
             Err(GatewayAuthzRefusal::MappingMismatch) => "unenrolled",
-            Ok(binding)
-                if binding.tenant != facts.tenant || binding.hostname != facts.hostname =>
-            {
+            Ok(binding) if binding.tenant != facts.tenant || binding.hostname != facts.hostname => {
                 "remapped"
             }
             Ok(_) => continue, // still enrolled exactly as pinned
@@ -229,7 +231,7 @@ where
     T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     let id = registry.next_id();
-    let shutdown = Arc::new(Notify::new());
+    let shutdown = CancellationToken::new();
     let (open_tx, open_rx) = mpsc::unbounded_channel();
 
     // Default config: the per-stream window is yamux's 256 KiB (annexe
@@ -275,7 +277,7 @@ enum Ev {
 async fn drive_tunnel<T>(
     mut conn: yamux::Connection<tokio_util::compat::Compat<T>>,
     mut open_rx: mpsc::UnboundedReceiver<oneshot::Sender<std::io::Result<yamux::Stream>>>,
-    shutdown: Arc<Notify>,
+    shutdown: CancellationToken,
     registry: Arc<SessionRegistry>,
     hostname: String,
     id: u64,
@@ -286,8 +288,9 @@ async fn drive_tunnel<T>(
     loop {
         tokio::select! {
             biased;
-            // GoAway: close the mux and stop.
-            _ = shutdown.notified() => break,
+            // GoAway: close the mux and stop. `cancelled()` completes
+            // even when the cancel landed BEFORE this poll (D2).
+            _ = shutdown.cancelled() => break,
             // A new open request (only when not already servicing one).
             req = open_rx.recv(), if pending.is_none() => {
                 match req {
@@ -650,6 +653,35 @@ mod tests {
         assert!(reg.admit_registration(h, 1_000 + MINUTE_MS + 1));
     }
 
+    /// Verdict témoin D2 (P7b, embarqué lot A) : un GoAway parti AVANT
+    /// que le driver n'atteigne son point d'attente doit quand même
+    /// fermer le mux — `CancellationToken::cancel` est level-triggered ;
+    /// `Notify::notify_waiters` perdait ce réveil (fenêtre de course
+    /// infime, tunnel dépinglé au mux resté ouvert). Le test cancel
+    /// d'abord, PUIS laisse le driver démarrer : il doit sortir et
+    /// dépingler, borné par un timeout jamais par un sleep aveugle.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_goaway_sent_before_the_driver_parks_still_closes_the_tunnel() {
+        let registry = Arc::new(SessionRegistry::new());
+        let (client_side, _server_side) = tokio::io::duplex(64 * 1024);
+        let session = spawn_pod_tunnel(registry.clone(), facts("demo.mcp.aithos.fr"), client_side);
+        assert_eq!(registry.active_count(), 1);
+        // The race: GoAway fires immediately — possibly before the
+        // spawned driver polls its shutdown arm for the first time.
+        session.goaway();
+        // Bounded liveness: the driver exits and unpins within 2 s.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while registry.active_count() != 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "GoAway lost: the depinned tunnel kept its mux open (D2)"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        // And the closed tunnel refuses new streams (fail-closed).
+        assert!(session.open_stream().await.is_err());
+    }
+
     #[test]
     fn remove_if_current_never_evicts_a_replacement() {
         let reg = SessionRegistry::new();
@@ -658,7 +690,7 @@ mod tests {
             facts: facts("demo.mcp.aithos.fr"),
             id: 1,
             open_tx: tx.clone(),
-            shutdown: Arc::new(Notify::new()),
+            shutdown: CancellationToken::new(),
         });
         assert!(reg.register(s1).is_none());
         // A newer session replaces it.
@@ -666,7 +698,7 @@ mod tests {
             facts: facts("demo.mcp.aithos.fr"),
             id: 2,
             open_tx: tx,
-            shutdown: Arc::new(Notify::new()),
+            shutdown: CancellationToken::new(),
         });
         let replaced = reg.register(s2).expect("replaced s1");
         assert_eq!(replaced.id, 1);

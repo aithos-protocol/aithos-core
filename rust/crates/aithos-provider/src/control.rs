@@ -576,8 +576,13 @@ impl DynamoDbControl {
     fn suspended_of(
         item: &HashMap<String, aws_sdk_dynamodb::types::AttributeValue>,
     ) -> Result<bool, ControlUnavailable> {
+        // Verdict témoin D4a (P7b, embarqué lot A) : un item `meta` SANS
+        // attribut `s` est MALFORMÉ — la CLI (seul écrivain) le pose
+        // toujours. Le traiter comme actif serait un fantôme permissif ;
+        // fail-closed = inanswerable, jamais une décision inventée
+        // (le motif `heads.rs` : « a malformed item is unanswerable »).
         match item.get("s") {
-            None => Ok(false),
+            None => Err(ControlUnavailable),
             Some(v) => v.as_bool().copied().map_err(|_| ControlUnavailable),
         }
     }
@@ -663,6 +668,42 @@ impl<S: ControlStore + ?Sized> ControlStore for Arc<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Verdict témoin D4a (P7b) : un `meta` sans attribut `s` est
+    /// MALFORMÉ — inanswerable, jamais un « actif » fantôme ; un `s`
+    /// non-booléen pareil ; un `s` posé se lit tel quel.
+    #[test]
+    fn suspended_of_is_strict_about_the_s_attribute() {
+        use aws_sdk_dynamodb::types::AttributeValue;
+        use std::collections::HashMap;
+        let with = |v: AttributeValue| {
+            HashMap::from([
+                ("t".to_owned(), AttributeValue::S("acme".into())),
+                ("s".to_owned(), v),
+            ])
+        };
+        assert_eq!(
+            DynamoDbControl::suspended_of(&HashMap::from([(
+                "t".to_owned(),
+                AttributeValue::S("acme".into())
+            )])),
+            Err(ControlUnavailable),
+            "missing s = malformed, never active"
+        );
+        assert_eq!(
+            DynamoDbControl::suspended_of(&with(AttributeValue::S("true".into()))),
+            Err(ControlUnavailable),
+            "non-bool s = malformed"
+        );
+        assert_eq!(
+            DynamoDbControl::suspended_of(&with(AttributeValue::Bool(true))),
+            Ok(true)
+        );
+        assert_eq!(
+            DynamoDbControl::suspended_of(&with(AttributeValue::Bool(false))),
+            Ok(false)
+        );
+    }
 
     /// The committed p1 vector is the fixture of record: the replay bootstrap
     /// (`bootstrap/replay.json`, baked into the image) must carry exactly its

@@ -183,6 +183,48 @@ pub fn verify_daily_root(root: &DailyRoot, registry: &WitnessKeyRegistry) -> boo
         && verify_witness_doc(root, &root.witness_key, |r| serde_jcs::to_string(r).ok())
 }
 
+/// The published key registry document — `witness.aithos.fr/keys.json`
+/// (annexe C.1: « un vérificateur accepte toute clé du registre publié
+/// des clés témoin, signé par la clé sortante »). The annexe names the
+/// file and its signer without fixing a format; this concrete shape is an
+/// additive service-side definition (lot A / P5, consigné au handoff):
+/// rotation publishes the NEW key inside `keys` while `witness_key` (the
+/// signing key) stays the outgoing one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WitnessKeys {
+    #[serde(rename = "aithos-witness-keys")]
+    pub version: String,
+    pub keys: Vec<String>,
+    pub witness_key: String,
+    pub signature: WitnessSignature,
+}
+
+/// Build and sign the key registry document.
+pub fn build_keys_doc(signer: &dyn WitnessSigner, keys: &[String]) -> WitnessKeys {
+    let mut doc = WitnessKeys {
+        version: WITNESS_WIRE_VERSION.into(),
+        keys: keys.to_vec(),
+        witness_key: signer.witness_key(),
+        signature: WitnessSignature {
+            alg: "ed25519".into(),
+            value: String::new(),
+        },
+    };
+    let unsigned = serde_jcs::to_string(&doc).expect("keys doc serializable");
+    doc.signature.value = signer.sign(unsigned.as_bytes());
+    doc
+}
+
+/// Verify the key registry document: version and `alg` pinned, the
+/// signing key listed in its own registry, self-signature valid.
+pub fn verify_keys_doc(doc: &WitnessKeys) -> bool {
+    doc.version == WITNESS_WIRE_VERSION
+        && doc.signature.alg == "ed25519"
+        && doc.keys.contains(&doc.witness_key)
+        && verify_witness_doc(doc, &doc.witness_key, |d| serde_jcs::to_string(d).ok())
+}
+
 /// The equivocation rule (annexe C.4): two checkpoints, **both valid under
 /// the published registry**, same `did`, same `edition_height`,
 /// **different** `manifest_hash` = portable proof. Same `manifest_hash`

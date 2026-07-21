@@ -50,6 +50,7 @@ pub mod time;
 pub mod tls;
 pub mod tunnel;
 pub mod witness;
+pub mod witness_service;
 
 /// The wire version every response carries (annexe A.1). Any breaking
 /// change bumps the draft and opens a double-service period (§8).
