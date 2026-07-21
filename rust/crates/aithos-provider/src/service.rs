@@ -25,7 +25,8 @@ use std::time::Instant;
 
 use axum::body::Body;
 use axum::extract::State;
-use axum::http::{header, HeaderValue, Request, Response, StatusCode};
+use axum::http::{header, HeaderValue, Method, Request, Response, StatusCode};
+use axum::middleware::Next;
 use axum::routing::get;
 use axum::Router;
 
@@ -100,7 +101,39 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/healthz", get(|| async { "ok" }))
         .fallback(handle)
         .layer(axum::middleware::map_response(stamp_wire_version))
+        .layer(axum::middleware::from_fn(public_read_cors))
         .with_state(state)
+}
+
+/// Public Ethos carriers are intentionally readable from any browser origin.
+/// The middleware is narrowly derived from the same closed path grammar as
+/// authorization; authenticated and non-public responses receive no CORS
+/// relaxation.
+async fn public_read_cors(request: Request<Body>, next: Next) -> Response<Body> {
+    let expose = request.method() == Method::GET
+        && request.headers().get("x-aithos-auth").is_none()
+        && request
+            .uri()
+            .path_and_query()
+            .and_then(|target| pathmap::parse_target(target.as_str()))
+            .is_some_and(|target| {
+                matches!(
+                    target.kind,
+                    TargetKind::Object(ref object) if pathmap::anonymous_covers(object)
+                )
+            });
+    let mut response = next.run(request).await;
+    if expose {
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_static("*"),
+        );
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_EXPOSE_HEADERS,
+            HeaderValue::from_static("etag, x-aithos-store"),
+        );
+    }
+    response
 }
 
 async fn stamp_wire_version(mut response: axum::response::Response) -> axum::response::Response {

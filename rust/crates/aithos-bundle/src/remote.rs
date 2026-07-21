@@ -111,6 +111,30 @@ pub enum RemoteError {
     },
 }
 
+/// Failure returned by the deliberately read-only, anonymous public client.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PublicRemoteError {
+    /// The caller attempted to address something outside the public perimeter.
+    /// This is rejected before any network request is made.
+    PathNotPublic { path: String },
+    /// Connection or response decoding failure.
+    Transport(String),
+    /// A provider verdict.
+    Wire { status: u16, code: String },
+}
+
+impl std::fmt::Display for PublicRemoteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PathNotPublic { path } => write!(f, "path is not public: {path}"),
+            Self::Transport(error) => write!(f, "public store transport: {error}"),
+            Self::Wire { status, code } => write!(f, "public store {status} {code}"),
+        }
+    }
+}
+
+impl std::error::Error for PublicRemoteError {}
+
 impl std::fmt::Display for RemoteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -198,6 +222,128 @@ pub struct SentRequest {
     pub if_head: Option<String>,
     pub if_none_match: Option<String>,
     pub status: u16,
+    /// `false` for the SDK's anonymous public reader.
+    pub carried_auth: bool,
+}
+
+/// Read-only SDK client for the provider's anonymous public perimeter.
+///
+/// This type cannot sign and has no write method. It also rejects private
+/// paths locally, making it impossible to accidentally turn a public read into
+/// a credential-bearing request when applications compose their clients.
+pub struct PublicRemoteStore {
+    base: String,
+    tenant: String,
+    did: String,
+    agent: ureq::Agent,
+    requests: Mutex<Vec<SentRequest>>,
+}
+
+impl PublicRemoteStore {
+    /// Build an anonymous public reader for one Ethos.
+    pub fn new(url: &str, tenant: &str, did: &str) -> io::Result<Self> {
+        let base = url.trim_end_matches('/').to_owned();
+        if !(base.starts_with("https://") || base.starts_with("http://")) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "public store url must be http(s)://…",
+            ));
+        }
+        if tenant.is_empty() || did.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "public store tenant and did must be non-empty",
+            ));
+        }
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .into();
+        Ok(Self {
+            base,
+            tenant: tenant.to_owned(),
+            did: did.to_owned(),
+            agent,
+            requests: Mutex::new(Vec::new()),
+        })
+    }
+
+    /// Fetch one public carrier without an `X-Aithos-Auth` envelope.
+    pub fn get(&self, path: &str) -> Result<Option<Vec<u8>>, PublicRemoteError> {
+        if !public_path(path) {
+            return Err(PublicRemoteError::PathNotPublic {
+                path: path.to_owned(),
+            });
+        }
+        let request_path = format!("/t/{}/{}/{}", self.tenant, self.did, path);
+        let url = format!("{}{}", self.base, request_path);
+        let mut response = self
+            .agent
+            .get(&url)
+            .header("x-aithos-store", WIRE_VERSION)
+            .call()
+            .map_err(|error| PublicRemoteError::Transport(error.to_string()))?;
+        let status = response.status().as_u16();
+        let body = response
+            .body_mut()
+            .with_config()
+            .limit(64 * 1024 * 1024)
+            .read_to_vec()
+            .map_err(|error| PublicRemoteError::Transport(error.to_string()))?;
+        self.requests
+            .lock()
+            .expect("public requests")
+            .push(SentRequest {
+                method: "GET".to_owned(),
+                path: request_path,
+                if_head: None,
+                if_none_match: None,
+                status,
+                carried_auth: false,
+            });
+        match status {
+            200 => Ok(Some(body)),
+            404 if wire_code(&body) == "not_found" => Ok(None),
+            _ => Err(PublicRemoteError::Wire {
+                status,
+                code: wire_code(&body),
+            }),
+        }
+    }
+
+    /// Requests that reached the provider, exposed for tests and diagnostics.
+    pub fn sent_requests(&self) -> Vec<SentRequest> {
+        self.requests.lock().expect("public requests").clone()
+    }
+}
+
+fn public_path(path: &str) -> bool {
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.contains(['\\', '%', '\0'])
+        || path
+            .split('/')
+            .any(|segment| matches!(segment, "" | "." | ".."))
+        || path.bytes().any(|byte| byte < 0x20 || byte == 0x7f)
+    {
+        return false;
+    }
+    path == "did.json"
+        || path == "indices/public.json"
+        || path == "roots/public.json"
+        || path.strip_prefix("e/public/").is_some()
+        || path
+            .strip_prefix("public/sections/")
+            .and_then(|file| file.strip_suffix(".md"))
+            .is_some_and(|sid| aithos_core::ids::Sid::parse(sid).is_ok())
+}
+
+fn wire_code(body: &[u8]) -> String {
+    serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| value["error"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 /// Debug tap for the acceptance harness: the last envelope actually
@@ -470,6 +616,7 @@ impl RemoteStore {
                         if_head: if_head.map(str::to_owned),
                         if_none_match: if_none_match.map(str::to_owned),
                         status,
+                        carried_auth: true,
                     });
                     return Ok((status, headers, bytes));
                 }
