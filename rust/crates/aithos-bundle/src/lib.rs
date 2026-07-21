@@ -17,6 +17,7 @@ pub mod publication;
 #[cfg(feature = "remote")]
 pub mod remote;
 pub mod revoke;
+pub mod sdk;
 pub mod session;
 pub mod state;
 pub mod structure;

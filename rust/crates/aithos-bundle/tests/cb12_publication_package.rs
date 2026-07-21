@@ -5,6 +5,7 @@ use aithos_bundle::publication::{
     assemble_draft2_candidate, cold_verify, cold_verify_for_cas, export_keyless, import_keyless,
     package_with_objects, verify_draft2_candidate_value, PublicationMode,
 };
+use aithos_bundle::sdk::PublicationUploadPlan;
 use aithos_bundle::session::LocalSession;
 use aithos_bundle::{FsStore, MemStore};
 use aithos_core::carriers::{
@@ -466,6 +467,25 @@ fn cb12_owner_package_survives_fresh_mem_and_fs_cold_verification() {
     let digest = package.digest().expect("package digest");
     assert_eq!(digest, package.digest().expect("stable package digest"));
     let producer_verdict = package.verify_for_cas().expect("producer CAS verdict");
+    let upload = PublicationUploadPlan::verified(&package).expect("SDK upload plan");
+    assert_eq!(
+        upload.expected_head(),
+        producer_verdict.cas.expected_predecessors[0]
+    );
+    assert_eq!(upload.new_head(), producer_verdict.cas.new_manifest_head);
+    assert_eq!(upload.package_digest(), digest);
+    assert_eq!(
+        upload.manifest_bytes(),
+        package.objects()["manifest.json"].as_slice()
+    );
+    assert!(upload
+        .artifacts()
+        .iter()
+        .all(|(path, _)| path != "manifest.json" && !path.starts_with("manifests/")));
+    assert!(upload
+        .artifacts()
+        .windows(2)
+        .all(|pair| pair[0].0 < pair[1].0));
     assert_eq!(producer_verdict.cas.subject, package.context().subject);
     assert_eq!(producer_verdict.cas.manifest_profile, "1.0.0-draft.2");
     assert_eq!(producer_verdict.cas.mode, PublicationMode::Normal);
