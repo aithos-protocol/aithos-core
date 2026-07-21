@@ -8,7 +8,7 @@ du store) ; extension micro-redline A.1 (porteurs connecteurs) exigée et
 servie ; gate déployé 35/35 sur DID frais, behave 25/25, plan 0. Gate P4 :
 client `/sync` + `/batch` (BDD 21/21), module `cdn-public` APPLIQUÉ
 (public.aithos.fr, 6 add/0/0, plan final 0), gates perf §3.6 mesurés
-(pré-mesure sandbox ; script officiel FOURNI pour ta machine). Témoins
+(pré-mesure sandbox puis chiffres officiels machine Mathieu). Témoins
 adversariaux en agent ×2 : « le vert n'est pas réfuté », **0 bloquant**.
 Les commits restent TON geste (blocs §5). Session conduite en DÉLÉGUÉ
 TOTAL (ton choix AskUserQuestion du matin), tout consigné.
@@ -55,6 +55,7 @@ note cdn-public, annexes A.1/A.3/A.6).
 | behave (store-p1, control-p7, witness-p5, store-acme-p6) | **25/25** (suspension 403 < 60 s et réactivation < 60 s MESURÉES sur le tenant de gate) |
 | terraform | P3 : plan final **0** (delta image seule) ; P4 : plan lu **6 add/0 change/0 destroy** (tout module.cdn_public), apply OK, plan final **0** |
 | **bench §3.6 (pré-mesure sandbox, RTT 111,5 ms)** | cache local ~0 µs GREEN ; CDN immuable **20,7 ms** GREEN (section publique 21,6 ms) ; append 229 ms (part serveur ≈ 115 ms — cible UE à la marge, consigné) ; sync froid **2,36 s** (26,3 s avant correctif ; cible 2 s à confirmer à l'officiel) |
+| **bench §3.6 OFFICIEL (machine Mathieu)** | cache local **0 µs** GREEN (1 000 hits, 1 fetch) ; append p50 **177,0 ms** / p95 202,3 ms RED ; sync froid **2,76 s** / 1 001 parts / 354 425 octets RED ; CDN immuable **55,3 ms** RED (section publique 52,4 ms) ; tenant frais purgé, control/heads 0, S3 vide |
 | état AWS à la clôture | control **0**, heads **0**, S3 `t/` **0 version** ; store 2/2, relay 1/1, witness 1/1 ACTIVE ; store/public/witness wire 200 ; AUCUN checkpoint sur le DID frais du rejeu P3 (aucun publish) |
 | témoins adversariaux (agents, re-comptes indépendants) | P3 : « le vert n'est pas réfuté », D8 réglé par construction ; P4 : « le vert n'est pas réfuté » — **0 bloquant** aux deux |
 
@@ -107,10 +108,14 @@ Consignés SANS graver (repris au lot C sauf mention) :
   les classes JCS servies, à durcir par cadrage par longueur.
 - **E2 (P4)** : MAX_PACK_BYTES borne la réponse, pas la RAM de
   l'assemblage (borné en pratique par batch ≤ 256) .
-- **E3 (P3)** : perf append serveur ≈ 115 ms (nonce → tête → segment →
-  transact séquentiels) — pipeliner au lot ops si l'officiel est RED.
-- **E4 (P4)** : sync froid 2,36 s vs cible 2 s — pistes : streaming de
-  la réponse multipart, pool backend chaud.
+- **E3 (P3, ACTIVÉ par l'officiel)** : append p50 177,0 ms vs cible
+  120 ms (nonce → tête → segment → transact séquentiels) — profiler puis
+  pipeliner au lot ops.
+- **E4 (P4, ACTIVÉ par l'officiel)** : sync froid 2,76 s vs cible 2 s —
+  pistes : streaming de la réponse multipart, pool backend chaud.
+- **E8 (P4, officiel)** : CDN immuable p50 55,3 ms vs cible 30 ms alors
+  que la pré-mesure était verte à 20,7 ms — séparer DNS/TLS, hit/miss et
+  origine avant de choisir un correctif.
 - **E5** : `witness.aithos.fr/healthz` répond 403 (surface statique par
   design — pas de sonde santé témoin) ; healthz du store caché à l'edge
   via public.aithos.fr (sans Cache-Control — inoffensif).
@@ -145,6 +150,11 @@ aithos-store-admin purge bench-<date> --yes
 Reporte les chiffres dans la note §3.6 (« chiffres OFFICIELS »). Si
 append ou sync sont RED depuis chez toi : consignés E3/E4 = les pistes.
 
+**Exécuté le 2026-07-21 :** cache local 0 µs GREEN ; append 177,0 ms,
+sync 2,76 s et CDN 55,3 ms RED. Chiffres gravés en §3.6 ; E3/E4 activés,
+E8 ajouté pour le CDN. Tenant `bench-p4-official-2b68` purgé, tables
+control/heads à 0 et préfixe S3 vide.
+
 ## 5. Commits (TON geste — blocs prêts)
 
 ```
@@ -173,6 +183,16 @@ et `plan-p4-final.txt` = les plans finaux 0 des deux gates ;
 Push : la CI provider-image.yml reconstruira et re-poussera `:prod`+`:sha`
 — sans conséquence (le contenu est celui déployé) ; le digest en service
 est `sha256:cec2c667…`.
+
+**Audit post-commit du 2026-07-21 :** les commits du bloc ont été créés
+(`9e2653d` côté cœur, `5536840` côté provider), mais la liste `git add`
+ci-dessus omettait le câblage Cargo, `config.rs`, `core_bridge.rs` et le
+test `e2e_journal_remote.rs`. Un clone propre de `9e2653d` échouait donc
+sur la feature `remote` et les variantes `Remote`/`Replicated`. Le commit
+correctif suivant capture ces fichiers omis ainsi que les chiffres
+officiels. Preuves après correction : `cargo check --locked --workspace`
+vert, gateway lib 85/85, `e2e_demo_lea` 2/2 et
+`e2e_journal_remote` 2/2.
 
 ## 6. État AWS et nettoyage de session
 

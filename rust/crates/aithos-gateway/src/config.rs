@@ -203,6 +203,36 @@ pub enum StoreConfig {
         #[serde(default)]
         prefix: Option<String>,
     },
+    /// P3 — mode B (provider-primary): the ethos lives on the RemoteStore
+    /// (INFRA-PROVIDER §3.5), spoken over the signed wire A.2. The
+    /// envelope signer is NEVER in the config (arbitrage ② 2026-07-21):
+    /// the adapter takes it from the runner's keyholder (the agent leaf);
+    /// `mandate` names the chain the envelopes ride, root first.
+    Remote {
+        url: String,
+        tenant: String,
+        did: String,
+        #[serde(default)]
+        mandate: Vec<String>,
+        /// The mode-B SIDECAR root: where the runner-local and derived
+        /// keys live (gateway/**, manifests/*) — the wire deliberately
+        /// excludes them (doctrine: runner state never leaves the pod).
+        /// Absent = in-memory (an ephemeral runner re-derives).
+        #[serde(default)]
+        local: Option<PathBuf>,
+    },
+    /// P3 — mode A (local-primary + réplique): fs stays the primary, the
+    /// provider receives an ASYNCHRONOUS post-publish replication through
+    /// the same client (the §3.5 decorator). A provider outage never
+    /// blocks the agent — the primary answered already.
+    Replicated {
+        root: PathBuf,
+        url: String,
+        tenant: String,
+        did: String,
+        #[serde(default)]
+        mandate: Vec<String>,
+    },
 }
 
 /// One provisioned context (v2): an ethos the agent was granted into,
@@ -846,10 +876,57 @@ fn validate_upstream(url: &str, at: &str) -> Result<()> {
 }
 
 fn validate_store(store: &StoreConfig, at: &str) -> Result<()> {
-    if let StoreConfig::Fs { root } = store {
-        if root.as_os_str().is_empty() {
-            return Err(GatewayError::ConfigRejected(format!("`{at}` is empty")));
+    match store {
+        StoreConfig::Fs { root } => {
+            if root.as_os_str().is_empty() {
+                return Err(GatewayError::ConfigRejected(format!("`{at}` is empty")));
+            }
         }
+        StoreConfig::Remote {
+            url, tenant, did, ..
+        } => validate_remote_target(url, tenant, did, at)?,
+        StoreConfig::Replicated {
+            root,
+            url,
+            tenant,
+            did,
+            ..
+        } => {
+            if root.as_os_str().is_empty() {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "`{at}.root` is empty"
+                )));
+            }
+            validate_remote_target(url, tenant, did, at)?;
+        }
+        StoreConfig::S3 { .. } => {}
+    }
+    Ok(())
+}
+
+/// The remote target of the wire A.2: an http(s) base, a tenant of the
+/// A.1 grammar, a literal DID (fail-closed at config time — an unusable
+/// store is rejected outright, never guessed at).
+fn validate_remote_target(url: &str, tenant: &str, did: &str, at: &str) -> Result<()> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}.url` must be an http(s) URL, got `{url}`"
+        )));
+    }
+    let tenant_ok = (3..=32).contains(&tenant.len())
+        && tenant
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && tenant.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit());
+    if !tenant_ok {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}.tenant` is not a wire A.1 tenant name"
+        )));
+    }
+    if !did.starts_with("did:aithos:") {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}.did` must be a literal did:aithos:… identifier"
+        )));
     }
     Ok(())
 }

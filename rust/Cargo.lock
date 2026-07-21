@@ -84,6 +84,7 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "aithos-bundle",
  "aithos-core",
+ "aithos-provider",
  "assert_cmd",
  "axum",
  "clap",

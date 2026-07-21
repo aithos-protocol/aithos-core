@@ -1477,7 +1477,10 @@ impl Runner {
         let mut hub_tools = BTreeMap::new();
         let mut hub_server_pins: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
         for ctx in contexts_cfg {
-            let store = GatewayStore::from_config(&ctx.store)?;
+            // P3: remote/replicated stores sign their envelopes with the
+            // runner identity (arbitrage ② — the keyholder seam).
+            let store =
+                GatewayStore::from_config_with_identity(&ctx.store, &keyholder, &mut entropy)?;
             let bridge = Bridge::open(store, Arc::clone(&keyholder), entropy())?;
             let policy = match &ctx.tools {
                 ContextTools::Legacy(tools) => Policy::new(tools.clone()),
@@ -1525,11 +1528,9 @@ impl Runner {
             };
             contexts.insert(ctx.name.clone(), ContextRuntime { policy, bridge });
         }
-        let journal = Bridge::open(
-            GatewayStore::from_config(&journal_cfg.store)?,
-            keyholder,
-            entropy(),
-        )?;
+        let journal_store =
+            GatewayStore::from_config_with_identity(&journal_cfg.store, &keyholder, &mut entropy)?;
+        let journal = Bridge::open(journal_store, keyholder, entropy())?;
         Ok(Self {
             contexts,
             journal,

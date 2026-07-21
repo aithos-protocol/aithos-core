@@ -11,7 +11,9 @@ publish = false
 # the trust engine, consumed as a library — only `core_bridge` (and its
 # `store_adapter` seam) may import from these two crates
 aithos-core = { workspace = true }
-aithos-bundle = { workspace = true }
+# P3: the `remote` feature carries the RemoteStore client (wire A.2) —
+# the gateway is its first consumer (store_adapter `remote`/`replicated`).
+aithos-bundle = { workspace = true, features = ["remote"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -31,6 +33,9 @@ reqwest = { workspace = true }
 clap = { workspace = true }
 
 [dev-dependencies]
+# P3 — the mode B/mode A e2e runs the REAL provider service in-process
+# (acyclic: the provider never depends on the gateway).
+aithos-provider = { workspace = true }
 cucumber = { workspace = true }
 futures = { workspace = true }
 tempfile = { workspace = true }

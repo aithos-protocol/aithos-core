@@ -172,9 +172,8 @@ même client).
 | Disponibilité store v1 | 99,9 % |
 
 > **Note gravée 2026-07-21 (gate P4, conduit sur délégation Mathieu) —
-> les gates §3.6 sont MESURÉS ; l'OFFICIEL reste la machine Mathieu
-> (arbitrage ③ 2026-07-21), la pré-mesure sandbox (RTT 111,5 ms vers
-> eu-west-3 — l'Europe verra mieux) est INDICATIVE.** Outils fournis :
+> les gates §3.6 sont MESURÉS.** La pré-mesure sandbox (RTT 111,5 ms vers
+> eu-west-3 — l'Europe verra mieux) est INDICATIVE. Outils fournis :
 > `vectors/bench-p4.py` (wire : append mode B, sync à froid 1 000
 > sections, GET immuable CloudFront — tenant jetable à DID frais,
 > connexions persistantes) et le test
@@ -191,8 +190,21 @@ même client).
 > 1 000 lectures S3 séquentielles ; il est désormais concurrent borné
 > 64, ordre préservé, fail-closed) — la cible < 2 s reste à confirmer à
 > l'officiel ; pistes consignées : streaming de la réponse multipart,
-> pool backend chaud. Les chiffres OFFICIELS (machine Mathieu) seront
-> ajoutés ici à leur mesure.
+> pool backend chaud.
+>
+> **Chiffres OFFICIELS — machine Mathieu, 2026-07-21, tenant jetable à
+> DID frais :** navigation cache local **p50 ≈ 0 µs** sur 1 000 hits,
+> 1 seul fetch wire (**GREEN**) ; append mode B **p50 = 177,0 ms**,
+> p95 = 202,3 ms (**RED**, cible < 120 ms) ; sync à froid 1 000 sections
+> **2,76 s**, 1 001 parts / 354 425 octets (**RED**, cible < 2 s) ; GET
+> immuable CloudFront **p50 = 55,3 ms** (**RED**, cible < 30 ms ; section
+> publique = 52,4 ms). Setup des 1 000 sections : 11,4 s, non mesuré.
+> E3/E4 sont donc activés pour le lot ops : profiler puis pipeliner le
+> chemin append (nonce → tête → segment → transaction), streamer la
+> réponse multipart et garder le pool backend chaud. Le RED CDN, nouveau
+> par rapport à la pré-mesure, impose en plus une mesure séparant DNS/TLS,
+> hit/miss et origine avant tout changement. Tenant
+> `bench-p4-official-2b68` purgé : control 0, heads 0, préfixe S3 vide.
 
 ## 4. Le témoin — **contrat C3**
 
