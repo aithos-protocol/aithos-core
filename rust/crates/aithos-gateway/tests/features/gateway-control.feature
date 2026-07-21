@@ -14,16 +14,16 @@ Feature: Signed enterprise control and proof surface
       And no browser credentials or wildcard are admitted
 
     Scenario Outline: A non-exact origin is refused without reflection
-      Given the configured dashboard origin is "https://app.aithos.fr"
+      Given exact dashboard Origin matching is configured
       When "<origin>" requests a control route
       Then CORS is refused before any control effect
       And no Access-Control-Allow-Origin wildcard or reflected origin is returned
 
       Examples:
         | origin                         |
-        | https://neighbor.app.aithos.fr|
-        | https://app.aithos.fr.evil.tld|
-        | null                           |
+        | https://neighbor.app.aithos.fr  |
+        | https://app.aithos.fr.evil.tld  |
+        | null                            |
 
     Scenario: A forged curl Origin without authority remains denied
       Given a non-browser request claims Origin "https://app.aithos.fr"
