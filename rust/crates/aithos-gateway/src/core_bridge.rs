@@ -57,6 +57,13 @@ pub use aithos_bundle::entropy::{EntropySource, OsEntropy, SeqEntropy};
 /// owner/test-side surgery uses to read or doctor a store it holds.
 pub use aithos_bundle::Store as RawStore;
 
+mod control;
+pub use control::{
+    prepare_control_envelope, valid_control_gamma_kind, ControlAccess, ControlAuthError,
+    ControlContextProof, ControlHeadsProof, ControlPage, ControlPrincipal, ControlProofReader,
+    ControlRawArtifact, PreparedControlEnvelope,
+};
+
 /// Where the bridge keeps its non-secret runtime state in the store.
 pub const STATE_PATH: &str = "gateway/state.json";
 /// The journal's memory shelf: the circle folder `owner-init-journal`

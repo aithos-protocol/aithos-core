@@ -98,6 +98,20 @@ pub trait CredentialBroker: Send + Sync {
             ))
         })
     }
+
+    /// Redacted operational probe used by `/control/v1/status`. No location,
+    /// token, reference or transport error crosses this seam.
+    fn readiness<'a>(
+        &'a self,
+    ) -> Pin<Box<dyn Future<Output = CredentialBrokerReadiness> + Send + 'a>> {
+        Box::pin(async { CredentialBrokerReadiness::Unavailable })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialBrokerReadiness {
+    Ready,
+    Unavailable,
 }
 
 // ------------------------------------------------- HashiCorp Vault KV v2
@@ -246,6 +260,20 @@ impl VaultKv2Broker {
         }
         Ok(())
     }
+
+    async fn probe(&self) -> CredentialBrokerReadiness {
+        let response = self
+            .client
+            .get(format!("{}/v1/sys/health", self.address))
+            .send()
+            .await;
+        match response.map(|response| response.status().as_u16()) {
+            // Active and initialized standby are operational. Sealed,
+            // uninitialized and DR-secondary statuses remain unavailable.
+            Ok(200 | 429) => CredentialBrokerReadiness::Ready,
+            _ => CredentialBrokerReadiness::Unavailable,
+        }
+    }
 }
 
 impl CredentialBroker for VaultKv2Broker {
@@ -262,6 +290,12 @@ impl CredentialBroker for VaultKv2Broker {
         value: SecretValue,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(self.put(reference, value))
+    }
+
+    fn readiness<'a>(
+        &'a self,
+    ) -> Pin<Box<dyn Future<Output = CredentialBrokerReadiness> + Send + 'a>> {
+        Box::pin(self.probe())
     }
 }
 
@@ -452,6 +486,31 @@ mod tests {
             [Some(VAULT_TOKEN_SENTINEL.to_owned())],
             "the vault token rides the X-Vault-Token header of the one read"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn readiness_uses_only_the_redacted_unauthenticated_health_status() {
+        for (status, expected) in [
+            (200, CredentialBrokerReadiness::Ready),
+            (429, CredentialBrokerReadiness::Ready),
+            (472, CredentialBrokerReadiness::Unavailable),
+            (503, CredentialBrokerReadiness::Unavailable),
+        ] {
+            let (port, seen) =
+                serve_fake_vault((status, serde_json::json!({ "sentinel": MCP_SENTINEL }))).await;
+            let broker = VaultKv2Broker::new(
+                &format!("http://127.0.0.1:{port}"),
+                "secret",
+                "AITHOS_TEST_VAULT_HEALTH_UNUSED",
+            )
+            .unwrap();
+            assert_eq!(broker.readiness().await, expected);
+            assert_eq!(
+                seen.lock().unwrap().as_slice(),
+                [None],
+                "the health probe must not carry Vault custody material"
+            );
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]

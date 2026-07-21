@@ -95,6 +95,12 @@ impl Sidecar {
             Sidecar::Mem(m) => m.lock().expect("sidecar").get(path),
         }
     }
+    fn get_bounded(&self, path: &str, maximum: usize) -> std::io::Result<Option<Vec<u8>>> {
+        match self {
+            Sidecar::Fs(root) => FsStore::new(root.clone()).get_bounded(path, maximum),
+            Sidecar::Mem(m) => m.lock().expect("sidecar").get_bounded(path, maximum),
+        }
+    }
     fn put(&self, path: &str, bytes: &[u8]) -> std::io::Result<()> {
         match self {
             Sidecar::Fs(root) => FsStore::new(root.clone()).put(path, bytes),
@@ -548,6 +554,23 @@ impl Store for GatewayStore {
             }
             // Mode A: the PRIMARY answers reads — that is the point.
             GatewayStore::Replicated { root, .. } => Self::fs(root).get(path),
+        }
+    }
+
+    fn get_bounded(&self, path: &str, maximum: usize) -> std::io::Result<Option<Vec<u8>>> {
+        match self {
+            GatewayStore::Fs(root) => Self::fs(root).get_bounded(path, maximum),
+            GatewayStore::Mem(store) => {
+                store.lock().expect("store lock").get_bounded(path, maximum)
+            }
+            GatewayStore::Remote { remote, sidecar } => {
+                if sidecar_key(path) {
+                    sidecar.get_bounded(path, maximum)
+                } else {
+                    remote.get_bounded(path, maximum)
+                }
+            }
+            GatewayStore::Replicated { root, .. } => Self::fs(root).get_bounded(path, maximum),
         }
     }
 

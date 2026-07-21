@@ -1,6 +1,6 @@
 # Session G1 + G7 entreprise — 2026-07-21
 
-Statut : `G1c COMPLETE`, prêt pour `G7a`.
+Statut : `G7a COMPLETE`, prêt pour `G7b`.
 
 Ce journal est la trace d'intégration locale de la verticale définie par
 `HANDOFF-GATEWAY-G1-G7-ENTERPRISE-DASHBOARD-2026-07-21.md`. Il ne publie,
@@ -279,3 +279,58 @@ codé en dur n'a été trouvé pendant l'audit.
   ou changement étranger n'a été supprimé.
 - Aucun autre agent n'est intervenu dans `aithos-gateway` pendant G1a, G1b ou
   G1c. Aucun push, merge, déploiement ou publication n'a été effectué.
+
+## G7a — autorité, CORS et preuve bornée
+
+- RED contractuel observé avant code : 18 étapes `@g7-control` étaient
+  indéfinies, puis 16 scénarios/64 étapes `@g7a` après classification. Les
+  outlines ont eux-mêmes été rejoués RED avant leur liaison.
+- Commits de contrat étroits, antérieurs à l'implémentation :
+  - `68697b9 test(g7): classify control-plane delivery slices`
+  - `4274dd1 test(g7a): bind control outline examples`
+  - `05c9805 test(g7a): make origin outline independently bindable`
+- Le stanza `dashboard` reste opt-in, exige le hub multi-contexte et un port
+  loopback fixe. Les origins sont exactes, canoniques, uniques et HTTPS hors
+  loopback.
+- Les cinq routes read-only `/control/v1/**` sont servies par le même Router
+  direct et relay. Le middleware exige un seul `Origin`, `Host` et
+  `X-Aithos-Auth`, refuse tout body GET, lie méthode/path/body A.2, brûle le
+  nonce avant autorité et applique une fenêtre inclusive de ±300 secondes.
+- JCS, Ed25519, DID, chaînes de mandats, Gamma, révocations et grammaire des
+  kinds restent consommés depuis les crates Rust existantes. Aucun verdict
+  cryptographique ou d'autorité n'a été recodé en TypeScript.
+- DID, certificats et Gamma sont relus et vérifiés à chaque requête. L'auditeur
+  ne reçoit que son contexte, ses kinds Gamma, sa chaîne de contrôle et les
+  chaînes citées par les entrées visibles ; le manifest plus large reste owner.
+  Les octets stockés sont transportés sans re-sérialisation, en base64url.
+- Bornes actives : enveloppe 8 Kio, body 64 Kio, 5 secondes par phase, 32
+  travaux I/O bloquants, 65 536 nonces, chaîne 16, DID 64 Kio, certificat
+  256 Kio, page 2 Mio, Gamma 16 Mio/512 segments. `Store::get_bounded` évite
+  l'allocation complète d'un objet filesystem hors borne ; RemoteStore conserve
+  en plus son plafond transport existant de 64 Mio.
+- CORS est strictement préflight/minimal. Toutes les réponses de contrôle,
+  refus d'origin compris, portent `Vary: Origin` et `Cache-Control: no-store` ;
+  aucune réponse n'active cookies, credentials browser ou wildcard.
+- `/status` ne rend que `version`, `process`, `vault`, `relay`. Le probe Vault
+  utilise `/v1/sys/health` sans token, considère seulement 200/429 prêts et
+  réduit toute autre issue à `unavailable`.
+- Vérifications GREEN :
+  - G7a Gherkin : 16 scénarios/64 étapes ;
+  - intégration socket réelle `control_plane` : 1/1, avec en-têtes dupliqués,
+    body GET pourtant signé, voisin, signature/path/skew/replay/révocation,
+    portée des certificats et octets de preuve ;
+  - bibliothèque gateway : 124/124 ;
+  - bundle `--all-features` : toutes les suites Rust et 815 scénarios/3 505
+    étapes Cucumber ;
+  - régression G1 : 20 scénarios/84 étapes ;
+  - `cargo check --all-targets`, clippy bundle+gateway `--all-targets -D
+    warnings`, rustfmt ciblé, `git diff --check` et scan anti-fuite des sources
+    de production réussis.
+- La commande gateway réellement complète atteint volontairement les contrats
+  RED non implémentés de G7b/SDK : 195 scénarios passent et 37 scénarios G7b
+  ou SDK restent indéfinis. Ce RED est conservé jusqu'aux lots suivants,
+  jamais masqué.
+- Deux audits parallèles ont porté uniquement sur Core/A2 et client/SDK ; ils
+  étaient explicitement exclus de `aithos-gateway`. Le lead est resté l'unique
+  intervenant gateway. Aucun push, merge, déploiement ou publication n'a été
+  effectué.

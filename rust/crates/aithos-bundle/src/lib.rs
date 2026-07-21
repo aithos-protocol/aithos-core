@@ -252,6 +252,21 @@ fn validate_store_prefix(prefix: &str) -> io::Result<()> {
 /// `e/circle/blobs/<sid>.enc`, `certs/<id>.json`, `gamma/gamma.jsonl`, …).
 pub trait Store {
     fn get(&self, path: &str) -> io::Result<Option<Vec<u8>>>;
+
+    /// Return an object only when it fits `maximum`. Backends should override
+    /// this when they can reject before allocating the complete object; the
+    /// default remains fail-closed for existing bounded transports.
+    fn get_bounded(&self, path: &str, maximum: usize) -> io::Result<Option<Vec<u8>>> {
+        let bytes = self.get(path)?;
+        if bytes.as_ref().is_some_and(|bytes| bytes.len() > maximum) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "store object exceeds the caller's byte bound",
+            ));
+        }
+        Ok(bytes)
+    }
+
     fn put(&mut self, path: &str, bytes: &[u8]) -> io::Result<()>;
     fn list(&self, prefix: &str) -> io::Result<Vec<String>>;
 
@@ -311,6 +326,18 @@ impl Store for MemStore {
     fn get(&self, path: &str) -> io::Result<Option<Vec<u8>>> {
         validate_store_key(path)?;
         Ok(self.visible_objects().get(path).cloned())
+    }
+
+    fn get_bounded(&self, path: &str, maximum: usize) -> io::Result<Option<Vec<u8>>> {
+        validate_store_key(path)?;
+        let bytes = self.visible_objects().get(path);
+        if bytes.is_some_and(|bytes| bytes.len() > maximum) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "store object exceeds the caller's byte bound",
+            ));
+        }
+        Ok(bytes.cloned())
     }
 
     fn put(&mut self, path: &str, bytes: &[u8]) -> io::Result<()> {
@@ -733,6 +760,35 @@ impl Store for FsStore {
         }
     }
 
+    fn get_bounded(&self, path: &str, maximum: usize) -> io::Result<Option<Vec<u8>>> {
+        use std::io::Read as _;
+
+        let base = self.canonical_base()?;
+        let full = Self::checked_join(&base, path)?;
+        let file = match std::fs::File::open(full) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let length = file.metadata()?.len();
+        if length > maximum as u64 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "store object exceeds the caller's byte bound",
+            ));
+        }
+        let mut bytes = Vec::with_capacity(length as usize);
+        file.take((maximum as u64).saturating_add(1))
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > maximum {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "store object exceeds the caller's byte bound",
+            ));
+        }
+        Ok(Some(bytes))
+    }
+
     fn put(&mut self, path: &str, bytes: &[u8]) -> io::Result<()> {
         let base = self.canonical_base()?;
         Self::ensure_plain_directory(&base)?;
@@ -931,6 +987,11 @@ mod tests {
         let mut s = MemStore::default();
         s.put("manifest.json", b"{}").unwrap();
         assert_eq!(s.get("manifest.json").unwrap().unwrap(), b"{}");
+        assert_eq!(s.get_bounded("manifest.json", 2).unwrap().unwrap(), b"{}");
+        assert_eq!(
+            s.get_bounded("manifest.json", 1).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
         assert_eq!(s.list("mani").unwrap(), vec!["manifest.json".to_owned()]);
         assert!(s.get("manifests/999.json").unwrap().is_none());
     }

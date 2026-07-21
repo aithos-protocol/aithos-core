@@ -369,6 +369,21 @@ fn default_refresh_ttl() -> u64 {
     7 * 86_400
 }
 
+/// Browser control-plane configuration (G7). The stanza is opt-in so
+/// historical agent-only gateways do not acquire a new HTTP surface.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DashboardConfig {
+    /// Exact browser origins allowed to call `/control/v1/**`. This is a
+    /// browser barrier only; every non-preflight request still carries A.2.
+    #[serde(default = "default_dashboard_origins")]
+    pub allowed_origins: Vec<String>,
+}
+
+fn default_dashboard_origins() -> Vec<String> {
+    vec!["https://app.aithos.fr".to_owned()]
+}
+
 /// Outbound relay configuration (G1). The stanza is entirely opt-in:
 /// omitting it leaves the direct listener on its historical path.
 #[derive(Debug, Clone, Deserialize)]
@@ -484,6 +499,10 @@ pub struct GatewayConfig {
     /// the same Router; this field never disables the direct listener.
     #[serde(default)]
     pub relay: Option<RelayConfig>,
+    /// Optional G7 browser control surface. Its direct plaintext listener
+    /// is restricted to loopback; public access goes through G1 public TLS.
+    #[serde(default)]
+    pub dashboard: Option<DashboardConfig>,
 }
 
 impl GatewayConfig {
@@ -515,6 +534,22 @@ impl GatewayConfig {
         }
         if let Some(relay) = &self.relay {
             validate_relay(relay)?;
+        }
+        if let Some(dashboard) = &self.dashboard {
+            validate_dashboard(dashboard, &self.listen)?;
+            let Some(contexts) = &self.contexts else {
+                return Err(GatewayError::ConfigRejected(
+                    "`dashboard` requires the multi-context shape (`contexts` + `journal`)".into(),
+                ));
+            };
+            if contexts
+                .iter()
+                .any(|context| !is_control_label(&context.name))
+            {
+                return Err(GatewayError::ConfigRejected(
+                    "dashboard context names must be canonical lowercase URL labels".into(),
+                ));
+            }
         }
         match (&self.contexts, &self.journal) {
             // ------------------------------- multi-context v2 / hub v3
@@ -1093,6 +1128,92 @@ fn validate_relay(relay: &RelayConfig) -> Result<()> {
     Ok(())
 }
 
+fn validate_dashboard(dashboard: &DashboardConfig, listen: &str) -> Result<()> {
+    let address: std::net::SocketAddr = listen.parse().map_err(|_| {
+        GatewayError::ConfigRejected(
+            "`listen` must be an IP socket address when `dashboard` is enabled".into(),
+        )
+    })?;
+    if !address.ip().is_loopback() || address.port() == 0 {
+        return Err(GatewayError::ConfigRejected(
+            "`dashboard` requires the direct plaintext listener to use a fixed loopback port"
+                .into(),
+        ));
+    }
+    if dashboard.allowed_origins.is_empty() || dashboard.allowed_origins.len() > 16 {
+        return Err(GatewayError::ConfigRejected(
+            "`dashboard.allowed_origins` must contain between 1 and 16 exact origins".into(),
+        ));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for origin in &dashboard.allowed_origins {
+        if origin.len() > 256 || !seen.insert(origin.as_str()) {
+            return Err(GatewayError::ConfigRejected(
+                "`dashboard.allowed_origins` contains a duplicate or oversized origin".into(),
+            ));
+        }
+        let url = reqwest::Url::parse(origin).map_err(|_| {
+            GatewayError::ConfigRejected(
+                "`dashboard.allowed_origins` contains an invalid origin".into(),
+            )
+        })?;
+        let host = url.host_str().ok_or_else(|| {
+            GatewayError::ConfigRejected(
+                "`dashboard.allowed_origins` contains an origin without a host".into(),
+            )
+        })?;
+        let bare_host = host
+            .strip_prefix('[')
+            .and_then(|value| value.strip_suffix(']'))
+            .unwrap_or(host);
+        let loopback = bare_host == "localhost"
+            || bare_host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| ip.is_loopback());
+        let scheme_allowed = url.scheme() == "https" || (url.scheme() == "http" && loopback);
+        if !scheme_allowed
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+            || url.path() != "/"
+        {
+            return Err(GatewayError::ConfigRejected(
+                "dashboard origins require HTTPS outside loopback and may contain only scheme and authority"
+                    .into(),
+            ));
+        }
+        let canonical = format!(
+            "{}://{}{}",
+            url.scheme(),
+            if bare_host.contains(':') {
+                format!("[{bare_host}]")
+            } else {
+                bare_host.to_owned()
+            },
+            url.port()
+                .map_or_else(String::new, |port| format!(":{port}"))
+        );
+        if *origin != canonical {
+            return Err(GatewayError::ConfigRejected(
+                "`dashboard.allowed_origins` entries must be canonical exact origins".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn is_control_label(value: &str) -> bool {
+    (1..=64).contains(&value.len())
+        && value
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
+        })
+}
+
 fn validate_private_cache_if_present(path: &std::path::Path) -> Result<()> {
     let Some(metadata) = private_metadata_if_present(path, "relay.cert.cache_dir")? else {
         return Ok(());
@@ -1484,6 +1605,77 @@ journal:
             relay.cert,
             RelayCertificateConfig::AcmeDns01 { .. }
         ));
+    }
+
+    #[test]
+    fn dashboard_is_opt_in_and_defaults_to_the_exact_product_origin() {
+        assert!(GatewayConfig::from_yaml(MULTI).unwrap().dashboard.is_none());
+        let cfg = GatewayConfig::from_yaml(&format!("{MULTI}dashboard: {{}}\n")).unwrap();
+        assert_eq!(
+            cfg.dashboard.unwrap().allowed_origins,
+            ["https://app.aithos.fr"]
+        );
+    }
+
+    #[test]
+    fn dashboard_requires_multi_context_and_a_loopback_direct_listener() {
+        let mono = format!("{GOOD}dashboard: {{}}\n");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&mono),
+            Err(GatewayError::ConfigRejected(reason))
+                if reason.contains("multi-context shape")
+        ));
+        let public = format!("{MULTI}dashboard: {{}}\n")
+            .replace("listen: 127.0.0.1:4870", "listen: 0.0.0.0:4870");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&public),
+            Err(GatewayError::ConfigRejected(reason)) if reason.contains("loopback")
+        ));
+        let ephemeral = format!("{MULTI}dashboard: {{}}\n")
+            .replace("listen: 127.0.0.1:4870", "listen: 127.0.0.1:0");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&ephemeral),
+            Err(GatewayError::ConfigRejected(reason)) if reason.contains("fixed loopback port")
+        ));
+    }
+
+    #[test]
+    fn dashboard_origins_are_canonical_exact_and_tls_bounded() {
+        let accepted = format!(
+            "{MULTI}dashboard:\n  allowed_origins:\n    - https://app.aithos.fr\n    - http://127.0.0.1:4173\n    - http://[::1]:4173\n"
+        );
+        GatewayConfig::from_yaml(&accepted).unwrap();
+        for origin in [
+            "*",
+            "null",
+            "http://app.aithos.fr",
+            "https://app.aithos.fr/console",
+            "https://user@app.aithos.fr",
+            "https://APP.aithos.fr",
+        ] {
+            let text = format!("{MULTI}dashboard:\n  allowed_origins:\n    - {origin}\n");
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&text),
+                    Err(GatewayError::ConfigRejected(_))
+                ),
+                "must reject dashboard origin: {origin}"
+            );
+        }
+    }
+
+    #[test]
+    fn dashboard_shape_is_closed_and_origins_are_unique() {
+        for stanza in [
+            "dashboard:\n  surprise: true\n",
+            "dashboard:\n  allowed_origins: []\n",
+            "dashboard:\n  allowed_origins:\n    - https://app.aithos.fr\n    - https://app.aithos.fr\n",
+        ] {
+            assert!(matches!(
+                GatewayConfig::from_yaml(&format!("{MULTI}{stanza}")),
+                Err(GatewayError::ConfigRejected(_))
+            ));
+        }
     }
 
     #[test]

@@ -19,7 +19,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::task::{Context as TaskContext, Poll};
 
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
 use cucumber::{given, then, when, World};
+use ed25519_dalek::SigningKey;
 use futures::future::BoxFuture;
 use rustls::pki_types::UnixTime;
 use serde_json::{json, Value};
@@ -27,18 +30,23 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::sync::Mutex;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 
-use aithos_gateway::config::{GatewayConfig, RelayReconnectConfig, ToolAccess, ToolMap};
+use aithos_gateway::config::{
+    DashboardConfig, GatewayConfig, RelayReconnectConfig, ToolAccess, ToolMap,
+};
+use aithos_gateway::control::{self, ControlState};
 use aithos_gateway::core_bridge::{
     agent_pub_multibase, cert_constraints, cert_grantee_pub, cert_perimeter, gamma_view,
     gateway_pub_multibase, gateway_tunnel_registration_line, journal_notes_view, owner_add_section,
     owner_enroll_server, owner_grant_briefing, owner_grant_context, owner_grant_ethos_read,
     owner_init_context, owner_init_journal, owner_issue_ethos_read_subchain, owner_preview_call,
     owner_preview_mandate, owner_read_hub_manifest, owner_read_journal_note, owner_reenroll_server,
-    owner_revoke_mandate_id, owner_set_briefing, Bridge, ContextRuntime, EntropySource, EntryView,
-    EquipOutcome, MandateWindow, OnboardOutcome, OsEntropy, RawStore, ReenrollOutcome, Runner,
-    SeqEntropy, EFFECTIVE_POLICY_VERSION, STATE_PATH,
+    owner_revoke_mandate_id, owner_set_briefing, Bridge, ContextRuntime, ControlProofReader,
+    EntropySource, EntryView, EquipOutcome, MandateWindow, OnboardOutcome, OsEntropy, RawStore,
+    ReenrollOutcome, Runner, SeqEntropy, EFFECTIVE_POLICY_VERSION, STATE_PATH,
 };
-use aithos_gateway::credentials::{CredentialBroker, CredentialRef, SecretValue};
+use aithos_gateway::credentials::{
+    CredentialBroker, CredentialBrokerReadiness, CredentialRef, SecretValue,
+};
 use aithos_gateway::hub::{
     approve_manifest, discover_server, ApprovedManifest, ArgumentBound, ToolApproval,
 };
@@ -61,6 +69,10 @@ use aithos_gateway::relay::{
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::upstream_oauth::{self, UpstreamOAuthRegistry};
 use aithos_gateway::{GatewayError, Result};
+use aithos_provider::envelope::{
+    header_value as a2_header_value, sign_envelope as a2_sign_envelope, Envelope as A2Envelope,
+    EnvelopeSignature as A2EnvelopeSignature,
+};
 
 /// Fixed test instants (RFC 3339 Z — the wire's instant format).
 const T0: &str = "2026-07-10T12:00:00Z";
@@ -178,6 +190,330 @@ fn context_tools(label: &str) -> (String, String) {
         "ui-designer" => ("figma.read".into(), "figma.update".into()),
         "ventes" => ("crm.read".into(), "crm.update".into()),
         other => panic!("unknown context label in the harness: {other}"),
+    }
+}
+
+// ============================================ G7a control plane
+
+const CONTROL_NOW: &str = "2026-07-16T12:00:00Z";
+const CONTROL_NOW_MS: i64 = 1_784_203_200_000;
+const CONTROL_ORIGIN: &str = "https://app.aithos.fr";
+
+struct ControlReadyBroker;
+
+impl CredentialBroker for ControlReadyBroker {
+    fn resolve<'a>(
+        &'a self,
+        _reference: &'a CredentialRef,
+    ) -> Pin<Box<dyn Future<Output = Result<SecretValue>> + Send + 'a>> {
+        Box::pin(async {
+            Err(GatewayError::CredentialUnavailable(
+                "control test broker has no readable secret".into(),
+            ))
+        })
+    }
+
+    fn readiness<'a>(
+        &'a self,
+    ) -> Pin<Box<dyn Future<Output = CredentialBrokerReadiness> + Send + 'a>> {
+        Box::pin(async { CredentialBrokerReadiness::Ready })
+    }
+}
+
+struct ControlPendingRequest {
+    method: String,
+    path: String,
+    body: Vec<u8>,
+    origin: String,
+    auth: Option<String>,
+}
+
+struct ControlEnvelopeFacts<'a> {
+    key: &'a str,
+    mandates: Vec<String>,
+    method: &'a str,
+    path: &'a str,
+    body: &'a [u8],
+    at: &'a str,
+    nonce: &'a str,
+}
+
+struct CucumberControlHarness {
+    base: String,
+    host: String,
+    client: reqwest::Client,
+    owner_content: SigningKey,
+    auditor: SigningKey,
+    auditor_key: String,
+    auditor_mandate: String,
+    master: [u8; 32],
+    company_store: GatewayStore,
+    server: tokio::task::JoinHandle<()>,
+    pending: Option<ControlPendingRequest>,
+    last: Option<HttpCapture>,
+    changed: Vec<HttpCapture>,
+    proofs: Vec<Value>,
+    baseline: BTreeMap<String, Vec<u8>>,
+    protected_reads: usize,
+    sentinels: Vec<String>,
+    event_log: Vec<String>,
+}
+
+impl Drop for CucumberControlHarness {
+    fn drop(&mut self) {
+        self.server.abort();
+    }
+}
+
+impl CucumberControlHarness {
+    async fn start() -> Self {
+        let master = [7u8; 32];
+        let keyholder = Arc::new(Keyholder::from_entropy([0x31; 32], [0x41; 32]));
+        let agent_pub = agent_pub_multibase(&keyholder);
+        let gateway_pub = gateway_pub_multibase(&keyholder);
+        let window = MandateWindow {
+            not_before: "2026-07-16T11:00:00Z".to_owned(),
+            not_after: "2026-07-16T12:01:00Z".to_owned(),
+        };
+        let company_store = GatewayStore::in_memory();
+        let neighbor_store = GatewayStore::in_memory();
+        let mut entropy = SeqEntropy::default();
+        owner_init_context(
+            &master,
+            "company-brand",
+            company_store.clone(),
+            CONTROL_NOW,
+            &mut entropy,
+        )
+        .unwrap();
+        let equipped = owner_grant_context(
+            &master,
+            "company-brand",
+            &agent_pub,
+            &gateway_pub,
+            &["brand.read".to_owned()],
+            company_store.clone(),
+            &window,
+            CONTROL_NOW,
+            &mut entropy,
+        )
+        .unwrap();
+        owner_init_context(
+            &master,
+            "ui-designer",
+            neighbor_store.clone(),
+            CONTROL_NOW,
+            &mut entropy,
+        )
+        .unwrap();
+        owner_grant_context(
+            &master,
+            "ui-designer",
+            &agent_pub,
+            &gateway_pub,
+            &["figma.read".to_owned()],
+            neighbor_store.clone(),
+            &window,
+            CONTROL_NOW,
+            &mut entropy,
+        )
+        .unwrap();
+        let mut bridge = Bridge::open(
+            company_store.clone(),
+            Arc::clone(&keyholder),
+            Box::new(SeqEntropy::default()),
+        )
+        .unwrap();
+        bridge
+            .record_act(
+                "brand.read",
+                &json!({ "query": "control-safe" }),
+                CONTROL_NOW,
+            )
+            .unwrap();
+
+        let reader = ControlProofReader::from_stores(BTreeMap::from([
+            ("company-brand".to_owned(), company_store.clone()),
+            ("ui-designer".to_owned(), neighbor_store),
+        ]))
+        .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let host = address.to_string();
+        let dashboard = DashboardConfig {
+            allowed_origins: vec![CONTROL_ORIGIN.to_owned()],
+        };
+        let brokers: BTreeMap<String, Arc<dyn CredentialBroker>> = BTreeMap::from([(
+            "enterprise".to_owned(),
+            Arc::new(ControlReadyBroker) as Arc<dyn CredentialBroker>,
+        )]);
+        let state = ControlState::new(
+            reader,
+            &dashboard,
+            [host.clone()],
+            RelayHealth::new(RelayReadiness::Ready),
+            brokers,
+        )
+        .unwrap()
+        .with_clock(Arc::new(|| CONTROL_NOW_MS));
+        let app = control::router(Arc::new(state));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let owner_master =
+            aithos_core::derive::derive_key("aithos-gw/v1/context/company-brand", &master);
+        let owner = aithos_core::keys::OwnerKeys::genesis(
+            &aithos_core::keys::MasterSeed::from_bytes(owner_master),
+        );
+        let auditor_seed: [u8; 32] = hex::decode(equipped.auditor_seed_hex.unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let auditor = SigningKey::from_bytes(&auditor_seed);
+        let auditor_key =
+            aithos_core::wire::ed25519_pub_to_multibase(&auditor.verifying_key().to_bytes());
+        let baseline = control_store_snapshot(&company_store);
+        Self {
+            base: format!("http://{address}"),
+            host,
+            client: reqwest::Client::new(),
+            owner_content: owner.content_sign,
+            auditor,
+            auditor_key,
+            auditor_mandate: equipped.auditor_mandate.unwrap(),
+            master,
+            company_store,
+            server,
+            pending: None,
+            last: None,
+            changed: Vec::new(),
+            proofs: Vec::new(),
+            baseline,
+            protected_reads: 0,
+            sentinels: Vec::new(),
+            event_log: Vec::new(),
+        }
+    }
+
+    fn signed_header(&self, key: &SigningKey, facts: ControlEnvelopeFacts<'_>) -> String {
+        a2_header_value(&a2_sign_envelope(self.envelope(facts), key).unwrap()).unwrap()
+    }
+
+    fn unsigned_header(&self, path: &str, nonce: &str) -> String {
+        a2_header_value(&self.envelope(ControlEnvelopeFacts {
+            key: "#content",
+            mandates: Vec::new(),
+            method: "GET",
+            path,
+            body: &[],
+            at: CONTROL_NOW,
+            nonce,
+        }))
+        .unwrap()
+    }
+
+    fn envelope(&self, facts: ControlEnvelopeFacts<'_>) -> A2Envelope {
+        A2Envelope {
+            v: 1,
+            host: self.host.clone(),
+            method: facts.method.to_owned(),
+            path: facts.path.to_owned(),
+            body_b3: if facts.body.is_empty() {
+                String::new()
+            } else {
+                blake3::hash(facts.body).to_hex().to_string()
+            },
+            at: facts.at.to_owned(),
+            nonce: facts.nonce.to_owned(),
+            mandate: facts.mandates,
+            key: facts.key.to_owned(),
+            signature: A2EnvelopeSignature {
+                alg: "ed25519".to_owned(),
+                value: String::new(),
+            },
+        }
+    }
+
+    fn owner_header(&self, method: &str, path: &str, body: &[u8], nonce: &str) -> String {
+        self.signed_header(
+            &self.owner_content,
+            ControlEnvelopeFacts {
+                key: "#content",
+                mandates: Vec::new(),
+                method,
+                path,
+                body,
+                at: CONTROL_NOW,
+                nonce,
+            },
+        )
+    }
+
+    fn auditor_header(&self, path: &str, at: &str, nonce: &str) -> String {
+        self.signed_header(
+            &self.auditor,
+            ControlEnvelopeFacts {
+                key: &self.auditor_key,
+                mandates: vec![self.auditor_mandate.clone()],
+                method: "GET",
+                path,
+                body: &[],
+                at,
+                nonce,
+            },
+        )
+    }
+
+    async fn send(&self, request: &ControlPendingRequest) -> HttpCapture {
+        let method = reqwest::Method::from_bytes(request.method.as_bytes()).unwrap();
+        let mut wire = self
+            .client
+            .request(method, format!("{}{}", self.base, request.path))
+            .header("Origin", &request.origin);
+        if let Some(auth) = &request.auth {
+            wire = wire.header("X-Aithos-Auth", auth);
+        }
+        if !request.body.is_empty() {
+            wire = wire.body(request.body.clone());
+        }
+        control_capture(wire.send().await.unwrap()).await
+    }
+
+    async fn send_pending(&mut self) {
+        let pending = self.pending.as_ref().expect("control pending request");
+        self.last = Some(self.send(pending).await);
+    }
+}
+
+fn control_store_snapshot(store: &GatewayStore) -> BTreeMap<String, Vec<u8>> {
+    store
+        .list("")
+        .unwrap()
+        .into_iter()
+        .map(|path| {
+            let bytes = store.get(&path).unwrap().unwrap();
+            (path, bytes)
+        })
+        .collect()
+}
+
+async fn control_capture(response: reqwest::Response) -> HttpCapture {
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.as_str().to_ascii_lowercase(), value.to_owned()))
+        })
+        .collect();
+    HttpCapture {
+        status,
+        headers,
+        body: response.bytes().await.unwrap().to_vec(),
     }
 }
 
@@ -348,6 +684,9 @@ struct GatewayWorld {
     relay_oauth_callback_url: Option<String>,
     relay_oauth_vault_only: bool,
     relay_oauth_redacted: bool,
+    /// G7a: one real socket-bound control router per scenario. The harness
+    /// owns the signed authorities, proof stores and every captured response.
+    control: Option<CucumberControlHarness>,
 }
 
 /// One raw Streamable HTTP exchange (G2): what the wire actually said.
@@ -556,6 +895,7 @@ impl GatewayWorld {
             relay_oauth_callback_url: None,
             relay_oauth_vault_only: false,
             relay_oauth_redacted: false,
+            control: None,
         }
     }
 
@@ -9989,6 +10329,460 @@ fn g1c_oauth_public_surfaces_are_redacted(w: &mut GatewayWorld) {
     // The real provider-side ciphertext capture is asserted with the same
     // token sentinels in tests/public_tls_relay.rs.
     assert!(w.relay_oauth_redacted);
+}
+
+// ============================================ G7a control plane
+
+async fn ensure_control(w: &mut GatewayWorld) {
+    if w.control.is_none() {
+        w.control = Some(CucumberControlHarness::start().await);
+    }
+}
+
+#[given("the only configured dashboard origin is \"https://app.aithos.fr\"")]
+async fn g7a_configured_origin(w: &mut GatewayWorld) {
+    ensure_control(w).await;
+}
+
+#[given("exact dashboard Origin matching is configured")]
+async fn g7a_exact_origin_matching(w: &mut GatewayWorld) {
+    ensure_control(w).await;
+}
+
+#[when("that origin preflights a signed control request")]
+async fn g7a_preflight(w: &mut GatewayWorld) {
+    let harness = w.control.as_mut().unwrap();
+    let response = harness
+        .client
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("{}/control/v1/status", harness.base),
+        )
+        .header("Origin", CONTROL_ORIGIN)
+        .header("Access-Control-Request-Method", "GET")
+        .header("Access-Control-Request-Headers", "X-Aithos-Auth")
+        .send()
+        .await
+        .unwrap();
+    harness.last = Some(control_capture(response).await);
+}
+
+#[then("the gateway admits only the required method and headers")]
+fn g7a_preflight_minimal(w: &mut GatewayWorld) {
+    let response = w.control.as_ref().unwrap().last.as_ref().unwrap();
+    assert_eq!(response.status, 204);
+    assert_eq!(response.header("access-control-allow-methods"), Some("GET"));
+    assert_eq!(
+        response.header("access-control-allow-headers"),
+        Some("X-Aithos-Auth")
+    );
+}
+
+#[then("the response varies on Origin with a bounded max age")]
+fn g7a_preflight_varies(w: &mut GatewayWorld) {
+    let response = w.control.as_ref().unwrap().last.as_ref().unwrap();
+    assert_eq!(response.header("vary"), Some("Origin"));
+    let age: u64 = response
+        .header("access-control-max-age")
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((1..=600).contains(&age));
+}
+
+#[then("no browser credentials or wildcard are admitted")]
+fn g7a_preflight_no_credentials(w: &mut GatewayWorld) {
+    let response = w.control.as_ref().unwrap().last.as_ref().unwrap();
+    assert!(response
+        .header("access-control-allow-credentials")
+        .is_none());
+    assert_ne!(response.header("access-control-allow-origin"), Some("*"));
+    assert_ne!(response.header("access-control-allow-headers"), Some("*"));
+}
+
+#[when(expr = "{string} requests a control route")]
+async fn g7a_neighbor_origin_requests(w: &mut GatewayWorld, origin: String) {
+    ensure_control(w).await;
+    let harness = w.control.as_mut().unwrap();
+    harness.pending = Some(ControlPendingRequest {
+        method: "GET".to_owned(),
+        path: "/control/v1/status".to_owned(),
+        body: Vec::new(),
+        origin,
+        auth: None,
+    });
+    harness.send_pending().await;
+}
+
+#[then("CORS is refused before any control effect")]
+fn g7a_cors_refused_before_effect(w: &mut GatewayWorld) {
+    let harness = w.control.as_ref().unwrap();
+    assert_eq!(harness.last.as_ref().unwrap().status, 403);
+    assert_eq!(harness.protected_reads, 0);
+    assert_eq!(
+        control_store_snapshot(&harness.company_store),
+        harness.baseline
+    );
+}
+
+#[then("no Access-Control-Allow-Origin wildcard or reflected origin is returned")]
+fn g7a_cors_not_reflected(w: &mut GatewayWorld) {
+    let harness = w.control.as_ref().unwrap();
+    let response = harness.last.as_ref().unwrap();
+    assert!(response.header("access-control-allow-origin").is_none());
+    assert_ne!(
+        response.header("access-control-allow-origin"),
+        harness
+            .pending
+            .as_ref()
+            .map(|pending| pending.origin.as_str())
+    );
+}
+
+#[given(expr = "a non-browser request claims Origin {string}")]
+async fn g7a_forged_origin(w: &mut GatewayWorld, origin: String) {
+    ensure_control(w).await;
+    w.control.as_mut().unwrap().pending = Some(ControlPendingRequest {
+        method: "GET".to_owned(),
+        path: "/control/v1/status".to_owned(),
+        body: Vec::new(),
+        origin,
+        auth: None,
+    });
+}
+
+#[given("it carries no valid A.2 envelope")]
+fn g7a_no_envelope(w: &mut GatewayWorld) {
+    assert!(w
+        .control
+        .as_ref()
+        .unwrap()
+        .pending
+        .as_ref()
+        .unwrap()
+        .auth
+        .is_none());
+}
+
+#[when("it requests gateway control status")]
+async fn g7a_request_status(w: &mut GatewayWorld) {
+    w.control.as_mut().unwrap().send_pending().await;
+}
+
+#[then("authority is denied with zero protected read")]
+fn g7a_authority_denied_without_read(w: &mut GatewayWorld) {
+    let harness = w.control.as_ref().unwrap();
+    let response = harness.last.as_ref().unwrap();
+    assert_eq!(response.status, 401);
+    assert_eq!(response.json()["error"], "authority_denied");
+    assert_eq!(harness.protected_reads, 0);
+    assert_eq!(
+        control_store_snapshot(&harness.company_store),
+        harness.baseline
+    );
+}
+
+#[given(expr = "an otherwise valid control request with {string}")]
+async fn g7a_authority_defect(w: &mut GatewayWorld, defect: String) {
+    ensure_control(w).await;
+    let harness = w.control.as_mut().unwrap();
+    let status_path = "/control/v1/status";
+    let gamma_path = "/control/v1/contexts/company-brand/gamma?kind=action";
+    let mut pending = ControlPendingRequest {
+        method: "GET".to_owned(),
+        path: status_path.to_owned(),
+        body: Vec::new(),
+        origin: CONTROL_ORIGIN.to_owned(),
+        auth: None,
+    };
+    match defect.as_str() {
+        "a missing signature" => {
+            pending.auth = Some(harness.unsigned_header(status_path, "missing-signature-01"));
+        }
+        "a false signature" => {
+            let wrong = SigningKey::from_bytes(&[0x99; 32]);
+            pending.auth = Some(harness.signed_header(
+                &wrong,
+                ControlEnvelopeFacts {
+                    key: "#content",
+                    mandates: Vec::new(),
+                    method: "GET",
+                    path: status_path,
+                    body: &[],
+                    at: CONTROL_NOW,
+                    nonce: "false-signature-01",
+                },
+            ));
+        }
+        "a modified body" => {
+            pending.auth = Some(harness.owner_header("GET", status_path, &[], "body-change-01"));
+            pending.body = br#"{"changed":true}"#.to_vec();
+        }
+        "a replayed nonce" => {
+            let auth = harness.owner_header("GET", status_path, &[], "replay-01");
+            let first = ControlPendingRequest {
+                auth: Some(auth.clone()),
+                ..ControlPendingRequest {
+                    method: "GET".to_owned(),
+                    path: status_path.to_owned(),
+                    body: Vec::new(),
+                    origin: CONTROL_ORIGIN.to_owned(),
+                    auth: None,
+                }
+            };
+            assert_eq!(harness.send(&first).await.status, 200);
+            pending.auth = Some(auth);
+        }
+        "excessive clock skew" => {
+            pending.auth = Some(harness.signed_header(
+                &harness.owner_content,
+                ControlEnvelopeFacts {
+                    key: "#content",
+                    mandates: Vec::new(),
+                    method: "GET",
+                    path: status_path,
+                    body: &[],
+                    at: "2026-07-16T11:50:00Z",
+                    nonce: "skew-01",
+                },
+            ));
+        }
+        "an expired mandate" => {
+            pending.path = gamma_path.to_owned();
+            pending.auth =
+                Some(harness.auditor_header(gamma_path, "2026-07-16T12:02:00Z", "expired-01"));
+        }
+        "a revoked mandate" => {
+            let mut entropy = SeqEntropy::default();
+            owner_revoke_mandate_id(
+                &harness.master,
+                "company-brand",
+                &harness.auditor_mandate,
+                "control contract revocation",
+                harness.company_store.clone(),
+                CONTROL_NOW,
+                &mut entropy,
+            )
+            .unwrap();
+            harness.baseline = control_store_snapshot(&harness.company_store);
+            pending.path = gamma_path.to_owned();
+            pending.auth = Some(harness.auditor_header(gamma_path, CONTROL_NOW, "revoked-01"));
+        }
+        "the neighboring right" => {
+            let path = "/control/v1/contexts/company-brand/gamma?kind=grant";
+            pending.path = path.to_owned();
+            pending.auth = Some(harness.auditor_header(path, CONTROL_NOW, "neighbor-right-01"));
+        }
+        other => panic!("unknown control authority defect: {other}"),
+    }
+    harness.pending = Some(pending);
+}
+
+#[when("the gateway verifies the control envelope and mandate chain")]
+async fn g7a_verify_envelope(w: &mut GatewayWorld) {
+    w.control.as_mut().unwrap().send_pending().await;
+}
+
+#[then("the request is refused before proof, Vault, registry and upstream access")]
+fn g7a_refused_before_dependencies(w: &mut GatewayWorld) {
+    let harness = w.control.as_ref().unwrap();
+    assert_eq!(harness.last.as_ref().unwrap().status, 401);
+    assert_eq!(harness.protected_reads, 0);
+    assert_eq!(
+        control_store_snapshot(&harness.company_store),
+        harness.baseline
+    );
+}
+
+#[then("the stable error contains no authority material")]
+fn g7a_error_is_stable(w: &mut GatewayWorld) {
+    let harness = w.control.as_ref().unwrap();
+    let response = harness.last.as_ref().unwrap();
+    assert_eq!(response.json(), json!({ "error": "authority_denied" }));
+    let public = response.text();
+    assert!(!public.contains(&harness.auditor_mandate));
+    assert!(!public.contains(&harness.auditor_key));
+    assert!(!public.contains("#content"));
+}
+
+#[given("one valid owner control envelope")]
+async fn g7a_valid_owner_envelope(w: &mut GatewayWorld) {
+    ensure_control(w).await;
+}
+
+#[when("its method, exact path or body is changed independently")]
+async fn g7a_change_signed_facts(w: &mut GatewayWorld) {
+    let harness = w.control.as_mut().unwrap();
+    let status_path = "/control/v1/status";
+    let method = ControlPendingRequest {
+        method: "POST".to_owned(),
+        path: status_path.to_owned(),
+        body: Vec::new(),
+        origin: CONTROL_ORIGIN.to_owned(),
+        auth: Some(harness.owner_header("GET", status_path, &[], "exact-method-01")),
+    };
+    let path = ControlPendingRequest {
+        method: "GET".to_owned(),
+        path: "/control/v1/contexts".to_owned(),
+        body: Vec::new(),
+        origin: CONTROL_ORIGIN.to_owned(),
+        auth: Some(harness.owner_header("GET", status_path, &[], "exact-path-01")),
+    };
+    let body = ControlPendingRequest {
+        method: "GET".to_owned(),
+        path: status_path.to_owned(),
+        body: br#"{"changed":true}"#.to_vec(),
+        origin: CONTROL_ORIGIN.to_owned(),
+        auth: Some(harness.owner_header("GET", status_path, &[], "exact-body-01")),
+    };
+    harness.changed = vec![
+        harness.send(&method).await,
+        harness.send(&path).await,
+        harness.send(&body).await,
+    ];
+}
+
+#[then("every changed request is denied before route execution")]
+fn g7a_changed_facts_denied(w: &mut GatewayWorld) {
+    let harness = w.control.as_ref().unwrap();
+    assert_eq!(harness.changed.len(), 3);
+    assert!(harness
+        .changed
+        .iter()
+        .all(|response| !(200..300).contains(&response.status)));
+    assert_eq!(
+        control_store_snapshot(&harness.company_store),
+        harness.baseline
+    );
+}
+
+#[given("two contexts and an auditor mandated for only one Gamma slice")]
+async fn g7a_bounded_auditor(w: &mut GatewayWorld) {
+    ensure_control(w).await;
+}
+
+#[when("the auditor pages certificates, Gamma and heads through control")]
+async fn g7a_page_proofs(w: &mut GatewayWorld) {
+    let harness = w.control.as_mut().unwrap();
+    let routes = [
+        "/control/v1/contexts/company-brand/certs?limit=10",
+        "/control/v1/contexts/company-brand/gamma?kind=action&limit=10",
+        "/control/v1/contexts/company-brand/heads",
+    ];
+    harness.proofs.clear();
+    for (index, route) in routes.into_iter().enumerate() {
+        let request = ControlPendingRequest {
+            method: "GET".to_owned(),
+            path: route.to_owned(),
+            body: Vec::new(),
+            origin: CONTROL_ORIGIN.to_owned(),
+            auth: Some(harness.auditor_header(route, CONTROL_NOW, &format!("proof-page-{index}"))),
+        };
+        let response = harness.send(&request).await;
+        assert_eq!(response.status, 200);
+        harness.proofs.push(response.json());
+        harness.protected_reads += 1;
+    }
+}
+
+#[then("only the mandated context and slice are returned")]
+fn g7a_proofs_are_scoped(w: &mut GatewayWorld) {
+    let harness = w.control.as_ref().unwrap();
+    assert_eq!(harness.protected_reads, 3);
+    let all = serde_json::to_string(&harness.proofs).unwrap();
+    assert!(!all.contains("ui-designer"));
+    let gamma = harness.proofs[1]["items"].as_array().unwrap();
+    assert!(!gamma.is_empty());
+    for item in gamma {
+        let bytes = URL_SAFE_NO_PAD
+            .decode(item["bytes_b64"].as_str().unwrap())
+            .unwrap();
+        let entry: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(entry["kind"], "action");
+    }
+}
+
+#[then("the artifacts remain signed or ciphertext for local client verification")]
+fn g7a_proof_bytes_are_verifiable(w: &mut GatewayWorld) {
+    let proofs = &w.control.as_ref().unwrap().proofs;
+    for page in &proofs[..2] {
+        for item in page["items"].as_array().unwrap() {
+            let bytes = URL_SAFE_NO_PAD
+                .decode(item["bytes_b64"].as_str().unwrap())
+                .unwrap();
+            let artifact: Value = serde_json::from_slice(&bytes).unwrap();
+            assert!(
+                artifact.get("signature").is_some() || artifact.get("body_enc").is_some(),
+                "proof artifact must stay signed or ciphertext"
+            );
+        }
+    }
+    let tail = &proofs[2]["gamma_tail"];
+    let bytes = URL_SAFE_NO_PAD
+        .decode(tail["bytes_b64"].as_str().unwrap())
+        .unwrap();
+    assert!(serde_json::from_slice::<Value>(&bytes).unwrap()["signature"].is_object());
+}
+
+#[given(
+    "local path, environment, query, token and MCP argument sentinels exist behind the gateway"
+)]
+async fn g7a_status_sentinels(w: &mut GatewayWorld) {
+    ensure_control(w).await;
+    w.control.as_mut().unwrap().sentinels = vec![
+        "/private/customer/aithos".to_owned(),
+        "AITHOS_VAULT_TOKEN".to_owned(),
+        "?code=oauth-secret".to_owned(),
+        "access-token-sentinel".to_owned(),
+        "mcp-argument-sentinel".to_owned(),
+    ];
+}
+
+#[when(expr = "a valid owner requests {string}")]
+async fn g7a_owner_requests_status(w: &mut GatewayWorld, path: String) {
+    let harness = w.control.as_mut().unwrap();
+    let request = ControlPendingRequest {
+        method: "GET".to_owned(),
+        path: path.clone(),
+        body: Vec::new(),
+        origin: CONTROL_ORIGIN.to_owned(),
+        auth: Some(harness.owner_header("GET", &path, &[], "status-redaction-01")),
+    };
+    harness.last = Some(harness.send(&request).await);
+}
+
+#[then("status reports bounded process, Vault and relay readiness")]
+fn g7a_status_is_bounded(w: &mut GatewayWorld) {
+    let response = w.control.as_ref().unwrap().last.as_ref().unwrap();
+    assert_eq!(response.status, 200);
+    assert_eq!(response.header("cache-control"), Some("no-store"));
+    let status = response.json();
+    assert_eq!(status["version"], 1);
+    assert_eq!(status["process"], "ready");
+    assert!(matches!(
+        status["vault"].as_str(),
+        Some("ready" | "unavailable" | "unconfigured")
+    ));
+    assert!(matches!(
+        status["relay"].as_str(),
+        Some("ready" | "connecting" | "unavailable" | "disabled")
+    ));
+    assert_eq!(status.as_object().unwrap().len(), 4);
+}
+
+#[then("no sentinel or upstream error detail appears in the response or logs")]
+fn g7a_status_is_redacted(w: &mut GatewayWorld) {
+    let harness = w.control.as_ref().unwrap();
+    let public = format!(
+        "{}\n{}",
+        harness.last.as_ref().unwrap().text(),
+        harness.event_log.join("\n")
+    );
+    for sentinel in &harness.sentinels {
+        assert!(!public.contains(sentinel));
+    }
+    assert!(!public.contains("connection refused"));
+    assert!(!public.contains("http://"));
 }
 
 #[tokio::main]

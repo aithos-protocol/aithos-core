@@ -14,7 +14,7 @@ use tokio::sync::watch;
 
 use aithos_gateway::config::{GatewayConfig, RelayCertificateConfig, RelayConfig};
 use aithos_gateway::core_bridge::{
-    Bridge, EntropySource, MandateWindow, OnboardOutcome, OsEntropy, Runner,
+    Bridge, ControlProofReader, EntropySource, MandateWindow, OnboardOutcome, OsEntropy, Runner,
 };
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
@@ -913,16 +913,23 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()?;
+            let brokers = aithos_gateway::credentials::build_brokers(&cfg)?;
+            let relay_health = RelayHealth::new(if cfg.relay.is_some() {
+                RelayReadiness::Unavailable
+            } else {
+                RelayReadiness::Disabled
+            });
             // Multi-context config → the routed runtime (v2, lot 3):
             // one bridge per context + the journal, one upstream per
             // context, the same single agent-facing endpoint.
             let app = if let Some(contexts) = &cfg.contexts {
-                let runner = Arc::new(tokio::sync::Mutex::new(Runner::open_shared(
-                    &cfg,
-                    Arc::clone(&keyholder),
-                    || Box::new(OsEntropy),
-                )?));
-                let brokers = aithos_gateway::credentials::build_brokers(&cfg)?;
+                let opened_runner =
+                    Runner::open_shared(&cfg, Arc::clone(&keyholder), || Box::new(OsEntropy))?;
+                let control_reader = cfg
+                    .dashboard
+                    .as_ref()
+                    .map(|_| ControlProofReader::from_runner(&opened_runner));
+                let runner = Arc::new(tokio::sync::Mutex::new(opened_runner));
                 let upstream_oauth = Arc::new(UpstreamOAuthRegistry::from_config(&cfg, &brokers)?);
                 let upstreams = if let Some(servers) = &cfg.servers {
                     // Brokered credentials: build every configured
@@ -1005,6 +1012,20 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         clock: Arc::new(|| ts(now_secs())),
                     })));
                 }
+                if let (Some(dashboard), Some(reader)) = (&cfg.dashboard, control_reader) {
+                    let mut authorities = vec![cfg.listen.clone()];
+                    if let Some(relay) = &cfg.relay {
+                        authorities.push(relay.hostname.clone());
+                    }
+                    let control = aithos_gateway::control::ControlState::new(
+                        reader,
+                        dashboard,
+                        authorities,
+                        relay_health.clone(),
+                        brokers.clone(),
+                    )?;
+                    app = app.merge(aithos_gateway::control::router(Arc::new(control)));
+                }
                 app
             } else {
                 let bridge = Bridge::open(
@@ -1019,7 +1040,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     clock: Arc::new(|| ts(now_secs())),
                 }))
             };
-            rt.block_on(serve_gateway(&cfg, app, keyholder))
+            rt.block_on(serve_gateway(&cfg, app, keyholder, relay_health))
         }
         Command::AuditExport {
             auditor_seed_hex,
@@ -1083,6 +1104,7 @@ async fn serve_gateway(
     cfg: &GatewayConfig,
     app: Router,
     identity: Arc<Keyholder>,
+    relay_health: RelayHealth,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(&cfg.listen).await?;
     eprintln!("gateway listening on http://{}/mcp", cfg.listen);
@@ -1092,13 +1114,12 @@ async fn serve_gateway(
         return Ok(());
     };
 
-    let health = RelayHealth::new(RelayReadiness::Unavailable);
     let (shutdown_sender, shutdown) = watch::channel(false);
     let relay_task = tokio::spawn(run_relay_plane(
         relay,
         identity,
         app.clone(),
-        health,
+        relay_health,
         shutdown,
     ));
 
