@@ -103,6 +103,8 @@ pub enum RemoteError {
     Wire {
         status: u16,
         code: String,
+        /// The closed `reason` of an `artifact_invalid` (A.7 registry).
+        reason: Option<String>,
         /// The served head on `cas_mismatch` — the rebase input.
         head: Option<String>,
         height: Option<u64>,
@@ -114,11 +116,21 @@ impl std::fmt::Display for RemoteError {
         match self {
             RemoteError::Transport(e) => write!(f, "remote store transport: {e}"),
             RemoteError::Wire {
-                status, code, head, ..
-            } => match head {
-                Some(h) => write!(f, "remote store {status} {code} (head {h})"),
-                None => write!(f, "remote store {status} {code}"),
-            },
+                status,
+                code,
+                reason,
+                head,
+                ..
+            } => {
+                write!(f, "remote store {status} {code}")?;
+                if let Some(r) = reason {
+                    write!(f, " ({r})")?;
+                }
+                if let Some(h) = head {
+                    write!(f, " (head {h})")?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -168,6 +180,17 @@ struct Tracked {
 }
 
 /// One request that reached a wire VERDICT (acceptance-harness tap).
+/// One part of a `/batch` or `/sync` multipart pack (A.3): the
+/// RELATIVE chemin (the `Content-Location` with the client's own
+/// `/t/<tenant>/<did>/` prefix stripped), its per-part verdict
+/// (`X-Aithos-Status`: 200 | 403 | 404) and the bytes on 200 only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackPart {
+    pub path: String,
+    pub status: u16,
+    pub bytes: Option<Vec<u8>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct SentRequest {
     pub method: String,
@@ -435,6 +458,12 @@ impl RemoteStore {
                         .limit(64 * 1024 * 1024)
                         .read_to_vec()
                         .map_err(|e| RemoteError::Transport(e.to_string()))?;
+                    if status >= 400 && std::env::var("AITHOS_REMOTE_DEBUG").is_ok() {
+                        eprintln!(
+                            "remote-debug: {method} {path} -> {status} {}",
+                            String::from_utf8_lossy(&bytes)
+                        );
+                    }
                     self.taps.lock().expect("taps").requests.push(SentRequest {
                         method: method.to_owned(),
                         path: path.clone(),
@@ -469,6 +498,7 @@ impl RemoteStore {
         RemoteError::Wire {
             status,
             code: parsed["error"].as_str().unwrap_or("unknown").to_owned(),
+            reason: parsed["reason"].as_str().map(str::to_owned),
             head: parsed["head"].as_str().map(str::to_owned),
             height: parsed["height"].as_u64(),
         }
@@ -568,6 +598,119 @@ impl RemoteStore {
         }
     }
 
+    /// `get_many` — POST `/batch` (A.3): N chemins, UNE réponse
+    /// multipart, une part par chemin dans l'ordre de la requête. Un
+    /// chemin refusé ou absent est un VERDICT PAR PART (403/404), jamais
+    /// une erreur du pack ; la réponse est `no-store` (jamais cachée).
+    pub fn get_many(&self, paths: &[String]) -> Result<Vec<PackPart>, RemoteError> {
+        let body = serde_json::json!({ "paths": paths })
+            .to_string()
+            .into_bytes();
+        let (status, headers, resp) = self.send("POST", "batch", None, &body, None, None)?;
+        if status != 200 {
+            return Err(Self::wire_error(status, &resp));
+        }
+        self.parse_pack(&headers, &resp)
+    }
+
+    /// `sync` — POST `/sync {have_edition}` (A.3): le pack des chemins
+    /// changés depuis l'édition tenue (manifest.json en première part).
+    /// Une édition purgée répond `410 edition_gone` — le resync complet
+    /// est la décision du CLIENT, jamais un silence.
+    pub fn sync(&self, have_edition: u64) -> Result<Vec<PackPart>, RemoteError> {
+        let body = serde_json::json!({ "have_edition": have_edition })
+            .to_string()
+            .into_bytes();
+        let (status, headers, resp) = self.send("POST", "sync", None, &body, None, None)?;
+        if status != 200 {
+            return Err(Self::wire_error(status, &resp));
+        }
+        self.parse_pack(&headers, &resp)
+    }
+
+    /// Parse one `multipart/mixed` pack: boundary from the Content-Type
+    /// (never assumed), per part the closed header block
+    /// (`Content-Location` + `X-Aithos-Status`) then the bytes. The
+    /// prefix `/t/<tenant>/<did>/` is stripped so callers reason in
+    /// RELATIVE chemins, like the rest of the trait surface.
+    fn parse_pack(
+        &self,
+        headers: &HashMap<String, String>,
+        body: &[u8],
+    ) -> Result<Vec<PackPart>, RemoteError> {
+        let content_type = headers
+            .get("content-type")
+            .ok_or_else(|| RemoteError::Transport("pack without a content-type".into()))?;
+        let boundary = content_type
+            .split("boundary=")
+            .nth(1)
+            .map(|b| b.trim().trim_matches('"').to_owned())
+            .ok_or_else(|| RemoteError::Transport("pack without a boundary".into()))?;
+        let open = format!("--{boundary}\r\n");
+        let sep = format!("\r\n--{boundary}");
+        let text_of = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
+        // Split on the boundary markers; the first fragment (before the
+        // first opener) is empty by construction.
+        let raw = body;
+        let mut parts = Vec::new();
+        let open_b = open.as_bytes();
+        let sep_b = sep.as_bytes();
+        // position of the first opener
+        let Some(first) = raw.windows(open_b.len()).position(|w| w == open_b) else {
+            // an empty pack is just the closing marker
+            return Ok(parts);
+        };
+        let mut at = first + open_b.len();
+        loop {
+            // the part ends at the next `\r\n--boundary`
+            let rest = &raw[at..];
+            let Some(end) = rest.windows(sep_b.len()).position(|w| w == sep_b) else {
+                return Err(RemoteError::Transport("unterminated pack part".into()));
+            };
+            let part = &rest[..end];
+            let Some(header_end) = part.windows(4).position(|w| w == b"\r\n\r\n") else {
+                return Err(RemoteError::Transport("pack part without headers".into()));
+            };
+            let head = text_of(&part[..header_end]);
+            let bytes = &part[header_end + 4..];
+            let mut location = None;
+            let mut status = None;
+            for line in head.split("\r\n") {
+                if let Some(v) = line.strip_prefix("Content-Location:") {
+                    location = Some(v.trim().to_owned());
+                }
+                if let Some(v) = line.strip_prefix("X-Aithos-Status:") {
+                    status = v.trim().parse::<u16>().ok();
+                }
+            }
+            let (Some(location), Some(status)) = (location, status) else {
+                return Err(RemoteError::Transport(
+                    "pack part headers incomplete".into(),
+                ));
+            };
+            let prefix = format!("/t/{}/{}/", self.tenant, self.did);
+            let path = location
+                .strip_prefix(&prefix)
+                .unwrap_or(location.as_str())
+                .to_owned();
+            parts.push(PackPart {
+                path,
+                status,
+                bytes: (status == 200).then(|| bytes.to_vec()),
+            });
+            // move past the separator; a following `--` closes the pack
+            at += end + sep_b.len();
+            if raw[at..].starts_with(b"--") {
+                break;
+            }
+            // otherwise the separator is followed by `\r\n` (next part)
+            if raw[at..].starts_with(b"\r\n") {
+                at += 2;
+            }
+        }
+        Ok(parts)
+    }
+
     /// One GET with the A.6 cache honoured from the wire's own headers.
     fn get_wire(&self, relative: &str) -> Result<Option<Vec<u8>>, RemoteError> {
         // Immutable hit: no wire at all.
@@ -644,8 +787,27 @@ impl RemoteStore {
         }
     }
 
+    /// The signed-JSON classes travel as their JCS bytes (A.1: "tout
+    /// JSON signé = JCS"). The local bundle stores a pretty form for
+    /// humans; the signature covers the JCS — canonicalizing at the
+    /// deposit boundary loses nothing and is what the wire verifies.
+    fn deposit_bytes(relative: &str, bytes: &[u8]) -> Vec<u8> {
+        let signed_class =
+            relative == "manifest.json" || relative == "did.json" || relative.starts_with("certs/");
+        if signed_class {
+            if let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) {
+                if let Ok(jcs) = aithos_core::jcs::canonicalize(&value) {
+                    return jcs.into_bytes();
+                }
+            }
+        }
+        bytes.to_vec()
+    }
+
     /// The segment-aware PUT routing (mode B hot path vs replica).
     fn put_wire(&self, relative: &str, bytes: &[u8]) -> Result<(), RemoteError> {
+        let canonical = Self::deposit_bytes(relative, bytes);
+        let bytes: &[u8] = &canonical;
         if relative == "manifest.json" {
             return self.publish_manifest(bytes).map(|_| ());
         }

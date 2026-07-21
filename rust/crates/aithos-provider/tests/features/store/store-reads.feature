@@ -329,3 +329,67 @@ Feature: Reads — heads, listing, batch, sync and the draft.2 servable layout
     And the object backend becomes unreachable
     When an owner-signed GET arrives for relative path "manifest.json"
     Then the response is 503 "unavailable"
+
+  # ============================================================
+  # Micro-redline A.1 (P3, 2026-07-21, arbitrage Mathieu) — the zone
+  # ROOT's carriers are servable: `e/<zone>/header.json` (circle, self,
+  # x) and `e/<zone>/root.enc` (circle, self) are the bundle's native
+  # carriers of the root sealed lines, ADDITIVE to the A.1 grammar,
+  # light A.4 control (the header parses as JSON, the root blob stays
+  # opaque), private-revalidate class + strong ETag (A.6). The runner
+  # and derived keys (`gateway/**`, `manifests/tree-*`) stay OUTSIDE
+  # the wire — pinned by BDD, never by memory.
+  # ============================================================
+
+  @redline-a1 @p3
+  Scenario: The zone root carriers are servable under the private revalidate class (micro-redline A.1)
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    When an owner-signed PUT arrives for relative path "e/circle/header.json" with a JSON body
+    Then the request is accepted
+    When an owner-signed PUT arrives for relative path "e/circle/root.enc" with an opaque ciphertext body
+    Then the request is accepted
+    When an owner-signed GET arrives for relative path "e/circle/header.json"
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "private, max-age=0, must-revalidate"
+    And the response carries a strong ETag of its body
+    When an owner-signed GET arrives for relative path "e/circle/root.enc"
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "private, max-age=0, must-revalidate"
+    And the response carries a strong ETag of its body
+
+  @redline-a1 @p3
+  Scenario: The runner and derived keys stay outside the wire grammar (micro-redline A.1)
+    Given the store holds the p8_cold edition at height 2
+    When an owner-signed GET arrives for relative path "gateway/state.json"
+    # gateway/** is the pod sidecar's territory (runner ids, derived
+    # caches): never on the wire, whoever signs
+    Then the response is 400 "path_invalid"
+    When an owner-signed PUT arrives for relative path "gateway/keys/runner.json" with a JSON body
+    Then the response is 400 "path_invalid"
+    When an owner-signed GET arrives for relative path "e/x/root.enc"
+    # the redline opens header.json to x (act config carrier) but the
+    # root blob only for the sealed zones: circle and self
+    Then the response is 400 "path_invalid"
+
+  @redline-a1 @p3 @demo-lea
+  Scenario: The connector vault carriers are servable (micro-redline A.1, extended at the DEMO-LEA gate)
+    # e/x/<id>/header.json + e/x/<id>/manifest.enc: the vault-pinned
+    # connector config carriers — the exact remaining subset of the
+    # bundle's own closed grammar (validate_store_key) the redline
+    # covers. Same doctrine: additive, light A.4 control (the header
+    # parses as JSON, the sealed config stays opaque), private
+    # revalidate class + strong ETag. Surfaced by the DEMO-LEA remote
+    # replay (a context with enrolled connectors), 2026-07-21.
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    When an owner-signed PUT arrives for relative path "e/x/gmail/header.json" with a JSON body
+    Then the request is accepted
+    When an owner-signed PUT arrives for relative path "e/x/gmail/manifest.enc" with an opaque ciphertext body
+    Then the request is accepted
+    When an owner-signed GET arrives for relative path "e/x/gmail/header.json"
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "private, max-age=0, must-revalidate"
+    And the response carries a strong ETag of its body
+    When an owner-signed GET arrives for relative path "e/x/gmail/manifest.enc"
+    Then the request is accepted
+    And the response carries header "cache-control" equal to "private, max-age=0, must-revalidate"
+    And the response carries a strong ETag of its body

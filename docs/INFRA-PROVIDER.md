@@ -132,6 +132,35 @@ Déclaré par contexte et par journal dans la config gateway (`store: { kind:
 remote, url, tenant }` ; le mode A est un décorateur de réplication au-dessus du
 même client).
 
+> **Note gravée 2026-07-21 (gate P3 DEMO-LEA remote, conduit sur
+> délégation Mathieu, témoin de gate adversarial en agent : « le vert
+> n'est pas réfuté », 0 bloquant) — les deux modes sont RÉALISÉS.**
+> Le client est `aithos_bundle::remote::RemoteStore` (feature `remote`,
+> ureq+rustls, signeur d'enveloppes INJECTÉ du keyholder — jamais une
+> clé en config) ; la gateway les sert par
+> `StoreConfig::Remote { url, tenant, did, mandate, local }` (mode B)
+> et `StoreConfig::Replicated { root, url, … }` (mode A). **Mode B
+> hybride** : la grammaire A.1 part sur le wire, les clés runner et
+> dérivées (`gateway/**`, `manifests/*`) restent au SIDECAR du pod
+> (`local:` = fs, sinon mémoire — un runner éphémère re-dérive, sauf
+> `gateway/state.json`, consigné C4, lot ops) ; panne provider =
+> fail-closed. **Mode A** : fs primaire, réplication ASYNCHRONE
+> post-publish ET post-append (un échec de sweep est du bruit
+> opérationnel, jamais une erreur du primaire — le prochain publish ou
+> un sweep délibéré rattrape). Preuves du 2026-07-21 : DEMO-LEA rejouée
+> À L'IDENTIQUE (mêmes 8 beats, un seul corps de test paramétré) avec
+> journal remote mode B piloté par le binaire gateway sous le pen
+> mémoire (seed owner PAR LE WIRE — rejeu de l'historique d'éditions
+> par les slots, mécanique test-only, décision C6) et contexte ventes
+> mode A relu depuis le store ; assertions finales par lecteur REMOTE
+> indépendant, 0 beat sur le disque du pod en mode B ; contrat client
+> 16/16 sur le vrai service ; gate déployé image `sha256:224be505…`
+> (rollout forcé — image seule, plan final 0 écart) : rejeu wire 35/35
+> sur tenant jetable à DID FRAIS (D8), behave 25/25, tables au repos.
+> `audit-export` construit désormais son store via le keyholder (un
+> contexte replicated s'audite sur son primaire fs, un remote par le
+> wire — aucune capacité nouvelle, la seed auditor reste requise).
+
 ### 3.6 Cibles de performance (gates, façon §09.3)
 
 | Mesure | Cible |
@@ -141,6 +170,29 @@ même client).
 | Append d'acte (mode B, depuis l'Europe) | p50 < 120 ms |
 | GET objet immuable (CloudFront hit) | p50 < 30 ms |
 | Disponibilité store v1 | 99,9 % |
+
+> **Note gravée 2026-07-21 (gate P4, conduit sur délégation Mathieu) —
+> les gates §3.6 sont MESURÉS ; l'OFFICIEL reste la machine Mathieu
+> (arbitrage ③ 2026-07-21), la pré-mesure sandbox (RTT 111,5 ms vers
+> eu-west-3 — l'Europe verra mieux) est INDICATIVE.** Outils fournis :
+> `vectors/bench-p4.py` (wire : append mode B, sync à froid 1 000
+> sections, GET immuable CloudFront — tenant jetable à DID frais,
+> connexions persistantes) et le test
+> `aithos-provider/tests/remote_cache_nav.rs` (cache local, indépendant
+> du réseau). Pré-mesures sandbox du 2026-07-21 :
+> **navigation cache local p50 ≈ 0 µs** (1 000 hits, 1 seul fetch wire
+> — GREEN, structurel) ; **GET immuable CloudFront p50 = 20,7 ms**
+> (GREEN ; section publique via public.aithos.fr : 21,6 ms) ;
+> **append mode B p50 = 229 ms** dont ~112 ms de RTT sandbox — la part
+> serveur ≈ 115 ms met la cible européenne (< 120 ms) À LA MARGE :
+> consigné, piste = pipeliner réservation de nonce / lecture de tête /
+> écriture segment (lot ops) ; **sync à froid 1 000 sections = 2,36 s**
+> (contre 26,3 s AVANT le correctif de ce gate — le pack était servi en
+> 1 000 lectures S3 séquentielles ; il est désormais concurrent borné
+> 64, ordre préservé, fail-closed) — la cible < 2 s reste à confirmer à
+> l'officiel ; pistes consignées : streaming de la réponse multipart,
+> pool backend chaud. Les chiffres OFFICIELS (machine Mathieu) seront
+> ajoutés ici à leur mesure.
 
 ## 4. Le témoin — **contrat C3**
 
@@ -241,6 +293,20 @@ egress ; l'immuable caché écrase l'egress répété ; le poste qui scale = le 
 > couche stockage (sortir l'objet de la mémoire par tâche est de toute façon
 > le préalable, HA comprise). Le témoin et le plan public peuvent aller
 > serverless plus tard sans toucher les wires.
+
+> **Note gravée 2026-07-21 (gate P4) — cdn-public : RÉALISÉ.** Le module
+> `cdn-public` sert la zone ANONYME du store sur **public.aithos.fr**
+> (alias décidé en mode délégué, consigné) : CloudFront (PriceClass_100,
+> cert us-east-1, politique CachingOptimized — les classes A.6 de
+> l'ORIGINE font le cache), origine = le SERVICE store.<env> (jamais le
+> bucket — la décision d'anonymat A2 et le path-map restent au service,
+> fail-closed ; CloudFront ne transmet pas les en-têtes clients : la
+> surface servie est STRUCTURELLEMENT la surface anonyme). Apply du
+> 2026-07-21 : 6 add / 0 change / 0 destroy, plan final 0 écart ;
+> `public.aithos.fr/healthz` 200 « Hit from cloudfront ». Remarque
+> consignée : healthz ne porte pas de Cache-Control et se retrouve
+> caché à l'edge (inoffensif — corps statique) ; les refus restent
+> no-store.
 
 > **Note gravée 2026-07-20 (arbitrage Mathieu, gate P2/étape 6) — compute du
 > store : TRANCHÉ, Fargate.** L'argument qui tranche seul est le wire : A.8
@@ -457,6 +523,28 @@ courts — opt-in client, plus tard).
   (`manifests/tree-…`, `manifests/index-…`, suffixe `-alt`, `gateway/**`,
   `gamma/gamma.jsonl`) restent HORS grammaire wire — `path_invalid`.
 
+- **Micro-redline A.1 (gate P3 DEMO-LEA remote, 2026-07-21 — arbitrage
+  Mathieu, verdict témoin « non réfuté »).** La grammaire admet
+  ADDITIVEMENT les porteurs racine du layout natif du bundle —
+  sous-ensemble exact de sa grammaire fermée (`validate_store_key`),
+  rien d'autre : `e/<zone>/header.json` (zone ∈ {circle, self, x} — les
+  lignes de clés scellées de la racine de zone) ; `e/<zone>/root.enc`
+  (circle, self — le blob racine) ; `e/x/<id>/header.json` et
+  `e/x/<id>/manifest.enc` (les porteurs vault d'un connecteur, extension
+  décidée AU gate — la DEMO-LEA remote les a exigés). Contrôle A.4
+  léger (le header parse en JSON, le root/config reste opaque), classe
+  A.6 `private, max-age=0, must-revalidate` + ETag fort. Les clés
+  runner et dérivées restent HORS grammaire — `gateway/**`,
+  `manifests/tree-*`/`index-*`/`-alt`, `e/x/root.enc` → `path_invalid`,
+  épinglés par BDD et prouvés sur le wire déployé (owner compris).
+- **Convention client JCS (gravée au gate P3).** Les classes signées
+  (`manifest.json`, `did.json`, `certs/**`) sont canonicalisées RFC 8785
+  par le client AU DÉPÔT : la signature couvre le JCS, le pretty local
+  est une commodité — « ce qui est signé = ce qui est envoyé » est
+  préservé, mais octets locaux ≠ octets wire (toute comparaison
+  byte-à-byte inter-stores canonicalise d'abord). Un JSON invalide part
+  brut et le serveur le refuse (fail-closed).
+
 ### A.2 L'enveloppe signée `X-Aithos-Auth`
 
 Obligatoire sur toutes les routes **sauf** les GET anonymes A2 :
@@ -533,11 +621,11 @@ Path-map (`covers()` serveur — reprend §3.3, grammaire §04.2) :
 |---|---|
 | — (anonyme, A2) | GET `e/public/**`, `did.json` ; + `certs/**` et entrées `revoke` si `certs_public` ; + GET `public/sections/**`, `indices/public.json`, `roots/public.json` (alias K1-C de la zone publique — même statut que `e/public/**` ; redline gate 5, 2026-07-20) |
 | toute chaîne valide du DID | GET `/heads`, `manifest.json`, `did.json`, `certs/**` ; + GET `manifests/<h>.json`, `changesets/**`, `evidence/**`, `vault/catalog-pins.json` (matériel de preuve public par construction K1-B — nécessaire au cold verify sans capacité privée ; redline gate 5, 2026-07-20) |
-| `read.gamma[#…]` | GET `gamma/**` (filtrage fin des kinds côté client/export ; le serveur filtre par sélecteurs grossiers `since`/`until` → segments) |
-| `read.<zone>[#sel]` | GET index de zone, `e/<zone>/hdr/**`, `e/<zone>/blobs/**` du sous-arbre couvert (`dir=` nodal §04.2 ; sans index chargé le serveur sert le fichier si le sélecteur ne peut exclure le chemin — anti-abus, jamais l'autorité) ; + GET `circle/blobs/<sid>.json` pour `read.circle` (l'alias K1-C du blob de zone — mêmes règles de sélecteur que `e/circle/blobs/**` ; redline gate 5, 2026-07-20) |
+| `read.gamma[#…]` | GET `gamma/**` (filtrage fin des kinds côté client/export ; le serveur filtre par sélecteurs grossiers `since`/`until` → segments) ; **+ gamma-appendeur (gate P3, verdict témoin C1)** : la lecture d'un segment est AUSSI servie à toute chaîne portant un verbe d'écriture ou un `act.*` — qui peut APPENDRE relit le log qu'il chaîne (le CAS A.5 l'exige en mode B ; anti-abus jamais autorité, les corps scellés restent scellés, le store voit déjà ce squelette ; la ligne `read.gamma` reste la voie des tiers). **Amendement consigné au verdict** : cette largeur (tout l'historique pour tout appendeur) excède le besoin CAS — la voie propre, à resserrer un jour, est de borner la lecture appendeur au(x) segment(s) que sa chaîne étend |
+| `read.<zone>[#sel]` | GET index de zone, `e/<zone>/hdr/**`, `e/<zone>/blobs/**` du sous-arbre couvert (`dir=` nodal §04.2 ; sans index chargé le serveur sert le fichier si le sélecteur ne peut exclure le chemin — anti-abus, jamais l'autorité) ; + GET `circle/blobs/<sid>.json` pour `read.circle` (l'alias K1-C du blob de zone — mêmes règles de sélecteur que `e/circle/blobs/**` ; redline gate 5, 2026-07-20) ; **treillis §04.2 côté couverture (gate P3, verdict témoin C2)** : la lecture d'un objet de zone est servie par TOUT verbe de la zone (« append crée et lit ») — le sélecteur `id=` exclut toujours ; le périmètre réel reste enforcé par le core ; + GET `e/<zone>/header.json` et `e/<zone>/root.enc` (porteurs, micro-redline A.1 P3) |
 | verbe d'écriture (`edit\|append\|write\|delete`) sur la zone (pass L) | PUT `e/<zone>/blobs/**`, `e/<zone>/hdr/**`, index de zone ; POST `/gamma` (A.4) ; + PUT `circle/blobs/<sid>.json` (zone `circle`) et `public/sections/**` (zone `public` — la ligne d'écriture publique qui manquait ; redline gate 5, 2026-07-20) |
 | owner, ou délégué avec `authorized_by` (§02.6) | PUT `manifest.json` (CAS), `did.json`, `certs/**`, `gamma/<YYYY-MM>.jsonl` (réplique) ; + PUT `changesets/<64hex>.json`, `evidence/<64hex>.json`, `indices/public.json`, `roots/public.json`, `vault/catalog-pins.json` (sidecars et dérivés d'une publication draft.2, déposés AVANT le publish qui les épingle ; redline gate 5, 2026-07-20) |
-| `act.x.<id>.*` | GET/PUT `x/<id>/**` ; POST `/gamma` pour ses entrées `action`/`inference` |
+| `act.x.<id>.*` | GET/PUT `x/<id>/**` ; **GET/PUT `e/x/<id>/header.json` + `e/x/<id>/manifest.enc` (porteurs vault, micro-redline A.1 P3)** ; POST `/gamma` pour ses entrées `action`/`inference` |
 
 Défaut : refus (`not_covered`). L'owner (`#root`/`#content`) couvre tout sur
 son DID. Le serveur ne « comprend » jamais un contenu — il vérifie des
@@ -673,6 +761,15 @@ manifest_chain_hash, gamma_head, gamma_segment}` ; écritures conditionnelles
   des octets) — le sid est stable, le contenu peut être réédité.
   `circle/blobs/<sid>.json` : même classe que `e/<zone>/blobs/<sid>.enc`
   (`private, max-age=0, must-revalidate` + ETag fort).
+- **Porteurs A.1 (micro-redline P3, 2026-07-21)** :
+  `e/<zone>/header.json`, `e/<zone>/root.enc`, `e/x/<id>/header.json`,
+  `e/x/<id>/manifest.enc` → `private, max-age=0, must-revalidate` +
+  ETag fort (nom stable, contenu scellé rééditable).
+- **Revalidation If-None-Match → 304 (précision additive gravée au gate
+  P3, servie depuis bb31d71)** : sur toute classe revalidate, un GET
+  portant `If-None-Match` égal à l'ETag fort courant répond `304` corps
+  vide, mêmes en-têtes de classe ; un ETag périmé sert le corps entier.
+  Prouvé en BDD (2 scénarios) et sur le wire déployé.
 - `e/<zone>/blobs/<sid>.enc` : `Cache-Control: private, max-age=0,
   must-revalidate` + ETag fort (SHA-256 des octets) — le chemin ne porte pas
   `key_version` (§02.3), une ré-encryption (rung 3) réécrit l'objet ; le

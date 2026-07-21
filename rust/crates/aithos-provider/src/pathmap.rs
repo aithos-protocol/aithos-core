@@ -23,6 +23,19 @@ pub enum ObjectPath {
     ZoneIndex(String),
     /// `e/<zone>/blobs/<sid>.enc`.
     Blob(String, Sid),
+    /// `e/<zone>/header.json` — the zone ROOT's sealed key lines
+    /// (micro-redline A.1, P3 2026-07-21: a protocol object readers
+    /// need; zone ∈ {circle, self, x}).
+    ZoneHeader(String),
+    /// `e/<zone>/root.enc` — the zone root blob (same micro-redline).
+    ZoneRoot(String),
+    /// `e/x/<id>/header.json` — the vault-pinned connector header
+    /// (micro-redline A.1 EXTENDED at the DEMO-LEA gate, 2026-07-21:
+    /// the exact remaining subset of the bundle's closed grammar).
+    ConnectorHeader(String),
+    /// `e/x/<id>/manifest.enc` — the sealed connector config blob
+    /// (same extension; opaque by design).
+    ConnectorConfig(String),
     /// `e/<zone>/hdr/<node>.json` — node naming refined with P2 (the P1
     /// grammar bounds the charset; no vector exercises hdr yet).
     Hdr(String, String),
@@ -60,6 +73,10 @@ impl ObjectPath {
             ObjectPath::Public(segs) => format!("e/public/{}", segs.join("/")),
             ObjectPath::ZoneIndex(z) => format!("e/{z}/index.json"),
             ObjectPath::Blob(z, sid) => format!("e/{z}/blobs/{sid}.enc"),
+            ObjectPath::ZoneHeader(z) => format!("e/{z}/header.json"),
+            ObjectPath::ZoneRoot(z) => format!("e/{z}/root.enc"),
+            ObjectPath::ConnectorHeader(id) => format!("e/x/{id}/header.json"),
+            ObjectPath::ConnectorConfig(id) => format!("e/x/{id}/manifest.enc"),
             ObjectPath::Hdr(z, node) => format!("e/{z}/hdr/{node}.json"),
             ObjectPath::X(id, segs) if segs.is_empty() => format!("x/{id}"),
             ObjectPath::X(id, segs) => format!("x/{id}/{}", segs.join("/")),
@@ -178,6 +195,29 @@ fn parse_chemin(chemin: &str) -> Option<ObjectPath> {
         ["did.json"] => Some(ObjectPath::DidJson),
         ["e", "public", rest @ ..] => {
             valid_file_segments(rest).then(|| ObjectPath::Public(own(rest)))
+        }
+        // Micro-redline A.1 (P3, 2026-07-21, arbitrage Mathieu): the zone
+        // ROOT's header and blob are servable — the bundle's native
+        // carriers of the root sealed lines. ADDITIVE and closed; the
+        // runner/derived keys (gateway/**, manifests/tree-*, index-*,
+        // -alt) stay OUTSIDE — path_invalid, pinned by BDD.
+        ["e", zone, "header.json"] if valid_sealed_zone(zone) || *zone == "x" => {
+            Some(ObjectPath::ZoneHeader((*zone).to_owned()))
+        }
+        // Micro-redline A.1, EXTENDED at the DEMO-LEA gate (2026-07-21):
+        // the vault-pinned connector carriers — `e/x/<id>/header.json`
+        // and `e/x/<id>/manifest.enc` — are the last servable subset of
+        // the bundle's own closed grammar (`validate_store_key`). Still
+        // ADDITIVE and closed; everything else under `e/x/<id>/` stays
+        // outside the wire.
+        ["e", "x", id, "header.json"] if aithos_core::ids::validate_name(id).is_ok() => {
+            Some(ObjectPath::ConnectorHeader((*id).to_owned()))
+        }
+        ["e", "x", id, "manifest.enc"] if aithos_core::ids::validate_name(id).is_ok() => {
+            Some(ObjectPath::ConnectorConfig((*id).to_owned()))
+        }
+        ["e", zone, "root.enc"] if valid_sealed_zone(zone) => {
+            Some(ObjectPath::ZoneRoot((*zone).to_owned()))
         }
         ["e", zone, "index.json"] if valid_sealed_zone(zone) => {
             Some(ObjectPath::ZoneIndex((*zone).to_owned()))
@@ -371,13 +411,17 @@ pub fn mandated_covers(
 ) -> bool {
     use aithos_core::mandate::{PerimeterEntry, Verb};
     let zone_covered = |zone: &str, sid: Option<&Sid>, want_write: bool| {
-        // Reads want `read`; writes want any of `edit|append|write|delete`
-        // (the A.3 write-verb set is « everything but read »).
+        // Writes want any of `edit|append|write|delete` (the A.3
+        // write-verb set is « everything but read »); reads are served
+        // by ANY verb on the zone — the §04.2 lattice ("append creates
+        // and reads"): a pen that may write a node may re-read what it
+        // needs to write it (P3, aligned at the mode-B gate; anti-abuse,
+        // never authority — the core still enforces the real perimeter).
         let verb_fits = |verb: &Verb| {
             if want_write {
                 !matches!(verb, Verb::Read)
             } else {
-                matches!(verb, Verb::Read)
+                true
             }
         };
         perimeter.iter().any(|entry| match entry {
@@ -433,16 +477,30 @@ pub fn mandated_covers(
             | ObjectPath::PublicSectionAlias(_)
             | ObjectPath::IndicesPublic
             | ObjectPath::RootsPublic => true,
-            ObjectPath::GammaSegment(month) => perimeter.iter().any(|entry| {
-                matches!(entry, PerimeterEntry::Gamma { since, until, .. }
-                    if gamma_window_may_reach(month, since.as_deref(), until.as_deref()))
-            }),
+            // `read.gamma` windows (third-party log readers) — and the
+            // POST-/gamma set: who may APPEND may re-read the log it
+            // chains onto (P3 mode B, aligned at the gate; the sealed
+            // bodies stay sealed, the clear skeleton is what the store
+            // itself already sees — anti-abuse, never authority).
+            ObjectPath::GammaSegment(month) => {
+                perimeter.iter().any(|entry| {
+                    matches!(entry, PerimeterEntry::Gamma { since, until, .. }
+                        if gamma_window_may_reach(month, since.as_deref(), until.as_deref()))
+                }) || any_write_verb()
+                    || any_act()
+            }
             ObjectPath::ZoneIndex(zone) => zone_covered(zone, None, false),
             ObjectPath::Blob(zone, sid) => zone_covered(zone, Some(sid), false),
             // The K1-C blob alias follows its zone's row (the frozen p8
             // read plan: read.circle covers circle/blobs/<sid>.json).
             ObjectPath::CircleBlobAlias(sid) => zone_covered("circle", Some(sid), false),
+            ObjectPath::ZoneHeader(zone) | ObjectPath::ZoneRoot(zone) => {
+                zone_covered(zone, None, false)
+            }
             ObjectPath::Hdr(zone, node) => hdr_covered(zone, node, false),
+            // The connector carriers follow the vault subtree's row
+            // (micro-redline A.1 extension, DEMO-LEA gate).
+            ObjectPath::ConnectorHeader(id) | ObjectPath::ConnectorConfig(id) => act_connector(id),
             ObjectPath::X(id, _) => act_connector(id),
         },
         (TargetKind::Object(object), "PUT") => match object {
@@ -469,7 +527,13 @@ pub fn mandated_covers(
             // The public write line arrives via its K1-C alias (redline
             // gate 5): a write verb on `public` covers the alias section.
             ObjectPath::PublicSectionAlias(sid) => zone_covered("public", Some(sid), true),
+            ObjectPath::ZoneHeader(zone) | ObjectPath::ZoneRoot(zone) => {
+                zone_covered(zone, None, true)
+            }
             ObjectPath::Hdr(zone, node) => hdr_covered(zone, node, true),
+            // Same row in write: the vault subtree's act chain deposits
+            // its own carriers (owner covers all, as everywhere).
+            ObjectPath::ConnectorHeader(id) | ObjectPath::ConnectorConfig(id) => act_connector(id),
             ObjectPath::X(id, _) => act_connector(id),
             // Canonical `e/public/**` writes keep no A.3 row (the redline
             // opened the ALIAS only — §5.4 of the acted redline).

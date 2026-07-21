@@ -55,7 +55,10 @@ Feature: RemoteStore client (P3) — the aithos-bundle client speaks wire A.2 ag
 
   @envelope @fail-closed
   Scenario: A server rejection surfaces as a typed error, never a silent success
-    When the client calls get on "gamma/2026-07.jsonl" with a signer the chain does not cover
+    # e/self/** stays outside the p1 chain (read.circle/append.circle/act):
+    # the P3 read lattice widened GAMMA to any appendeur, so the log is no
+    # longer the uncovered witness path — the self zone still is
+    When the client calls get on "e/self/blobs/01000000000000000000000000.enc" with a signer the chain does not cover
     Then the call fails with a not_covered store error
     And no bytes are returned
 
@@ -158,3 +161,56 @@ Feature: RemoteStore client (P3) — the aithos-bundle client speaks wire A.2 ag
     When the client calls get on that blob twice
     Then both calls return the exact stored bytes
     And the second request carried If-None-Match and was answered 304
+
+  # ============================================================
+  # batch — get_many: N chemins, UNE réponse multipart (A.3, p9)
+  # ============================================================
+
+  @batch @p4
+  Scenario: get_many fetches N paths in one round trip with per-part statuses
+    Given the artifact "e/public/hello.md" is stored with body "bonjour"
+    And the artifact "e/public/notes/deux.md" is stored with body "deuxieme"
+    When the client calls get_many on "e/public/hello.md", "e/public/notes/deux.md" and "e/public/absent.md"
+    Then the pack carries 3 parts in request order
+    And pack part 1 is 200 with body "bonjour"
+    And pack part 2 is 200 with body "deuxieme"
+    And pack part 3 is 404 without a body
+    And the service saw exactly 1 POST request for "batch"
+
+  @batch @p4
+  Scenario: An uncovered batch path degrades to a 403 part, never a wire error
+    Given the artifact "e/public/hello.md" is stored with body "bonjour"
+    When the mandated client calls get_many on "e/public/hello.md" and "e/self/blobs/01000000000000000000000000.enc"
+    Then the pack carries 2 parts in request order
+    And pack part 1 is 200 with body "bonjour"
+    And pack part 2 is 403 without a body
+
+  # ============================================================
+  # sync — {have_edition} : le pack du diff d'éditions (A.3, p9)
+  # ============================================================
+
+  @sync @p4
+  Scenario: sync from a held edition packs the tip manifest first then the diff
+    Given the store holds the published p7 editions at heights 1 and 2
+    When the client calls sync with have_edition 1
+    Then the pack's first part is "manifest.json" with the successor bytes
+    And the pack lists the changed paths of the p7 edition diff in lexicographic order
+    And the "manifests/1.json" pack part is 200
+    # les sidecars jamais déposés dans ce monde : l'absence est typée PAR
+    # PARTIE (404), jamais un échec du pack — anti-abus, pas l'autorité
+    And the absent diff parts answer 404 without a body
+    And the service saw exactly 1 POST request for "sync"
+
+  @sync @p4
+  Scenario: sync at the current edition returns the tip manifest alone
+    Given the store holds the published p7 editions at heights 1 and 2
+    When the client calls sync with have_edition 2
+    Then the pack carries 1 parts in request order
+    And the pack's first part is "manifest.json" with the successor bytes
+
+  @sync @p4
+  Scenario: sync from a gone edition surfaces the typed edition_gone
+    Given the store holds the published p7 editions at heights 1 and 2
+    And the edition slot 1 is purged server-side
+    When the client calls sync with have_edition 1
+    Then the sync call fails with a 410 edition_gone store error

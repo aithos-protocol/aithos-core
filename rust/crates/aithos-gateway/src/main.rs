@@ -846,11 +846,15 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 (None, None) => cfg.mono_store()?,
             };
             let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
-            let bridge = Bridge::open(
-                GatewayStore::from_config(store_cfg)?,
-                Arc::new(keyholder),
-                Box::new(OsEntropy),
-            )?;
+            // P3: the auditor exports from whatever store the config
+            // names — a replicated context reads its fs primary, a
+            // remote one rides the wire under the runner identity (the
+            // keyholder is loaded right here; from_config would refuse
+            // the remote kinds fail-closed).
+            let store = GatewayStore::from_config_with_identity(store_cfg, &keyholder, || {
+                Box::new(OsEntropy)
+            })?;
+            let bridge = Bridge::open(store, Arc::new(keyholder), Box::new(OsEntropy))?;
             let seed: [u8; 32] = hex::decode(&auditor_seed_hex)
                 .ok()
                 .and_then(|v| v.try_into().ok())

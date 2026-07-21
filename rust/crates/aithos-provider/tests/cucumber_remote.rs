@@ -277,6 +277,8 @@ struct RemoteClientWorld {
     append_result: Option<Result<aithos_bundle::remote::Ack, RemoteError>>,
     /// The relative path the counter Thens inspect.
     counted_path: Option<String>,
+    /// The last `/batch` or `/sync` pack (P4).
+    pack: Option<Result<Vec<aithos_bundle::remote::PackPart>, RemoteError>>,
 }
 
 impl std::fmt::Debug for RemoteClientWorld {
@@ -309,6 +311,7 @@ impl RemoteClientWorld {
             publish_acks: Vec::new(),
             append_result: None,
             counted_path: None,
+            pack: None,
         }
     }
 
@@ -904,6 +907,201 @@ async fn second_was_304(world: &mut RemoteClientWorld) {
         "the cached strong ETag rode If-None-Match"
     );
     assert_eq!(last.status, 304, "the wire revalidated");
+}
+
+// ------------------------------------------------------- P4: batch/sync
+
+#[given(expr = "the store holds the published p7 editions at heights 1 and 2")]
+async fn published_p7_editions(world: &mut RemoteClientWorld) {
+    // By the WIRE: two owner publishes — the A.5 slots (manifests/1.json)
+    // are written by the SERVER on accept, exactly the deployed shape.
+    let client = world.client();
+    let (genesis, successor) = {
+        let f = fixtures();
+        (f.genesis_manifest.clone(), f.successor_manifest.clone())
+    };
+    tokio::task::spawn_blocking(move || {
+        let client = client.lock().expect("client");
+        client
+            .publish_manifest(&genesis)
+            .expect("genesis publish accepted");
+        client
+            .publish_manifest(&successor)
+            .expect("successor publish accepted");
+    })
+    .await
+    .expect("join");
+}
+
+#[given(expr = "the edition slot 1 is purged server-side")]
+async fn purge_edition_slot(world: &mut RemoteClientWorld) {
+    // The §8 GC in miniature: the held slot is gone, the tip stays. The
+    // memory backend has no delete (the wire never deletes) — the purge
+    // is simulated the way the store harness does it: rebuild the state
+    // WITHOUT the slot, on a fresh wire, then re-point the client.
+    let f = fixtures();
+    let wire = boot_wire().await;
+    wire.objects
+        .put(
+            &f.tenant,
+            &f.did,
+            "manifest.json",
+            f.successor_manifest.clone(),
+        )
+        .await
+        .expect("seed tip");
+    world.wire = Some(wire);
+    let signer = world.signer.clone().expect("a signer is configured");
+    world.client = Some(Arc::new(Mutex::new(world.build_client(signer))));
+}
+
+#[when(expr = "the client calls get_many on {string}, {string} and {string}")]
+async fn client_get_many_three(world: &mut RemoteClientWorld, a: String, b: String, c: String) {
+    let client = world.client();
+    let paths = vec![a, b, c];
+    let pack = tokio::task::spawn_blocking(move || client.lock().expect("client").get_many(&paths))
+        .await
+        .expect("join");
+    world.pack = Some(pack);
+}
+
+#[when(expr = "the mandated client calls get_many on {string} and {string}")]
+async fn mandated_get_many_two(world: &mut RemoteClientWorld, a: String, b: String) {
+    let f = fixtures();
+    let signer = Arc::new(KeySigner::mandated(
+        f.agent_sk.clone(),
+        vec![f.mandate_id.clone()],
+    ));
+    world.client = Some(Arc::new(Mutex::new(world.build_client(signer))));
+    let client = world.client();
+    let paths = vec![a, b];
+    let pack = tokio::task::spawn_blocking(move || client.lock().expect("client").get_many(&paths))
+        .await
+        .expect("join");
+    world.pack = Some(pack);
+}
+
+#[when(expr = "the client calls sync with have_edition {int}")]
+async fn client_sync(world: &mut RemoteClientWorld, have: u64) {
+    let client = world.client();
+    let pack = tokio::task::spawn_blocking(move || client.lock().expect("client").sync(have))
+        .await
+        .expect("join");
+    world.pack = Some(pack);
+}
+
+impl RemoteClientWorld {
+    fn pack_parts(&self) -> &Vec<aithos_bundle::remote::PackPart> {
+        match self.pack.as_ref() {
+            Some(Ok(parts)) => parts,
+            other => panic!("expected a parsed pack, got {other:?}"),
+        }
+    }
+}
+
+#[then(expr = "the pack carries {int} parts in request order")]
+async fn pack_carries(world: &mut RemoteClientWorld, n: usize) {
+    assert_eq!(world.pack_parts().len(), n, "pack size");
+}
+
+#[then(expr = "pack part {int} is {int} with body {string}")]
+async fn pack_part_with_body(world: &mut RemoteClientWorld, i: usize, status: u16, body: String) {
+    let part = &world.pack_parts()[i - 1];
+    assert_eq!(part.status, status, "part {i} status");
+    assert_eq!(
+        part.bytes.as_deref(),
+        Some(body.as_bytes()),
+        "part {i} bytes"
+    );
+}
+
+#[then(expr = "pack part {int} is {int} without a body")]
+async fn pack_part_no_body(world: &mut RemoteClientWorld, i: usize, status: u16) {
+    let part = &world.pack_parts()[i - 1];
+    assert_eq!(part.status, status, "part {i} status");
+    assert!(part.bytes.is_none(), "a non-200 part never carries bytes");
+}
+
+#[then(expr = "the service saw exactly {int} POST request for {string}")]
+async fn service_saw_post(world: &mut RemoteClientWorld, n: u64, route: String) {
+    let key = format!("POST {}", world.abs(&route));
+    let seen = *world
+        .wire()
+        .counters
+        .lock()
+        .expect("counters")
+        .get(&key)
+        .unwrap_or(&0);
+    assert_eq!(u64::from(seen), n, "wire hits for POST {route}");
+}
+
+#[then(expr = "the pack's first part is {string} with the successor bytes")]
+async fn pack_first_manifest(world: &mut RemoteClientWorld, path: String) {
+    let f = fixtures();
+    let part = world.pack_parts().first().expect("a first part");
+    assert_eq!(part.path, path, "manifest first (frozen p9 rule)");
+    assert_eq!(part.status, 200);
+    assert_eq!(
+        part.bytes.as_deref(),
+        Some(f.successor_manifest.as_slice()),
+        "the tip manifest bytes"
+    );
+}
+
+#[then(expr = "the pack lists the changed paths of the p7 edition diff in lexicographic order")]
+async fn pack_lists_diff(world: &mut RemoteClientWorld) {
+    let f = fixtures();
+    let held: serde_json::Value = serde_json::from_slice(&f.genesis_manifest).unwrap();
+    let tip: serde_json::Value = serde_json::from_slice(&f.successor_manifest).unwrap();
+    let held_files = held["files"].as_object().unwrap();
+    let mut want: Vec<String> = tip["files"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(k, v)| held_files.get(*k) != Some(v))
+        .map(|(k, _)| k.clone())
+        .collect();
+    want.sort();
+    let got: Vec<String> = world.pack_parts()[1..]
+        .iter()
+        .map(|p| p.path.clone())
+        .collect();
+    assert_eq!(got, want, "the lexicographic diff, manifest excluded");
+}
+
+#[then(expr = "the {string} pack part is {int}")]
+async fn pack_named_part(world: &mut RemoteClientWorld, path: String, status: u16) {
+    let part = world
+        .pack_parts()
+        .iter()
+        .find(|p| p.path == path)
+        .unwrap_or_else(|| panic!("part {path} in the pack"));
+    assert_eq!(part.status, status, "part {path} status");
+}
+
+#[then(expr = "the absent diff parts answer 404 without a body")]
+async fn pack_absent_parts(world: &mut RemoteClientWorld) {
+    let absent: Vec<_> = world.pack_parts()[1..]
+        .iter()
+        .filter(|p| p.status != 200)
+        .collect();
+    assert!(!absent.is_empty(), "the p7 diff has undeposited sidecars");
+    for part in absent {
+        assert_eq!(part.status, 404, "absence is typed per part: {}", part.path);
+        assert!(part.bytes.is_none());
+    }
+}
+
+#[then(expr = "the sync call fails with a {int} edition_gone store error")]
+async fn sync_fails_gone(world: &mut RemoteClientWorld, status: u16) {
+    match world.pack.as_ref() {
+        Some(Err(RemoteError::Wire {
+            status: got, code, ..
+        })) => {
+            assert_eq!((*got, code.as_str()), (status, "edition_gone"));
+        }
+        other => panic!("expected the typed 410, got {other:?}"),
+    }
 }
 
 // ----------------------------------------------------------------- main

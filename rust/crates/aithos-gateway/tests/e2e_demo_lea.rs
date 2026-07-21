@@ -9,6 +9,18 @@
 //! the real agent will send on demo day — including the hot owner edit
 //! through the running gateway, the auditor replay, and the sentinel
 //! sweep proving no secret survives anywhere on disk.
+//!
+//! P3 (gate DEMO-LEA remote): the SAME beats run twice — shared
+//! helpers, one parameterized body, two entry points:
+//! - `store_mode = Fs`: the lot-D dress rehearsal, unchanged;
+//! - `store_mode = Remote`: the journal lives on the REAL provider
+//!   service (in-process, real socket) in mode B — seeded by the OWNER
+//!   through the wire (the spike's replication motif), then driven by
+//!   the gateway BINARY on `journal: store: {kind: remote, …}` under
+//!   the memory pen; the ventes context runs mode A
+//!   (`kind: replicated`) — fs primary, asynchronous sweep — and is
+//!   RE-READ from the store. The final journal assertions go through a
+//!   REMOTE reader: nothing of the journal's truth lives on the pod.
 
 use std::collections::BTreeMap;
 use std::net::TcpListener;
@@ -19,9 +31,21 @@ use std::time::{Duration, Instant};
 use axum::http::HeaderMap;
 use serde_json::{json, Value};
 
+use aithos_bundle::entropy::EntropySource;
+use aithos_bundle::remote::{KeySigner, RemoteStore, SharedRemoteStore};
+use aithos_bundle::{FsStore, Store};
+use aithos_core::keys::{MasterSeed, OwnerKeys};
 use aithos_gateway::config::StoreConfig;
 use aithos_gateway::core_bridge::{gamma_view, EntryView};
-use aithos_gateway::store_adapter::GatewayStore;
+use aithos_gateway::store_adapter::{GatewayStore, Sidecar};
+use aithos_provider::acme::AcmeState;
+use aithos_provider::control::ControlPlane;
+use aithos_provider::dns::MemDnsTxt;
+use aithos_provider::heads::MemHeads;
+use aithos_provider::nonces::MemNonces;
+use aithos_provider::objects::MemObjects;
+use aithos_provider::service::{build_router, AppState};
+use aithos_provider::time::render_rfc3339z;
 
 const MASTER: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
 const VAULT_ROOT: &str = "vault-root-sentinel-lea";
@@ -85,7 +109,7 @@ impl FakeVault {
     }
 }
 
-async fn spawn_vault(port: u16, vault: FakeVault) -> tokio::task::JoinHandle<()> {
+async fn spawn_vault(vault: FakeVault) -> (u16, tokio::task::JoinHandle<()>) {
     use axum::extract::{Path as AxumPath, State};
     use axum::http::StatusCode;
     use axum::routing::get;
@@ -123,10 +147,14 @@ async fn spawn_vault(port: u16, vault: FakeVault) -> tokio::task::JoinHandle<()>
             ),
         )
         .with_state(vault);
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
         .expect("fake vault binds");
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() })
+    let port = listener.local_addr().unwrap().port();
+    (
+        port,
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() }),
+    )
 }
 
 // ------------------------------------------------------------- fake MCPs
@@ -188,7 +216,6 @@ async fn spawn_fake_mcp(fake: FakeMcp) -> u16 {
     use axum::routing::post;
     use axum::{Json, Router};
 
-    let port = free_port();
     let app = Router::new()
         .route(
             "/mcp",
@@ -223,9 +250,12 @@ async fn spawn_fake_mcp(fake: FakeMcp) -> u16 {
             ),
         )
         .with_state(fake);
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+    // Bind :0 directly — a free_port()-then-rebind dance races the
+    // concurrently running other variant of this test.
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
         .expect("fake mcp binds");
+    let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     port
 }
@@ -237,6 +267,201 @@ fn schema(properties: Value, required: &[&str]) -> Value {
         "required": required,
         "additionalProperties": false
     })
+}
+
+// ----------------------------------------------- remote-mode helpers (P3)
+// The spike's mechanics (e2e_journal_remote.rs), reused for the gate:
+// real in-process service, owner-signed clients, seed-by-the-wire.
+// C6 decided 2026-07-21 (gate P3): the edition-history replication stays
+// a TEST mechanic — promoting it to a client surface (`replicate_history`)
+// is consigned for the ops lot, with the C4 ephemeral-runner point.
+
+const TENANT: &str = "acme";
+
+/// Which store the eight beats run on — the parameterization the gate
+/// requires: identical beats, only the store lines of the yaml change.
+#[derive(Clone, Copy, PartialEq)]
+enum StoreMode {
+    Fs,
+    Remote,
+}
+
+/// Deterministic, salted test entropy (each consumer must mint distinct
+/// nonces — A.2 #6).
+struct SaltedEntropy {
+    salt: u64,
+    counter: u64,
+}
+
+impl SaltedEntropy {
+    fn fresh() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self {
+            salt: NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+            counter: 0,
+        }
+    }
+}
+
+impl EntropySource for SaltedEntropy {
+    fn fill(&mut self, buf: &mut [u8]) {
+        let mut out = Vec::new();
+        while out.len() < buf.len() {
+            self.counter += 1;
+            let mut block = [0u8; 16];
+            block[..8].copy_from_slice(&self.salt.to_be_bytes());
+            block[8..].copy_from_slice(&self.counter.to_be_bytes());
+            out.extend_from_slice(&block);
+        }
+        buf.copy_from_slice(&out[..buf.len()]);
+    }
+}
+
+fn real_now() -> String {
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_millis() as i64;
+    render_rfc3339z(ms - ms.rem_euclid(1000))
+}
+
+fn master_bytes() -> [u8; 32] {
+    hex::decode(MASTER).expect("hex master").try_into().unwrap()
+}
+
+/// The enterprise owner of a gateway-derived ethos (`owner-init-*` uses
+/// the same domain): the seed the REAL owner tooling would hold.
+fn derived_owner(kind: &str, label: &str) -> OwnerKeys {
+    OwnerKeys::genesis(&MasterSeed::from_bytes(aithos_core::derive::derive_key(
+        &format!("aithos-gw/v1/{kind}/{label}"),
+        &master_bytes(),
+    )))
+}
+
+/// Boot the REAL store service on a localhost socket, the given DIDs
+/// enrolled for the tenant (every did.json arrives by WIRE, never seeded).
+async fn boot_service(dids: &[&str]) -> String {
+    let bootstrap = serde_json::json!({
+        "tenants": [{
+            "tenant": TENANT,
+            "dids": dids.iter().map(|did| serde_json::json!({ "did": did })).collect::<Vec<_>>(),
+        }],
+    });
+    let (control, _preloads, _seeds) =
+        ControlPlane::from_bootstrap_json(&bootstrap.to_string()).expect("bootstrap");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let state = Arc::new(AppState {
+        control: Arc::new(control),
+        objects: Arc::new(MemObjects::new()),
+        heads: Arc::new(MemHeads::new()),
+        deposit_locks: Default::default(),
+        nonces: Arc::new(MemNonces::new(600)),
+        dns: Arc::new(MemDnsTxt::new()),
+        acme: AcmeState::new(),
+        authority: format!("127.0.0.1:{port}"),
+        test_now_enabled: false,
+    });
+    let router = build_router(state);
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.ok();
+    });
+    format!("http://127.0.0.1:{port}")
+}
+
+/// An owner-signed client on the service (the owner's own machine).
+fn owner_client(url: &str, did: &str, owner: &OwnerKeys, fragment: &str) -> RemoteStore {
+    let sk = match fragment {
+        "#root" => owner.root_sign.clone(),
+        _ => owner.content_sign.clone(),
+    };
+    RemoteStore::new(
+        url,
+        TENANT,
+        did,
+        Arc::new(KeySigner::owner(fragment, sk)),
+        Arc::new(real_now),
+        Box::new(SaltedEntropy::fresh()),
+    )
+    .expect("owner client")
+}
+
+/// The OWNER replicates a local store onto the provider: did.json
+/// genesis first (#root), everything else next, gamma segments (diff
+/// base primed), the edition history replayed as publishes LAST — the
+/// spike's motif, byte for byte.
+fn owner_replicate(local_root: &std::path::Path, url: &str, did: &str, owner: &OwnerKeys) {
+    let primary = FsStore::new(local_root.to_path_buf());
+    let mut paths = primary.list("").expect("local list");
+    paths.sort();
+    paths.dedup();
+    let priority = |p: &str| -> u8 {
+        match p {
+            "did.json" => 0,
+            p if p.starts_with("gamma/") => 2,
+            "manifest.json" => 3,
+            _ => 1,
+        }
+    };
+    paths.sort_by_key(|p| priority(p));
+    let mut heights: Vec<u64> = paths
+        .iter()
+        .filter_map(|p| {
+            p.strip_prefix("manifests/")?
+                .strip_suffix(".json")?
+                .parse()
+                .ok()
+        })
+        .collect();
+    heights.sort_unstable();
+    let mut root_client = owner_client(url, did, owner, "#root");
+    for path in paths {
+        // The hybrid split (arbitrage 2026-07-21): runner state and
+        // derived caches never leave the pod — the owner replicates the
+        // PROTOCOL objects only.
+        if path.starts_with("gateway/") || path.starts_with("manifests/") {
+            continue;
+        }
+        let Some(bytes) = primary.get(&path).expect("local get") else {
+            continue;
+        };
+        if path.starts_with("gamma/") {
+            let _ = root_client.get(&path);
+        }
+        if path == "manifest.json" {
+            for h in &heights {
+                let slot = primary
+                    .get(&format!("manifests/{h}.json"))
+                    .expect("local get")
+                    .expect("edition slot");
+                root_client
+                    .put("manifest.json", &slot)
+                    .unwrap_or_else(|e| panic!("owner replicate edition {h}: {e}"));
+            }
+            continue;
+        }
+        root_client
+            .put(&path, &bytes)
+            .unwrap_or_else(|e| panic!("owner replicate {path}: {e}"));
+    }
+}
+
+/// Independent owner reader over the wire — the re-read proofs. The
+/// sidecar only carries the pod-local keys the wire excludes; pointing
+/// it at an empty dir is fine for a pure gamma read.
+async fn remote_gamma(
+    url: &str,
+    did: &str,
+    owner: OwnerKeys,
+    sidecar: &std::path::Path,
+) -> Vec<EntryView> {
+    let store = GatewayStore::Remote {
+        remote: SharedRemoteStore::new(owner_client(url, did, &owner, "#content")),
+        sidecar: Sidecar::Fs(sidecar.to_path_buf()),
+    };
+    tokio::task::spawn_blocking(move || gamma_view(store).expect("gamma readable over the wire"))
+        .await
+        .unwrap()
 }
 
 // ---------------------------------------------------------------- helpers
@@ -327,8 +552,10 @@ fn all_files_exclude(root: &std::path::Path, needles: &[&str]) {
 
 // -------------------------------------------------------------- the test
 
-#[tokio::test(flavor = "multi_thread")]
-async fn demo_lea_dress_rehearsal_over_real_sockets() {
+/// The eight beats of DEMO-LEA-SCENARIO §4, shared verbatim by both
+/// store modes — the parameterization is the store lines of the yaml
+/// and the READER of the final journal assertions, nothing else.
+async fn dress_rehearsal(mode: StoreMode) {
     let tmp = tempfile::tempdir().unwrap();
     let ventes_store = tmp.path().join("ventes");
     let journal_store = tmp.path().join("journal");
@@ -341,8 +568,7 @@ async fn demo_lea_dress_rehearsal_over_real_sockets() {
     vault.put("aithos/mcp/notion", "token", NOTION_SECRET);
     vault.put("aithos/mcp/gmail", "token", GMAIL_SECRET);
     vault.put("aithos/mcp/calendar", "token", CALENDAR_SECRET);
-    let vault_port = free_port();
-    let _vault_task = spawn_vault(vault_port, vault.clone()).await;
+    let (vault_port, _vault_task) = spawn_vault(vault.clone()).await;
 
     // Three separate, permissive upstreams — each its own endpoint.
     let notion = FakeMcp::new(
@@ -421,7 +647,7 @@ async fn demo_lea_dress_rehearsal_over_real_sockets() {
     let born = run_ok(&["--identity", id, "keygen"]);
     let agent_pub = line_value(&born, "agent_pub: ");
     let gateway_pub = line_value(&born, "gateway_pub: ");
-    run_ok(&[
+    let journal_out = run_ok(&[
         "owner-init-journal",
         "--master-seed-hex",
         MASTER,
@@ -452,7 +678,7 @@ async fn demo_lea_dress_rehearsal_over_real_sockets() {
         ]);
         proposals.push(path);
     }
-    run_ok(&[
+    let ctx_out = run_ok(&[
         "owner-init-context",
         "--master-seed-hex",
         MASTER,
@@ -558,6 +784,56 @@ async fn demo_lea_dress_rehearsal_over_real_sockets() {
         "owner provisioning never touches the vault"
     );
 
+    // P3 remote mode: the provider comes up NOW, after provisioning —
+    // the owner seeds both ethos THROUGH THE WIRE (the spike's motif:
+    // did.json genesis first, artifacts, gamma diff-primed, the edition
+    // history replayed as publishes), then the yaml speaks
+    // remote/replicated. Nothing is ever copied server-side.
+    let remote = match mode {
+        StoreMode::Fs => None,
+        StoreMode::Remote => {
+            let journal_did = line_value(&journal_out, "journal_did: ");
+            let memory_mandate = line_value(&journal_out, "memory_mandate: ");
+            let context_did = line_value(&ctx_out, "context_did: ");
+            let url = boot_service(&[journal_did.as_str(), context_did.as_str()]).await;
+            let (jr, u1, d1) = (journal_store.clone(), url.clone(), journal_did.clone());
+            tokio::task::spawn_blocking(move || {
+                owner_replicate(&jr, &u1, &d1, &derived_owner("journal", "lea"))
+            })
+            .await
+            .unwrap();
+            let (vr, u2, d2) = (ventes_store.clone(), url.clone(), context_did.clone());
+            tokio::task::spawn_blocking(move || {
+                owner_replicate(&vr, &u2, &d2, &derived_owner("context", "ventes"))
+            })
+            .await
+            .unwrap();
+            Some((url, journal_did, memory_mandate, context_did))
+        }
+    };
+    let ventes_agent_mandate = line_value(&enrolled, "agent_mandate: ");
+    let (ventes_store_yaml, journal_store_yaml) = match &remote {
+        None => (
+            format!("{{ kind: fs, root: {} }}", ventes_store.display()),
+            format!("{{ kind: fs, root: {} }}", journal_store.display()),
+        ),
+        Some((url, journal_did, memory_mandate, context_did)) => (
+            // Mode A (§3.5): fs primary + asynchronous replication —
+            // the agent chain signs the sweep's envelopes.
+            format!(
+                "{{ kind: replicated, root: \"{}\", url: \"{url}\", tenant: {TENANT}, did: \"{context_did}\", mandate: [\"{ventes_agent_mandate}\"] }}",
+                ventes_store.display()
+            ),
+            // Mode B (§3.5): the provider IS the journal's primary; the
+            // memory pen signs every envelope; the owner-init output dir
+            // stays as the pod SIDECAR (gateway/**, manifests/* only).
+            format!(
+                "{{ kind: remote, url: \"{url}\", tenant: {TENANT}, did: \"{journal_did}\", mandate: [\"{memory_mandate}\"], local: \"{}\" }}",
+                journal_store.display()
+            ),
+        ),
+    };
+
     // The runtime config: references only, one endpoint, seven refs.
     let gw_port = free_port();
     let cfg_path = tmp.path().join("gateway.yaml");
@@ -586,7 +862,7 @@ servers:
     credential: {{ broker: enterprise, path: aithos/mcp/calendar, field: token }}
 contexts:
   - name: ventes
-    store: {{ kind: fs, root: {} }}
+    store: {ventes_store_yaml}
     tools:
       notion__query_database: {{ server: notion, tool: query_database, access: read, granted: true }}
       notion__create_page: {{ server: notion, tool: create_page, access: write, granted: false }}
@@ -596,10 +872,8 @@ contexts:
       calendar__list_events: {{ server: calendar, tool: list_events, access: read, granted: true }}
       calendar__create_event: {{ server: calendar, tool: create_event, access: write, granted: true }}
 journal:
-  store: {{ kind: fs, root: {} }}
+  store: {journal_store_yaml}
 "#,
-        ventes_store.display(),
-        journal_store.display(),
     );
     std::fs::write(&cfg_path, &cfg_text).unwrap();
     let cfg = cfg_path.to_str().unwrap();
@@ -911,9 +1185,63 @@ journal:
             "the pedagogical detail is on the record"
         );
     }
-    let journal_gamma = gamma(&journal_store);
-    assert_eq!(acts_on(&journal_gamma, "x.xref").len(), 3);
-    assert_eq!(acts_on(&journal_gamma, "x.gateway").len(), 2);
+    match &remote {
+        None => {
+            let journal_gamma = gamma(&journal_store);
+            assert_eq!(acts_on(&journal_gamma, "x.xref").len(), 3);
+            assert_eq!(acts_on(&journal_gamma, "x.gateway").len(), 2);
+        }
+        Some((url, journal_did, _, context_did)) => {
+            // Mode B: the journal's truth is the PROVIDER's — the final
+            // assertions ride an INDEPENDENT owner reader over the wire.
+            let journal_gamma = remote_gamma(
+                url,
+                journal_did,
+                derived_owner("journal", "lea"),
+                &journal_store,
+            )
+            .await;
+            assert_eq!(acts_on(&journal_gamma, "x.xref").len(), 3);
+            assert_eq!(acts_on(&journal_gamma, "x.gateway").len(), 2);
+            // The pod's fs dir received NO beat: mode B has no local
+            // journal primary to fall back on (fail-closed doctrine).
+            let local_journal = gamma(&journal_store);
+            assert_eq!(
+                acts_on(&local_journal, "x.xref").len(),
+                0,
+                "the beats never landed on the pod's disk"
+            );
+            // Mode A: the asynchronous ventes sweeps converge — the
+            // same story RE-READ FROM THE STORE, act for act.
+            let deadline = Instant::now() + Duration::from_secs(30);
+            loop {
+                let remote_ventes = remote_gamma(
+                    url,
+                    context_did,
+                    derived_owner("context", "ventes"),
+                    &ventes_store,
+                )
+                .await;
+                let reads = remote_ventes
+                    .iter()
+                    .filter(|entry| entry.kind == "ethos.read")
+                    .count();
+                if acts_on(&remote_ventes, "x.notion").len() == 1
+                    && acts_on(&remote_ventes, "x.gmail").len() == 1
+                    && acts_on(&remote_ventes, "x.calendar").len() == 1
+                    && acts_on(&remote_ventes, "x.gateway").len() == 2
+                    && reads == 2
+                {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "the mode A sweep never converged: {remote_ventes:?}"
+                );
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            }
+        }
+    }
 
     drop(child);
 
@@ -952,4 +1280,19 @@ journal:
     );
     let stderr_text = std::fs::read_to_string(&stderr_path).unwrap();
     assert!(stderr_text.contains("gateway listening"));
+}
+
+// ------------------------------------------------------ the two variants
+
+#[tokio::test(flavor = "multi_thread")]
+async fn demo_lea_dress_rehearsal_over_real_sockets() {
+    dress_rehearsal(StoreMode::Fs).await;
+}
+
+/// The P3 gate: the SAME demo, journal.store = remote (mode B) driven
+/// by the gateway BINARY, ventes replicated (mode A) and re-read from
+/// the store — beats identical, only the store lines changed.
+#[tokio::test(flavor = "multi_thread")]
+async fn demo_lea_dress_rehearsal_remote_journal_mode_b() {
+    dress_rehearsal(StoreMode::Remote).await;
 }

@@ -615,9 +615,17 @@ fn cache_class(object: &ObjectPath, now_ms: i64) -> &'static str {
         ObjectPath::PublicSectionAlias(_) | ObjectPath::DidJson | ObjectPath::Public(_) => {
             PUBLIC_REVALIDATE
         }
-        ObjectPath::Blob(_, _) | ObjectPath::CircleBlobAlias(_) | ObjectPath::X(_, _) => {
-            PRIVATE_REVALIDATE
-        }
+        ObjectPath::Blob(_, _)
+        | ObjectPath::CircleBlobAlias(_)
+        | ObjectPath::X(_, _)
+        // Micro-redline A.1 (P3): the zone root header/blob are stable
+        // names with re-editable content — the private revalidate class.
+        // The connector carriers (redline extension, DEMO-LEA gate)
+        // share it: stable name, re-editable sealed content.
+        | ObjectPath::ZoneHeader(_)
+        | ObjectPath::ZoneRoot(_)
+        | ObjectPath::ConnectorHeader(_)
+        | ObjectPath::ConnectorConfig(_) => PRIVATE_REVALIDATE,
     }
 }
 
@@ -633,6 +641,10 @@ fn strong_etag(object: &ObjectPath, bytes: &[u8]) -> Option<String> {
             | ObjectPath::Blob(_, _)
             | ObjectPath::CircleBlobAlias(_)
             | ObjectPath::X(_, _)
+            | ObjectPath::ZoneHeader(_)
+            | ObjectPath::ZoneRoot(_)
+            | ObjectPath::ConnectorHeader(_)
+            | ObjectPath::ConnectorConfig(_)
     )
     .then(|| format!("\"{}\"", hex::encode(Sha256::digest(bytes))))
 }
@@ -666,10 +678,14 @@ async fn store_object(
         | ObjectPath::DidJson
         | ObjectPath::Cert(_)
         | ObjectPath::GammaSegment(_) => return refuse(Refusal::NotImplemented, now_ms),
-        // Opaque ciphertext: no content check by design (§3.1).
-        ObjectPath::Blob(_, _) => true,
+        // Opaque ciphertext: no content check by design (§3.1). The
+        // sealed connector config joins the class (redline extension).
+        ObjectPath::Blob(_, _) | ObjectPath::ZoneRoot(_) | ObjectPath::ConnectorConfig(_) => true,
         // "JSON parsable là où c'est du JSON" (A.4 bullet 5).
-        ObjectPath::ZoneIndex(_) | ObjectPath::Hdr(_, _) => {
+        ObjectPath::ZoneIndex(_)
+        | ObjectPath::Hdr(_, _)
+        | ObjectPath::ZoneHeader(_)
+        | ObjectPath::ConnectorHeader(_) => {
             serde_json::from_slice::<serde_json::Value>(&bytes).is_ok()
         }
         ObjectPath::Public(segs) | ObjectPath::X(_, segs) => json_where_json(segs),
@@ -814,6 +830,39 @@ async fn serve_list(
     }))
 }
 
+/// Fetch one pack's object bodies CONCURRENTLY (bounded, order
+/// preserved) — the §3.6 sync gate: a 1 000-section cold pack must ride
+/// ONE round trip in seconds, not a thousand sequential backend reads
+/// (P4, 2026-07-21; 64-way — S3 sustains far more, the bound is
+/// politeness not capacity). Coverage was already decided per part by the
+/// caller; a backend error anywhere refuses the whole pack (fail-closed,
+/// never a silent hole).
+async fn fetch_pack_bodies(
+    state: &AppState,
+    target: &DataTarget,
+    keys: Vec<Option<String>>,
+) -> Result<Vec<Option<Option<Vec<u8>>>>, ()> {
+    use futures::stream::{self, StreamExt as _};
+    let fetches = stream::iter(keys.into_iter().map(|key| {
+        let objects = Arc::clone(&state.objects);
+        let (tenant, did) = (target.tenant.clone(), target.did.clone());
+        async move {
+            match key {
+                None => Ok(None),
+                Some(key) => objects
+                    .get(&tenant, &did, &key)
+                    .await
+                    .map(Some)
+                    .map_err(|_| ()),
+            }
+        }
+    }))
+    .buffered(64)
+    .collect::<Vec<_>>()
+    .await;
+    fetches.into_iter().collect()
+}
+
 /// POST `/batch` — body `{"paths": […]}` (≤ 256), one multipart part per
 /// path IN REQUEST ORDER: `Content-Location` + `X-Aithos-Status:
 /// 200|403|404`, body only on 200 (A.3/A.8).
@@ -838,22 +887,27 @@ async fn serve_batch(
     if request.paths.len() > MAX_BATCH_PATHS {
         return refuse(Refusal::PayloadTooLarge, now_ms);
     }
+    // Coverage decided per path FIRST (the deny stays the path-map's),
+    // then the covered bodies fetched concurrently (order preserved).
+    let keys: Vec<Option<String>> = request
+        .paths
+        .iter()
+        .map(|chemin| match pathmap::parse_chemin_public(chemin) {
+            None => None,
+            Some(object) if !principal_reads(principal, &object) => None,
+            Some(object) => Some(object.key()),
+        })
+        .collect();
+    let Ok(bodies) = fetch_pack_bodies(state, target, keys).await else {
+        return refuse(Refusal::Unavailable, now_ms);
+    };
     let mut parts = Vec::with_capacity(request.paths.len());
     let mut total = 0usize;
-    for chemin in &request.paths {
-        let (status, bytes) = match pathmap::parse_chemin_public(chemin) {
-            // Out-of-grammar or uncovered: the default deny, per part.
+    for (chemin, fetched) in request.paths.iter().zip(bodies) {
+        let (status, bytes) = match fetched {
             None => (403u16, None),
-            Some(object) if !principal_reads(principal, &object) => (403, None),
-            Some(object) => match state
-                .objects
-                .get(&target.tenant, &target.did, &object.key())
-                .await
-            {
-                Err(_) => return refuse(Refusal::Unavailable, now_ms),
-                Ok(Some(bytes)) => (200, Some(bytes)),
-                Ok(None) => (404, None),
-            },
+            Some(Some(bytes)) => (200, Some(bytes)),
+            Some(None) => (404, None),
         };
         total += bytes.as_ref().map_or(0, Vec::len);
         if total > MAX_PACK_BYTES {
@@ -937,19 +991,22 @@ async fn serve_sync(
         bytes: Some(tip_bytes.to_vec()),
     }];
     let mut total = parts[0].bytes.as_ref().map_or(0, Vec::len);
-    for chemin in &changed {
-        let (status, bytes) = match pathmap::parse_chemin_public(chemin) {
+    let keys: Vec<Option<String>> = changed
+        .iter()
+        .map(|chemin| match pathmap::parse_chemin_public(chemin) {
+            None => None,
+            Some(object) if !principal_reads(principal, &object) => None,
+            Some(object) => Some(object.key()),
+        })
+        .collect();
+    let Ok(bodies) = fetch_pack_bodies(state, target, keys).await else {
+        return refuse(Refusal::Unavailable, now_ms);
+    };
+    for (chemin, fetched) in changed.iter().zip(bodies) {
+        let (status, bytes) = match fetched {
             None => (403u16, None),
-            Some(object) if !principal_reads(principal, &object) => (403, None),
-            Some(object) => match state
-                .objects
-                .get(&target.tenant, &target.did, &object.key())
-                .await
-            {
-                Err(_) => return refuse(Refusal::Unavailable, now_ms),
-                Ok(Some(bytes)) => (200, Some(bytes)),
-                Ok(None) => (404, None),
-            },
+            Some(Some(bytes)) => (200, Some(bytes)),
+            Some(None) => (404, None),
         };
         total += bytes.as_ref().map_or(0, Vec::len);
         if total > MAX_PACK_BYTES {
