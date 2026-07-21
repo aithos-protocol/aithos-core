@@ -1,6 +1,6 @@
 # Session G1 + G7 entreprise — 2026-07-21
 
-Statut : `A0 COMPLETE`, prêt pour `A1`.
+Statut : `G1c COMPLETE`, prêt pour `G7a`.
 
 Ce journal est la trace d'intégration locale de la verticale définie par
 `HANDOFF-GATEWAY-G1-G7-ENTERPRISE-DASHBOARD-2026-07-21.md`. Il ne publie,
@@ -201,3 +201,81 @@ codé en dur n'a été trouvé pendant l'audit.
   doivent réutiliser les cibles existantes et surveiller le volume.
 - A1 peut commencer. Aucune implémentation G1/G7 ne doit précéder son contrat
   RED commité.
+
+## A1 — contrats gelés
+
+- `965508d test(g1-g7): freeze enterprise gateway contracts` a ajouté les
+  contrats relay, control et connecteurs : 73 scénarios. Le mode temporaire
+  `fail_on_skipped` a produit le RED attendu avant implémentation.
+- `d369265 test(g1): classify relay contract slices` a fixé les tranches
+  ordonnées `@g1a`, `@g1b`, `@g1c`.
+- `a4164ab test(g1): bind registration outline examples` a rendu les exemples
+  de refus B.2 exécutables sans modifier le contrat.
+- Le contrat SDK a été gelé séparément dans `aithos-sdk` par
+  `2aba987 test(sdk): freeze gateway control surface` et observé RED sur
+  l'absence de `GatewayControlClient`. Aucun lot SDK n'a été implémenté avant
+  G7.
+
+## G1a — tunnel sortant
+
+- Commits étroits :
+  - `6f15fe0 feat(gateway): add outbound relay client`
+  - `94fcffe fix(gateway): enable keepalive retry support`
+- Le client Rust utilise TLS avec racines système, SNI et ALPN
+  `aithos-tunnel/1`, la ligne B.2 JCS/Ed25519 via le bridge Rust borné, yamux en
+  mode serveur, keepalive et reconnexion exponentielle jitterée.
+- Les refus provider arrivent avant yamux ; remplacement, GoAway, fraîcheur du
+  nonce et isolation concurrente ont été vérifiés sur le provider réel
+  in-process.
+- Gate : 13 scénarios/52 étapes `@g1a`, tests provider P3/tunnel, suite gateway,
+  clippy et fmt réussis.
+
+## G1b — TLS publique et ACME client
+
+- Commit étroit : `c129d43 feat(gateway): terminate public TLS and manage ACME`.
+- TLS publique est terminée après yamux dans le gateway ; le relay ne voit que
+  les enregistrements chiffrés. Les PEM explicites et le cache ACME exigent des
+  modes privés, refusent les symlinks et valident clé, SAN, chaîne et validité.
+- Le cache publie une génération complète par pointeur atomique. Un renouvellement
+  échoué conserve seulement un certificat encore valide.
+- ACME DNS-01 utilise `instant-acme`, la B.5 existante et le bridge Rust borné ;
+  aucun OAuth, JCS, signature ou modèle d'autorité n'a été réimplémenté en
+  TypeScript.
+- Gate : 4 scénarios/18 étapes `@g1b`, vecteurs P6 PUT/DELETE, provider
+  `acme_replay`, 112 tests unitaires gateway, tests d'opacité réels, clippy, fmt
+  et scan anti-fuite réussis.
+
+## G1c — routeur unique direct + relay
+
+- RED ciblé observé avant code : 3 scénarios `@g1c` et leurs 14 étapes étaient
+  indéfinis ; les contrats étaient déjà commités par A1.
+- Le binaire conserve une seule identité `Arc<Keyholder>` sans exposer de
+  signer générique, construit une seule application Axum et clone ce même
+  `Router` pour l'écoute directe et le `RelayApplicationListener`.
+- Le listener relay reçoit, via une file bornée, des flux yamux dont la TLS
+  publique a déjà été terminée côté gateway. Le nombre de traitements de flux
+  simultanés est borné à 64 ; surcharge et fermeture échouent fermées.
+- L'écoute directe est liée avant le superviseur relay. Une panne PEM, ACME,
+  racines TLS, dial, reconnexion ou relay ne termine pas le serveur direct.
+  L'ACME initial s'exécute hors de ce chemin et les renouvellements réussis
+  remplacent à chaud la configuration rustls.
+- La preuve d'intégration `public_tls_relay` traverse le vrai vérificateur
+  provider, B.2, TLS tunnel, yamux, TLS publique et le listener Axum. Elle sert
+  `/mcp`, `/oauth/callback` et `/control/v1/status`, exécute le registre OAuth
+  amont existant, garde verifier et jetons dans le Vault de test, appelle le MCP
+  protégé avec le bearer résolu et vérifie la capture chiffrée sans sentinel.
+- Gate G1 complet :
+  - `@g1a or @g1b or @g1c` : 20 scénarios/84 étapes réussis ;
+  - `public_tls_relay` : 2/2 ; `relay_client` : 3/3 ;
+    `acme_txt_client` : 1/1 ;
+  - lib gateway : 113/113 ;
+  - `cargo check --all-targets`, clippy `--all-targets -D warnings`, fmt et
+    `git diff --check` réussis ;
+  - scan des nouveaux logs production : uniquement quatre messages constants,
+    aucun token, secret, verifier, clé ou détail de dial.
+- Une cible Cargo G1c neuve a rempli `/tmp` avant liaison Cucumber. Seul le
+  répertoire `/tmp/aithos-core-gateway-g1c-target`, créé par cette session, a
+  été supprimé ; les tests ont ensuite réutilisé `rust/target`. Aucun artefact
+  ou changement étranger n'a été supprimé.
+- Aucun autre agent n'est intervenu dans `aithos-gateway` pendant G1a, G1b ou
+  G1c. Aucun push, merge, déploiement ou publication n'a été effectué.

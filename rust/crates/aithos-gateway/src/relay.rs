@@ -34,6 +34,7 @@ const IO_TIMEOUT: Duration = Duration::from_secs(10);
 
 const KEEPALIVE_IDLE_SECS: u64 = 30;
 const KEEPALIVE_INTERVAL_SECS: u64 = 10;
+const MAX_CONCURRENT_APPLICATION_STREAMS: usize = 64;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 const KEEPALIVE_RETRIES: u32 = 3;
 
@@ -370,8 +371,10 @@ impl RelayClient {
                         stream = session.accept() => {
                             match stream {
                                 Ok(Some(stream)) => {
-                                    let serve = handler.clone();
-                                    handlers.spawn(serve(stream));
+                                    if handlers.len() < MAX_CONCURRENT_APPLICATION_STREAMS {
+                                        let serve = handler.clone();
+                                        handlers.spawn(serve(stream));
+                                    }
                                 }
                                 Ok(None) | Err(_) => break,
                             }

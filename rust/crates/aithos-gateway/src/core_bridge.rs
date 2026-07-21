@@ -1537,6 +1537,17 @@ impl Runner {
     pub fn open(
         cfg: &GatewayConfig,
         keyholder: Keyholder,
+        entropy: impl FnMut() -> Box<dyn EntropySource + Send>,
+    ) -> Result<Self> {
+        Self::open_shared(cfg, Arc::new(keyholder), entropy)
+    }
+
+    /// Open a runner while the binary retains a clone of the same bounded
+    /// identity for G1 registration and B.5. This does not expose a signer:
+    /// every external signature still passes through a fixed bridge method.
+    pub fn open_shared(
+        cfg: &GatewayConfig,
+        keyholder: Arc<Keyholder>,
         mut entropy: impl FnMut() -> Box<dyn EntropySource + Send>,
     ) -> Result<Self> {
         let contexts_cfg = cfg.contexts.as_ref().ok_or_else(|| {
@@ -1545,7 +1556,6 @@ impl Runner {
         let journal_cfg = cfg.journal.as_ref().ok_or_else(|| {
             GatewayError::ConfigRejected("the multi-context runner needs `journal`".into())
         })?;
-        let keyholder = Arc::new(keyholder);
         let mut contexts = BTreeMap::new();
         let mut hub_tools = BTreeMap::new();
         let mut hub_server_pins: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();

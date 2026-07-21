@@ -25,6 +25,7 @@ pub mod proxy_mcp;
 pub mod proxy_web;
 pub mod public_tls;
 pub mod relay;
+pub mod relay_application;
 pub mod store_adapter;
 pub mod upstream_oauth;
 

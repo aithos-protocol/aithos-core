@@ -5,10 +5,14 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
 
+use axum::Router;
 use clap::{Parser, Subcommand};
+use rustls::pki_types::UnixTime;
+use tokio::sync::watch;
 
-use aithos_gateway::config::GatewayConfig;
+use aithos_gateway::config::{GatewayConfig, RelayCertificateConfig, RelayConfig};
 use aithos_gateway::core_bridge::{
     Bridge, EntropySource, MandateWindow, OnboardOutcome, OsEntropy, Runner,
 };
@@ -18,6 +22,12 @@ use aithos_gateway::proxy_llm::{router_llm, HttpLlmUpstream, LlmProxy};
 use aithos_gateway::proxy_mcp::{
     router, router_multi, verify_hub_upstreams_except, HttpUpstream, McpProxy, McpRouter,
 };
+use aithos_gateway::public_tls::{
+    load_private_pem, public_tls_slot, AcmeCertificateManager, AcmeTxtClient, CertificateSource,
+    InstantAcmeIssuer, PublicTlsAcceptor, PublicTlsActivator, SecureTlsCache,
+};
+use aithos_gateway::relay::{RelayClient, RelayHealth, RelayInputs, RelayReadiness};
+use aithos_gateway::relay_application::relay_application_channel;
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::upstream_oauth::{self, UpstreamOAuthRegistry};
 
@@ -899,7 +909,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Command::Run => {
-            let keyholder = Keyholder::load(std::path::Path::new(&cli.identity))?;
+            let keyholder = Arc::new(Keyholder::load(std::path::Path::new(&cli.identity))?);
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()?;
@@ -907,9 +917,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             // one bridge per context + the journal, one upstream per
             // context, the same single agent-facing endpoint.
             let app = if let Some(contexts) = &cfg.contexts {
-                let runner = Arc::new(tokio::sync::Mutex::new(Runner::open(
+                let runner = Arc::new(tokio::sync::Mutex::new(Runner::open_shared(
                     &cfg,
-                    keyholder,
+                    Arc::clone(&keyholder),
                     || Box::new(OsEntropy),
                 )?));
                 let brokers = aithos_gateway::credentials::build_brokers(&cfg)?;
@@ -999,7 +1009,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 let bridge = Bridge::open(
                     GatewayStore::from_config(cfg.mono_store()?)?,
-                    Arc::new(keyholder),
+                    Arc::clone(&keyholder),
                     Box::new(OsEntropy),
                 )?;
                 router(Arc::new(McpProxy {
@@ -1009,12 +1019,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     clock: Arc::new(|| ts(now_secs())),
                 }))
             };
-            rt.block_on(async {
-                let listener = tokio::net::TcpListener::bind(&cfg.listen).await?;
-                eprintln!("gateway listening on http://{}/mcp", cfg.listen);
-                axum::serve(listener, app).await?;
-                Ok(())
-            })
+            rt.block_on(serve_gateway(&cfg, app, keyholder))
         }
         Command::AuditExport {
             auditor_seed_hex,
@@ -1059,6 +1064,231 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
     }
+}
+
+const RELAY_APPLICATION_CAPACITY: usize = 64;
+const PUBLIC_TLS_RETRY: Duration = Duration::from_secs(60);
+const ACME_RENEWAL_CHECK: Duration = Duration::from_secs(6 * 60 * 60);
+const ACME_RENEWAL_RETRY: Duration = Duration::from_secs(5 * 60);
+
+struct PublicTlsRuntime {
+    acceptor: PublicTlsAcceptor,
+    renewal: Option<tokio::task::JoinHandle<()>>,
+}
+
+/// Serve one immutable application router through both ingress paths. Relay
+/// setup and reconnect are isolated in their own supervisor: a certificate,
+/// DNS or tunnel outage cannot take down the historical direct listener.
+async fn serve_gateway(
+    cfg: &GatewayConfig,
+    app: Router,
+    identity: Arc<Keyholder>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let listener = tokio::net::TcpListener::bind(&cfg.listen).await?;
+    eprintln!("gateway listening on http://{}/mcp", cfg.listen);
+
+    let Some(relay) = cfg.relay.clone() else {
+        axum::serve(listener, app).await?;
+        return Ok(());
+    };
+
+    let health = RelayHealth::new(RelayReadiness::Unavailable);
+    let (shutdown_sender, shutdown) = watch::channel(false);
+    let relay_task = tokio::spawn(run_relay_plane(
+        relay,
+        identity,
+        app.clone(),
+        health,
+        shutdown,
+    ));
+
+    let direct_result = axum::serve(listener, app).await;
+    let _ = shutdown_sender.send(true);
+    let _ = relay_task.await;
+    direct_result?;
+    Ok(())
+}
+
+async fn run_relay_plane(
+    config: RelayConfig,
+    identity: Arc<Keyholder>,
+    app: Router,
+    health: RelayHealth,
+    mut shutdown: watch::Receiver<bool>,
+) {
+    loop {
+        if *shutdown.borrow() {
+            return;
+        }
+
+        let tls = match prepare_public_tls(&config, Arc::clone(&identity), shutdown.clone()).await {
+            Ok(tls) => tls,
+            Err(_) => {
+                eprintln!("relay public TLS unavailable; direct listener remains active");
+                if wait_for_relay_retry(&mut shutdown, PUBLIC_TLS_RETRY).await {
+                    return;
+                }
+                continue;
+            }
+        };
+        let relay = match RelayClient::from_system_roots(config.clone()) {
+            Ok(relay) => relay,
+            Err(_) => {
+                if let Some(renewal) = tls.renewal {
+                    renewal.abort();
+                }
+                eprintln!("relay trust roots unavailable; direct listener remains active");
+                if wait_for_relay_retry(&mut shutdown, PUBLIC_TLS_RETRY).await {
+                    return;
+                }
+                continue;
+            }
+        };
+        let (ingress, relay_listener) = match relay_application_channel(RELAY_APPLICATION_CAPACITY)
+        {
+            Ok(channel) => channel,
+            Err(_) => return,
+        };
+        let relay_app = app.clone();
+        let router_task = tokio::spawn(async move {
+            let _ = axum::serve(relay_listener, relay_app).await;
+        });
+        let acceptor = tls.acceptor.clone();
+        let inputs = relay_inputs();
+        let relay_result = relay
+            .run(
+                Arc::clone(&identity),
+                inputs,
+                health.clone(),
+                shutdown.clone(),
+                move |stream| {
+                    let ingress = ingress.clone();
+                    let acceptor = acceptor.clone();
+                    async move {
+                        let _ = ingress.accept(&acceptor, stream).await;
+                    }
+                },
+            )
+            .await;
+
+        router_task.abort();
+        if let Some(renewal) = tls.renewal {
+            renewal.abort();
+        }
+        if *shutdown.borrow() {
+            return;
+        }
+        if relay_result.is_err() {
+            eprintln!("relay supervisor unavailable; direct listener remains active");
+        }
+        if wait_for_relay_retry(&mut shutdown, PUBLIC_TLS_RETRY).await {
+            return;
+        }
+    }
+}
+
+async fn prepare_public_tls(
+    config: &RelayConfig,
+    identity: Arc<Keyholder>,
+    shutdown: watch::Receiver<bool>,
+) -> aithos_gateway::Result<PublicTlsRuntime> {
+    match &config.cert {
+        RelayCertificateConfig::Pem {
+            cert_file,
+            key_file,
+        } => {
+            let current = load_private_pem(cert_file, key_file, &config.hostname, unix_time_now())?;
+            let (_fixed, acceptor) = public_tls_slot(current);
+            Ok(PublicTlsRuntime {
+                acceptor,
+                renewal: None,
+            })
+        }
+        RelayCertificateConfig::AcmeDns01 {
+            directory,
+            store_url,
+            cache_dir,
+        } => {
+            let cache = SecureTlsCache::open(cache_dir.clone())?;
+            let dns = AcmeTxtClient::new(
+                store_url,
+                identity,
+                Arc::new(|| ts(now_secs())),
+                Arc::new(relay_nonce),
+            )?;
+            let issuer = InstantAcmeIssuer::new(directory.clone(), dns, cache.clone());
+            let manager = Arc::new(AcmeCertificateManager::new(cache, issuer));
+            let lease = manager.ensure(&config.hostname, unix_time_now()).await?;
+            let (activator, acceptor) = public_tls_slot(lease.config);
+            let hostname = config.hostname.clone();
+            let renewal = tokio::spawn(renew_public_tls(manager, activator, hostname, shutdown));
+            Ok(PublicTlsRuntime {
+                acceptor,
+                renewal: Some(renewal),
+            })
+        }
+    }
+}
+
+async fn renew_public_tls(
+    manager: Arc<AcmeCertificateManager<InstantAcmeIssuer>>,
+    activator: PublicTlsActivator,
+    hostname: String,
+    mut shutdown: watch::Receiver<bool>,
+) {
+    let mut delay = ACME_RENEWAL_CHECK;
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(delay) => {}
+            changed = shutdown.changed() => {
+                if changed.is_err() || *shutdown.borrow() {
+                    return;
+                }
+                continue;
+            }
+        }
+        match manager.ensure(&hostname, unix_time_now()).await {
+            Ok(lease) => {
+                delay = if lease.source == CertificateSource::RetainedAfterRenewalFailure {
+                    ACME_RENEWAL_RETRY
+                } else {
+                    ACME_RENEWAL_CHECK
+                };
+                activator.replace(lease.config);
+            }
+            Err(_) => delay = ACME_RENEWAL_RETRY,
+        }
+    }
+}
+
+async fn wait_for_relay_retry(shutdown: &mut watch::Receiver<bool>, delay: Duration) -> bool {
+    tokio::select! {
+        _ = tokio::time::sleep(delay) => false,
+        changed = shutdown.changed() => changed.is_err() || *shutdown.borrow(),
+    }
+}
+
+fn relay_inputs() -> RelayInputs {
+    RelayInputs {
+        clock: Arc::new(|| ts(now_secs())),
+        nonce: Arc::new(relay_nonce),
+        jitter: Arc::new(relay_jitter),
+    }
+}
+
+fn relay_nonce() -> String {
+    let mut entropy = OsEntropy;
+    hex::encode(entropy.e16())
+}
+
+fn relay_jitter() -> u64 {
+    let mut entropy = OsEntropy;
+    let sample = entropy.e16();
+    u64::from_le_bytes(sample[..8].try_into().expect("fixed entropy width"))
+}
+
+fn unix_time_now() -> UnixTime {
+    UnixTime::since_unix_epoch(Duration::from_secs(now_secs()))
 }
 
 fn parse_approvals(

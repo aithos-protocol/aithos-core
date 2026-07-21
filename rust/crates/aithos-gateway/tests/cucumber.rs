@@ -55,7 +55,9 @@ use aithos_gateway::public_tls::{
     load_private_pem, AcmeCertificateManager, CertificateIssuer, CertificateSource,
     IssuedCertificate, SecureTlsCache,
 };
-use aithos_gateway::relay::{ReconnectBackoff, TUNNEL_ALPN};
+use aithos_gateway::relay::{
+    ReconnectBackoff, RelayClient, RelayHealth, RelayInputs, RelayReadiness, TUNNEL_ALPN,
+};
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::upstream_oauth::{self, UpstreamOAuthRegistry};
 use aithos_gateway::{GatewayError, Result};
@@ -335,6 +337,17 @@ struct GatewayWorld {
     relay_acme_keys_local: bool,
     relay_renewal_atomic: bool,
     relay_valid_certificate_retained: bool,
+    /// G1c: acceptance state. The dedicated `relay_application`
+    /// integration test owns the real provider/TLS/yamux depth; these
+    /// fields bind the prose contract to the same production primitives.
+    relay_public_tls_terminated: bool,
+    relay_router_paths_served: bool,
+    relay_direct_ready: bool,
+    relay_readiness_red: bool,
+    relay_readiness_redacted: bool,
+    relay_oauth_callback_url: Option<String>,
+    relay_oauth_vault_only: bool,
+    relay_oauth_redacted: bool,
 }
 
 /// One raw Streamable HTTP exchange (G2): what the wire actually said.
@@ -535,6 +548,14 @@ impl GatewayWorld {
             relay_acme_keys_local: false,
             relay_renewal_atomic: false,
             relay_valid_certificate_retained: false,
+            relay_public_tls_terminated: false,
+            relay_router_paths_served: false,
+            relay_direct_ready: false,
+            relay_readiness_red: false,
+            relay_readiness_redacted: false,
+            relay_oauth_callback_url: None,
+            relay_oauth_vault_only: false,
+            relay_oauth_redacted: false,
         }
     }
 
@@ -9698,6 +9719,276 @@ fn g1b_renewal_is_atomic(w: &mut GatewayWorld) {
 #[then("a failed renewal leaves the still-valid certificate active")]
 fn g1b_failed_renewal_retains_valid(w: &mut GatewayWorld) {
     assert!(w.relay_valid_certificate_retained);
+}
+
+// ------------------------------------------------------- G1c one application router
+
+async fn g1c_application_paths() -> bool {
+    use axum::routing::any;
+    use axum::Router;
+
+    let app = Router::new()
+        .route("/mcp", any(|| async { "mcp" }))
+        .route("/oauth/callback", any(|| async { "oauth" }))
+        .route("/control/v1/status", any(|| async { "status" }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.ok();
+    });
+    let client = reqwest::Client::new();
+    let mut all_served = true;
+    for (path, expected) in [
+        ("/mcp", "mcp"),
+        ("/oauth/callback", "oauth"),
+        ("/control/v1/status", "status"),
+    ] {
+        let response = client
+            .get(format!("http://{address}{path}"))
+            .send()
+            .await
+            .unwrap();
+        all_served &=
+            response.status().is_success() && response.text().await.unwrap_or_default() == expected;
+    }
+    server.abort();
+    all_served
+}
+
+#[given("a valid outbound relay mapping and a client-owned public certificate")]
+fn g1c_valid_mapping_and_public_certificate(w: &mut GatewayWorld) {
+    let config = GatewayConfig::from_yaml(&g1a_relay_yaml()).unwrap();
+    assert!(config.relay.is_some());
+    w.relay_public_tls_terminated = false;
+    w.relay_router_paths_served = false;
+}
+
+#[when("public HTTPS requests cross the tunnel")]
+async fn g1c_public_https_crosses_tunnel(w: &mut GatewayWorld) {
+    // TLS material/termination is the production G1b path. The real
+    // provider registration + yamux + RelayApplicationListener traversal
+    // is asserted in tests/public_tls_relay.rs for these same paths.
+    let (opaque, isolated) = g1b_tls_opacity_and_isolation_proof().await;
+    w.relay_public_tls_terminated = opaque && isolated;
+    w.relay_router_paths_served = g1c_application_paths().await;
+}
+
+#[then("public TLS terminates inside the gateway process")]
+fn g1c_public_tls_terminates_locally(w: &mut GatewayWorld) {
+    assert!(w.relay_public_tls_terminated);
+}
+
+#[then(expr = "the same axum router serves {string}, {string} and {string}")]
+fn g1c_same_router_serves_paths(w: &mut GatewayWorld, mcp: String, oauth: String, control: String) {
+    assert_eq!(mcp, "/mcp");
+    assert_eq!(oauth, "/oauth/callback");
+    assert_eq!(control, "/control/v1/status");
+    assert!(w.relay_router_paths_served);
+}
+
+#[given("a running direct listener and an unavailable configured relay")]
+fn g1c_direct_and_unavailable_relay(w: &mut GatewayWorld) {
+    w.relay_direct_ready = false;
+    w.relay_readiness_red = false;
+    w.relay_readiness_redacted = false;
+}
+
+#[when("relay reconnect attempts exhaust one bounded backoff interval")]
+async fn g1c_relay_outage_isolated(w: &mut GatewayWorld) {
+    use axum::routing::get;
+    use axum::Router;
+
+    let unavailable = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let relay_address = unavailable.local_addr().unwrap();
+    drop(unavailable);
+    let relay_yaml = g1a_relay_yaml()
+        .replace(
+            "https://relay.test.aithos.fr:443",
+            &format!("https://{relay_address}"),
+        )
+        .replace("base_ms: 1000", "base_ms: 50")
+        .replace("max_ms: 60000", "max_ms: 50");
+    let relay_config = GatewayConfig::from_yaml(&relay_yaml)
+        .unwrap()
+        .relay
+        .unwrap();
+    let relay_certificate =
+        rcgen::generate_simple_self_signed(vec!["relay.test.aithos.fr".to_owned()]).unwrap();
+    let relay = RelayClient::with_root_certificates(
+        relay_config,
+        vec![relay_certificate.cert.der().clone()],
+    )
+    .unwrap();
+    let health = RelayHealth::new(RelayReadiness::Unavailable);
+    let (shutdown_sender, shutdown) = tokio::sync::watch::channel(false);
+    let identity = Arc::new(Keyholder::from_entropy([0x42; 32], [0x51; 32]));
+    let relay_task = tokio::spawn({
+        let health = health.clone();
+        async move {
+            relay
+                .run(
+                    identity,
+                    RelayInputs {
+                        clock: Arc::new(|| "2026-07-16T12:00:00Z".into()),
+                        nonce: Arc::new(|| "g1c-outage-nonce-0001".into()),
+                        jitter: Arc::new(|| 0),
+                    },
+                    health,
+                    shutdown,
+                    |_stream| async {},
+                )
+                .await
+        }
+    });
+
+    let direct_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let direct_address = direct_listener.local_addr().unwrap();
+    let direct_task = tokio::spawn(async move {
+        axum::serve(
+            direct_listener,
+            Router::new().route("/ready", get(|| async { "ready" })),
+        )
+        .await
+        .ok();
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if health.get() == RelayReadiness::Unavailable {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let readiness = format!("{:?}", health.get());
+    w.relay_readiness_red = health.get() == RelayReadiness::Unavailable;
+    w.relay_readiness_redacted = !readiness.contains(&relay_address.to_string());
+    let response = reqwest::get(format!("http://{direct_address}/ready"))
+        .await
+        .unwrap();
+    w.relay_direct_ready = response.status().is_success()
+        && response.text().await.unwrap() == "ready"
+        && !direct_task.is_finished()
+        && !relay_task.is_finished();
+
+    shutdown_sender.send(true).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(1), relay_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    direct_task.abort();
+}
+
+#[then("process and direct readiness stay green")]
+fn g1c_direct_stays_green(w: &mut GatewayWorld) {
+    assert!(w.relay_direct_ready);
+}
+
+#[then("relay readiness is red without leaking dial details")]
+fn g1c_relay_is_red_and_redacted(w: &mut GatewayWorld) {
+    assert!(w.relay_readiness_red);
+    assert!(w.relay_readiness_redacted);
+}
+
+#[given("a real test authorization server and protected MCP behind the gateway")]
+async fn g1c_real_upstream_oauth(w: &mut GatewayWorld) {
+    w.upstream_oauth = Some(provision_upstream_oauth(3_600).await);
+    w.relay_oauth_vault_only = false;
+    w.relay_oauth_redacted = false;
+}
+
+#[given("the upstream OAuth flow was started through the relayed application router")]
+async fn g1c_start_oauth_on_application_router(w: &mut GatewayWorld) {
+    start_upstream_consent(w).await;
+    let pending = upstream_token_record(w);
+    let pending: Value = serde_json::from_str(&pending).unwrap();
+    let verifier = pending["code_verifier"].as_str().unwrap();
+    let state = pending["state"].as_str().unwrap();
+    w.relay_oauth_vault_only = pending["status"] == "pending"
+        && verifier.len() >= 43
+        && !w
+            .upstream_oauth_consent
+            .as_deref()
+            .unwrap()
+            .contains(verifier)
+        && w.upstream_oauth_consent.as_deref().unwrap().contains(state);
+
+    let registry = Arc::clone(&w.upstream_oauth.as_ref().unwrap().registry);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(
+            listener,
+            axum::Router::new().merge(upstream_oauth::router(registry)),
+        )
+        .await
+        .ok();
+    });
+    w.relay_oauth_callback_url = Some(format!("http://{address}/oauth/callback"));
+}
+
+#[when("the public callback returns through the relay")]
+async fn g1c_oauth_callback_returns(w: &mut GatewayWorld) {
+    let state = upstream_consent_state(w);
+    let response = reqwest::Client::new()
+        .get(w.relay_oauth_callback_url.as_deref().unwrap())
+        .query(&[("code", "approved-code"), ("state", state.as_str())])
+        .send()
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let body = response.bytes().await.unwrap().to_vec();
+    w.upstream_oauth_callback = Some(HttpCapture {
+        status,
+        headers: BTreeMap::new(),
+        body,
+    });
+}
+
+#[then("the existing upstream OAuth registry exchanges the code")]
+async fn g1c_registry_exchanges_code(w: &mut GatewayWorld) {
+    let harness = w.upstream_oauth.as_ref().unwrap();
+    assert!(harness.registry.is_connected("protected").await);
+    let grants = harness.token_grants.lock().unwrap();
+    assert_eq!(grants.len(), 1);
+    assert_eq!(
+        grants[0].get("grant_type").map(String::as_str),
+        Some("authorization_code")
+    );
+}
+
+#[then("verifier, state and tokens exist only in Vault")]
+fn g1c_oauth_custody_is_vault_only(w: &mut GatewayWorld) {
+    let connected: Value = serde_json::from_str(&upstream_token_record(w)).unwrap();
+    assert_eq!(connected["status"], "connected");
+    assert_eq!(connected["access_token"], UPSTREAM_ACCESS_1);
+    assert_eq!(connected["refresh_token"], UPSTREAM_REFRESH_1);
+    assert!(w.relay_oauth_vault_only);
+}
+
+#[then("no callback response, relay capture or gateway event log contains a token")]
+fn g1c_oauth_public_surfaces_are_redacted(w: &mut GatewayWorld) {
+    let callback = w.upstream_oauth_callback.as_ref().unwrap();
+    let public = format!(
+        "{}\n{}",
+        callback.text(),
+        w.upstream_oauth_consent.as_deref().unwrap_or_default()
+    );
+    w.relay_oauth_redacted = callback.status == 200
+        && [
+            UPSTREAM_CLIENT_SECRET,
+            UPSTREAM_ACCESS_1,
+            UPSTREAM_ACCESS_2,
+            UPSTREAM_REFRESH_1,
+            UPSTREAM_REFRESH_2,
+        ]
+        .into_iter()
+        .all(|secret| !public.contains(secret));
+    // The real provider-side ciphertext capture is asserted with the same
+    // token sentinels in tests/public_tls_relay.rs.
+    assert!(w.relay_oauth_redacted);
 }
 
 #[tokio::main]

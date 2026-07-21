@@ -1,17 +1,26 @@
 //! G1b end-to-end opacity: real TLS terminates after a real provider-verified
 //! tunnel and yamux stream. The provider-side capture contains ciphertext only.
 
+use std::collections::BTreeMap;
+use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use aithos_gateway::config::{RelayCertificateConfig, RelayConfig, RelayReconnectConfig};
+use aithos_gateway::config::{
+    GatewayConfig, RelayCertificateConfig, RelayConfig, RelayReconnectConfig,
+};
 use aithos_gateway::core_bridge::gateway_pub_multibase;
+use aithos_gateway::credentials::{CredentialBroker, CredentialRef, SecretValue};
 use aithos_gateway::keyholder::Keyholder;
+use aithos_gateway::proxy_mcp::{HttpUpstream, Upstream};
 use aithos_gateway::public_tls::{load_private_pem, public_tls_slot, PublicTlsAcceptor};
 use aithos_gateway::relay::{RelayClient, RelayHealth, RelayInputs, RelayReadiness, TUNNEL_ALPN};
+use aithos_gateway::relay_application::relay_application_channel;
+use aithos_gateway::upstream_oauth::{self, UpstreamOAuthRegistry};
+use aithos_gateway::{GatewayError, Result};
 use aithos_provider::control::{ControlPlane, TunnelBinding};
 use aithos_provider::nonces::MemNonces;
 use aithos_provider::passthrough::{
@@ -20,6 +29,7 @@ use aithos_provider::passthrough::{
 use aithos_provider::time::parse_rfc3339z_ms;
 use aithos_provider::tunnel::{answer, verify_registration};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
@@ -376,4 +386,360 @@ async fn relay_capture_is_opaque_and_public_tls_streams_remain_isolated() {
         .await
         .unwrap()
         .unwrap();
+}
+
+#[derive(Default)]
+struct OAuthVault {
+    values: Mutex<BTreeMap<(String, String), String>>,
+}
+
+impl OAuthVault {
+    fn put(&self, path: &str, field: &str, value: &str) {
+        self.values
+            .lock()
+            .unwrap()
+            .insert((path.into(), field.into()), value.into());
+    }
+
+    fn get(&self, path: &str, field: &str) -> Option<String> {
+        self.values
+            .lock()
+            .unwrap()
+            .get(&(path.into(), field.into()))
+            .cloned()
+    }
+}
+
+impl CredentialBroker for OAuthVault {
+    fn resolve<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+    ) -> Pin<Box<dyn Future<Output = Result<SecretValue>> + Send + 'a>> {
+        Box::pin(async move {
+            self.get(&reference.path, &reference.field)
+                .map(SecretValue::new)
+                .ok_or_else(|| {
+                    GatewayError::CredentialUnavailable("test Vault field absent".into())
+                })
+        })
+    }
+
+    fn store<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+        value: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(async move {
+            self.put(&reference.path, &reference.field, value.expose());
+            Ok(())
+        })
+    }
+}
+
+const OAUTH_CLIENT_SECRET: &str = "g1c-client-secret-sentinel";
+const OAUTH_ACCESS_TOKEN: &str = "g1c-access-token-sentinel";
+const OAUTH_REFRESH_TOKEN: &str = "g1c-refresh-token-sentinel";
+const OAUTH_TOKEN_PATH: &str = "aithos/oauth/protected";
+const OAUTH_TOKEN_FIELD: &str = "state";
+
+async fn fake_protected_mcp() -> (
+    String,
+    Arc<Mutex<Vec<BTreeMap<String, String>>>>,
+    Arc<Mutex<Vec<Option<String>>>>,
+) {
+    use axum::extract::{Form, State};
+    use axum::http::HeaderMap;
+    use axum::routing::post;
+    use axum::{Json, Router};
+
+    #[derive(Clone)]
+    struct StateData {
+        grants: Arc<Mutex<Vec<BTreeMap<String, String>>>>,
+        bearers: Arc<Mutex<Vec<Option<String>>>>,
+    }
+
+    let state = StateData {
+        grants: Arc::default(),
+        bearers: Arc::default(),
+    };
+    let app = Router::new()
+        .route(
+            "/token",
+            post(
+                |State(state): State<StateData>,
+                 Form(form): Form<BTreeMap<String, String>>| async move {
+                    state.grants.lock().unwrap().push(form);
+                    Json(json!({
+                        "access_token": OAUTH_ACCESS_TOKEN,
+                        "refresh_token": OAUTH_REFRESH_TOKEN,
+                        "expires_in": 3600,
+                        "token_type": "Bearer",
+                        "scope": "resource.read"
+                    }))
+                },
+            ),
+        )
+        .route(
+            "/mcp",
+            post(
+                |State(state): State<StateData>,
+                 headers: HeaderMap,
+                 Json(body): Json<Value>| async move {
+                    state.bearers.lock().unwrap().push(
+                        headers
+                            .get("authorization")
+                            .and_then(|value| value.to_str().ok())
+                            .map(str::to_owned),
+                    );
+                    Json(json!({
+                        "jsonrpc": "2.0",
+                        "id": body.get("id").cloned().unwrap_or(Value::Null),
+                        "result": {"content": [{"type": "text", "text": "protected-ok"}]}
+                    }))
+                },
+            ),
+        )
+        .with_state(state.clone());
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.ok();
+    });
+    (format!("http://{address}"), state.grants, state.bearers)
+}
+
+fn oauth_gateway_config(base: &str, scratch: &std::path::Path) -> GatewayConfig {
+    let text = format!(
+        "listen: 127.0.0.1:4870
+credential_brokers:
+  enterprise:
+    kind: vault-kv2
+    address: http://127.0.0.1:8200
+    mount: secret
+    auth: {{ kind: token-env, env: AITHOS_VAULT_TOKEN }}
+servers:
+  - name: protected
+    transport: http
+    url: {base}/mcp
+    oauth:
+      auth_url: {base}/authorize
+      token_url: {base}/token
+      client_id: owner-public-client
+      client_secret:
+        broker: enterprise
+        path: aithos/oauth/client
+        field: client_secret
+      scopes: [resource.read]
+      redirect_uri: https://{HOSTNAME}/oauth/callback
+      token_vault:
+        broker: enterprise
+        path: {OAUTH_TOKEN_PATH}
+        field: {OAUTH_TOKEN_FIELD}
+contexts:
+  - name: protected-context
+    store: {{ kind: fs, root: {}/context }}
+    tools:
+      protected__read:
+        server: protected
+        tool: read
+        access: read
+journal:
+  store: {{ kind: fs, root: {}/journal }}
+",
+        scratch.display(),
+        scratch.display()
+    );
+    assert!(!text.contains(OAUTH_CLIENT_SECRET));
+    assert!(!text.contains(OAUTH_ACCESS_TOKEN));
+    assert!(!text.contains(OAUTH_REFRESH_TOKEN));
+    GatewayConfig::from_yaml(&text).unwrap()
+}
+
+async fn application_request(
+    session: &TunnelSession,
+    connector: &TlsConnector,
+    method: &str,
+    target: &str,
+) -> (u16, Vec<u8>, Arc<Mutex<Vec<u8>>>) {
+    let capture = Arc::new(Mutex::new(Vec::new()));
+    let mut tls = connect_public(session, connector, Arc::clone(&capture)).await;
+    let request = format!(
+        "{method} {target} HTTP/1.1\r\nhost: {HOSTNAME}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+    );
+    tls.write_all(request.as_bytes()).await.unwrap();
+    tls.flush().await.unwrap();
+    let headers = read_headers(&mut tls).await.unwrap();
+    let headers = std::str::from_utf8(&headers).unwrap();
+    let status = headers
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap()
+        .parse()
+        .unwrap();
+    let length: usize = headers
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse().unwrap())
+        })
+        .unwrap();
+    let mut body = vec![0u8; length];
+    tls.read_exact(&mut body).await.unwrap();
+    (status, body, capture)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn one_router_serves_direct_and_relay_with_oauth_vault_custody() {
+    use axum::routing::{get, post};
+    use axum::Router;
+
+    let scratch = tempfile::tempdir().unwrap();
+    let (protected_base, token_grants, resource_bearers) = fake_protected_mcp().await;
+    let config = oauth_gateway_config(&protected_base, scratch.path());
+    let vault = Arc::new(OAuthVault::default());
+    vault.put("aithos/oauth/client", "client_secret", OAUTH_CLIENT_SECRET);
+    let mut brokers: BTreeMap<String, Arc<dyn CredentialBroker>> = BTreeMap::new();
+    brokers.insert("enterprise".into(), vault.clone());
+    let registry = Arc::new(UpstreamOAuthRegistry::from_config(&config, &brokers).unwrap());
+    let protected = HttpUpstream::for_server_with_oauth(
+        &config.servers.as_ref().unwrap()[0],
+        &brokers,
+        &registry,
+    )
+    .unwrap();
+
+    let app = Router::new()
+        .route("/mcp", post(|| async { "mcp" }))
+        .route("/control/v1/status", get(|| async { "status" }))
+        .merge(upstream_oauth::router(Arc::clone(&registry)));
+    let direct_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let direct_address = direct_listener.local_addr().unwrap();
+    let direct_app = app.clone();
+    let direct_task = tokio::spawn(async move {
+        axum::serve(direct_listener, direct_app).await.ok();
+    });
+
+    let identity = identity();
+    let mut fake = fake_relay(gateway_pub_multibase(&identity)).await;
+    let relay =
+        RelayClient::with_root_certificates(relay_config(fake.addr), vec![fake.ca]).unwrap();
+    let (_tls_files, public_acceptor, public_connector, _public_ca) = public_tls();
+    let (ingress, listener) = relay_application_channel(64).unwrap();
+    let relayed_app = app.clone();
+    let application_task = tokio::spawn(async move {
+        axum::serve(listener, relayed_app).await.ok();
+    });
+    let health = RelayHealth::new(RelayReadiness::Disabled);
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let relay_task = tokio::spawn(async move {
+        relay
+            .run(
+                identity,
+                RelayInputs {
+                    clock: Arc::new(|| AT.into()),
+                    nonce: Arc::new(|| "g1c-tunnel-nonce-0001".into()),
+                    jitter: Arc::new(|| 0),
+                },
+                health,
+                shutdown_rx,
+                move |stream| {
+                    let ingress = ingress.clone();
+                    let acceptor = public_acceptor.clone();
+                    async move {
+                        ingress.accept(&acceptor, stream).await.unwrap();
+                    }
+                },
+            )
+            .await
+            .unwrap();
+    });
+    let session = tokio::time::timeout(Duration::from_secs(2), fake.sessions.recv())
+        .await
+        .unwrap()
+        .unwrap();
+
+    let direct_status = reqwest::get(format!("http://{direct_address}/control/v1/status"))
+        .await
+        .unwrap();
+    assert_eq!(direct_status.status(), reqwest::StatusCode::OK);
+    assert_eq!(direct_status.text().await.unwrap(), "status");
+
+    let (mcp_status, mcp_body, mcp_capture) =
+        application_request(&session, &public_connector, "POST", "/mcp").await;
+    assert_eq!(mcp_status, 200);
+    assert_eq!(mcp_body, b"mcp");
+    let (control_status, control_body, control_capture) =
+        application_request(&session, &public_connector, "GET", "/control/v1/status").await;
+    assert_eq!(control_status, 200);
+    assert_eq!(control_body, b"status");
+
+    let consent = registry.start("protected").await.unwrap();
+    let consent_url = reqwest::Url::parse(&consent.authorization_url).unwrap();
+    let state = consent_url
+        .query_pairs()
+        .find(|(name, _)| name == "state")
+        .map(|(_, value)| value.into_owned())
+        .unwrap();
+    let pending = vault.get(OAUTH_TOKEN_PATH, OAUTH_TOKEN_FIELD).unwrap();
+    let pending: Value = serde_json::from_str(&pending).unwrap();
+    let verifier = pending["code_verifier"].as_str().unwrap().to_owned();
+    assert_eq!(pending["state"], state);
+    assert!(!consent.authorization_url.contains(&verifier));
+
+    let callback_target = format!("/oauth/callback?code=approved-code&state={state}");
+    let (callback_status, callback_body, callback_capture) =
+        application_request(&session, &public_connector, "GET", &callback_target).await;
+    assert_eq!(callback_status, 200);
+    assert!(registry.is_connected("protected").await);
+    let connected = vault.get(OAUTH_TOKEN_PATH, OAUTH_TOKEN_FIELD).unwrap();
+    let connected: Value = serde_json::from_str(&connected).unwrap();
+    assert_eq!(connected["access_token"], OAUTH_ACCESS_TOKEN);
+    assert_eq!(connected["refresh_token"], OAUTH_REFRESH_TOKEN);
+    assert_eq!(token_grants.lock().unwrap().len(), 1);
+
+    let answer = protected
+        .forward(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "read", "arguments": {}}
+        }))
+        .await
+        .unwrap();
+    assert_eq!(answer["result"]["content"][0]["text"], "protected-ok");
+    assert_eq!(
+        resource_bearers.lock().unwrap().as_slice(),
+        &[Some(format!("Bearer {OAUTH_ACCESS_TOKEN}"))]
+    );
+
+    let captures = [mcp_capture, control_capture, callback_capture];
+    for capture in captures {
+        let ciphertext = capture.lock().unwrap();
+        for secret in [
+            OAUTH_CLIENT_SECRET,
+            OAUTH_ACCESS_TOKEN,
+            OAUTH_REFRESH_TOKEN,
+            verifier.as_str(),
+            state.as_str(),
+            "approved-code",
+        ] {
+            assert!(!ciphertext
+                .windows(secret.len())
+                .any(|window| window == secret.as_bytes()));
+        }
+    }
+    let callback_body = String::from_utf8(callback_body).unwrap();
+    for secret in [OAUTH_CLIENT_SECRET, OAUTH_ACCESS_TOKEN, OAUTH_REFRESH_TOKEN] {
+        assert!(!callback_body.contains(secret));
+    }
+
+    shutdown_tx.send(true).unwrap();
+    tokio::time::timeout(Duration::from_secs(2), relay_task)
+        .await
+        .unwrap()
+        .unwrap();
+    direct_task.abort();
+    application_task.abort();
 }
