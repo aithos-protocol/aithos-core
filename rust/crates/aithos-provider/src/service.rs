@@ -274,7 +274,15 @@ async fn decide(
 
     // Dispatch.
     let (response, resp_bytes) = match (&target.kind, parts.method.as_str()) {
-        (TargetKind::Object(object), "GET") => serve_object(state, &target, object, now_ms).await,
+        (TargetKind::Object(object), "GET") => {
+            // P3 — conditional revalidation on the A.6 revalidate classes:
+            // the client replays the strong ETag it holds.
+            let if_none_match = parts
+                .headers
+                .get(header::IF_NONE_MATCH)
+                .and_then(|value| value.to_str().ok());
+            serve_object(state, &target, object, now_ms, if_none_match).await
+        }
         // Publish (A.4/A.5): CAS mandatory, deposit verified by
         // composition — under the in-process deposit lock.
         (TargetKind::Object(ObjectPath::Manifest), "PUT") => match &principal {
@@ -520,6 +528,7 @@ async fn serve_object(
     target: &DataTarget,
     object: &ObjectPath,
     now_ms: i64,
+    if_none_match: Option<&str>,
 ) -> (Response<Body>, usize) {
     match state
         .objects
@@ -530,13 +539,34 @@ async fn serve_object(
         Err(_) => refuse(Refusal::Unavailable, now_ms),
         Ok(Some(bytes)) => {
             let len = bytes.len();
+            let etag = strong_etag(object, &bytes);
+            // P3 (A.6): a replayed strong ETag on a revalidate-class
+            // path answers 304 — same class, same ETag, no body. Only
+            // an EXACT strong match (or `*`) revalidates; the immutable
+            // and no-store classes never carry an ETag, so they never
+            // enter this arm.
+            if let (Some(etag), Some(inm)) = (&etag, if_none_match) {
+                let matches = inm
+                    .split(',')
+                    .map(str::trim)
+                    .any(|candidate| candidate == "*" || candidate == etag);
+                if matches {
+                    let response = Response::builder()
+                        .status(StatusCode::NOT_MODIFIED)
+                        .header(header::CACHE_CONTROL, cache_class(object, now_ms))
+                        .header(header::ETAG, etag.clone())
+                        .body(Body::empty())
+                        .expect("static response");
+                    return (response, 0);
+                }
+            }
             let mut response = Response::builder()
                 .status(StatusCode::OK)
                 // The A.6 cache class is the PATH's, computed at the
                 // serving instant — never the backend's decision.
                 .header(header::CACHE_CONTROL, cache_class(object, now_ms))
                 .header(header::CONTENT_TYPE, "application/octet-stream");
-            if let Some(etag) = strong_etag(object, &bytes) {
+            if let Some(etag) = etag {
                 response = response.header(header::ETAG, etag);
             }
             (

@@ -60,11 +60,19 @@ serde_yaml = "0.9"
 
 # provider service (piste P, lot P1 — INFRA-PROVIDER annexes A/B/C)
 base64 = "0.22"
+# P3 RemoteStore client (aithos-bundle feature `remote`, arbitrage ①
+# 2026-07-21): minimal BLOCKING http client for a sync lib — no async
+# runtime imposed on aithos-bundle consumers; rustls only, never a C TLS.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 aws-config = "1"
 aws-sdk-dynamodb = "1"
 aws-sdk-s3 = "1"
+# P5 witness service (lot A): the KMS native Ed25519 sign-only key (annexe
+# C.1) and the heads-table stream that carries the C.2 publish trigger
+aws-sdk-kms = "1"
+aws-sdk-dynamodbstreams = "1"
 tower = "0.5"
 
 # relay passthrough (piste P, lot P6 jalon M2 — INFRA-PROVIDER annexe B):

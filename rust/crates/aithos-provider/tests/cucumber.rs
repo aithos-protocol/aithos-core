@@ -183,6 +183,10 @@ struct StoreWorld {
     /// when it was installed (the "never restarted" Then).
     control_store: Option<Arc<MutableControl>>,
     control_state_mark: Option<Arc<AppState>>,
+    /// P3 revalidation steps: the If-None-Match to send on the NEXT fire
+    /// (one-shot), and the ETag the conditional GET replayed.
+    next_if_none_match: Option<String>,
+    remembered_etag: Option<String>,
 }
 
 struct Answer {
@@ -450,6 +454,8 @@ impl StoreWorld {
             log_mark: 0,
             control_store: None,
             control_state_mark: None,
+            next_if_none_match: None,
+            remembered_etag: None,
         }
         .tap(|_| {
             let _ = f;
@@ -641,6 +647,11 @@ impl StoreWorld {
         }
         if let Some(v) = &pending.version_header {
             request = request.header("x-aithos-store", v);
+        }
+        // P3 — conditional revalidation (A.6): one-shot header, armed by
+        // the If-None-Match steps only.
+        if let Some(inm) = self.next_if_none_match.take() {
+            request = request.header(header::IF_NONE_MATCH, inm);
         }
         let request = request
             .body(Body::from(pending.body.clone()))
@@ -2359,6 +2370,68 @@ async fn anonymous_get_public_alias(world: &mut StoreWorld) {
         if_head: None,
     };
     world.fire(&pending).await;
+}
+
+#[when(expr = "an anonymous GET arrives for the same path with If-None-Match of the served ETag")]
+async fn anonymous_get_alias_conditional(world: &mut StoreWorld) {
+    let etag = world
+        .last()
+        .headers
+        .get(header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .expect("the previous answer served a strong ETag")
+        .to_owned();
+    world.remembered_etag = Some(etag.clone());
+    world.next_if_none_match = Some(etag);
+    let pending = Pending {
+        method: "GET".into(),
+        path: world.abs(&p8_key_with_prefix("public/sections/")),
+        body: vec![],
+        header: None,
+        version_header: None,
+        if_head: None,
+    };
+    world.fire(&pending).await;
+}
+
+#[when(expr = "an anonymous GET arrives for the same path with If-None-Match of a stale ETag")]
+async fn anonymous_get_alias_conditional_stale(world: &mut StoreWorld) {
+    world.next_if_none_match =
+        Some("\"0000000000000000000000000000000000000000000000000000000000000000\"".into());
+    let pending = Pending {
+        method: "GET".into(),
+        path: world.abs(&p8_key_with_prefix("public/sections/")),
+        body: vec![],
+        header: None,
+        version_header: None,
+        if_head: None,
+    };
+    world.fire(&pending).await;
+}
+
+#[then(expr = "the response status is 304 with an empty body")]
+fn status_304_empty(world: &mut StoreWorld) {
+    let answer = world.last();
+    assert_eq!(
+        answer.status,
+        304,
+        "conditional revalidation answers 304 (body: {})",
+        String::from_utf8_lossy(&answer.body)
+    );
+    assert!(answer.body.is_empty(), "a 304 carries no body");
+}
+
+#[then(expr = "the response carries a strong ETag equal to the served one")]
+fn etag_equals_served(world: &mut StoreWorld) {
+    let expected = world.remembered_etag.clone().expect("a remembered ETag");
+    let etag = world
+        .last()
+        .headers
+        .get(header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
+    assert_eq!(etag, expected, "the 304 replays the entity's strong ETag");
 }
 
 #[when(expr = "a correctly signed mandated GET arrives for the p8_cold circle blob alias path")]

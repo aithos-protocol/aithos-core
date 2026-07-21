@@ -21,6 +21,20 @@ thiserror.workspace = true
 ulid.workspace = true
 x25519-dalek.workspace = true
 
+[features]
+# P3 — the RemoteStore client (INFRA-PROVIDER annexe A, consumed client
+# side): HTTP + signed envelopes stay OUT of the default graph; the
+# gateway (store_adapter `remote`) and the e2e harnesses opt in.
+remote = ["dep:ureq", "dep:base64"]
+
+[dependencies.ureq]
+workspace = true
+optional = true
+
+[dependencies.base64]
+workspace = true
+optional = true
+
 [dev-dependencies]
 cucumber.workspace = true
 futures.workspace = true

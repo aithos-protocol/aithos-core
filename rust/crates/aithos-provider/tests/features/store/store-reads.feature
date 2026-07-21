@@ -265,6 +265,27 @@ Feature: Reads — heads, listing, batch, sync and the draft.2 servable layout
     And the response carries header "cache-control" equal to "public, max-age=0, must-revalidate"
     And the response carries a strong ETag of its body
 
+  @cache @p3
+  Scenario: A matching If-None-Match revalidates to 304 without a body
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    When an anonymous GET arrives for the p8_cold public section alias path
+    Then the request is accepted
+    # the client sends back the strong ETag it holds (A.6 revalidate class,
+    # P3 client contract): the wire answers 304, empty body, same class
+    When an anonymous GET arrives for the same path with If-None-Match of the served ETag
+    Then the response status is 304 with an empty body
+    And the response carries header "cache-control" equal to "public, max-age=0, must-revalidate"
+    And the response carries a strong ETag equal to the served one
+
+  @cache @p3
+  Scenario: A stale If-None-Match serves the full body again
+    Given the store holds the p8_cold edition at height 2 with its reachable objects
+    When an anonymous GET arrives for the p8_cold public section alias path
+    Then the request is accepted
+    When an anonymous GET arrives for the same path with If-None-Match of a stale ETag
+    Then the request is accepted
+    And the response carries a strong ETag of its body
+
   @cache @gate6
   Scenario: Encrypted blobs and the circle alias revalidate privately on a strong ETag
     Given the store holds the p8_cold edition at height 2 with its reachable objects

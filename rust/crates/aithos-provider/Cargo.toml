@@ -44,6 +44,10 @@ aws-sdk-s3 = { workspace = true }
 # delegated ACME DNS-01 (annexe B.5): the store poses/retires the challenge
 # TXT in the mcp zone — the ONLY Route 53 write the task role allows
 aws-sdk-route53 = { workspace = true }
+# P5 witness service (lot A): KMS sign-only Ed25519 (annexe C.1 — MessageType
+# RAW, jamais le mode prehashe) + le stream de la table heads (declencheur C.2)
+aws-sdk-kms = { workspace = true }
+aws-sdk-dynamodbstreams = { workspace = true }
 # TCP keepalive on the pod tunnel socket (redline B.3: M2 = EOF detection
 # + TCP keepalive; applicative PING = draft.2)
 socket2 = { workspace = true }
@@ -59,6 +63,10 @@ tokio-util = { workspace = true }
 futures = { workspace = true }
 
 [dev-dependencies]
+# P3 — the RemoteStore CLIENT under test (cucumber_remote): the bundle's
+# `remote` feature only enters the DEV graph; the service binaries never
+# link the client.
+aithos-bundle = { workspace = true, features = ["remote"] }
 cucumber = { workspace = true }
 futures = { workspace = true }
 tower = { workspace = true, features = ["util"] }
@@ -83,6 +91,16 @@ harness = false
 name = "cucumber_relay"
 harness = false
 
+[[test]]
+name = "cucumber_witness"
+harness = false
+
+# P3 — the RemoteStore CLIENT contract (aithos-bundle feature `remote`)
+# against the real in-process service on a localhost socket.
+[[test]]
+name = "cucumber_remote"
+harness = false
+
 [[bin]]
 name = "aithos-store-api"
 path = "src/bin/store_api.rs"
@@ -90,6 +108,12 @@ path = "src/bin/store_api.rs"
 [[bin]]
 name = "aithos-relay"
 path = "src/bin/relay.rs"
+
+# P5 — the witness emitter (annexe C): observes the heads stream, signs
+# checkpoints in KMS, publishes the public feed. Never an authority.
+[[bin]]
+name = "aithos-witness"
+path = "src/bin/witness.rs"
 
 # P7 — the internal control-plane admin (create / bind-did / suspend /
 # reactivate / purge → DynamoDB, purge sweeps the data plane per the §8 GC

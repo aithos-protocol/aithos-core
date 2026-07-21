@@ -12,6 +12,10 @@ pub mod log;
 pub mod manifest;
 pub mod merge;
 pub mod publication;
+/// P3 — the wire A.2 client (`RemoteStore`), behind the `remote` feature:
+/// the network stays out of the default graph, the core stays pure.
+#[cfg(feature = "remote")]
+pub mod remote;
 pub mod revoke;
 pub mod session;
 pub mod state;
