@@ -5,7 +5,7 @@
 //! always injected by the caller.
 
 use crate::entropy::EntropySource;
-use crate::manifest::{sha256_hex, Manifest};
+use crate::manifest::{sha256_hex, Manifest, CORE_DRAFT2_VERSION};
 use crate::{validate_display_path, validate_store_key, Store};
 use aithos_core::derive::node_key;
 use aithos_core::did::DidDocument;
@@ -14,6 +14,7 @@ use aithos_core::header::{Header, Recipient};
 use aithos_core::ids::Sid;
 use aithos_core::jcs;
 use aithos_core::keys::OwnerKeys;
+use aithos_core::mandate::{verify_chain, Mandate};
 use aithos_core::path::{NodePath, Zone};
 use aithos_core::seal::{blob_aad, blob_open, blob_seal};
 use ed25519_dalek::Signer;
@@ -92,6 +93,55 @@ pub struct SelfRow {
 pub struct SelfAccess {
     pub n: String,
     pub c: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct K1cPublicIndex {
+    pub sections: Vec<K1cPublicSectionRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct K1cPublicSectionRow {
+    pub sid: String,
+    pub path: String,
+    pub body_hash: String,
+}
+
+impl K1cPublicIndex {
+    /// Deterministic public root used by the frozen K1-C carrier profile.
+    pub fn root_digest(&self) -> Result<String> {
+        let mut rows = self.sections.clone();
+        rows.sort_by(|left, right| left.sid.cmp(&right.sid));
+        let mut seen_sids = std::collections::BTreeSet::new();
+        let mut seen_paths = std::collections::BTreeSet::new();
+        let mut material = Vec::new();
+        for row in rows {
+            Sid::parse(&row.sid)?;
+            validate_display_path(&row.path)
+                .map_err(|error| Error::InvalidPath(format!("K1-C public index path: {error}")))?;
+            let digest = row
+                .body_hash
+                .strip_prefix("sha256:")
+                .filter(|digest| {
+                    digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
+                .ok_or_else(|| {
+                    Error::SealRejected("K1-C public body hash is invalid".to_owned())
+                })?;
+            if !seen_sids.insert(row.sid.clone()) || !seen_paths.insert(row.path.clone()) {
+                return Err(Error::SealRejected(
+                    "K1-C public index contains a duplicate SID or path".to_owned(),
+                ));
+            }
+            material.extend_from_slice(row.sid.as_bytes());
+            material.push(0);
+            material.extend_from_slice(b"sha256:");
+            material.extend_from_slice(digest.as_bytes());
+        }
+        Ok(sha256_hex(&material))
+    }
 }
 
 /// Display-tree classification returned without exposing index rows.
@@ -1201,6 +1251,46 @@ impl<S: Store> Bundle<S> {
         String::from_utf8(body).map_err(|_| Error::SealRejected("not utf-8".to_owned()))
     }
 
+    /// Keyless public read through the canonical K1-C draft.2 carriers.
+    ///
+    /// The manifest already pins both the index and body bytes. This layout
+    /// check additionally binds the display path to one canonical SID and
+    /// verifies the index's explicit body commitment before returning text.
+    pub fn public_read_k1c(store: &S, display_path: &str) -> Result<String> {
+        Self::gate_display_path(display_path, false)?;
+        let index: K1cPublicIndex = serde_json::from_slice(
+            &store
+                .get("indices/public.json")
+                .map_err(io_err)?
+                .ok_or_else(|| Error::SealRejected("missing K1-C public index".to_owned()))?,
+        )
+        .map_err(|error| Error::SealRejected(format!("K1-C public index: {error}")))?;
+        index.root_digest()?;
+        let matching = index
+            .sections
+            .iter()
+            .filter(|row| row.path == display_path)
+            .collect::<Vec<_>>();
+        let [row] = matching.as_slice() else {
+            return Err(Error::InvalidPath(format!(
+                "K1-C public path is absent or ambiguous: {display_path}"
+            )));
+        };
+        let sid = Sid::parse(&row.sid)?;
+        let body = store
+            .get(&format!("public/sections/{sid}.md"))
+            .map_err(io_err)?
+            .ok_or_else(|| Error::InvalidPath(display_path.to_owned()))?;
+        let expected_hash = format!("sha256:{}", sha256_hex(&body));
+        if row.body_hash != expected_hash {
+            return Err(Error::SealRejected(format!(
+                "K1-C public section {display_path} does not match its index commitment"
+            )));
+        }
+        String::from_utf8(body)
+            .map_err(|_| Error::SealRejected("K1-C public body is not UTF-8".to_owned()))
+    }
+
     pub(crate) fn resolve_self_folder(
         &self,
         display_path: &str,
@@ -1559,6 +1649,17 @@ impl<S: Store> Bundle<S> {
             let m: Manifest = self.get_json(&format!("manifests/{h}.json"))?;
             if m.authorized_via.is_empty() {
                 m.verify_signature(&doc)?;
+            } else if m.version == CORE_DRAFT2_VERSION {
+                let chain = m
+                    .authorized_via
+                    .iter()
+                    .map(|id| self.get_json::<Mandate>(&format!("certs/{id}.json")))
+                    .collect::<Result<Vec<_>>>()?;
+                verify_chain(&chain, &doc, &m.edition.created_at)?;
+                let leaf = chain.last().ok_or_else(|| {
+                    err(format!("height {h}: delegated authority chain is empty"))
+                })?;
+                m.verify_delegate_signature(leaf)?;
             } else if m.resolves_fork.is_empty() && m.merges.is_empty() {
                 return Err(err(format!(
                     "height {h}: delegate-signed editions are accepted only as merge or fork resolution publications"

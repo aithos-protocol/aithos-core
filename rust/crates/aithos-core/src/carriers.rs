@@ -955,10 +955,22 @@ fn verify_authorship(
         return Err(invalid("authorship SID differs from mutation facts"));
     }
     let path = format!("public/sections/{sid}.md");
-    let body = context
-        .candidate_store
-        .get(&path)
-        .ok_or_else(|| invalid("authorship body is absent from candidate state"))?;
+    let body = if facts["verb"] == "delete" {
+        if context.candidate_store.contains_key(&path) {
+            return Err(invalid(
+                "deleted authorship body remains in candidate state",
+            ));
+        }
+        context
+            .parent_store
+            .get(&path)
+            .ok_or_else(|| invalid("deleted authorship body is absent from parent state"))?
+    } else {
+        context
+            .candidate_store
+            .get(&path)
+            .ok_or_else(|| invalid("authorship body is absent from candidate state"))?
+    };
     if document["content_hash"].as_str() != Some(&sha256_prefixed(body)) {
         return Err(invalid("authorship content hash differs from stored bytes"));
     }
