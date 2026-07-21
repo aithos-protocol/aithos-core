@@ -55,6 +55,12 @@ pub enum GatewayError {
     #[error("oauth {error}: {detail}")]
     OauthDenied { error: String, detail: String },
 
+    /// OAuth client custody for an upstream could not produce a usable
+    /// access token. Details are fixed gateway summaries and never include
+    /// provider bodies, codes, tokens, verifiers or client secrets.
+    #[error("upstream OAuth unavailable: {0}")]
+    UpstreamOauthUnavailable(String),
+
     /// Audit export was refused (auditor mandate does not cover the query).
     #[error("audit read denied: {0}")]
     AuditDenied(String),
@@ -82,6 +88,7 @@ impl GatewayError {
             GatewayError::ManifestDrift { .. } => "manifest_drift",
             GatewayError::RequestRejected(_) => "request_rejected",
             GatewayError::OauthDenied { .. } => "oauth_denied",
+            GatewayError::UpstreamOauthUnavailable(_) => "upstream_oauth_unavailable",
             GatewayError::AuditDenied(_) => "audit_denied",
             GatewayError::IdentityUnavailable(_) => "identity_unavailable",
             GatewayError::BridgeFailed(_) => "bridge_failed",

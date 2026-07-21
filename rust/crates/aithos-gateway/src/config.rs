@@ -109,6 +109,28 @@ pub struct ServerConfig {
     /// this file, in any store or in any log.
     #[serde(default)]
     pub credential: Option<CredentialRef>,
+    /// OAuth 2.1 authorization-code + PKCE custody for a protected
+    /// upstream. Every secret coordinate is a Vault reference; the
+    /// access/refresh token set is written back to `token_vault`.
+    #[serde(default)]
+    pub oauth: Option<UpstreamOAuthConfig>,
+}
+
+/// One protected upstream's OAuth client declaration. URLs and the
+/// `client_id` are public configuration; the client secret, pending PKCE
+/// verifier and token set live only behind brokered Vault references.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpstreamOAuthConfig {
+    pub auth_url: String,
+    pub token_url: String,
+    pub client_id: String,
+    pub client_secret: CredentialRef,
+    pub scopes: Vec<String>,
+    pub redirect_uri: String,
+    /// Dedicated KV field containing the encrypted-at-rest OAuth state.
+    /// It must not alias `client_secret`: token writes replace this field.
+    pub token_vault: CredentialRef,
 }
 
 /// One enterprise credential broker (top-level `credential_brokers:`).
@@ -599,15 +621,31 @@ fn validate_hub(
                 server.name
             )));
         }
-        if let Some(credential) = &server.credential {
-            if server.bearer_token.is_some() {
+        let credential_modes = usize::from(server.bearer_token.is_some())
+            + usize::from(server.credential.is_some())
+            + usize::from(server.oauth.is_some());
+        if credential_modes > 1 {
+            if server.bearer_token.is_some()
+                && server.credential.is_some()
+                && server.oauth.is_none()
+            {
                 return Err(GatewayError::ConfigRejected(format!(
                     "servers[{}] declares both `credential` and `bearer_token` — \
                      exactly one credential source per server",
                     server.name
                 )));
             }
+            return Err(GatewayError::ConfigRejected(format!(
+                "servers[{}] declares competing credential modes (`bearer_token`, \
+                 `credential`, `oauth`) — exactly one is allowed",
+                server.name
+            )));
+        }
+        if let Some(credential) = &server.credential {
             validate_server_credential(&server.name, credential, brokers)?;
+        }
+        if let Some(oauth) = &server.oauth {
+            validate_upstream_oauth(&server.name, oauth, brokers)?;
         }
     }
 
@@ -751,6 +789,14 @@ fn validate_server_credential(
     brokers: Option<&BTreeMap<String, BrokerConfig>>,
 ) -> Result<()> {
     let at = format!("servers[{server}].credential");
+    validate_credential_ref(&at, credential, brokers)
+}
+
+fn validate_credential_ref(
+    at: &str,
+    credential: &CredentialRef,
+    brokers: Option<&BTreeMap<String, BrokerConfig>>,
+) -> Result<()> {
     if !brokers.is_some_and(|brokers| brokers.contains_key(&credential.broker)) {
         return Err(GatewayError::ConfigRejected(format!(
             "`{at}` references unknown credential broker `{}`",
@@ -781,6 +827,56 @@ fn validate_server_credential(
         return Err(GatewayError::ConfigRejected(format!(
             "`{at}.field` must be a non-empty plain field name \
              (letters, digits, `-`, `_`, `.`)"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_upstream_oauth(
+    server: &str,
+    oauth: &UpstreamOAuthConfig,
+    brokers: Option<&BTreeMap<String, BrokerConfig>>,
+) -> Result<()> {
+    let at = format!("servers[{server}].oauth");
+    for (field, url) in [
+        ("auth_url", oauth.auth_url.as_str()),
+        ("token_url", oauth.token_url.as_str()),
+        ("redirect_uri", oauth.redirect_uri.as_str()),
+    ] {
+        validate_upstream(url, &format!("{at}.{field}"))?;
+        if url.starts_with("http://") && !is_loopback_http(url) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.{field}` uses plaintext http off loopback — OAuth requires TLS"
+            )));
+        }
+    }
+    if oauth.client_id.trim().is_empty() {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}.client_id` is empty"
+        )));
+    }
+    if oauth.scopes.is_empty()
+        || oauth.scopes.iter().any(|scope| scope.trim().is_empty())
+        || oauth
+            .scopes
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != oauth.scopes.len()
+    {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}.scopes` must contain distinct, non-empty scopes"
+        )));
+    }
+    validate_credential_ref(
+        &format!("{at}.client_secret"),
+        &oauth.client_secret,
+        brokers,
+    )?;
+    validate_credential_ref(&format!("{at}.token_vault"), &oauth.token_vault, brokers)?;
+    if oauth.client_secret == oauth.token_vault {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}.token_vault` must not alias the client-secret field"
         )));
     }
     Ok(())
@@ -1545,6 +1641,66 @@ journal:
                 if m.contains("both `credential` and `bearer_token`")
                     && m.contains("one credential source")
         ));
+    }
+
+    fn oauth_hub() -> String {
+        HUB_VAULT.replace(
+            "    credential:\n      broker: enterprise\n      path: aithos/mcp/github\n      field: token\n",
+            "    oauth:\n      auth_url: https://accounts.example/authorize\n      token_url: https://accounts.example/token\n      client_id: owner-client\n      client_secret:\n        broker: enterprise\n        path: aithos/oauth/client\n        field: client_secret\n      scopes: [resource.read]\n      redirect_uri: https://gateway.example/oauth/callback\n      token_vault:\n        broker: enterprise\n        path: aithos/oauth/github\n        field: state\n",
+        )
+    }
+
+    #[test]
+    fn parses_strict_secretless_upstream_oauth() {
+        let text = oauth_hub();
+        let cfg = GatewayConfig::from_yaml(&text).unwrap();
+        let oauth = cfg.servers.as_ref().unwrap()[0].oauth.as_ref().unwrap();
+        assert_eq!(oauth.client_id, "owner-client");
+        assert_eq!(oauth.scopes, ["resource.read"]);
+        assert_eq!(oauth.client_secret.path, "aithos/oauth/client");
+        assert_eq!(oauth.token_vault.path, "aithos/oauth/github");
+        assert!(cfg.servers.as_ref().unwrap()[0].credential.is_none());
+    }
+
+    #[test]
+    fn upstream_oauth_is_exclusive_and_requires_tls_off_loopback() {
+        let with_bearer = oauth_hub().replace(
+            "    oauth:\n",
+            "    bearer_token: inline-secret\n    oauth:\n",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&with_bearer),
+            Err(GatewayError::ConfigRejected(message))
+                if message.contains("competing credential modes")
+        ));
+        let plaintext = oauth_hub().replace(
+            "https://accounts.example/authorize",
+            "http://accounts.example/authorize",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&plaintext),
+            Err(GatewayError::ConfigRejected(message)) if message.contains("requires TLS")
+        ));
+    }
+
+    #[test]
+    fn upstream_oauth_references_and_scopes_fail_closed() {
+        for text in [
+            oauth_hub().replace("scopes: [resource.read]", "scopes: []"),
+            oauth_hub().replace(
+                "scopes: [resource.read]",
+                "scopes: [resource.read, resource.read]",
+            ),
+            oauth_hub().replace("path: aithos/oauth/github", "path: ../escape"),
+            oauth_hub()
+                .replace("path: aithos/oauth/github", "path: aithos/oauth/client")
+                .replace("field: state", "field: client_secret"),
+        ] {
+            assert!(matches!(
+                GatewayConfig::from_yaml(&text),
+                Err(GatewayError::ConfigRejected(_))
+            ));
+        }
     }
 
     #[test]

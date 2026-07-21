@@ -16,9 +16,10 @@ use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{router_llm, HttpLlmUpstream, LlmProxy};
 use aithos_gateway::proxy_mcp::{
-    router, router_multi, verify_hub_upstreams, HttpUpstream, McpProxy, McpRouter,
+    router, router_multi, verify_hub_upstreams_except, HttpUpstream, McpProxy, McpRouter,
 };
 use aithos_gateway::store_adapter::GatewayStore;
+use aithos_gateway::upstream_oauth::{self, UpstreamOAuthRegistry};
 
 #[derive(Parser)]
 #[command(name = "aithos-gateway", version, about = "Aithos runner gateway")]
@@ -302,6 +303,16 @@ enum Command {
         /// Evaluation instant, RFC 3339 Z (defaults to the system clock).
         #[arg(long)]
         at: Option<String>,
+    },
+    /// OWNER SIDE: start an OAuth authorization-code + PKCE consent for
+    /// one configured upstream. The URL is public; all pending and token
+    /// state is written to Vault. With a positive wait, this command serves
+    /// the configured `/oauth/callback` until connected or timed out.
+    OwnerConnectOauth {
+        #[arg(long)]
+        server: String,
+        #[arg(long, default_value_t = 300)]
+        wait_secs: u64,
     },
     /// Initialise the ethos, mint identities, grant the read-only agent
     /// mandate, the gateway governance mandate and the scoped auditor
@@ -823,6 +834,50 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         | Command::OwnerDiscoverServer { .. }
         | Command::OwnerEnrollServer { .. }
         | Command::OwnerPreviewMandate { .. } => unreachable!("handled above"),
+        Command::OwnerConnectOauth { server, wait_secs } => {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()?;
+            let brokers = aithos_gateway::credentials::build_brokers(&cfg)?;
+            let oauth = Arc::new(UpstreamOAuthRegistry::from_config(&cfg, &brokers)?);
+            let consent = rt.block_on(oauth.start(&server))?;
+            println!("{}", consent.authorization_url);
+            if wait_secs == 0 {
+                eprintln!(
+                    "OAuth consent prepared for {server}; start the gateway and open the URL above."
+                );
+                return Ok(());
+            }
+            eprintln!(
+                "waiting up to {wait_secs}s for {} /oauth/callback",
+                cfg.listen
+            );
+            rt.block_on(async {
+                let listener = tokio::net::TcpListener::bind(&cfg.listen).await?;
+                let app = upstream_oauth::router(Arc::clone(&oauth));
+                let server_task = tokio::spawn(async move { axum::serve(listener, app).await });
+                let connected =
+                    tokio::time::timeout(std::time::Duration::from_secs(wait_secs), async {
+                        loop {
+                            if oauth.is_connected(&server).await {
+                                break;
+                            }
+                            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        }
+                    })
+                    .await;
+                server_task.abort();
+                match connected {
+                    Ok(()) => {
+                        eprintln!("OAuth connection established for {server}.");
+                        Ok(())
+                    }
+                    Err(_) => Err::<(), Box<dyn std::error::Error>>(
+                        "OAuth callback timed out; restart owner-connect-oauth".into(),
+                    ),
+                }
+            })
+        }
         Command::Onboard { ttl_days } => {
             let mut ent = OsEntropy;
             let keyholder = Keyholder::from_entropy(ent.e32(), ent.e32());
@@ -857,17 +912,22 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     keyholder,
                     || Box::new(OsEntropy),
                 )?));
+                let brokers = aithos_gateway::credentials::build_brokers(&cfg)?;
+                let upstream_oauth = Arc::new(UpstreamOAuthRegistry::from_config(&cfg, &brokers)?);
                 let upstreams = if let Some(servers) = &cfg.servers {
                     // Brokered credentials: build every configured
                     // broker once, then wire each server to its source
                     // (vault reference, legacy inline bearer, or none).
-                    let brokers = aithos_gateway::credentials::build_brokers(&cfg)?;
                     servers
                         .iter()
                         .map(|server| {
                             Ok::<_, aithos_gateway::GatewayError>((
                                 server.name.clone(),
-                                HttpUpstream::for_server(server, &brokers)?,
+                                HttpUpstream::for_server_with_oauth(
+                                    server,
+                                    &brokers,
+                                    &upstream_oauth,
+                                )?,
                             ))
                         })
                         .collect::<aithos_gateway::Result<_>>()?
@@ -910,9 +970,13 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     oauth: oauth.clone(),
                 });
                 if cfg.is_hub() {
-                    rt.block_on(verify_hub_upstreams(&routing))?;
+                    let deferred = rt.block_on(upstream_oauth.disconnected_server_names());
+                    rt.block_on(verify_hub_upstreams_except(&routing, &deferred))?;
                 }
                 let mut app = router_multi(Arc::clone(&routing));
+                if !upstream_oauth.is_empty() {
+                    app = app.merge(upstream_oauth::router(Arc::clone(&upstream_oauth)));
+                }
                 // The AS endpoints ride the SAME listener (G2 shell
                 // precedent): discovery, registration, authorize, token.
                 if oauth.is_some() {

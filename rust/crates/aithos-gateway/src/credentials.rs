@@ -82,6 +82,22 @@ pub trait CredentialBroker: Send + Sync {
         &'a self,
         reference: &'a CredentialRef,
     ) -> Pin<Box<dyn Future<Output = Result<SecretValue>> + Send + 'a>>;
+
+    /// Replace one dedicated secret field. Read-only brokers keep the
+    /// fail-closed default; OAuth onboarding requires a writable broker.
+    /// Implementations must never include `value` or a remote response
+    /// body in an error.
+    fn store<'a>(
+        &'a self,
+        _reference: &'a CredentialRef,
+        _value: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(async {
+            Err(GatewayError::CredentialUnavailable(
+                "credential broker is read-only".into(),
+            ))
+        })
+    }
 }
 
 // ------------------------------------------------- HashiCorp Vault KV v2
@@ -182,6 +198,54 @@ impl VaultKv2Broker {
             ))),
         }
     }
+
+    /// One strict KV v2 write to a dedicated OAuth record. The caller owns
+    /// the path/field and config validation prevents aliasing the client
+    /// secret. Status-only failures preserve the same redaction discipline
+    /// as reads.
+    async fn put(&self, reference: &CredentialRef, value: SecretValue) -> Result<()> {
+        let token = Zeroizing::new(
+            std::env::var(&self.token_env)
+                .ok()
+                .filter(|token| !token.trim().is_empty())
+                .ok_or_else(|| {
+                    GatewayError::CredentialUnavailable(format!(
+                        "vault token environment variable `{}` is unset or empty",
+                        self.token_env
+                    ))
+                })?,
+        );
+        let url = format!("{}/v1/{}/data/{}", self.address, self.mount, reference.path);
+        let body = serde_json::json!({
+            "data": { reference.field.clone(): value.expose() }
+        });
+        let response = self
+            .client
+            .post(&url)
+            .header("X-Vault-Token", token.as_str())
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                GatewayError::CredentialUnavailable(
+                    if e.is_timeout() {
+                        "vault write timed out"
+                    } else if e.is_connect() {
+                        "vault is unreachable"
+                    } else {
+                        "vault write transport failed"
+                    }
+                    .to_owned(),
+                )
+            })?;
+        if !response.status().is_success() {
+            return Err(GatewayError::CredentialUnavailable(format!(
+                "vault write answered status {}",
+                response.status().as_u16()
+            )));
+        }
+        Ok(())
+    }
 }
 
 impl CredentialBroker for VaultKv2Broker {
@@ -190,6 +254,14 @@ impl CredentialBroker for VaultKv2Broker {
         reference: &'a CredentialRef,
     ) -> Pin<Box<dyn Future<Output = Result<SecretValue>> + Send + 'a>> {
         Box::pin(self.fetch(reference))
+    }
+
+    fn store<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+        value: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(self.put(reference, value))
     }
 }
 
@@ -290,6 +362,43 @@ mod tests {
         (port, seen)
     }
 
+    async fn serve_fake_vault_write(
+        status: u16,
+    ) -> (
+        u16,
+        Arc<std::sync::Mutex<Vec<(Option<String>, serde_json::Value)>>>,
+    ) {
+        use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
+
+        type Seen = Arc<std::sync::Mutex<Vec<(Option<String>, serde_json::Value)>>>;
+        let seen: Seen = Arc::default();
+        let app = Router::new()
+            .route(
+                "/v1/{*path}",
+                post(
+                    |State((status, seen)): State<(u16, Seen)>,
+                     headers: HeaderMap,
+                     Json(body): Json<serde_json::Value>| async move {
+                        seen.lock().unwrap().push((
+                            headers
+                                .get("x-vault-token")
+                                .and_then(|value| value.to_str().ok())
+                                .map(str::to_owned),
+                            body,
+                        ));
+                        axum::http::StatusCode::from_u16(status).unwrap()
+                    },
+                ),
+            )
+            .with_state((status, Arc::clone(&seen)));
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (port, seen)
+    }
+
     fn reference() -> CredentialRef {
         CredentialRef {
             broker: "enterprise".into(),
@@ -343,6 +452,44 @@ mod tests {
             [Some(VAULT_TOKEN_SENTINEL.to_owned())],
             "the vault token rides the X-Vault-Token header of the one read"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn oauth_state_is_written_as_one_dedicated_kv_v2_field() {
+        let (port, seen) = serve_fake_vault_write(204).await;
+        std::env::set_var("AITHOS_TEST_VAULT_WRITE", VAULT_TOKEN_SENTINEL);
+        let broker = VaultKv2Broker::new(
+            &format!("http://127.0.0.1:{port}"),
+            "secret",
+            "AITHOS_TEST_VAULT_WRITE",
+        )
+        .unwrap();
+        broker
+            .store(&reference(), SecretValue::new(MCP_SENTINEL.to_owned()))
+            .await
+            .unwrap();
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].0.as_deref(), Some(VAULT_TOKEN_SENTINEL));
+        assert_eq!(seen[0].1["data"]["token"], MCP_SENTINEL);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_vault_write_refusal_never_echoes_the_secret_or_body() {
+        let (port, _seen) = serve_fake_vault_write(500).await;
+        std::env::set_var("AITHOS_TEST_VAULT_WRITE_FAIL", VAULT_TOKEN_SENTINEL);
+        let broker = VaultKv2Broker::new(
+            &format!("http://127.0.0.1:{port}"),
+            "secret",
+            "AITHOS_TEST_VAULT_WRITE_FAIL",
+        )
+        .unwrap();
+        let error = broker
+            .store(&reference(), SecretValue::new(MCP_SENTINEL.to_owned()))
+            .await
+            .expect_err("Vault write must fail");
+        assert!(format!("{error}").contains("status 500"));
+        assert_redacted(&error);
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -29,7 +29,7 @@
 //! merging land with Phase D.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 
 use axum::body::Bytes;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
@@ -42,6 +42,7 @@ use crate::core_bridge::{Bridge, EntropySource, Runner};
 use crate::credentials::{CredentialBroker, CredentialRef};
 use crate::hub::discover_server;
 use crate::policy::Policy;
+use crate::upstream_oauth::{UpstreamOAuthClient, UpstreamOAuthRegistry};
 use crate::{GatewayError, Result};
 
 /// JSON-RPC error code for a gateway policy refusal (implementation-defined
@@ -127,13 +128,25 @@ enum UpstreamAuth {
         broker: Arc<dyn CredentialBroker>,
         reference: CredentialRef,
     },
+    /// Authorization-code + PKCE custody. The client resolves/refreshes
+    /// its Vault token set per call and refuses before wire I/O on failure.
+    OAuth(Arc<UpstreamOAuthClient>),
 }
 
-/// Production upstream: JSON-RPC over POST (Streamable HTTP, stateless).
+/// Production upstream: JSON-RPC over Streamable HTTP (MCP 2025-03-26).
+/// One POST per call; the response body is read whether the server
+/// answers `application/json` or `text/event-stream` (SSE) — the modern
+/// default. A `Mcp-Session-Id` handed back by the server is captured and
+/// replayed on later calls (many streamable servers require it), and a
+/// server that insists on an `initialize` handshake first gets one,
+/// lazily, on the retry path.
 pub struct HttpUpstream {
     client: reqwest::Client,
     url: String,
     auth: UpstreamAuth,
+    /// The server-assigned session id, once seen (interior mutability:
+    /// the trait takes `&self` and the value is shared behind an `Arc`).
+    session: StdMutex<Option<String>>,
 }
 
 impl HttpUpstream {
@@ -142,6 +155,7 @@ impl HttpUpstream {
             client: reqwest::Client::new(),
             url: url.into(),
             auth: UpstreamAuth::None,
+            session: StdMutex::new(None),
         }
     }
 
@@ -153,6 +167,7 @@ impl HttpUpstream {
                 Some(token) => UpstreamAuth::InlineBearer(token),
                 None => UpstreamAuth::None,
             },
+            session: StdMutex::new(None),
         }
     }
 
@@ -165,6 +180,7 @@ impl HttpUpstream {
             client: reqwest::Client::new(),
             url: url.into(),
             auth: UpstreamAuth::Brokered { broker, reference },
+            session: StdMutex::new(None),
         }
     }
 
@@ -176,6 +192,12 @@ impl HttpUpstream {
         server: &crate::config::ServerConfig,
         brokers: &BTreeMap<String, Arc<dyn CredentialBroker>>,
     ) -> Result<Self> {
+        if server.oauth.is_some() {
+            return Err(GatewayError::ConfigRejected(format!(
+                "servers[{}].oauth requires the OAuth runtime registry",
+                server.name
+            )));
+        }
         if let Some(reference) = &server.credential {
             let broker = brokers.get(&reference.broker).cloned().ok_or_else(|| {
                 GatewayError::ConfigRejected(format!(
@@ -194,35 +216,210 @@ impl HttpUpstream {
             server.bearer_token.clone(),
         ))
     }
+
+    pub fn for_server_with_oauth(
+        server: &crate::config::ServerConfig,
+        brokers: &BTreeMap<String, Arc<dyn CredentialBroker>>,
+        oauth: &UpstreamOAuthRegistry,
+    ) -> Result<Self> {
+        if server.oauth.is_some() {
+            let client = oauth.get(&server.name).ok_or_else(|| {
+                GatewayError::ConfigRejected(format!(
+                    "servers[{}].oauth has no runtime client",
+                    server.name
+                ))
+            })?;
+            return Ok(Self {
+                client: reqwest::Client::new(),
+                url: server.url.clone(),
+                auth: UpstreamAuth::OAuth(client),
+                session: StdMutex::new(None),
+            });
+        }
+        Self::for_server(server, brokers)
+    }
 }
 
-impl Upstream for HttpUpstream {
-    async fn forward(&self, body: Value) -> Result<Value> {
-        let mut request = self
-            .client
-            .post(&self.url)
-            .json(&body)
-            .header("accept", "application/json");
+impl HttpUpstream {
+    /// Resolve auth (per call, last moment — a broker outage refuses
+    /// BEFORE the request leaves, never a half-credentialed call) and
+    /// attach it. The secret drops as soon as the header is built.
+    async fn authorize(
+        &self,
+        mut request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::RequestBuilder> {
         match &self.auth {
             UpstreamAuth::None => {}
             UpstreamAuth::InlineBearer(token) => request = request.bearer_auth(token),
             UpstreamAuth::Brokered { broker, reference } => {
-                // Resolved at the last possible moment: any broker
-                // failure surfaces BEFORE the request is sent, so a
-                // vault outage can never produce an unauthenticated or
-                // half-credentialed upstream call. The secret drops
-                // (and zeroizes) as soon as the header is built.
                 let secret = broker.resolve(reference).await?;
                 request = request.bearer_auth(secret.expose());
             }
+            UpstreamAuth::OAuth(client) => {
+                let access = client.access_token().await?;
+                request = request.bearer_auth(access.expose());
+            }
         }
+        Ok(request)
+    }
+
+    /// One request/response round trip. Announces both content types
+    /// (json + SSE — the streamable default), replays a known session
+    /// id, captures any new one, and decodes the body by its
+    /// Content-Type: plain JSON, or the JSON-RPC message carried in an
+    /// SSE frame.
+    async fn round_trip(&self, body: &Value) -> Result<Value> {
+        let want_id = body.get("id").cloned().unwrap_or(Value::Null);
+        let mut request = self
+            .client
+            .post(&self.url)
+            .json(body)
+            .header("accept", "application/json, text/event-stream")
+            .header("mcp-protocol-version", MCP_PROTOCOL_VERSION);
+        if let Some(sid) = self.session.lock().expect("session lock").clone() {
+            request = request.header(MCP_SESSION_HEADER, sid);
+        }
+        request = self.authorize(request).await?;
         let resp = request
             .send()
             .await
             .map_err(|e| GatewayError::UpstreamFailed(e.to_string()))?;
-        resp.json::<Value>()
+        // Capture a server-assigned session id for the next call.
+        if let Some(sid) = resp
+            .headers()
+            .get(MCP_SESSION_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned)
+        {
+            *self.session.lock().expect("session lock") = Some(sid);
+        }
+        let is_sse = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|ct| ct.to_ascii_lowercase().contains("text/event-stream"));
+        let bytes = resp
+            .bytes()
             .await
-            .map_err(|e| GatewayError::UpstreamFailed(e.to_string()))
+            .map_err(|e| GatewayError::UpstreamFailed(e.to_string()))?;
+        extract_jsonrpc(&bytes, is_sse, &want_id).ok_or_else(|| {
+            GatewayError::UpstreamFailed("upstream response was neither valid JSON nor SSE".into())
+        })
+    }
+
+    /// The `initialize` handshake, done ONCE for a server that demands a
+    /// session before serving anything. Captures the session id (via
+    /// `round_trip`) and posts the `notifications/initialized` follow-up
+    /// the spec mandates. Best-effort: a server that ignores it loses
+    /// nothing.
+    async fn initialize_session(&self) -> Result<()> {
+        let init = json!({
+            "jsonrpc": "2.0",
+            "id": "aithos-initialize",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": MCP_PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": { "name": "aithos-gateway", "version": "1" }
+            }
+        });
+        self.round_trip(&init).await?;
+        // Fire-and-forget the initialized notification; a transport
+        // failure here must not mask a working session.
+        let note = json!({ "jsonrpc": "2.0", "method": "notifications/initialized" });
+        let mut request = self
+            .client
+            .post(&self.url)
+            .json(&note)
+            .header("accept", "application/json, text/event-stream")
+            .header("mcp-protocol-version", MCP_PROTOCOL_VERSION);
+        if let Some(sid) = self.session.lock().expect("session lock").clone() {
+            request = request.header(MCP_SESSION_HEADER, sid);
+        }
+        if let Ok(request) = self.authorize(request).await {
+            let _ = request.send().await;
+        }
+        Ok(())
+    }
+}
+
+/// Does this JSON-RPC error mean « you must `initialize` first »? Kept
+/// deliberately narrow (an explicit signal, never a guess) so it can
+/// only fire for a server that truly gates on a session — the in-process
+/// fakes and well-behaved servers never trip it.
+fn demands_initialize(response: &Value) -> bool {
+    let Some(error) = response.get("error") else {
+        return false;
+    };
+    let message = error
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    message.contains("initialize")
+        || message.contains("not initialized")
+        || message.contains("session")
+}
+
+/// Extract the JSON-RPC response from a Streamable-HTTP body — plain
+/// JSON, or the message carried in an SSE (`text/event-stream`) frame.
+/// SSE framing (WHATWG): events separated by a blank line; `data:` lines
+/// accumulate (joined by `\n`, one leading space stripped); `:` lines are
+/// comments (keepalives). We collect every `data` payload, parse each as
+/// JSON, and return the one matching our request id — or, failing that,
+/// the first payload carrying `result` or `error`.
+fn extract_jsonrpc(body: &[u8], is_sse: bool, want_id: &Value) -> Option<Value> {
+    if !is_sse {
+        return serde_json::from_slice::<Value>(body).ok();
+    }
+    let text = String::from_utf8_lossy(body);
+    let mut payloads: Vec<String> = Vec::new();
+    let mut cur: Vec<String> = Vec::new();
+    for raw in text.split('\n') {
+        let line = raw.strip_suffix('\r').unwrap_or(raw);
+        if line.is_empty() {
+            if !cur.is_empty() {
+                payloads.push(cur.join("\n"));
+                cur.clear();
+            }
+            continue;
+        }
+        if line.starts_with(':') {
+            continue;
+        }
+        let (field, value) = match line.split_once(':') {
+            Some((f, v)) => (f, v.strip_prefix(' ').unwrap_or(v)),
+            None => (line, ""),
+        };
+        if field == "data" {
+            cur.push(value.to_owned());
+        }
+    }
+    if !cur.is_empty() {
+        payloads.push(cur.join("\n"));
+    }
+    let parsed: Vec<Value> = payloads
+        .iter()
+        .filter_map(|p| serde_json::from_str::<Value>(p).ok())
+        .collect();
+    if let Some(hit) = parsed.iter().find(|m| m.get("id") == Some(want_id)) {
+        return Some(hit.clone());
+    }
+    parsed
+        .into_iter()
+        .find(|m| m.get("result").is_some() || m.get("error").is_some())
+}
+
+impl Upstream for HttpUpstream {
+    async fn forward(&self, body: Value) -> Result<Value> {
+        let response = self.round_trip(&body).await?;
+        // A server that gates on a session says so explicitly: do the
+        // handshake once, then retry the original call.
+        if demands_initialize(&response) {
+            self.initialize_session().await?;
+            return self.round_trip(&body).await;
+        }
+        Ok(response)
     }
 }
 
@@ -978,8 +1175,26 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Valu
 /// served to the agent remains entirely local; this control plane call
 /// only compares the upstream with owner-approved pins.
 pub async fn verify_hub_upstreams<U: Upstream>(rt: &McpRouter<U>) -> Result<()> {
+    verify_hub_upstreams_except(rt, &std::collections::BTreeSet::new()).await
+}
+
+/// OAuth servers may be intentionally disconnected while the callback is
+/// being completed. Their data plane remains fail-closed; startup drift
+/// verification is deferred until a token exists instead of preventing the
+/// callback listener from coming up.
+pub async fn verify_hub_upstreams_except<U: Upstream>(
+    rt: &McpRouter<U>,
+    deferred: &std::collections::BTreeSet<String>,
+) -> Result<()> {
     let servers = rt.runner.lock().await.hub_servers();
     for server in servers {
+        if deferred.contains(&server) {
+            rt.runner.lock().await.mark_manifest_drift(
+                &server,
+                "OAuth connection is not yet verified; reconnect and restart the gateway".into(),
+            );
+            continue;
+        }
         refresh_server_manifest(rt, &server).await?;
     }
     Ok(())
@@ -1286,5 +1501,128 @@ fn journal_dispatch(runner: &mut Runner, tool: &str, args: &Value, now: &str) ->
                 .map_err(|e| GatewayError::BridgeFailed(e.to_string()))
         }
         other => Err(bad_args(other, "not a native journal tool")),
+    }
+}
+
+#[cfg(test)]
+mod upstream_transport_tests {
+    //! P-compat (2026-07-21) — the gateway speaks the modern streamable
+    //! HTTP dialect: SSE responses and session ids, not only the plain
+    //! JSON of the early fakes.
+    use super::*;
+
+    #[test]
+    fn plain_json_is_unchanged() {
+        let body = br#"{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}"#;
+        let got = extract_jsonrpc(body, false, &json!(1)).unwrap();
+        assert_eq!(got["result"]["tools"], json!([]));
+    }
+
+    #[test]
+    fn sse_frame_yields_the_jsonrpc_message() {
+        // The exact shape a hosted MCP (GitHub, Notion) returns.
+        let body = b"event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"get_issue\"}]}}\n\n";
+        let got = extract_jsonrpc(body, true, &json!(1)).unwrap();
+        assert_eq!(got["result"]["tools"][0]["name"], "get_issue");
+        assert_eq!(got["id"], json!(1));
+    }
+
+    #[test]
+    fn sse_keepalive_multiline_and_crlf() {
+        let body = b": keepalive\r\nevent: message\r\ndata: {\"jsonrpc\":\"2.0\",\r\ndata: \"id\":7,\"result\":{\"ok\":true}}\r\n\r\n";
+        let got = extract_jsonrpc(body, true, &json!(7)).unwrap();
+        assert_eq!(got["result"]["ok"], true);
+    }
+
+    #[test]
+    fn sse_picks_the_response_by_id_past_a_notification() {
+        let body = b"event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"picked\":\"me\"}}\n\n";
+        let got = extract_jsonrpc(body, true, &json!(1)).unwrap();
+        assert_eq!(got["result"]["picked"], "me");
+    }
+
+    #[test]
+    fn malformed_or_empty_sse_is_none() {
+        assert!(extract_jsonrpc(b"event: message\ndata: not json\n\n", true, &json!(1)).is_none());
+        assert!(extract_jsonrpc(b"", true, &json!(1)).is_none());
+    }
+
+    #[test]
+    fn demands_initialize_only_on_explicit_signal() {
+        assert!(demands_initialize(&json!({
+            "jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Server not initialized"}
+        })));
+        assert!(demands_initialize(&json!({
+            "jsonrpc":"2.0","id":1,"error":{"code":-32001,"message":"missing session id"}
+        })));
+        // A normal result, or an UNRELATED error, never triggers a handshake.
+        assert!(!demands_initialize(
+            &json!({"jsonrpc":"2.0","id":1,"result":{}})
+        ));
+        assert!(!demands_initialize(&json!({
+            "jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"invalid params"}
+        })));
+    }
+
+    // --- integration: a REAL local server answering SSE, over HttpUpstream ---
+
+    async fn spawn(kind: &'static str) -> (u16, tokio::task::JoinHandle<()>) {
+        use axum::routing::post;
+        use axum::{Json, Router};
+        let app = Router::new().route(
+            "/mcp",
+            post(move |Json(req): Json<Value>| async move {
+                let id = req.get("id").cloned().unwrap_or(Value::Null);
+                let payload = json!({
+                    "jsonrpc":"2.0","id":id,
+                    "result":{"tools":[{"name":"probe","description":"d","inputSchema":{"type":"object"}}]}
+                });
+                match kind {
+                    "sse" => {
+                        let frame = format!("event: message\ndata: {payload}\n\n");
+                        axum::response::Response::builder()
+                            .header("content-type", "text/event-stream")
+                            .header(MCP_SESSION_HEADER, "sess-xyz")
+                            .body(axum::body::Body::from(frame))
+                            .unwrap()
+                    }
+                    _ => axum::response::Response::builder()
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(payload.to_string()))
+                        .unwrap(),
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        (port, handle)
+    }
+
+    #[tokio::test]
+    async fn http_upstream_reads_sse_and_captures_session() {
+        let (port, _h) = spawn("sse").await;
+        let up = HttpUpstream::new(format!("http://127.0.0.1:{port}/mcp"));
+        let resp = up
+            .forward(json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
+            .await
+            .unwrap();
+        assert_eq!(resp["result"]["tools"][0]["name"], "probe");
+        // the server's session id was captured for the next call
+        assert_eq!(up.session.lock().unwrap().as_deref(), Some("sess-xyz"));
+    }
+
+    #[tokio::test]
+    async fn http_upstream_still_reads_plain_json() {
+        let (port, _h) = spawn("json").await;
+        let up = HttpUpstream::new(format!("http://127.0.0.1:{port}/mcp"));
+        let resp = up
+            .forward(json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
+            .await
+            .unwrap();
+        assert_eq!(resp["result"]["tools"][0]["name"], "probe");
+        assert!(up.session.lock().unwrap().is_none());
     }
 }

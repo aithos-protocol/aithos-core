@@ -13,6 +13,9 @@
 //! bridge's re-exports, never from aithos-core/bundle directly.
 
 use std::collections::BTreeMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use cucumber::{given, then, when, World};
@@ -30,6 +33,7 @@ use aithos_gateway::core_bridge::{
     EquipOutcome, MandateWindow, OnboardOutcome, OsEntropy, RawStore, ReenrollOutcome, Runner,
     SeqEntropy, EFFECTIVE_POLICY_VERSION, STATE_PATH,
 };
+use aithos_gateway::credentials::{CredentialBroker, CredentialRef, SecretValue};
 use aithos_gateway::hub::{
     approve_manifest, discover_server, ApprovedManifest, ArgumentBound, ToolApproval,
 };
@@ -38,11 +42,12 @@ use aithos_gateway::oauth::{b64url_decode, s256_challenge, AdapterKey, AuthServe
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
 use aithos_gateway::proxy_mcp::{
-    process, process_multi, refresh_server_manifest, router_multi, router_oauth, McpProxy,
-    McpRouter, Upstream, BRIEFING_READ, ETHOS_CONTEXT, ETHOS_LIST, ETHOS_READ, JOURNAL_SEARCH,
-    JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
+    process, process_multi, refresh_server_manifest, router_multi, router_oauth, HttpUpstream,
+    McpProxy, McpRouter, Upstream, BRIEFING_READ, ETHOS_CONTEXT, ETHOS_LIST, ETHOS_READ,
+    JOURNAL_SEARCH, JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
 };
 use aithos_gateway::store_adapter::GatewayStore;
+use aithos_gateway::upstream_oauth::{self, UpstreamOAuthRegistry};
 use aithos_gateway::{GatewayError, Result};
 
 /// Fixed test instants (RFC 3339 Z — the wire's instant format).
@@ -289,6 +294,13 @@ struct GatewayWorld {
     oauth_access: Option<String>,
     oauth_refresh: Option<String>,
     oauth_http: Vec<HttpCapture>,
+    /// OAuth client scenarios: strict config text, in-memory Vault, fake
+    /// token/resource wire and the last owner/callback/runtime outcomes.
+    upstream_oauth_config: Option<String>,
+    upstream_oauth: Option<UpstreamOAuthHarness>,
+    upstream_oauth_consent: Option<String>,
+    upstream_oauth_callback: Option<HttpCapture>,
+    upstream_oauth_result: Option<std::result::Result<Value, String>>,
     ctx_agent_mandates: BTreeMap<String, String>,
 }
 
@@ -299,6 +311,76 @@ struct WireResponse {
     session: Option<String>,
     body: Vec<u8>,
 }
+
+#[derive(Default)]
+struct MemoryOAuthVault {
+    values: StdMutex<BTreeMap<(String, String), String>>,
+}
+
+impl MemoryOAuthVault {
+    fn put_clear(&self, path: &str, field: &str, value: &str) {
+        self.values
+            .lock()
+            .unwrap()
+            .insert((path.to_owned(), field.to_owned()), value.to_owned());
+    }
+
+    fn clear(&self, path: &str, field: &str) -> Option<String> {
+        self.values
+            .lock()
+            .unwrap()
+            .get(&(path.to_owned(), field.to_owned()))
+            .cloned()
+    }
+}
+
+impl CredentialBroker for MemoryOAuthVault {
+    fn resolve<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+    ) -> Pin<Box<dyn Future<Output = Result<SecretValue>> + Send + 'a>> {
+        Box::pin(async move {
+            self.values
+                .lock()
+                .unwrap()
+                .get(&(reference.path.clone(), reference.field.clone()))
+                .cloned()
+                .map(SecretValue::new)
+                .ok_or_else(|| {
+                    GatewayError::CredentialUnavailable("test Vault field absent".into())
+                })
+        })
+    }
+
+    fn store<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+        value: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(async move {
+            self.put_clear(&reference.path, &reference.field, value.expose());
+            Ok(())
+        })
+    }
+}
+
+struct UpstreamOAuthHarness {
+    vault: Arc<MemoryOAuthVault>,
+    registry: Arc<UpstreamOAuthRegistry>,
+    upstream: HttpUpstream,
+    token_grants: Arc<StdMutex<Vec<BTreeMap<String, String>>>>,
+    resource_bearers: Arc<StdMutex<Vec<Option<String>>>>,
+    refuse_refresh: Arc<AtomicBool>,
+    callback_url: String,
+}
+
+const UPSTREAM_CLIENT_SECRET: &str = "oauth-client-secret-sentinel";
+const UPSTREAM_ACCESS_1: &str = "oauth-access-sentinel-one";
+const UPSTREAM_ACCESS_2: &str = "oauth-access-sentinel-two";
+const UPSTREAM_REFRESH_1: &str = "oauth-refresh-sentinel-one";
+const UPSTREAM_REFRESH_2: &str = "oauth-refresh-sentinel-two";
+const UPSTREAM_TOKEN_PATH: &str = "aithos/oauth/protected";
+const UPSTREAM_TOKEN_FIELD: &str = "state";
 
 impl WireResponse {
     fn json(&self) -> Value {
@@ -394,6 +476,11 @@ impl GatewayWorld {
             oauth_access: None,
             oauth_refresh: None,
             oauth_http: Vec::new(),
+            upstream_oauth_config: None,
+            upstream_oauth: None,
+            upstream_oauth_consent: None,
+            upstream_oauth_callback: None,
+            upstream_oauth_result: None,
             ctx_agent_mandates: BTreeMap::new(),
         }
     }
@@ -8389,6 +8476,524 @@ async fn then_no_secret_in_errors(w: &mut GatewayWorld) {
                 );
             }
         }
+    }
+}
+
+// ============================================ upstream OAuth client
+
+#[derive(Clone)]
+struct FakeUpstreamOAuthState {
+    token_grants: Arc<StdMutex<Vec<BTreeMap<String, String>>>>,
+    resource_bearers: Arc<StdMutex<Vec<Option<String>>>>,
+    refuse_refresh: Arc<AtomicBool>,
+    initial_expires_in: u64,
+}
+
+fn upstream_oauth_yaml(base: &str, callback: &str, bearer: bool) -> String {
+    let bearer = if bearer {
+        "    bearer_token: forbidden-inline-secret\n"
+    } else {
+        ""
+    };
+    format!(
+        "listen: 127.0.0.1:4870
+credential_brokers:
+  enterprise:
+    kind: vault-kv2
+    address: http://127.0.0.1:8200
+    mount: secret
+    auth: {{ kind: token-env, env: AITHOS_VAULT_TOKEN }}
+servers:
+  - name: protected
+    transport: http
+    url: {base}/mcp
+{bearer}    oauth:
+      auth_url: {base}/authorize
+      token_url: {base}/token
+      client_id: owner-public-client
+      client_secret:
+        broker: enterprise
+        path: aithos/oauth/client
+        field: client_secret
+      scopes: [resource.read]
+      redirect_uri: {callback}
+      token_vault:
+        broker: enterprise
+        path: {UPSTREAM_TOKEN_PATH}
+        field: {UPSTREAM_TOKEN_FIELD}
+contexts:
+  - name: protected-context
+    store: {{ kind: fs, root: /tmp/aithos-upstream-oauth-context }}
+    tools:
+      protected__read:
+        server: protected
+        tool: read
+        access: read
+journal:
+  store: {{ kind: fs, root: /tmp/aithos-upstream-oauth-journal }}
+"
+    )
+}
+
+async fn provision_upstream_oauth(initial_expires_in: u64) -> UpstreamOAuthHarness {
+    use axum::extract::{Form, State};
+    use axum::http::HeaderMap;
+    use axum::routing::post;
+    use axum::{Json, Router};
+
+    let state = FakeUpstreamOAuthState {
+        token_grants: Arc::default(),
+        resource_bearers: Arc::default(),
+        refuse_refresh: Arc::new(AtomicBool::new(false)),
+        initial_expires_in,
+    };
+    let app = Router::new()
+        .route(
+            "/token",
+            post(
+                |State(state): State<FakeUpstreamOAuthState>,
+                 Form(form): Form<BTreeMap<String, String>>| async move {
+                    state.token_grants.lock().unwrap().push(form.clone());
+                    let grant = form.get("grant_type").map(String::as_str);
+                    if grant == Some("refresh_token") && state.refuse_refresh.load(Ordering::SeqCst)
+                    {
+                        return (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            Json(json!({
+                                "error": "invalid_grant",
+                                "adversarial_body": [
+                                    UPSTREAM_CLIENT_SECRET,
+                                    UPSTREAM_REFRESH_1,
+                                    UPSTREAM_ACCESS_1
+                                ]
+                            })),
+                        );
+                    }
+                    let body = if grant == Some("refresh_token") {
+                        json!({
+                            "access_token": UPSTREAM_ACCESS_2,
+                            "refresh_token": UPSTREAM_REFRESH_2,
+                            "expires_in": 3600,
+                            "token_type": "Bearer",
+                            "scope": "resource.read"
+                        })
+                    } else {
+                        json!({
+                            "access_token": UPSTREAM_ACCESS_1,
+                            "refresh_token": UPSTREAM_REFRESH_1,
+                            "expires_in": state.initial_expires_in,
+                            "token_type": "Bearer",
+                            "scope": "resource.read"
+                        })
+                    };
+                    (axum::http::StatusCode::OK, Json(body))
+                },
+            ),
+        )
+        .route(
+            "/mcp",
+            post(
+                |State(state): State<FakeUpstreamOAuthState>,
+                 headers: HeaderMap,
+                 Json(body): Json<Value>| async move {
+                    state.resource_bearers.lock().unwrap().push(
+                        headers
+                            .get("authorization")
+                            .and_then(|value| value.to_str().ok())
+                            .map(str::to_owned),
+                    );
+                    Json(json!({
+                        "jsonrpc": "2.0",
+                        "id": body.get("id").cloned().unwrap_or(Value::Null),
+                        "result": { "content": [{"type":"text", "text":"protected-ok"}] }
+                    }))
+                },
+            ),
+        )
+        .with_state(state.clone());
+    let upstream_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("fake OAuth listener");
+    let upstream_port = upstream_listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        axum::serve(upstream_listener, app).await.ok();
+    });
+    let base = format!("http://127.0.0.1:{upstream_port}");
+
+    let callback_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("callback listener");
+    let callback_port = callback_listener.local_addr().unwrap().port();
+    let callback_url = format!("http://127.0.0.1:{callback_port}/oauth/callback");
+    let text = upstream_oauth_yaml(&base, &callback_url, false);
+    let cfg = GatewayConfig::from_yaml(&text).expect("OAuth config");
+    let vault = Arc::new(MemoryOAuthVault::default());
+    vault.put_clear(
+        "aithos/oauth/client",
+        "client_secret",
+        UPSTREAM_CLIENT_SECRET,
+    );
+    let mut brokers: BTreeMap<String, Arc<dyn CredentialBroker>> = BTreeMap::new();
+    brokers.insert("enterprise".into(), vault.clone());
+    let registry =
+        Arc::new(UpstreamOAuthRegistry::from_config(&cfg, &brokers).expect("OAuth registry"));
+    let server = &cfg.servers.as_ref().unwrap()[0];
+    let upstream =
+        HttpUpstream::for_server_with_oauth(server, &brokers, &registry).expect("OAuth upstream");
+    let callback_app = upstream_oauth::router(Arc::clone(&registry));
+    tokio::spawn(async move {
+        axum::serve(callback_listener, callback_app).await.ok();
+    });
+
+    UpstreamOAuthHarness {
+        vault,
+        registry,
+        upstream,
+        token_grants: state.token_grants,
+        resource_bearers: state.resource_bearers,
+        refuse_refresh: state.refuse_refresh,
+        callback_url,
+    }
+}
+
+async fn start_upstream_consent(w: &mut GatewayWorld) {
+    let harness = w.upstream_oauth.as_ref().expect("OAuth harness");
+    let start = harness
+        .registry
+        .start("protected")
+        .await
+        .expect("consent URL");
+    w.upstream_oauth_consent = Some(start.authorization_url);
+}
+
+fn upstream_consent_state(w: &GatewayWorld) -> String {
+    let url =
+        reqwest::Url::parse(w.upstream_oauth_consent.as_deref().expect("consent URL")).unwrap();
+    url.query_pairs()
+        .find(|(name, _)| name == "state")
+        .map(|(_, value)| value.into_owned())
+        .expect("state")
+}
+
+async fn complete_upstream_consent(w: &mut GatewayWorld) {
+    start_upstream_consent(w).await;
+    let state = upstream_consent_state(w);
+    let callback_url = w
+        .upstream_oauth
+        .as_ref()
+        .expect("OAuth harness")
+        .callback_url
+        .clone();
+    let response = reqwest::Client::new()
+        .get(callback_url)
+        .query(&[("code", "approved-code"), ("state", state.as_str())])
+        .send()
+        .await
+        .expect("callback response");
+    let status = response.status().as_u16();
+    let body = response.bytes().await.unwrap().to_vec();
+    w.upstream_oauth_callback = Some(HttpCapture {
+        status,
+        headers: BTreeMap::new(),
+        body,
+    });
+}
+
+fn upstream_token_record(w: &GatewayWorld) -> String {
+    w.upstream_oauth
+        .as_ref()
+        .expect("OAuth harness")
+        .vault
+        .clear(UPSTREAM_TOKEN_PATH, UPSTREAM_TOKEN_FIELD)
+        .expect("OAuth token record")
+}
+
+#[when("a hub server declares OAuth authorization code with PKCE and Vault custody")]
+async fn upstream_oauth_config_valid(w: &mut GatewayWorld) {
+    let text = upstream_oauth_yaml(
+        "https://protected.example",
+        "https://gateway.example/oauth/callback",
+        false,
+    );
+    w.config_error = GatewayConfig::from_yaml(&text)
+        .err()
+        .map(|error| error.to_string());
+    w.upstream_oauth_config = Some(text);
+}
+
+#[then("the OAuth configuration is accepted without any secret value")]
+async fn upstream_oauth_config_secretless(w: &mut GatewayWorld) {
+    assert!(w.config_error.is_none(), "{:?}", w.config_error);
+    let text = w.upstream_oauth_config.as_deref().unwrap();
+    for secret in [
+        UPSTREAM_CLIENT_SECRET,
+        UPSTREAM_ACCESS_1,
+        UPSTREAM_REFRESH_1,
+    ] {
+        assert!(!text.contains(secret));
+    }
+    assert!(text.contains("client_secret:") && text.contains("token_vault:"));
+}
+
+#[when("a hub server declares OAuth and a static bearer together")]
+async fn upstream_oauth_config_competing(w: &mut GatewayWorld) {
+    let text = upstream_oauth_yaml(
+        "https://protected.example",
+        "https://gateway.example/oauth/callback",
+        true,
+    );
+    w.config_error = GatewayConfig::from_yaml(&text)
+        .err()
+        .map(|error| error.to_string());
+}
+
+#[then("the configuration is rejected naming the competing credential modes")]
+async fn upstream_oauth_config_competing_rejected(w: &mut GatewayWorld) {
+    let error = w.config_error.as_deref().expect("config rejected");
+    assert!(error.contains("competing credential modes"), "{error}");
+}
+
+#[given("a protected upstream with a fake OAuth authorization server")]
+async fn upstream_oauth_fake(w: &mut GatewayWorld) {
+    w.upstream_oauth = Some(provision_upstream_oauth(3600).await);
+}
+
+#[when("the owner builds the consent URL")]
+async fn upstream_oauth_owner_consent(w: &mut GatewayWorld) {
+    start_upstream_consent(w).await;
+}
+
+#[then("the URL carries S256 PKCE, state, the configured scopes and redirect URI")]
+async fn upstream_oauth_consent_exact(w: &mut GatewayWorld) {
+    let harness = w.upstream_oauth.as_ref().unwrap();
+    let url = reqwest::Url::parse(w.upstream_oauth_consent.as_deref().unwrap()).unwrap();
+    let query: BTreeMap<_, _> = url
+        .query_pairs()
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+        .collect();
+    assert_eq!(
+        query.get("code_challenge_method").map(String::as_str),
+        Some("S256")
+    );
+    assert!(query
+        .get("code_challenge")
+        .is_some_and(|value| !value.is_empty()));
+    assert!(query.get("state").is_some_and(|value| !value.is_empty()));
+    assert_eq!(
+        query.get("scope").map(String::as_str),
+        Some("resource.read")
+    );
+    assert_eq!(
+        query.get("redirect_uri").map(String::as_str),
+        Some(harness.callback_url.as_str())
+    );
+}
+
+#[then("the pending verifier lives only in the Vault record")]
+async fn upstream_oauth_pending_in_vault(w: &mut GatewayWorld) {
+    let record = upstream_token_record(w);
+    let json: Value = serde_json::from_str(&record).unwrap();
+    let verifier = json["code_verifier"].as_str().expect("verifier");
+    assert!(verifier.len() >= 43);
+    assert!(!w
+        .upstream_oauth_consent
+        .as_deref()
+        .unwrap()
+        .contains(verifier));
+    assert!(!w
+        .upstream_oauth_config
+        .as_deref()
+        .unwrap_or_default()
+        .contains(verifier));
+}
+
+#[given("the owner has started consent")]
+async fn upstream_oauth_started(w: &mut GatewayWorld) {
+    start_upstream_consent(w).await;
+}
+
+#[when("the OAuth callback receives the approved code and matching state")]
+async fn upstream_oauth_callback(w: &mut GatewayWorld) {
+    let state = upstream_consent_state(w);
+    let callback_url = w.upstream_oauth.as_ref().unwrap().callback_url.clone();
+    let response = reqwest::Client::new()
+        .get(callback_url)
+        .query(&[("code", "approved-code"), ("state", state.as_str())])
+        .send()
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let body = response.bytes().await.unwrap().to_vec();
+    w.upstream_oauth_callback = Some(HttpCapture {
+        status,
+        headers: BTreeMap::new(),
+        body,
+    });
+}
+
+#[then("the Vault record contains the access token, refresh token and expiry")]
+async fn upstream_oauth_vault_connected(w: &mut GatewayWorld) {
+    let record = upstream_token_record(w);
+    let json: Value = serde_json::from_str(&record).unwrap();
+    assert_eq!(json["status"], "connected");
+    assert_eq!(json["access_token"], UPSTREAM_ACCESS_1);
+    assert_eq!(json["refresh_token"], UPSTREAM_REFRESH_1);
+    assert!(json["expires_at"].as_i64().is_some_and(|value| value > 0));
+}
+
+#[then("the callback response contains no token byte")]
+async fn upstream_oauth_callback_redacted(w: &mut GatewayWorld) {
+    let callback = w.upstream_oauth_callback.as_ref().unwrap();
+    assert_eq!(callback.status, 200);
+    let body = callback.text();
+    for secret in [
+        UPSTREAM_ACCESS_1,
+        UPSTREAM_REFRESH_1,
+        UPSTREAM_CLIENT_SECRET,
+    ] {
+        assert!(!body.contains(secret));
+    }
+}
+
+#[given("a protected upstream with a completed OAuth consent")]
+async fn upstream_oauth_completed(w: &mut GatewayWorld) {
+    w.upstream_oauth = Some(provision_upstream_oauth(3600).await);
+    complete_upstream_consent(w).await;
+}
+
+#[given("a protected upstream with an expired OAuth access token")]
+async fn upstream_oauth_expired(w: &mut GatewayWorld) {
+    w.upstream_oauth = Some(provision_upstream_oauth(1).await);
+    complete_upstream_consent(w).await;
+}
+
+#[given("the fake OAuth server refuses refresh")]
+async fn upstream_oauth_refuse_refresh(w: &mut GatewayWorld) {
+    w.upstream_oauth
+        .as_ref()
+        .unwrap()
+        .refuse_refresh
+        .store(true, Ordering::SeqCst);
+}
+
+#[when("the gateway calls the protected resource")]
+async fn upstream_oauth_call_resource(w: &mut GatewayWorld) {
+    let result = w
+        .upstream_oauth
+        .as_ref()
+        .unwrap()
+        .upstream
+        .forward(json!({"jsonrpc":"2.0", "id":1, "method":"tools/list"}))
+        .await
+        .map_err(|error| error.to_string());
+    w.upstream_oauth_result = Some(result);
+}
+
+#[then("the resource sees exactly the Vault access token")]
+async fn upstream_oauth_resource_access(w: &mut GatewayWorld) {
+    let seen = w
+        .upstream_oauth
+        .as_ref()
+        .unwrap()
+        .resource_bearers
+        .lock()
+        .unwrap();
+    assert_eq!(
+        seen.as_slice(),
+        &[Some(format!("Bearer {UPSTREAM_ACCESS_1}"))]
+    );
+}
+
+#[then("no token byte appears in the gateway result or error text")]
+async fn upstream_oauth_result_redacted(w: &mut GatewayWorld) {
+    let text = format!("{:?}", w.upstream_oauth_result.as_ref().unwrap());
+    for secret in [
+        UPSTREAM_ACCESS_1,
+        UPSTREAM_REFRESH_1,
+        UPSTREAM_CLIENT_SECRET,
+    ] {
+        assert!(!text.contains(secret));
+    }
+}
+
+#[then("the token endpoint receives one refresh grant")]
+async fn upstream_oauth_one_refresh(w: &mut GatewayWorld) {
+    let grants = w
+        .upstream_oauth
+        .as_ref()
+        .unwrap()
+        .token_grants
+        .lock()
+        .unwrap();
+    assert_eq!(
+        grants
+            .iter()
+            .filter(|form| form.get("grant_type").map(String::as_str) == Some("refresh_token"))
+            .count(),
+        1
+    );
+}
+
+#[then("the resource sees the rotated access token")]
+async fn upstream_oauth_resource_rotated(w: &mut GatewayWorld) {
+    let seen = w
+        .upstream_oauth
+        .as_ref()
+        .unwrap()
+        .resource_bearers
+        .lock()
+        .unwrap();
+    assert_eq!(
+        seen.as_slice(),
+        &[Some(format!("Bearer {UPSTREAM_ACCESS_2}"))]
+    );
+}
+
+#[then("the rotated token set replaces the expired Vault record")]
+async fn upstream_oauth_vault_rotated(w: &mut GatewayWorld) {
+    let record = upstream_token_record(w);
+    assert!(record.contains(UPSTREAM_ACCESS_2));
+    assert!(record.contains(UPSTREAM_REFRESH_2));
+    assert!(!record.contains(UPSTREAM_ACCESS_1));
+}
+
+#[then("the call is refused as OAuth unavailable")]
+async fn upstream_oauth_refused(w: &mut GatewayWorld) {
+    let error = w
+        .upstream_oauth_result
+        .as_ref()
+        .and_then(|result| result.as_ref().err())
+        .expect("OAuth refusal");
+    assert!(error.contains("upstream OAuth unavailable"), "{error}");
+}
+
+#[then("the protected resource receives zero requests")]
+async fn upstream_oauth_no_resource(w: &mut GatewayWorld) {
+    assert!(w
+        .upstream_oauth
+        .as_ref()
+        .unwrap()
+        .resource_bearers
+        .lock()
+        .unwrap()
+        .is_empty());
+}
+
+#[then("the refusal contains no access token, refresh token or client secret")]
+async fn upstream_oauth_refusal_redacted(w: &mut GatewayWorld) {
+    let error = w
+        .upstream_oauth_result
+        .as_ref()
+        .and_then(|result| result.as_ref().err())
+        .unwrap();
+    for secret in [
+        UPSTREAM_ACCESS_1,
+        UPSTREAM_ACCESS_2,
+        UPSTREAM_REFRESH_1,
+        UPSTREAM_REFRESH_2,
+        UPSTREAM_CLIENT_SECRET,
+    ] {
+        assert!(!error.contains(secret));
     }
 }
 

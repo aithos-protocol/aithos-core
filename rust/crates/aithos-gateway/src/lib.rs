@@ -24,6 +24,7 @@ pub mod proxy_llm;
 pub mod proxy_mcp;
 pub mod proxy_web;
 pub mod store_adapter;
+pub mod upstream_oauth;
 
 mod error;
 
