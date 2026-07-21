@@ -471,6 +471,38 @@ impl Bridge {
         )
     }
 
+    /// Extension visibility is mandate-derived and hot-revocable (GSE-0):
+    /// unlike the polite legacy pre-check, this reads current revocations so
+    /// `tools/list` drops a revoked pack tool without reopening the runner.
+    pub fn authorize_extension(&self, extension: &str, raw_tool: &str, now: &str) -> Result<()> {
+        let op = hub_op_for_tool(extension, raw_tool);
+        let doc = self.did_doc()?;
+        let entries = self.bundle.gamma_entries().map_err(bridge_err)?;
+        let revs = revocations(&entries);
+        verify_chain_revocable(&self.agent_chain, &doc, now, &revs).map_err(|e| {
+            GatewayError::MandateDenied {
+                op: op.clone(),
+                reason: e.to_string(),
+            }
+        })?;
+        let covered = self
+            .bundle
+            .action_covered(
+                &self.agent_chain,
+                extension,
+                &crate::policy::action_name(raw_tool),
+            )
+            .map_err(bridge_err)?;
+        if covered {
+            Ok(())
+        } else {
+            Err(GatewayError::MandateDenied {
+                op,
+                reason: "outside the granted perimeter".to_owned(),
+            })
+        }
+    }
+
     // ------------------------------------------------------------- gamma
 
     /// Append one act entry for an authorised call, signed by the
@@ -1718,6 +1750,20 @@ impl Runner {
         self.context(ctx)?.bridge.authorize(tool, now)
     }
 
+    /// The same synthetic-connector mandate check used by hub tools, with
+    /// live revocations because extension descriptors are recomputed per list.
+    pub fn authorize_extension(
+        &self,
+        ctx: &str,
+        extension: &str,
+        raw_tool: &str,
+        now: &str,
+    ) -> Result<()> {
+        self.context(ctx)?
+            .bridge
+            .authorize_extension(extension, raw_tool, now)
+    }
+
     /// Log-before-relay, twice: the authoritative act in the context
     /// gamma, then its xref mirror in the journal. Any failed append
     /// refuses the call — an act that cannot be indexed does not happen
@@ -1743,6 +1789,31 @@ impl Runner {
         };
         let ethos_did = context.bridge.ethos_did().to_owned();
         self.journal.record_xref(tool, &ethos_did, &entry_id, now)?;
+        Ok(entry_id)
+    }
+
+    /// Log-before-invoke for a compiled extension: authoritative context act
+    /// plus journal xref, using the extension id as the synthetic connector.
+    pub fn record_extension_act_with_xref(
+        &mut self,
+        ctx: &str,
+        exposed_tool: &str,
+        extension: &str,
+        raw_tool: &str,
+        args: &serde_json::Value,
+        now: &str,
+    ) -> Result<String> {
+        let context = self.context_mut(ctx)?;
+        let entry_id = context.bridge.record_hub_act(
+            exposed_tool,
+            extension,
+            raw_tool,
+            args,
+            now,
+        )?;
+        let ethos_did = context.bridge.ethos_did().to_owned();
+        self.journal
+            .record_xref(exposed_tool, &ethos_did, &entry_id, now)?;
         Ok(entry_id)
     }
 

@@ -30,6 +30,10 @@ use aithos_gateway::core_bridge::{
     EquipOutcome, MandateWindow, OnboardOutcome, OsEntropy, RawStore, ReenrollOutcome, Runner,
     SeqEntropy, EFFECTIVE_POLICY_VERSION, STATE_PATH,
 };
+use aithos_gateway::extensions::{
+    compiled_manifest, ExtensionRegistry, EXTENSION_MANIFEST_VERSION, GMAIL_EXTENSION_ID,
+    GMAIL_SEND_TOOL,
+};
 use aithos_gateway::hub::{
     approve_manifest, discover_server, ApprovedManifest, ArgumentBound, ToolApproval,
 };
@@ -290,6 +294,13 @@ struct GatewayWorld {
     oauth_refresh: Option<String>,
     oauth_http: Vec<HttpCapture>,
     ctx_agent_mandates: BTreeMap<String, String>,
+    /// GSE-0 extension scenarios: pending binding, the synthetic connector
+    /// mandate to revoke, and the address of the one live router instance.
+    extension_enabled: bool,
+    extension_context: Option<String>,
+    extension_agent_mandate: Option<String>,
+    extension_router_marker: Option<usize>,
+    extension_manifest_version: Option<String>,
 }
 
 /// One raw Streamable HTTP exchange (G2): what the wire actually said.
@@ -395,6 +406,11 @@ impl GatewayWorld {
             oauth_refresh: None,
             oauth_http: Vec::new(),
             ctx_agent_mandates: BTreeMap::new(),
+            extension_enabled: false,
+            extension_context: None,
+            extension_agent_mandate: None,
+            extension_router_marker: None,
+            extension_manifest_version: None,
         }
     }
 
@@ -494,6 +510,380 @@ impl GatewayWorld {
             .into_iter()
             .filter(|e| e.kind == "action" && e.target.as_deref() == Some("x.gateway"))
             .collect()
+    }
+}
+
+// --------------------------------------- compiled extensions (GSE-0)
+
+async fn provision_extension(w: &mut GatewayWorld, enabled: bool, covered: bool) {
+    if w.router.is_some() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("extension tempdir");
+    let context_root = dir.path().join("outbound");
+    let journal_root = dir.path().join("journal");
+    let context_cfg = aithos_gateway::config::StoreConfig::Fs {
+        root: context_root.clone(),
+    };
+    let journal_cfg = aithos_gateway::config::StoreConfig::Fs {
+        root: journal_root.clone(),
+    };
+    let context_store = GatewayStore::from_config(&context_cfg).expect("extension context store");
+    let journal_store = GatewayStore::from_config(&journal_cfg).expect("extension journal store");
+    let master = w.master();
+    let (agent_pub, gateway_pub) = w.pubs();
+    let mut owner_ent = SeqEntropy::default();
+    owner_init_context(
+        &master,
+        "outbound",
+        context_store.clone(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("extension context created");
+    let equipment = if covered {
+        let manifest = compiled_manifest(GMAIL_EXTENSION_ID)
+            .expect("compiled manifest")
+            .approved_manifest()
+            .expect("approved synthetic manifest");
+        owner_enroll_server(
+            &master,
+            "outbound",
+            &agent_pub,
+            &gateway_pub,
+            &manifest,
+            context_store.clone(),
+            &GatewayWorld::window(),
+            T0,
+            &mut owner_ent,
+        )
+        .expect("extension connector equipped")
+    } else {
+        owner_grant_context(
+            &master,
+            "outbound",
+            &agent_pub,
+            &gateway_pub,
+            &["unrelated.read".to_owned()],
+            context_store.clone(),
+            &GatewayWorld::window(),
+            T0,
+            &mut owner_ent,
+        )
+        .expect("unrelated context equipment")
+    };
+    owner_init_journal(
+        &master,
+        "extension-agent",
+        &agent_pub,
+        &gateway_pub,
+        None,
+        journal_store.clone(),
+        &GatewayWorld::window(),
+        T0,
+        &mut owner_ent,
+    )
+    .expect("extension journal created");
+
+    let quote =
+        |path: &std::path::Path| serde_json::to_string(&path.display().to_string()).unwrap();
+    let extension_yaml = if enabled {
+        "extensions:\n  - id: aithos-gmail\n    enabled: true\n    context: outbound\n"
+    } else {
+        ""
+    };
+    let cfg = GatewayConfig::from_yaml(&format!(
+        r#"listen: 127.0.0.1:4870
+{extension_yaml}contexts:
+  - name: outbound
+    upstream_mcp: http://127.0.0.1:59999/mcp
+    store: {{ kind: fs, root: {} }}
+    tools:
+      unrelated.read: read
+journal:
+  store: {{ kind: fs, root: {} }}
+"#,
+        quote(&context_root),
+        quote(&journal_root),
+    ))
+    .expect("extension config");
+    let registry = ExtensionRegistry::from_config(&cfg).expect("extension registry");
+    w.extension_manifest_version = registry
+        .resolve("aithos-gmail__send_guarded")
+        .map(|route| route.manifest_version().to_owned());
+    let mut kh_ent = SeqEntropy::default();
+    let runner = Runner::open(
+        &cfg,
+        Keyholder::from_entropy(kh_ent.e32(), kh_ent.e32()),
+        || Box::new(SeqEntropy::default()),
+    )
+    .expect("extension runner");
+    let upstream = FakeMcp::default();
+    let router = Arc::new(McpRouter {
+        runner: Arc::new(Mutex::new(runner)),
+        upstreams: BTreeMap::from([("outbound".to_owned(), upstream.clone())]),
+        clock: Arc::new(|| T0.to_owned()),
+        session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        extensions: registry,
+        oauth: None,
+    });
+    w.extension_enabled = enabled;
+    w.extension_context = Some("outbound".to_owned());
+    w.extension_agent_mandate = Some(equipment.agent_mandate);
+    w.extension_router_marker = Some(Arc::as_ptr(&router) as usize);
+    w.ctx_stores
+        .insert("outbound".to_owned(), context_store);
+    w.journal_store = Some(journal_store);
+    w.upstream = upstream.clone();
+    w.multi_upstreams.insert("outbound".to_owned(), upstream);
+    w.router = Some(router);
+    w.scratch = Some(dir);
+}
+
+async fn list_extension_tools(w: &mut GatewayWorld) {
+    let router = w.router.as_ref().expect("extension router");
+    let response = process_multi(
+        router,
+        json!({ "jsonrpc": "2.0", "id": 80, "method": "tools/list" }),
+    )
+    .await;
+    w.last_list = Some(response.clone());
+    w.last_response = Some(response);
+}
+
+#[given(expr = "the compiled pack {string} declares tool {string}")]
+async fn extension_manifest_declares(_w: &mut GatewayWorld, id: String, tool: String) {
+    let manifest = compiled_manifest(&id).expect("compiled extension manifest");
+    assert!(manifest.tools.iter().any(|item| item.name == tool));
+}
+
+#[given("the gateway configuration omits extensions")]
+async fn extension_config_omitted(w: &mut GatewayWorld) {
+    provision_extension(w, false, false).await;
+}
+
+#[given(expr = "extension {string} is enabled for context {string}")]
+async fn extension_enabled(w: &mut GatewayWorld, id: String, context: String) {
+    assert_eq!(id, GMAIL_EXTENSION_ID);
+    assert_eq!(context, "outbound");
+    w.extension_enabled = true;
+    w.extension_context = Some(context);
+}
+
+#[given(expr = "context {string} has no mandate for {string}")]
+async fn extension_context_uncovered(w: &mut GatewayWorld, context: String, op: String) {
+    assert_eq!(context, "outbound");
+    assert_eq!(op, "act.x.aithos-gmail.send_guarded");
+    provision_extension(w, true, false).await;
+}
+
+#[given(expr = "context {string} covers {string}")]
+async fn extension_context_covered(w: &mut GatewayWorld, context: String, op: String) {
+    assert_eq!(context, "outbound");
+    assert_eq!(op, "act.x.aithos-gmail.send_guarded");
+    provision_extension(w, true, true).await;
+    let router = w.router.as_ref().expect("extension router");
+    router
+        .runner
+        .lock()
+        .await
+        .authorize_extension("outbound", GMAIL_EXTENSION_ID, GMAIL_SEND_TOOL, T0)
+        .expect("covering extension mandate");
+}
+
+#[when(expr = "the agent lists tools and calls {string}")]
+async fn extension_list_and_call(w: &mut GatewayWorld, tool: String) {
+    list_extension_tools(w).await;
+    w.call(&tool, json!({ "arguments": {} })).await;
+}
+
+#[when("the agent lists tools")]
+async fn extension_lists(w: &mut GatewayWorld) {
+    list_extension_tools(w).await;
+}
+
+#[then(expr = "{string} is not listed")]
+async fn extension_not_listed(w: &mut GatewayWorld, tool: String) {
+    assert!(
+        !w.listed_tools()
+            .iter()
+            .any(|descriptor| descriptor["name"] == tool),
+        "extension tool must stay hidden"
+    );
+}
+
+#[then("the call is refused as an unmapped tool")]
+async fn extension_unmapped(w: &mut GatewayWorld) {
+    let message = w.last_response.as_ref().expect("refusal")["error"]["message"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(message.contains("not in the tool map"), "{message}");
+}
+
+#[then("the journal records the refusal under the gateway identity")]
+async fn extension_journal_refusal(w: &mut GatewayWorld) {
+    let refusals = acts_on(&w.journal_gamma(), "x.gateway");
+    assert_eq!(refusals.len(), 1);
+    assert_eq!(
+        payload_str(&refusals[0], "tool"),
+        Some("aithos-gmail__send_guarded")
+    );
+}
+
+#[then("the call is refused by the context mandate")]
+async fn extension_mandate_refusal(w: &mut GatewayWorld) {
+    let message = w.last_response.as_ref().expect("refusal")["error"]["message"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(message.contains("mandate denies"), "{message}");
+}
+
+#[then("no external request is made")]
+async fn extension_no_external_request(w: &mut GatewayWorld) {
+    assert!(
+        w.multi_upstreams
+            .values()
+            .all(|upstream| upstream.seen.lock().unwrap().is_empty()),
+        "a GSE-0 extension must have no external I/O"
+    );
+}
+
+#[then(expr = "the list includes {string} with the extension's pinned schema")]
+async fn extension_listed_with_pin(w: &mut GatewayWorld, exposed: String) {
+    let descriptor = w
+        .listed_tools()
+        .into_iter()
+        .find(|tool| tool["name"] == exposed)
+        .expect("extension descriptor");
+    let manifest = compiled_manifest(GMAIL_EXTENSION_ID).expect("compiled manifest");
+    assert_eq!(
+        descriptor["inputSchema"], manifest.tools[0].input_schema,
+        "the agent sees exactly the compiled pinned schema"
+    );
+    assert_eq!(
+        descriptor["description"], manifest.tools[0].description,
+        "the agent sees exactly the compiled pinned description"
+    );
+}
+
+#[then(expr = "the descriptor comes from manifest version {string}")]
+async fn extension_manifest_version(w: &mut GatewayWorld, version: String) {
+    assert_eq!(version, EXTENSION_MANIFEST_VERSION);
+    assert_eq!(w.extension_manifest_version.as_deref(), Some(version.as_str()));
+}
+
+#[when("the owner revokes that covering mandate while the gateway stays running")]
+async fn extension_revoke_hot(w: &mut GatewayWorld) {
+    let mandate = w
+        .extension_agent_mandate
+        .clone()
+        .expect("extension agent mandate");
+    let master = w.master();
+    let store = w
+        .ctx_stores
+        .get("outbound")
+        .cloned()
+        .expect("outbound context store");
+    let mut ent = SeqEntropy::default();
+    owner_revoke_mandate_id(
+        &master,
+        "outbound",
+        &mandate,
+        "extension revoked in GSE-0 scenario",
+        store,
+        T0,
+        &mut ent,
+    )
+    .expect("hot extension revocation");
+}
+
+#[then(expr = "the next tool list does not include {string}")]
+async fn extension_list_after_revoke(w: &mut GatewayWorld, tool: String) {
+    list_extension_tools(w).await;
+    extension_not_listed(w, tool).await;
+}
+
+#[then("the gateway process was not restarted")]
+async fn extension_router_not_restarted(w: &mut GatewayWorld) {
+    let router = w.router.as_ref().expect("same live router");
+    assert_eq!(
+        w.extension_router_marker,
+        Some(Arc::as_ptr(router) as usize),
+        "revocation must affect the existing router instance"
+    );
+}
+
+#[when(expr = "a gateway config enables extension {string} and declares external server {string}")]
+async fn extension_id_collision(w: &mut GatewayWorld, extension: String, server: String) {
+    let yaml = format!(
+        r#"listen: 127.0.0.1:4870
+extensions:
+  - id: {extension}
+    enabled: true
+    context: outbound
+servers:
+  - name: {server}
+    transport: http
+    url: https://external.invalid/mcp
+contexts:
+  - name: outbound
+    store: {{ kind: fs, root: /tmp/aithos-extension-collision-context }}
+journal:
+  store: {{ kind: fs, root: /tmp/aithos-extension-collision-journal }}
+"#
+    );
+    w.config_error = GatewayConfig::from_yaml(&yaml).err().map(|error| error.to_string());
+}
+
+#[then("the config is rejected naming the extension id collision")]
+async fn extension_id_collision_rejected(w: &mut GatewayWorld) {
+    let error = w.config_error.as_deref().expect("config refusal");
+    assert!(error.contains("extension id collision"), "{error}");
+}
+
+#[when(expr = "a gateway config maps external tool {string} and enables that extension")]
+async fn extension_name_collision(w: &mut GatewayWorld, tool: String) {
+    let yaml = format!(
+        r#"listen: 127.0.0.1:4870
+extensions:
+  - id: aithos-gmail
+    enabled: true
+    context: outbound
+contexts:
+  - name: outbound
+    upstream_mcp: http://127.0.0.1:59999/mcp
+    store: {{ kind: fs, root: /tmp/aithos-extension-name-context }}
+    tools:
+      {tool}: read
+journal:
+  store: {{ kind: fs, root: /tmp/aithos-extension-name-journal }}
+"#
+    );
+    w.config_error = GatewayConfig::from_yaml(&yaml).err().map(|error| error.to_string());
+}
+
+#[when(expr = "the agent calls {string} with an empty payload")]
+async fn extension_calls_empty(w: &mut GatewayWorld, tool: String) {
+    w.call(&tool, json!({ "arguments": {} })).await;
+}
+
+#[then("the pack refuses as not implemented in GSE-0")]
+async fn extension_not_implemented(w: &mut GatewayWorld) {
+    let message = w.last_response.as_ref().expect("pack refusal")["error"]["message"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(message.contains("no effect implementation in GSE-0"), "{message}");
+}
+
+#[then("the context and journal record a gateway-identity refusal")]
+async fn extension_refusal_both_gammas(w: &mut GatewayWorld) {
+    for entries in [w.ctx_gamma("outbound"), w.journal_gamma()] {
+        let refusals = acts_on(&entries, "x.gateway");
+        assert_eq!(refusals.len(), 1);
+        assert_eq!(
+            payload_str(&refusals[0], "reason"),
+            Some("extension_unavailable")
+        );
     }
 }
 
@@ -638,6 +1028,7 @@ journal:
         upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        extensions: ExtensionRegistry::default(),
         oauth: None,
     }));
     w.scratch = Some(dir);
@@ -778,6 +1169,7 @@ journal:
         upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        extensions: ExtensionRegistry::default(),
         oauth: None,
     }));
     w.scratch = Some(dir);
@@ -1090,6 +1482,7 @@ journal:
         upstreams: BTreeMap::from([("github".to_owned(), w.upstream.clone())]),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        extensions: ExtensionRegistry::default(),
         oauth: None,
     }));
     w.reenroll = Some(result);
@@ -1748,6 +2141,7 @@ async fn provision_runner(w: &mut GatewayWorld, a: String, b: String, strip_memo
         upstreams: w.multi_upstreams.clone(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        extensions: ExtensionRegistry::default(),
         oauth: None,
     }));
 }
@@ -3167,6 +3561,7 @@ async fn provision_vault_hub(w: &mut GatewayWorld, specs: Vec<VaultServerSpec>, 
             upstreams,
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+            extensions: ExtensionRegistry::default(),
             oauth: None,
         }),
         vault: fake_vault,
@@ -3766,6 +4161,7 @@ fn open_grants_runtime(
         upstreams: BTreeMap::from([(GRANTS_SERVER.to_owned(), w.upstream.clone())]),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        extensions: ExtensionRegistry::default(),
         oauth: None,
     }));
 }
@@ -4332,6 +4728,7 @@ async fn provision_briefing_world(w: &mut GatewayWorld) {
         upstreams: w.multi_upstreams.clone(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        extensions: ExtensionRegistry::default(),
         oauth: None,
     }));
 }
@@ -4871,6 +5268,7 @@ async fn provision_bounds_world(w: &mut GatewayWorld, raw_tool: &str, bounds: Ve
             upstreams,
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+            extensions: ExtensionRegistry::default(),
             oauth: None,
         }),
         vault: fake_vault,
@@ -4918,6 +5316,7 @@ fn reopen_bounds_runtime(w: &mut GatewayWorld) {
         upstreams,
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        extensions: ExtensionRegistry::default(),
         oauth: None,
     });
 }
@@ -5866,6 +6265,7 @@ async fn provision_demo_world(w: &mut GatewayWorld) {
             upstreams,
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+            extensions: ExtensionRegistry::default(),
             oauth: None,
         }),
         vault: fake_vault,
@@ -7479,6 +7879,7 @@ async fn serve_with_as(w: &mut GatewayWorld, extra_allow: Vec<String>, clock0: &
         upstreams: w.multi_upstreams.clone(),
         clock: Arc::new(move || cc.lock().unwrap().clone()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
+        extensions: ExtensionRegistry::default(),
         oauth: Some(Arc::clone(&auth)),
     });
     let app = router_multi(Arc::clone(&routing)).merge(router_oauth(Arc::clone(&routing)));

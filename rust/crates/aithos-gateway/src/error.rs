@@ -48,6 +48,11 @@ pub enum GatewayError {
     #[error("request rejected: {0}")]
     RequestRejected(String),
 
+    /// A compiled extension exists, but its effect adapter is deliberately
+    /// absent or unavailable. GSE-0 uses this for the contract-only Gmail pack.
+    #[error("extension unavailable: {0}")]
+    ExtensionUnavailable(String),
+
     /// An OAuth authorization-server refusal (lot G3): the `error` is the
     /// RFC 6749/8414 code (`invalid_grant`, `invalid_token`,
     /// `invalid_redirect_uri`…), the `detail` a fixed, leak-free
@@ -81,6 +86,7 @@ impl GatewayError {
             GatewayError::BoundViolated(_) => "bound_violated",
             GatewayError::ManifestDrift { .. } => "manifest_drift",
             GatewayError::RequestRejected(_) => "request_rejected",
+            GatewayError::ExtensionUnavailable(_) => "extension_unavailable",
             GatewayError::OauthDenied { .. } => "oauth_denied",
             GatewayError::AuditDenied(_) => "audit_denied",
             GatewayError::IdentityUnavailable(_) => "identity_unavailable",

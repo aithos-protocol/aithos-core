@@ -40,6 +40,7 @@ use tokio::sync::Mutex;
 
 use crate::core_bridge::{Bridge, EntropySource, Runner};
 use crate::credentials::{CredentialBroker, CredentialRef};
+use crate::extensions::ExtensionRegistry;
 use crate::hub::discover_server;
 use crate::policy::Policy;
 use crate::{GatewayError, Result};
@@ -345,6 +346,9 @@ pub struct McpRouter<U> {
     pub upstreams: BTreeMap<String, U>,
     pub clock: Clock,
     pub session_entropy: std::sync::Mutex<Box<dyn EntropySource + Send>>,
+    /// Compiled, opt-in synthetic servers (GSE-0). Authority remains in
+    /// `runner`; this registry owns only immutable manifests and dispatch.
+    pub extensions: ExtensionRegistry,
     /// The embedded OAuth authorization server (lot G3), when the `as:`
     /// stanza is active. `None` = byte-identical legacy behaviour: `/mcp`
     /// stays open on loopback, the AS endpoints do not exist. `Some` =
@@ -755,6 +759,17 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
             let now = (rt.clock)();
             let runner = rt.runner.lock().await;
             let mut tools = runner.listed_tools();
+            tools.extend(rt.extensions.routes().filter_map(|(_, route)| {
+                runner
+                    .authorize_extension(
+                        route.context(),
+                        route.pack_id(),
+                        route.raw_tool(),
+                        &now,
+                    )
+                    .ok()
+                    .map(|_| route.descriptor())
+            }));
             tools.extend(native_journal_tools());
             if runner.briefing_available() {
                 tools.push(briefing_tool());
@@ -877,6 +892,52 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Valu
                     .and_then(Value::as_str)
                     .map(str::to_owned);
                 runner.record_refusal(named.as_deref(), &tool, deny.refusal_code(), &now);
+                error_response(id, &deny)
+            }
+        };
+    }
+
+    // Compiled extension packs (GSE-0) are synthetic servers behind the
+    // same wall: live mandate → context act + journal xref → pack invoke.
+    // The Gmail pack in this lot has no effect adapter and deterministically
+    // refuses after the attempt is on the record; no network code exists.
+    if let Some(route) = rt.extensions.resolve(&tool).cloned() {
+        let ctx = route.context().to_owned();
+        if let Err(deny) = runner.authorize_extension(
+            &ctx,
+            route.pack_id(),
+            route.raw_tool(),
+            &now,
+        ) {
+            runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+            return error_response(id, &deny);
+        }
+        if let Err(error) = runner.record_extension_act_with_xref(
+            &ctx,
+            &tool,
+            route.pack_id(),
+            route.raw_tool(),
+            &args,
+            &now,
+        ) {
+            let deny = GatewayError::LogAppendRefused(error.to_string());
+            runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+            return error_response(id, &deny);
+        }
+        drop(runner);
+        return match route.invoke(&args).await {
+            Ok(result) => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": result,
+            }),
+            Err(deny) => {
+                rt.runner.lock().await.record_refusal(
+                    Some(&ctx),
+                    &tool,
+                    deny.refusal_code(),
+                    &now,
+                );
                 error_response(id, &deny)
             }
         };

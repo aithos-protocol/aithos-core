@@ -18,6 +18,7 @@ use aithos_gateway::proxy_llm::{router_llm, HttpLlmUpstream, LlmProxy};
 use aithos_gateway::proxy_mcp::{
     router, router_multi, verify_hub_upstreams, HttpUpstream, McpProxy, McpRouter,
 };
+use aithos_gateway::extensions::ExtensionRegistry;
 use aithos_gateway::store_adapter::GatewayStore;
 
 #[derive(Parser)]
@@ -902,11 +903,13 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     None
                 };
+                let extensions = ExtensionRegistry::from_config(&cfg)?;
                 let routing = Arc::new(McpRouter {
                     runner: Arc::clone(&runner),
                     upstreams,
                     clock: Arc::new(|| ts(now_secs())),
                     session_entropy: std::sync::Mutex::new(Box::new(OsEntropy)),
+                    extensions,
                     oauth: oauth.clone(),
                 });
                 if cfg.is_hub() {

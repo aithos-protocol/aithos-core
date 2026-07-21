@@ -66,6 +66,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::credentials::CredentialRef;
+use crate::extensions::ExtensionConfig;
 use crate::{GatewayError, Result};
 
 /// Access level the enterprise assigns to an MCP tool.
@@ -372,6 +373,10 @@ pub struct GatewayConfig {
     /// coordinates of the vault(s) that hold upstream MCP tokens.
     #[serde(default)]
     pub credential_brokers: Option<BTreeMap<String, BrokerConfig>>,
+    /// Optional compiled extension packs (GSE-0). Absent is default-deny;
+    /// each configured pack binds explicitly to one proof context.
+    #[serde(default)]
+    pub extensions: Option<Vec<ExtensionConfig>>,
     /// Multi-context shape (v2): the provisioned contexts. Mutually
     /// exclusive with the mono fields above.
     #[serde(default)]
@@ -467,6 +472,7 @@ impl GatewayConfig {
                 if let Some(oauth_as) = &self.oauth_as {
                     validate_as(oauth_as)?;
                 }
+                crate::extensions::validate_gateway_extensions(self)?;
                 Ok(())
             }
             (Some(_), None) => Err(GatewayError::ConfigRejected(
@@ -503,6 +509,12 @@ impl GatewayConfig {
                         "`as:` needs the multi-context shape (`contexts` + `journal`): \
                          the OAuth session rides the runner's mandate chains and its \
                          issuance record lives in the journal"
+                            .into(),
+                    ));
+                }
+                if self.extensions.is_some() {
+                    return Err(GatewayError::ConfigRejected(
+                        "`extensions` needs the multi-context shape so every pack has a proof context"
                             .into(),
                     ));
                 }
@@ -573,6 +585,12 @@ fn validate_hub(
         if !crate::policy::valid_server_name(&server.name) {
             return Err(GatewayError::ConfigRejected(format!(
                 "server name `{}` must start with a lowercase letter or digit and contain only lowercase letters, digits, `-` or `_`",
+                server.name
+            )));
+        }
+        if crate::extensions::is_compiled_extension_id(&server.name) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "extension id collision `{}` with an external server",
                 server.name
             )));
         }
