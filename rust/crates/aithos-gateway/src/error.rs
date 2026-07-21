@@ -61,6 +61,12 @@ pub enum GatewayError {
     #[error("upstream OAuth unavailable: {0}")]
     UpstreamOauthUnavailable(String),
 
+    /// The opt-in outbound relay could not establish or keep its C2
+    /// tunnel. Details are gateway-built reason classes only: never a
+    /// registration line, TLS payload, hostname query or application byte.
+    #[error("relay unavailable: {0}")]
+    RelayUnavailable(String),
+
     /// Audit export was refused (auditor mandate does not cover the query).
     #[error("audit read denied: {0}")]
     AuditDenied(String),
@@ -89,6 +95,7 @@ impl GatewayError {
             GatewayError::RequestRejected(_) => "request_rejected",
             GatewayError::OauthDenied { .. } => "oauth_denied",
             GatewayError::UpstreamOauthUnavailable(_) => "upstream_oauth_unavailable",
+            GatewayError::RelayUnavailable(_) => "relay_unavailable",
             GatewayError::AuditDenied(_) => "audit_denied",
             GatewayError::IdentityUnavailable(_) => "identity_unavailable",
             GatewayError::BridgeFailed(_) => "bridge_failed",

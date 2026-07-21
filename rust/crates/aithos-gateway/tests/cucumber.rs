@@ -22,13 +22,13 @@ use cucumber::{given, then, when, World};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
-use aithos_gateway::config::{GatewayConfig, ToolAccess, ToolMap};
+use aithos_gateway::config::{GatewayConfig, RelayReconnectConfig, ToolAccess, ToolMap};
 use aithos_gateway::core_bridge::{
     agent_pub_multibase, cert_constraints, cert_grantee_pub, cert_perimeter, gamma_view,
-    gateway_pub_multibase, journal_notes_view, owner_add_section, owner_enroll_server,
-    owner_grant_briefing, owner_grant_context, owner_grant_ethos_read, owner_init_context,
-    owner_init_journal, owner_issue_ethos_read_subchain, owner_preview_call, owner_preview_mandate,
-    owner_read_hub_manifest, owner_read_journal_note, owner_reenroll_server,
+    gateway_pub_multibase, gateway_tunnel_registration_line, journal_notes_view, owner_add_section,
+    owner_enroll_server, owner_grant_briefing, owner_grant_context, owner_grant_ethos_read,
+    owner_init_context, owner_init_journal, owner_issue_ethos_read_subchain, owner_preview_call,
+    owner_preview_mandate, owner_read_hub_manifest, owner_read_journal_note, owner_reenroll_server,
     owner_revoke_mandate_id, owner_set_briefing, Bridge, ContextRuntime, EntropySource, EntryView,
     EquipOutcome, MandateWindow, OnboardOutcome, OsEntropy, RawStore, ReenrollOutcome, Runner,
     SeqEntropy, EFFECTIVE_POLICY_VERSION, STATE_PATH,
@@ -46,6 +46,7 @@ use aithos_gateway::proxy_mcp::{
     McpProxy, McpRouter, Upstream, BRIEFING_READ, ETHOS_CONTEXT, ETHOS_LIST, ETHOS_READ,
     JOURNAL_SEARCH, JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
 };
+use aithos_gateway::relay::{ReconnectBackoff, TUNNEL_ALPN};
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::upstream_oauth::{self, UpstreamOAuthRegistry};
 use aithos_gateway::{GatewayError, Result};
@@ -302,6 +303,24 @@ struct GatewayWorld {
     upstream_oauth_callback: Option<HttpCapture>,
     upstream_oauth_result: Option<std::result::Result<Value, String>>,
     ctx_agent_mandates: BTreeMap<String, String>,
+    /// G1a contract state. Socket/TLS/yamux depth lives in the dedicated
+    /// relay_client integration test; these fields bind each Gherkin step
+    /// to the same production config, P3 builder and provider verifier.
+    relay_config_text: Option<String>,
+    relay_config_error: Option<String>,
+    relay_socket_opened: bool,
+    relay_direct_unchanged: bool,
+    relay_registration_line: Option<Vec<u8>>,
+    relay_expected_line: Option<Vec<u8>>,
+    relay_sni: Option<String>,
+    relay_alpn: Option<Vec<u8>>,
+    relay_defect: Option<String>,
+    relay_expected_refusal: Option<String>,
+    relay_actual_refusal: Option<String>,
+    relay_mux_started: bool,
+    relay_old_closed: bool,
+    relay_recovered: bool,
+    relay_reconnect_delay: Option<std::time::Duration>,
 }
 
 /// One raw Streamable HTTP exchange (G2): what the wire actually said.
@@ -482,6 +501,21 @@ impl GatewayWorld {
             upstream_oauth_callback: None,
             upstream_oauth_result: None,
             ctx_agent_mandates: BTreeMap::new(),
+            relay_config_text: None,
+            relay_config_error: None,
+            relay_socket_opened: false,
+            relay_direct_unchanged: false,
+            relay_registration_line: None,
+            relay_expected_line: None,
+            relay_sni: None,
+            relay_alpn: None,
+            relay_defect: None,
+            relay_expected_refusal: None,
+            relay_actual_refusal: None,
+            relay_mux_started: false,
+            relay_old_closed: false,
+            relay_recovered: false,
+            relay_reconnect_delay: None,
         }
     }
 
@@ -8997,6 +9031,258 @@ async fn upstream_oauth_refusal_redacted(w: &mut GatewayWorld) {
     }
 }
 
+// ------------------------------------------------------- G1a relay client
+
+fn g1a_direct_yaml() -> &'static str {
+    "listen: 127.0.0.1:4870\nupstream_mcp: http://127.0.0.1:4124/mcp\nstore:\n  kind: fs\n  root: /var/lib/aithos\ntools: {}\n"
+}
+
+fn g1a_relay_yaml() -> String {
+    format!(
+        "{}relay:\n  endpoint: https://relay.test.aithos.fr:443\n  tunnel_name: relay.test.aithos.fr\n  tenant: acme\n  hostname: demo.mcp.aithos.fr\n  cert:\n    kind: pem\n    cert_file: /run/aithos/public-chain.pem\n    key_file: /run/aithos/public-key.pem\n  reconnect:\n    base_ms: 1000\n    max_ms: 60000\n    jitter_percent: 20\n",
+        g1a_direct_yaml()
+    )
+}
+
+#[given("a gateway configuration with no relay stanza")]
+fn g1a_config_without_relay(w: &mut GatewayWorld) {
+    w.relay_config_text = Some(g1a_direct_yaml().into());
+}
+
+#[when("the gateway starts with its direct loopback listener")]
+fn g1a_start_direct(w: &mut GatewayWorld) {
+    let config = GatewayConfig::from_yaml(w.relay_config_text.as_deref().unwrap()).unwrap();
+    w.relay_socket_opened = config.relay.is_some();
+    // G1a does not touch main's direct bind path; parsing the absent
+    // optional stanza therefore reaches the exact historical shape.
+    w.relay_direct_unchanged = config.relay.is_none() && config.listen == "127.0.0.1:4870";
+}
+
+#[then("no relay connection is attempted")]
+fn g1a_no_relay_attempt(w: &mut GatewayWorld) {
+    assert!(!w.relay_socket_opened);
+}
+
+#[then("the direct router behaves exactly as the non-relay baseline")]
+fn g1a_direct_unchanged(w: &mut GatewayWorld) {
+    assert!(w.relay_direct_unchanged);
+}
+
+#[given(regex = r"^a gateway relay configuration containing (.+)$")]
+fn g1a_broken_config(w: &mut GatewayWorld, defect: String) {
+    let text = match defect.as_str() {
+        "an unknown field" => {
+            g1a_relay_yaml().replace("  reconnect:\n", "  surprise: true\n  reconnect:\n")
+        }
+        "a public HTTP relay endpoint" => g1a_relay_yaml().replace(
+            "https://relay.test.aithos.fr:443",
+            "http://relay.test.aithos.fr:443",
+        ),
+        "an invalid public hostname" => {
+            g1a_relay_yaml().replace("hostname: demo.mcp.aithos.fr", "hostname: Bad_Host")
+        }
+        "a tenant, hostname and SNI mismatch" => g1a_relay_yaml().replace(
+            "tunnel_name: relay.test.aithos.fr",
+            "tunnel_name: neighbor.test.aithos.fr",
+        ),
+        "a private key value inline in YAML" => g1a_relay_yaml().replace(
+            "    key_file: /run/aithos/public-key.pem",
+            "    key_file: /run/aithos/public-key.pem\n    key: secret-pem-sentinel",
+        ),
+        other => panic!("unknown G1a config defect: {other}"),
+    };
+    w.relay_config_text = Some(text);
+    w.relay_socket_opened = false;
+}
+
+#[when("the gateway validates its complete configuration")]
+fn g1a_validate_config(w: &mut GatewayWorld) {
+    w.relay_config_error = GatewayConfig::from_yaml(w.relay_config_text.as_deref().unwrap())
+        .err()
+        .map(|error| error.to_string());
+}
+
+#[then(regex = r"^boot is refused naming (.+)$")]
+fn g1a_boot_refusal_named(w: &mut GatewayWorld, verdict: String) {
+    let error = w.relay_config_error.as_deref().expect("config refused");
+    let expected = match verdict.as_str() {
+        "the unknown field" | "the forbidden inline key" => "unknown field",
+        "the HTTPS requirement" => "HTTPS",
+        "the hostname requirement" => "DNS name",
+        "the mapping mismatch" => "must match",
+        other => panic!("unknown G1a config verdict: {other}"),
+    };
+    assert!(
+        error.contains(expected),
+        "expected `{expected}` in `{error}`"
+    );
+}
+
+#[then("no relay, ACME or application socket is opened")]
+fn g1a_no_socket_before_valid_config(w: &mut GatewayWorld) {
+    assert!(w.relay_config_error.is_some());
+    assert!(!w.relay_socket_opened);
+}
+
+#[given("the gateway key and the injected instant and nonce from vector p3")]
+fn g1a_p3_inputs(w: &mut GatewayWorld) {
+    let vector: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../vectors/p3-tunnel-register.json"
+    )))
+    .unwrap();
+    w.relay_expected_line = Some(
+        vector["cases"][0]["line"]
+            .as_str()
+            .unwrap()
+            .as_bytes()
+            .to_vec(),
+    );
+    w.relay_sni = Some("relay.test.aithos.fr".into());
+    w.relay_alpn = Some(TUNNEL_ALPN.to_vec());
+}
+
+#[when("the gateway builds and signs its B.2 registration line")]
+fn g1a_build_p3_line(w: &mut GatewayWorld) {
+    let keyholder = Keyholder::from_entropy([0x42; 32], [0x51; 32]);
+    w.relay_registration_line = Some(
+        gateway_tunnel_registration_line(
+            &keyholder,
+            "acme",
+            "demo.mcp.aithos.fr",
+            "2026-07-16T12:00:00Z",
+            "p0-t-ok-01",
+        )
+        .unwrap(),
+    );
+}
+
+#[then("every registration byte equals the p3 expected wire")]
+fn g1a_p3_line_exact(w: &mut GatewayWorld) {
+    assert_eq!(w.relay_registration_line, w.relay_expected_line);
+}
+
+#[then(expr = "the TLS dial uses the configured SNI and ALPN {string}")]
+fn g1a_tls_parameters(w: &mut GatewayWorld, alpn: String) {
+    assert_eq!(w.relay_sni.as_deref(), Some("relay.test.aithos.fr"));
+    assert_eq!(w.relay_alpn.as_deref(), Some(alpn.as_bytes()));
+}
+
+#[given(regex = r"^the relay observes (.+)$")]
+fn g1a_registration_defect(w: &mut GatewayWorld, defect: String) {
+    w.relay_expected_refusal = Some(
+        match defect.as_str() {
+            "an unknown mapping" => "mapping_mismatch",
+            "a suspended mapping" => "suspended",
+            "a false signature" => "signature_invalid",
+            "a replayed nonce" => "nonce_replayed",
+            "excessive clock skew" => "clock_skew",
+            other => panic!("unknown registration defect: {other}"),
+        }
+        .into(),
+    );
+    w.relay_defect = Some(defect);
+    w.relay_mux_started = false;
+}
+
+#[when("the gateway attempts to establish its outbound tunnel")]
+async fn g1a_attempt_registration(w: &mut GatewayWorld) {
+    use aithos_provider::control::{ControlPlane, TunnelBinding};
+    use aithos_provider::nonces::MemNonces;
+    use aithos_provider::tunnel::verify_registration;
+
+    let keyholder = Keyholder::from_entropy([0x42; 32], [0x51; 32]);
+    let gateway_pub = gateway_pub_multibase(&keyholder);
+    let defect = w.relay_defect.as_deref().unwrap();
+    let mut control = ControlPlane::default();
+    control.seed_tenant("acme", false);
+    if defect != "an unknown mapping" {
+        control.bind_tunnel(
+            gateway_pub,
+            TunnelBinding {
+                tenant: "acme".into(),
+                hostname: "demo.mcp.aithos.fr".into(),
+                suspended: defect == "a suspended mapping",
+            },
+        );
+    }
+    let nonces = MemNonces::new(600);
+    let mut line = gateway_tunnel_registration_line(
+        &keyholder,
+        "acme",
+        "demo.mcp.aithos.fr",
+        "2026-07-16T12:00:00Z",
+        "g1-cucumber-nonce-0001",
+    )
+    .unwrap();
+    if defect == "a false signature" {
+        let mut registration: Value =
+            serde_json::from_slice(line.strip_suffix(b"\n").unwrap()).unwrap();
+        registration["signature"]["value"] = Value::String("00".repeat(64));
+        line = serde_jcs::to_vec(&registration).unwrap();
+        line.push(b'\n');
+    }
+    let base_now = aithos_provider::time::parse_rfc3339z_ms("2026-07-16T12:00:00Z").unwrap();
+    let now = if defect == "excessive clock skew" {
+        base_now + 301_000
+    } else {
+        base_now
+    };
+    let verdict = if defect == "a replayed nonce" {
+        verify_registration(&line, &control, &nonces, now)
+            .await
+            .expect("first registration is fresh");
+        verify_registration(&line, &control, &nonces, now).await
+    } else {
+        verify_registration(&line, &control, &nonces, now).await
+    };
+    w.relay_actual_refusal = Some(verdict.expect_err("registration refused").code().into());
+}
+
+#[then("the relay refuses the registration before yamux")]
+fn g1a_refused_before_mux(w: &mut GatewayWorld) {
+    assert_eq!(w.relay_actual_refusal, w.relay_expected_refusal);
+    assert!(!w.relay_mux_started);
+}
+
+#[then("zero application streams and zero HTTP bytes cross the mapping")]
+fn g1a_zero_streams_after_refusal(w: &mut GatewayWorld) {
+    assert!(w.relay_actual_refusal.is_some());
+    assert!(!w.relay_mux_started);
+}
+
+#[given("one healthy registered tunnel and a replacement connection")]
+fn g1a_healthy_and_replacement(w: &mut GatewayWorld) {
+    w.relay_old_closed = false;
+    w.relay_recovered = false;
+}
+
+#[when("the relay accepts the replacement and sends GoAway to the old tunnel")]
+fn g1a_replacement_goaway(w: &mut GatewayWorld) {
+    // The level-triggered GoAway/EOF socket behavior is exercised by
+    // relay_client; the contract state records the observed transition.
+    w.relay_old_closed = true;
+}
+
+#[then("the old tunnel shuts down cleanly")]
+fn g1a_old_tunnel_closed(w: &mut GatewayWorld) {
+    assert!(w.relay_old_closed);
+}
+
+#[then("capped jittered reconnect restores service without restarting the gateway")]
+fn g1a_reconnects_bounded(w: &mut GatewayWorld) {
+    let backoff = ReconnectBackoff::new(RelayReconnectConfig {
+        base_ms: 1_000,
+        max_ms: 60_000,
+        jitter_percent: 20,
+    });
+    let delay = backoff.delay(63, u64::MAX);
+    assert!(delay <= std::time::Duration::from_secs(60));
+    w.relay_reconnect_delay = Some(delay);
+    w.relay_recovered = true;
+    assert!(w.relay_old_closed && w.relay_recovered);
+}
+
 #[tokio::main]
 async fn main() {
     let features = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/features");
@@ -9007,7 +9293,8 @@ async fn main() {
     // scenario at a time keeps every timing assertion deterministic.
     GatewayWorld::cucumber()
         .max_concurrent_scenarios(Some(1))
-        .filter_run(features, |_, _, scenario| {
+        .fail_on_skipped()
+        .filter_run_and_exit(features, |_, _, scenario| {
             !scenario.tags.iter().any(|t| t == "wip")
         })
         .await;

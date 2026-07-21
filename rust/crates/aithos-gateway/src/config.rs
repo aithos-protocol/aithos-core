@@ -369,6 +369,76 @@ fn default_refresh_ttl() -> u64 {
     7 * 86_400
 }
 
+/// Outbound relay configuration (G1). The stanza is entirely opt-in:
+/// omitting it leaves the direct listener on its historical path.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RelayConfig {
+    /// TLS tunnel door. G1 always speaks TLS, including in local tests.
+    pub endpoint: String,
+    /// SNI used for the tunnel-door TLS handshake.
+    pub tunnel_name: String,
+    /// Existing C2 control-plane mapping coordinates.
+    pub tenant: String,
+    pub hostname: String,
+    /// Public certificate custody stays on the client side (implemented
+    /// by G1b; the closed shape is frozen here so config cannot drift).
+    pub cert: RelayCertificateConfig,
+    /// Bounded reconnect policy. Jitter entropy is injected at runtime.
+    #[serde(default)]
+    pub reconnect: RelayReconnectConfig,
+}
+
+/// Public TLS material for relayed streams. No variant accepts inline PEM
+/// or a private-key value: configuration carries paths and public URLs only.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum RelayCertificateConfig {
+    AcmeDns01 {
+        directory: String,
+        store_url: String,
+        cache_dir: PathBuf,
+    },
+    Pem {
+        cert_file: PathBuf,
+        key_file: PathBuf,
+    },
+}
+
+/// Exponential reconnect bounds from the G1 contract.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RelayReconnectConfig {
+    #[serde(default = "default_relay_reconnect_base_ms")]
+    pub base_ms: u64,
+    #[serde(default = "default_relay_reconnect_max_ms")]
+    pub max_ms: u64,
+    #[serde(default = "default_relay_reconnect_jitter_percent")]
+    pub jitter_percent: u8,
+}
+
+impl Default for RelayReconnectConfig {
+    fn default() -> Self {
+        Self {
+            base_ms: default_relay_reconnect_base_ms(),
+            max_ms: default_relay_reconnect_max_ms(),
+            jitter_percent: default_relay_reconnect_jitter_percent(),
+        }
+    }
+}
+
+fn default_relay_reconnect_base_ms() -> u64 {
+    1_000
+}
+
+fn default_relay_reconnect_max_ms() -> u64 {
+    60_000
+}
+
+fn default_relay_reconnect_jitter_percent() -> u8 {
+    20
+}
+
 /// The whole gateway configuration file.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -410,6 +480,10 @@ pub struct GatewayConfig {
     /// rides under its YAML name.
     #[serde(default, rename = "as")]
     pub oauth_as: Option<AsConfig>,
+    /// Optional outbound tunnel. Direct and relay serving later consume
+    /// the same Router; this field never disables the direct listener.
+    #[serde(default)]
+    pub relay: Option<RelayConfig>,
 }
 
 impl GatewayConfig {
@@ -438,6 +512,9 @@ impl GatewayConfig {
     fn validate(&self) -> Result<()> {
         if self.listen.trim().is_empty() {
             return Err(GatewayError::ConfigRejected("`listen` is empty".into()));
+        }
+        if let Some(relay) = &self.relay {
+            validate_relay(relay)?;
         }
         match (&self.contexts, &self.journal) {
             // ------------------------------- multi-context v2 / hub v3
@@ -909,6 +986,124 @@ fn mono_only() -> GatewayError {
     )
 }
 
+fn validate_relay(relay: &RelayConfig) -> Result<()> {
+    let endpoint = reqwest::Url::parse(&relay.endpoint).map_err(|_| {
+        GatewayError::ConfigRejected("`relay.endpoint` must be an absolute HTTPS URL".into())
+    })?;
+    if endpoint.scheme() != "https"
+        || endpoint.host_str().is_none()
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+        || endpoint.query().is_some()
+        || endpoint.fragment().is_some()
+        || !matches!(endpoint.path(), "" | "/")
+    {
+        return Err(GatewayError::ConfigRejected(
+            "`relay.endpoint` must be an HTTPS authority without credentials, path, query or fragment"
+                .into(),
+        ));
+    }
+    validate_dns_name(&relay.tunnel_name, "relay.tunnel_name")?;
+    let endpoint_host = endpoint.host_str().expect("validated host");
+    let endpoint_is_ip = endpoint_host.parse::<std::net::IpAddr>().is_ok();
+    if !endpoint_is_ip && endpoint_host != "localhost" && endpoint_host != relay.tunnel_name {
+        return Err(GatewayError::ConfigRejected(
+            "`relay.tunnel_name` must match the relay endpoint DNS authority".into(),
+        ));
+    }
+    validate_dns_name(&relay.hostname, "relay.hostname")?;
+    if !is_canonical_tenant(&relay.tenant) {
+        return Err(GatewayError::ConfigRejected(
+            "`relay.tenant` must be a canonical lowercase tenant id".into(),
+        ));
+    }
+    if relay.reconnect.base_ms == 0 {
+        return Err(GatewayError::ConfigRejected(
+            "`relay.reconnect.base_ms` must be strictly positive".into(),
+        ));
+    }
+    if relay.reconnect.max_ms < relay.reconnect.base_ms {
+        return Err(GatewayError::ConfigRejected(
+            "`relay.reconnect.max_ms` must be greater than or equal to base_ms".into(),
+        ));
+    }
+    if relay.reconnect.jitter_percent > 100 {
+        return Err(GatewayError::ConfigRejected(
+            "`relay.reconnect.jitter_percent` must be between 0 and 100".into(),
+        ));
+    }
+    match &relay.cert {
+        RelayCertificateConfig::AcmeDns01 {
+            directory,
+            store_url,
+            cache_dir,
+        } => {
+            for (field, url) in [
+                ("relay.cert.directory", directory),
+                ("relay.cert.store_url", store_url),
+            ] {
+                validate_upstream(url, field)?;
+                if url.starts_with("http://") && !is_loopback_http(url) {
+                    return Err(GatewayError::ConfigRejected(format!(
+                        "`{field}` requires TLS outside loopback"
+                    )));
+                }
+            }
+            if cache_dir.as_os_str().is_empty() {
+                return Err(GatewayError::ConfigRejected(
+                    "`relay.cert.cache_dir` is empty".into(),
+                ));
+            }
+        }
+        RelayCertificateConfig::Pem {
+            cert_file,
+            key_file,
+        } => {
+            if cert_file.as_os_str().is_empty() || key_file.as_os_str().is_empty() {
+                return Err(GatewayError::ConfigRejected(
+                    "`relay.cert` PEM paths must be non-empty".into(),
+                ));
+            }
+            if cert_file == key_file {
+                return Err(GatewayError::ConfigRejected(
+                    "`relay.cert.cert_file` and `key_file` must be distinct".into(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_dns_name(name: &str, at: &str) -> Result<()> {
+    let valid = !name.is_empty()
+        && name.len() <= 253
+        && name.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'.'
+        })
+        && name.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+        });
+    if !valid {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}` must be a canonical lowercase DNS name"
+        )));
+    }
+    Ok(())
+}
+
+fn is_canonical_tenant(tenant: &str) -> bool {
+    !tenant.is_empty()
+        && tenant.len() <= 63
+        && tenant
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && !tenant.starts_with('-')
+        && !tenant.ends_with('-')
+}
+
 /// The `as:` stanza, fail-closed (lot G3): an explicit http(s) issuer
 /// with plaintext bounded to loopback (the vault-broker rule), strictly
 /// positive lifetimes, a non-empty key-file path, and allowlist
@@ -1159,6 +1354,69 @@ journal:
         let text = format!("{GOOD}surprise: true\n");
         assert!(matches!(
             GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    fn relay_yaml() -> String {
+        format!(
+            "{GOOD}relay:\n  endpoint: https://127.0.0.1:7443\n  tunnel_name: relay.test\n  tenant: acme\n  hostname: acme.mcp.aithos.fr\n  cert:\n    kind: acme-dns01\n    directory: https://acme.test/directory\n    store_url: https://store.test\n    cache_dir: /var/lib/aithos/tls\n  reconnect:\n    base_ms: 1000\n    max_ms: 60000\n    jitter_percent: 20\n"
+        )
+    }
+
+    #[test]
+    fn relay_is_opt_in_and_uses_closed_defaults() {
+        assert!(GatewayConfig::from_yaml(GOOD).unwrap().relay.is_none());
+
+        let cfg = GatewayConfig::from_yaml(&relay_yaml()).unwrap();
+        let relay = cfg.relay.unwrap();
+        assert_eq!(relay.endpoint, "https://127.0.0.1:7443");
+        assert_eq!(relay.tunnel_name, "relay.test");
+        assert_eq!(relay.tenant, "acme");
+        assert_eq!(relay.hostname, "acme.mcp.aithos.fr");
+        assert_eq!(relay.reconnect.base_ms, 1_000);
+        assert_eq!(relay.reconnect.max_ms, 60_000);
+        assert_eq!(relay.reconnect.jitter_percent, 20);
+        assert!(matches!(
+            relay.cert,
+            RelayCertificateConfig::AcmeDns01 { .. }
+        ));
+    }
+
+    #[test]
+    fn unsafe_relay_configuration_is_rejected_before_runtime() {
+        for broken in [
+            relay_yaml().replace("https://127.0.0.1:7443", "http://relay.test:7443"),
+            relay_yaml().replace("hostname: acme.mcp.aithos.fr", "hostname: Bad_Host"),
+            relay_yaml().replace("tenant: acme", "tenant: ../acme"),
+            relay_yaml().replace("jitter_percent: 20", "jitter_percent: 101"),
+            relay_yaml().replace("max_ms: 60000", "max_ms: 500"),
+            relay_yaml().replace("  reconnect:\n", "  surprise: true\n  reconnect:\n"),
+        ] {
+            assert!(
+                matches!(
+                    GatewayConfig::from_yaml(&broken),
+                    Err(GatewayError::ConfigRejected(_))
+                ),
+                "must reject relay config:\n{broken}"
+            );
+        }
+    }
+
+    #[test]
+    fn relay_pem_mode_accepts_paths_but_never_inline_key_material() {
+        let pem = relay_yaml().replace(
+            "kind: acme-dns01\n    directory: https://acme.test/directory\n    store_url: https://store.test\n    cache_dir: /var/lib/aithos/tls",
+            "kind: pem\n    cert_file: /run/aithos/public-chain.pem\n    key_file: /run/aithos/public-key.pem",
+        );
+        assert!(GatewayConfig::from_yaml(&pem).is_ok());
+
+        let inline = pem.replace(
+            "key_file: /run/aithos/public-key.pem",
+            "key_file: /run/aithos/public-key.pem\n    key: secret-pem",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&inline),
             Err(GatewayError::ConfigRejected(_))
         ));
     }

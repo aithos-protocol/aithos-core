@@ -18,6 +18,7 @@ aithos-bundle = { workspace = true, features = ["remote"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_jcs = { workspace = true }
 serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 zeroize = { workspace = true }
@@ -25,10 +26,17 @@ hex = { workspace = true }
 ed25519-dalek = { workspace = true }
 ulid = { workspace = true }
 
-# transport (decided 2026-07-10: MCP Streamable HTTP first)
-tokio = { workspace = true }
+# transport (MCP Streamable HTTP + opt-in G1 outbound relay)
+tokio = { workspace = true, features = ["io-util", "time", "sync"] }
 axum = { workspace = true }
 reqwest = { workspace = true }
+futures = { workspace = true }
+rustls = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+yamux = { workspace = true }
+tokio-util = { workspace = true }
+socket2 = { workspace = true }
 
 # onboarding CLI
 clap = { workspace = true }
@@ -38,10 +46,10 @@ clap = { workspace = true }
 # (acyclic: the provider never depends on the gateway).
 aithos-provider = { workspace = true }
 cucumber = { workspace = true }
-futures = { workspace = true }
 tempfile = { workspace = true }
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
+rcgen = { workspace = true }
 
 [[test]]
 name = "cucumber"

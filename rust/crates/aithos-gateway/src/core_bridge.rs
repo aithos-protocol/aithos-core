@@ -95,6 +95,27 @@ pub fn gateway_pub_multibase(kh: &Keyholder) -> String {
     aithos_core::wire::ed25519_pub_to_multibase(&vk.to_bytes())
 }
 
+/// Build the one bounded C2/B.2 registration line under the existing
+/// gateway identity. The private seed remains inside the bridge; callers
+/// cannot ask the keyholder to sign arbitrary bytes.
+pub fn gateway_tunnel_registration_line(
+    kh: &Keyholder,
+    tenant: &str,
+    hostname: &str,
+    at: &str,
+    nonce: &str,
+) -> Result<Vec<u8>> {
+    let signing = SigningKey::from_bytes(kh.gateway_seed());
+    crate::relay::registration_line_with_key(
+        tenant,
+        hostname,
+        &gateway_pub_multibase(kh),
+        at,
+        nonce,
+        &signing,
+    )
+}
+
 /// Non-secret state persisted at equip time, reloaded by `open`.
 #[derive(Debug, Serialize, Deserialize)]
 struct BridgeState {
