@@ -24,6 +24,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use base64::Engine as _;
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 
@@ -114,6 +115,56 @@ pub fn gateway_tunnel_registration_line(
         nonce,
         &signing,
     )
+}
+
+/// Build the bounded B.5 `X-Aithos-Auth` value for the delegated
+/// DNS-01 endpoint. This is deliberately not a general-purpose signing
+/// primitive: the path, version, mandate set and signature algorithm are
+/// fixed here, and only PUT/DELETE challenge effects are admitted.
+pub fn gateway_acme_authorization_header(
+    kh: &Keyholder,
+    host: &str,
+    method: &str,
+    body: &[u8],
+    at: &str,
+    nonce: &str,
+) -> Result<String> {
+    use ed25519_dalek::Signer as _;
+
+    if !matches!(method, "PUT" | "DELETE")
+        || host.is_empty()
+        || host
+            .bytes()
+            .any(|byte| byte.is_ascii_uppercase() || byte <= b' ')
+        || at.is_empty()
+        || nonce.len() < 16
+        || nonce.len() > 64
+        || nonce.contains('\n')
+    {
+        return Err(GatewayError::RelayUnavailable(
+            "acme_authorization_input_invalid".into(),
+        ));
+    }
+    let signing = SigningKey::from_bytes(kh.gateway_seed());
+    let mut envelope = serde_json::json!({
+        "v": 1,
+        "host": host,
+        "method": method,
+        "path": "/acme/txt",
+        "body_b3": blake3::hash(body).to_hex().to_string(),
+        "at": at,
+        "nonce": nonce,
+        "mandate": [],
+        "key": gateway_pub_multibase(kh),
+        "signature": { "alg": "ed25519", "value": "" },
+    });
+    let unsigned = aithos_core::jcs::canonicalize(&envelope)
+        .map_err(|_| GatewayError::RelayUnavailable("acme_authorization_encode_failed".into()))?;
+    envelope["signature"]["value"] =
+        serde_json::Value::String(hex::encode(signing.sign(unsigned.as_bytes()).to_bytes()));
+    let signed = aithos_core::jcs::canonicalize(&envelope)
+        .map_err(|_| GatewayError::RelayUnavailable("acme_authorization_encode_failed".into()))?;
+    Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signed.as_bytes()))
 }
 
 /// Non-secret state persisted at equip time, reloaded by `open`.

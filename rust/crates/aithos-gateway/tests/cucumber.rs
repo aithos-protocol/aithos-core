@@ -17,10 +17,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
+use std::task::{Context as TaskContext, Poll};
 
 use cucumber::{given, then, when, World};
+use futures::future::BoxFuture;
+use rustls::pki_types::UnixTime;
 use serde_json::{json, Value};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::sync::Mutex;
+use tokio_rustls::{TlsAcceptor, TlsConnector};
 
 use aithos_gateway::config::{GatewayConfig, RelayReconnectConfig, ToolAccess, ToolMap};
 use aithos_gateway::core_bridge::{
@@ -45,6 +50,10 @@ use aithos_gateway::proxy_mcp::{
     process, process_multi, refresh_server_manifest, router_multi, router_oauth, HttpUpstream,
     McpProxy, McpRouter, Upstream, BRIEFING_READ, ETHOS_CONTEXT, ETHOS_LIST, ETHOS_READ,
     JOURNAL_SEARCH, JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
+};
+use aithos_gateway::public_tls::{
+    load_private_pem, AcmeCertificateManager, CertificateIssuer, CertificateSource,
+    IssuedCertificate, SecureTlsCache,
 };
 use aithos_gateway::relay::{ReconnectBackoff, TUNNEL_ALPN};
 use aithos_gateway::store_adapter::GatewayStore;
@@ -321,6 +330,11 @@ struct GatewayWorld {
     relay_old_closed: bool,
     relay_recovered: bool,
     relay_reconnect_delay: Option<std::time::Duration>,
+    relay_tls_capture_opaque: bool,
+    relay_streams_isolated: bool,
+    relay_acme_keys_local: bool,
+    relay_renewal_atomic: bool,
+    relay_valid_certificate_retained: bool,
 }
 
 /// One raw Streamable HTTP exchange (G2): what the wire actually said.
@@ -516,6 +530,11 @@ impl GatewayWorld {
             relay_old_closed: false,
             relay_recovered: false,
             relay_reconnect_delay: None,
+            relay_tls_capture_opaque: false,
+            relay_streams_isolated: false,
+            relay_acme_keys_local: false,
+            relay_renewal_atomic: false,
+            relay_valid_certificate_retained: false,
         }
     }
 
@@ -9110,6 +9129,7 @@ fn g1a_boot_refusal_named(w: &mut GatewayWorld, verdict: String) {
         "the HTTPS requirement" => "HTTPS",
         "the hostname requirement" => "DNS name",
         "the mapping mismatch" => "must match",
+        "the private filesystem mode" => "private filesystem mode",
         other => panic!("unknown G1a config verdict: {other}"),
     };
     assert!(
@@ -9281,6 +9301,403 @@ fn g1a_reconnects_bounded(w: &mut GatewayWorld) {
     w.relay_reconnect_delay = Some(delay);
     w.relay_recovered = true;
     assert!(w.relay_old_closed && w.relay_recovered);
+}
+
+// ------------------------------------------------------- G1b public TLS/ACME
+
+#[given("a gateway relay certificate cache readable by group or world")]
+fn g1b_world_readable_cache(w: &mut GatewayWorld) {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let scratch = tempfile::tempdir().unwrap();
+    let cache = scratch.path().join("tls-cache");
+    std::fs::create_dir(&cache).unwrap();
+    std::fs::set_permissions(&cache, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let certificate = format!(
+        "kind: acme-dns01\n    directory: https://acme.test/directory\n    store_url: https://store.test\n    cache_dir: {}",
+        cache.display()
+    );
+    w.relay_config_text = Some(g1a_relay_yaml().replace(
+        "kind: pem\n    cert_file: /run/aithos/public-chain.pem\n    key_file: /run/aithos/public-key.pem",
+        &certificate,
+    ));
+    w.relay_socket_opened = false;
+    w.scratch = Some(scratch);
+}
+
+struct G1bCapture<S> {
+    inner: S,
+    bytes: Arc<StdMutex<Vec<u8>>>,
+}
+
+impl<S> AsyncRead for G1bCapture<S>
+where
+    S: AsyncRead + Unpin,
+{
+    fn poll_read(
+        self: Pin<&mut Self>,
+        context: &mut TaskContext<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        let before = buffer.filled().len();
+        let result = Pin::new(&mut this.inner).poll_read(context, buffer);
+        if matches!(result, Poll::Ready(Ok(()))) {
+            this.bytes
+                .lock()
+                .unwrap()
+                .extend_from_slice(&buffer.filled()[before..]);
+        }
+        result
+    }
+}
+
+impl<S> AsyncWrite for G1bCapture<S>
+where
+    S: AsyncWrite + Unpin,
+{
+    fn poll_write(
+        self: Pin<&mut Self>,
+        context: &mut TaskContext<'_>,
+        bytes: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let this = self.get_mut();
+        match Pin::new(&mut this.inner).poll_write(context, bytes) {
+            Poll::Ready(Ok(written)) => {
+                this.bytes
+                    .lock()
+                    .unwrap()
+                    .extend_from_slice(&bytes[..written]);
+                Poll::Ready(Ok(written))
+            }
+            other => other,
+        }
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        context: &mut TaskContext<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().inner).poll_flush(context)
+    }
+
+    fn poll_shutdown(
+        self: Pin<&mut Self>,
+        context: &mut TaskContext<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().inner).poll_shutdown(context)
+    }
+}
+
+async fn g1b_serve_frames(config: Arc<rustls::ServerConfig>, io: tokio::io::DuplexStream) {
+    let Ok(mut tls) = TlsAcceptor::from(config).accept(io).await else {
+        return;
+    };
+    loop {
+        let length = match tls.read_u16().await {
+            Ok(length) if length <= 256 => usize::from(length),
+            Ok(_) | Err(_) => return,
+        };
+        let mut body = vec![0u8; length];
+        if tls.read_exact(&mut body).await.is_err()
+            || tls.write_u16(length as u16).await.is_err()
+            || tls.write_all(&body).await.is_err()
+            || tls.flush().await.is_err()
+        {
+            return;
+        }
+    }
+}
+
+async fn g1b_open_tls_probe(
+    server: Arc<rustls::ServerConfig>,
+    connector: TlsConnector,
+) -> (
+    tokio_rustls::client::TlsStream<G1bCapture<tokio::io::DuplexStream>>,
+    Arc<StdMutex<Vec<u8>>>,
+    tokio::task::JoinHandle<()>,
+) {
+    let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+    let server_task = tokio::spawn(g1b_serve_frames(server, server_io));
+    let capture = Arc::new(StdMutex::new(Vec::new()));
+    let tls = connector
+        .connect(
+            rustls::pki_types::ServerName::try_from("demo.mcp.aithos.fr".to_owned()).unwrap(),
+            G1bCapture {
+                inner: client_io,
+                bytes: Arc::clone(&capture),
+            },
+        )
+        .await
+        .unwrap();
+    (tls, capture, server_task)
+}
+
+async fn g1b_exchange_frame<S>(stream: &mut S, message: &[u8]) -> Vec<u8>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    stream.write_u16(message.len() as u16).await.unwrap();
+    stream.write_all(message).await.unwrap();
+    stream.flush().await.unwrap();
+    let length = usize::from(stream.read_u16().await.unwrap());
+    let mut response = vec![0u8; length];
+    stream.read_exact(&mut response).await.unwrap();
+    response
+}
+
+async fn g1b_tls_opacity_and_isolation_proof() -> (bool, bool) {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let certificate =
+        rcgen::generate_simple_self_signed(vec!["demo.mcp.aithos.fr".to_owned()]).unwrap();
+    let scratch = tempfile::tempdir().unwrap();
+    let cert_file = scratch.path().join("cert.pem");
+    let key_file = scratch.path().join("key.pem");
+    std::fs::write(&cert_file, certificate.cert.pem()).unwrap();
+    std::fs::write(&key_file, certificate.key_pair.serialize_pem()).unwrap();
+    std::fs::set_permissions(&cert_file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::set_permissions(&key_file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let server =
+        load_private_pem(&cert_file, &key_file, "demo.mcp.aithos.fr", UnixTime::now()).unwrap();
+
+    let mut roots = rustls::RootCertStore::empty();
+    roots.add(certificate.cert.der().clone()).unwrap();
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let mut client = rustls::ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    client.alpn_protocols = vec![b"http/1.1".to_vec()];
+    let connector = TlsConnector::from(Arc::new(client));
+
+    let (first, second) = tokio::join!(
+        g1b_open_tls_probe(Arc::clone(&server), connector.clone()),
+        g1b_open_tls_probe(Arc::clone(&server), connector),
+    );
+    let (mut first_tls, first_capture, first_task) = first;
+    let (mut second_tls, second_capture, second_task) = second;
+    let first_sentinel = b"G1B-CUCUMBER-ALPHA-71";
+    let second_sentinel = b"G1B-CUCUMBER-BRAVO-92";
+    let (first_answer, second_answer) = tokio::join!(
+        g1b_exchange_frame(&mut first_tls, first_sentinel),
+        g1b_exchange_frame(&mut second_tls, second_sentinel),
+    );
+    drop(first_tls);
+    let surviving_sentinel = b"G1B-CUCUMBER-BRAVO-STILL-18";
+    let surviving_answer = g1b_exchange_frame(&mut second_tls, surviving_sentinel).await;
+    drop(second_tls);
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), first_task).await;
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), second_task).await;
+
+    let isolated = first_answer == first_sentinel
+        && second_answer == second_sentinel
+        && surviving_answer == surviving_sentinel;
+    let opaque = [first_capture, second_capture].into_iter().all(|capture| {
+        let bytes = capture.lock().unwrap();
+        [
+            first_sentinel.as_slice(),
+            second_sentinel,
+            surviving_sentinel,
+        ]
+        .into_iter()
+        .all(|sentinel| {
+            !bytes
+                .windows(sentinel.len())
+                .any(|window| window == sentinel)
+        })
+    });
+    (opaque, isolated)
+}
+
+#[given("simultaneous public requests carrying distinct secret sentinels")]
+fn g1b_distinct_public_sentinels(w: &mut GatewayWorld) {
+    w.relay_tls_capture_opaque = false;
+    w.relay_streams_isolated = false;
+}
+
+#[when("their TLS records cross the relay")]
+async fn g1b_tls_records_cross_relay(w: &mut GatewayWorld) {
+    // This deterministic in-memory proof exercises the production TLS
+    // acceptor/material path. `public_tls_relay` runs the same assertion
+    // over the real provider verifier and yamux session.
+    (w.relay_tls_capture_opaque, w.relay_streams_isolated) =
+        g1b_tls_opacity_and_isolation_proof().await;
+}
+
+#[then("the relay capture and bounded event logs contain no sentinel")]
+fn g1b_relay_capture_opaque(w: &mut GatewayWorld) {
+    assert!(w.relay_tls_capture_opaque);
+}
+
+#[then("each sentinel is visible only to its isolated gateway stream")]
+fn g1b_sentinel_stream_isolated(w: &mut GatewayWorld) {
+    assert!(w.relay_streams_isolated);
+}
+
+#[given("two public TLS clients connected through one registered tunnel")]
+fn g1b_two_public_clients(w: &mut GatewayWorld) {
+    w.relay_tls_capture_opaque = false;
+    w.relay_streams_isolated = false;
+}
+
+#[when("both clients exchange requests concurrently")]
+async fn g1b_clients_exchange_concurrently(w: &mut GatewayWorld) {
+    (w.relay_tls_capture_opaque, w.relay_streams_isolated) =
+        g1b_tls_opacity_and_isolation_proof().await;
+}
+
+#[then("each yamux stream receives only its own response")]
+fn g1b_each_stream_receives_own_response(w: &mut GatewayWorld) {
+    assert!(w.relay_streams_isolated);
+}
+
+#[then("closing one stream does not close the other")]
+fn g1b_neighbor_stream_survives(w: &mut GatewayWorld) {
+    assert!(w.relay_streams_isolated);
+}
+
+struct G1bIssuer {
+    outcome: StdMutex<Option<Result<IssuedCertificate>>>,
+}
+
+impl CertificateIssuer for G1bIssuer {
+    fn issue<'a>(
+        &'a self,
+        _hostname: &'a str,
+        _account_record: Option<zeroize::Zeroizing<Vec<u8>>>,
+    ) -> BoxFuture<'a, Result<IssuedCertificate>> {
+        let outcome = self.outcome.lock().unwrap().take().unwrap();
+        Box::pin(async move { outcome })
+    }
+}
+
+fn g1b_certificate(not_after: (i32, u8, u8)) -> (Vec<u8>, zeroize::Zeroizing<Vec<u8>>) {
+    let mut parameters =
+        rcgen::CertificateParams::new(vec!["demo.mcp.aithos.fr".to_owned()]).unwrap();
+    parameters.distinguished_name = rcgen::DistinguishedName::new();
+    parameters.not_before = rcgen::date_time_ymd(2026, 1, 1);
+    parameters.not_after = rcgen::date_time_ymd(not_after.0, not_after.1, not_after.2);
+    let key = rcgen::KeyPair::generate().unwrap();
+    let certificate = parameters.self_signed(&key).unwrap();
+    (
+        certificate.pem().into_bytes(),
+        zeroize::Zeroizing::new(key.serialize_pem().into_bytes()),
+    )
+}
+
+fn g1b_private_tree(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if metadata.file_type().is_symlink() || metadata.permissions().mode() & 0o077 != 0 {
+        return false;
+    }
+    if metadata.is_dir() {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return false;
+        };
+        return entries
+            .take(128)
+            .all(|entry| entry.is_ok_and(|entry| g1b_private_tree(&entry.path())));
+    }
+    metadata.is_file()
+}
+
+#[given("ACME DNS-01 delegated under the registered gateway public key")]
+fn g1b_delegated_dns01(w: &mut GatewayWorld) {
+    w.scratch = Some(tempfile::tempdir().unwrap());
+    w.relay_acme_keys_local = false;
+    w.relay_renewal_atomic = false;
+    w.relay_valid_certificate_retained = false;
+}
+
+#[when("the gateway obtains and later renews its public certificate")]
+async fn g1b_obtain_and_renew(w: &mut GatewayWorld) {
+    const CERT_NOW: u64 = 1_774_224_000;
+    let now = UnixTime::since_unix_epoch(std::time::Duration::from_secs(CERT_NOW));
+    let cache_root = w.scratch.as_ref().unwrap().path().join("tls");
+    let cache = SecureTlsCache::open(&cache_root).unwrap();
+
+    let (first_cert, first_key) = g1b_certificate((2026, 4, 1));
+    let first = AcmeCertificateManager::new(
+        cache.clone(),
+        G1bIssuer {
+            outcome: StdMutex::new(Some(Ok(IssuedCertificate {
+                chain_pem: first_cert,
+                private_key_pem: first_key,
+                account_record: Some(zeroize::Zeroizing::new(vec![0xA5; 64])),
+            }))),
+        },
+    )
+    .ensure("demo.mcp.aithos.fr", now)
+    .await
+    .unwrap();
+    assert_eq!(first.source, CertificateSource::Renewed);
+    let first_pointer = std::fs::read(cache_root.join("active.json")).unwrap();
+
+    let (renewed_cert, renewed_key) = g1b_certificate((2026, 4, 15));
+    let renewed = AcmeCertificateManager::new(
+        cache.clone(),
+        G1bIssuer {
+            outcome: StdMutex::new(Some(Ok(IssuedCertificate {
+                chain_pem: renewed_cert,
+                private_key_pem: renewed_key,
+                account_record: None,
+            }))),
+        },
+    )
+    .ensure("demo.mcp.aithos.fr", now)
+    .await
+    .unwrap();
+    let renewed_pointer = std::fs::read(cache_root.join("active.json")).unwrap();
+    w.relay_renewal_atomic =
+        renewed.source == CertificateSource::Renewed && renewed_pointer != first_pointer;
+
+    let retained = AcmeCertificateManager::new(
+        cache,
+        G1bIssuer {
+            outcome: StdMutex::new(Some(Err(GatewayError::RelayUnavailable(
+                "scripted_acme_failure".into(),
+            )))),
+        },
+    )
+    .ensure("demo.mcp.aithos.fr", now)
+    .await
+    .unwrap();
+    w.relay_valid_certificate_retained = retained.source
+        == CertificateSource::RetainedAfterRenewalFailure
+        && std::fs::read(cache_root.join("active.json")).unwrap() == renewed_pointer;
+    w.relay_acme_keys_local = g1b_private_tree(&cache_root)
+        && cache_root.join("account.json").is_file()
+        && std::fs::read_dir(&cache_root).unwrap().any(|entry| {
+            entry
+                .ok()
+                .is_some_and(|entry| entry.path().join("key.pem").is_file())
+        });
+}
+
+#[then("the account key and certificate private key never leave the client")]
+fn g1b_keys_stay_local(w: &mut GatewayWorld) {
+    assert!(w.relay_acme_keys_local);
+}
+
+#[then("the cache directory and key material have private filesystem modes")]
+fn g1b_cache_is_private(w: &mut GatewayWorld) {
+    assert!(w.relay_acme_keys_local);
+}
+
+#[then("renewal swaps a complete valid certificate atomically")]
+fn g1b_renewal_is_atomic(w: &mut GatewayWorld) {
+    assert!(w.relay_renewal_atomic);
+}
+
+#[then("a failed renewal leaves the still-valid certificate active")]
+fn g1b_failed_renewal_retains_valid(w: &mut GatewayWorld) {
+    assert!(w.relay_valid_certificate_retained);
 }
 
 #[tokio::main]

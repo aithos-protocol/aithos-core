@@ -1054,6 +1054,23 @@ fn validate_relay(relay: &RelayConfig) -> Result<()> {
                     "`relay.cert.cache_dir` is empty".into(),
                 ));
             }
+            let store = reqwest::Url::parse(store_url).map_err(|_| {
+                GatewayError::ConfigRejected(
+                    "`relay.cert.store_url` must be an HTTP(S) authority".into(),
+                )
+            })?;
+            if !store.username().is_empty()
+                || store.password().is_some()
+                || store.query().is_some()
+                || store.fragment().is_some()
+                || !matches!(store.path(), "" | "/")
+            {
+                return Err(GatewayError::ConfigRejected(
+                    "`relay.cert.store_url` must be an HTTP(S) authority without credentials, path, query or fragment"
+                        .into(),
+                ));
+            }
+            validate_private_cache_if_present(cache_dir)?;
         }
         RelayCertificateConfig::Pem {
             cert_file,
@@ -1069,9 +1086,95 @@ fn validate_relay(relay: &RelayConfig) -> Result<()> {
                     "`relay.cert.cert_file` and `key_file` must be distinct".into(),
                 ));
             }
+            validate_private_file_if_present(cert_file, "relay.cert.cert_file")?;
+            validate_private_file_if_present(key_file, "relay.cert.key_file")?;
         }
     }
     Ok(())
+}
+
+fn validate_private_cache_if_present(path: &std::path::Path) -> Result<()> {
+    let Some(metadata) = private_metadata_if_present(path, "relay.cert.cache_dir")? else {
+        return Ok(());
+    };
+    if !metadata.is_dir() {
+        return Err(GatewayError::ConfigRejected(
+            "`relay.cert.cache_dir` must be a private filesystem directory".into(),
+        ));
+    }
+    validate_private_mode(&metadata, "relay.cert.cache_dir")?;
+    let entries = std::fs::read_dir(path).map_err(|_| {
+        GatewayError::ConfigRejected(
+            "`relay.cert.cache_dir` private filesystem mode cannot be verified".into(),
+        )
+    })?;
+    for (index, entry) in entries.enumerate() {
+        if index >= 1_024 {
+            return Err(GatewayError::ConfigRejected(
+                "`relay.cert.cache_dir` exceeds the bounded private cache layout".into(),
+            ));
+        }
+        let entry = entry.map_err(|_| {
+            GatewayError::ConfigRejected(
+                "`relay.cert.cache_dir` private filesystem mode cannot be verified".into(),
+            )
+        })?;
+        let metadata = private_metadata_if_present(&entry.path(), "relay.cert.cache_dir")?
+            .ok_or_else(|| {
+                GatewayError::ConfigRejected(
+                    "`relay.cert.cache_dir` changed during private filesystem validation".into(),
+                )
+            })?;
+        validate_private_mode(&metadata, "relay.cert.cache_dir")?;
+    }
+    Ok(())
+}
+
+fn validate_private_file_if_present(path: &std::path::Path, field: &str) -> Result<()> {
+    let Some(metadata) = private_metadata_if_present(path, field)? else {
+        return Ok(());
+    };
+    if !metadata.is_file() {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{field}` must be a private filesystem file"
+        )));
+    }
+    validate_private_mode(&metadata, field)
+}
+
+fn private_metadata_if_present(
+    path: &std::path::Path,
+    field: &str,
+) -> Result<Option<std::fs::Metadata>> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(GatewayError::ConfigRejected(
+            format!("`{field}` must not be a filesystem symlink"),
+        )),
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err(GatewayError::ConfigRejected(format!(
+            "`{field}` private filesystem mode cannot be verified"
+        ))),
+    }
+}
+
+#[cfg(unix)]
+fn validate_private_mode(metadata: &std::fs::Metadata, field: &str) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    if metadata.permissions().mode() & 0o077 != 0 {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{field}` requires a private filesystem mode"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn validate_private_mode(_metadata: &std::fs::Metadata, field: &str) -> Result<()> {
+    Err(GatewayError::ConfigRejected(format!(
+        "`{field}` private filesystem mode cannot be verified on this platform"
+    )))
 }
 
 fn validate_dns_name(name: &str, at: &str) -> Result<()> {
@@ -1418,6 +1521,24 @@ journal:
         assert!(matches!(
             GatewayConfig::from_yaml(&inline),
             Err(GatewayError::ConfigRejected(_))
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn relay_cache_readable_by_group_or_world_is_rejected_before_runtime() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let temporary = tempfile::tempdir().unwrap();
+        let cache = temporary.path().join("tls-cache");
+        std::fs::create_dir(&cache).unwrap();
+        std::fs::set_permissions(&cache, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let yaml = relay_yaml().replace("/var/lib/aithos/tls", &cache.display().to_string());
+        let error = GatewayConfig::from_yaml(&yaml).unwrap_err();
+        assert!(matches!(
+            error,
+            GatewayError::ConfigRejected(reason)
+                if reason.contains("private filesystem mode")
         ));
     }
 
