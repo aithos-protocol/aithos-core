@@ -15,7 +15,7 @@ Feature: Signed enterprise control and proof surface
 
     Scenario Outline: A non-exact origin is refused without reflection
       Given the configured dashboard origin is "https://app.aithos.fr"
-      When <origin> requests a control route
+      When "<origin>" requests a control route
       Then CORS is refused before any control effect
       And no Access-Control-Allow-Origin wildcard or reflected origin is returned
 
@@ -35,13 +35,13 @@ Feature: Signed enterprise control and proof surface
   Rule: Every control effect is signed, fresh and narrowly mandated
 
     Scenario Outline: Invalid signed authority produces zero effect
-      Given an otherwise valid control request with <authority defect>
+      Given an otherwise valid control request with "<authority_defect>"
       When the gateway verifies the control envelope and mandate chain
       Then the request is refused before proof, Vault, registry and upstream access
       And the stable error contains no authority material
 
       Examples:
-        | authority defect       |
+        | authority_defect       |
         | a missing signature    |
         | a false signature      |
         | a modified body        |
