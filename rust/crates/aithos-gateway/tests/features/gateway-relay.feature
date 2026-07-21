@@ -45,13 +45,13 @@ Feature: Outbound gateway relay with client-side public TLS
 
     @g1a
     Scenario Outline: A refused registration never opens an application stream
-      Given the relay observes <registration defect>
+      Given the relay observes <defect>
       When the gateway attempts to establish its outbound tunnel
       Then the relay refuses the registration before yamux
       And zero application streams and zero HTTP bytes cross the mapping
 
       Examples:
-        | registration defect |
+        | defect              |
         | an unknown mapping  |
         | a suspended mapping |
         | a false signature   |
