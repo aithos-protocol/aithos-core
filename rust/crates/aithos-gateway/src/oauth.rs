@@ -1146,6 +1146,16 @@ impl AuthServer {
             ));
         }
         let now_epoch = epoch(now)?;
+        let authority_end = epoch(&authority.not_after)?;
+        if authority_end <= now_epoch || authority_end - now_epoch > 8 * 60 * 60 {
+            let _ = self
+                .state
+                .take(StateNamespace::SessionKey, &reserved.transaction_id);
+            return Err(oauth_err(
+                "invalid_request",
+                "verified session lifetime exceeds eight hours",
+            ));
+        }
         let index_id = format!("index.{}", token_digest(&authority.subject));
         let loaded = self.load_record::<SessionIndexRecord>(StateNamespace::Session, &index_id)?;
         let (mut index, version) = loaded
@@ -1193,11 +1203,12 @@ impl AuthServer {
             .state
             .take(StateNamespace::SessionKey, &reserved.transaction_id)?
             .ok_or_else(|| oauth_state_error("temporary session key is unavailable"))?;
-        let key: SessionKeyRecord = serde_json::from_value(key_value)
+        let mut key: SessionKeyRecord = serde_json::from_value(key_value)
             .map_err(|_| oauth_state_error("temporary session key is malformed"))?;
         if key.expires_at_epoch <= now_epoch {
             return Err(oauth_err("invalid_request", "the ceremony expired"));
         }
+        key.expires_at_epoch = authority_end;
         self.create_record(StateNamespace::SessionKey, &sid, &key)?;
         let session = OAuthSessionRecord {
             v: 1,
@@ -1735,21 +1746,38 @@ fn consent_page(
 fn ceremony_page(pending: &PendingCeremonyView) -> String {
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
          <meta name=\"referrer\" content=\"no-referrer\">\
+         <link rel=\"stylesheet\" href=\"/ceremony/style.css\">\
          <title>Aithos — delegated session ceremony</title></head><body>\
-         <main data-ceremony=\"{transaction}\" \
-               style=\"font-family:system-ui;max-width:44rem;margin:3rem auto\">\
+         <main data-ceremony=\"{transaction}\">\
+         <header><p class=\"eyebrow\">Aithos · secure authorization</p>\
          <h1>Authorize a delegated session</h1>\
-         <p>Unlock your local signer to discover the mandate chains that this \
-         public key may attenuate. The OAuth client cannot choose them.</p>\
-         <dl><dt>Client</dt><dd><code>{client}</code></dd>\
+         <p>Unlock your encrypted local keystore. Your private key stays in \
+         this page's WASM signer and is destroyed when you leave.</p></header>\
+         <section class=\"card\" id=\"unlock-panel\"><h2>1. Unlock your signer</h2>\
+         <label>Encrypted Aithos keystore<input id=\"keystore\" type=\"file\" \
+         accept=\"application/json,.json\" required></label>\
+         <label>Passphrase<input id=\"passphrase\" type=\"password\" \
+         autocomplete=\"current-password\" required></label>\
+         <button id=\"unlock\" type=\"button\">Unlock locally</button></section>\
+         <section class=\"card hidden\" id=\"parent-panel\"><h2>2. Select authority</h2>\
+         <p>The OAuth client cannot select an Ethos or mandate.</p>\
+         <label>Eligible mandate chain<select id=\"parent\"></select></label></section>\
+         <section class=\"card hidden\" id=\"review-panel\"><h2>3. Review exactly what you sign</h2>\
+         <dl id=\"review\"></dl><div class=\"actions\">\
+         <button id=\"authorize\" type=\"button\">Sign and authorize</button>\
+         <button id=\"cancel\" class=\"secondary\" type=\"button\">Cancel</button>\
+         </div></section>\
+         <p id=\"ceremony-status\" role=\"status\">Loading the local verifier…</p>\
+         <noscript>This production ceremony requires JavaScript and WebAssembly.</noscript>\
+         <details><summary>Initial public OAuth bindings</summary><dl>\
+         <dt>Client</dt><dd><code>{client}</code></dd>\
          <dt>Resource</dt><dd><code>{resource}</code></dd>\
          <dt>Gateway key</dt><dd><code>{gateway}</code></dd>\
          <dt>Session key</dt><dd><code>{session}</code></dd>\
-         <dt>Transaction nonce</dt><dd><code>{nonce}</code></dd></dl>\
-         <p id=\"ceremony-status\">Waiting for the local signer.</p>\
-         <noscript>This production ceremony requires the local signer application.</noscript>\
-         </main></body></html>",
+         <dt>Transaction nonce</dt><dd><code>{nonce}</code></dd></dl></details>\
+         </main><script type=\"module\" src=\"/ceremony/app.js\"></script></body></html>",
         transaction = html_escape(&pending.transaction_id),
         client = html_escape(&pending.client_id),
         resource = html_escape(&pending.resource),
@@ -2245,8 +2273,9 @@ mod tests {
 
     #[test]
     fn signed_ceremony_binds_a_durable_sid_to_code_refresh_and_bearer() {
+        const SESSION_END: &str = "2026-07-17T20:00:00Z";
         let state = Arc::new(MemoryAsStateStore::default());
-        let as_ = production_server(state);
+        let as_ = production_server(state.clone());
         let uri = "http://127.0.0.1:9410/cb";
         let client = register(&as_, uri);
         let (verifier, pkce_challenge) = pkce();
@@ -2295,13 +2324,31 @@ mod tests {
             parent_id: "mandate_parent".into(),
             leaf_id: "mandate_leaf".into(),
             not_before: T0.into(),
-            not_after: CHAIN_END.into(),
+            not_after: SESSION_END.into(),
             session_pub: preparation.session_pub,
             chain: vec![],
             leaf,
             certificate: json!({ "public": "SC1" }),
         };
         let location = as_.finalize_ceremony(reserved, &authority, T0).unwrap();
+        let index_id = format!("index.{}", token_digest(&authority.subject));
+        let index: SessionIndexRecord = serde_json::from_value(
+            state
+                .read(StateNamespace::Session, &index_id)
+                .unwrap()
+                .unwrap()
+                .value,
+        )
+        .unwrap();
+        let key: SessionKeyRecord = serde_json::from_value(
+            state
+                .read(StateNamespace::SessionKey, &index.sids[0])
+                .unwrap()
+                .unwrap()
+                .value,
+        )
+        .unwrap();
+        assert_eq!(key.expires_at_epoch, epoch(SESSION_END).unwrap());
         let code = location
             .split(['?', '&'])
             .find_map(|part| part.strip_prefix("code="))

@@ -14,7 +14,10 @@ crate-type = ["cdylib", "rlib"]
 aithos-core.workspace = true
 wasm-bindgen.workspace = true
 hex.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+serde_jcs.workspace = true
+ed25519-dalek.workspace = true
 
 # wasm-opt needs a binaryen newer than the distro's; the binding is ~130 KB
 # unoptimized — optimization is cosmetic here. Local pack only (plan §K).

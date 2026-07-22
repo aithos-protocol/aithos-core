@@ -162,7 +162,10 @@ name = "aithos-wasm"
 version = "0.1.0-alpha.1"
 dependencies = [
  "aithos-core",
+ "ed25519-dalek",
  "hex",
+ "serde",
+ "serde_jcs",
  "serde_json",
  "wasm-bindgen",
 ]

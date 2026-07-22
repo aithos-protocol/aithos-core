@@ -1602,8 +1602,11 @@ pub struct EligibleSessionParent {
     pub not_before: String,
     pub not_after: String,
     pub perimeter: Vec<String>,
+    pub session_perimeter: Vec<String>,
     pub constraints: serde_json::Value,
     pub chain: Vec<serde_json::Value>,
+    pub did: serde_json::Value,
+    pub revocations: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1701,6 +1704,14 @@ impl Runner {
                 continue;
             };
             let revs = revocations(&entries);
+            let Ok(did) = serde_json::to_value(&doc) else {
+                continue;
+            };
+            let revocation_entries = entries
+                .iter()
+                .filter(|entry| entry.kind == "revoke")
+                .filter_map(|entry| serde_json::to_value(entry).ok())
+                .collect::<Vec<_>>();
             for chain in runtime.bridge.walk_cert_chains(delegate_pub) {
                 if verify_chain_revocable(&chain, &doc, now, &revs).is_err() {
                     continue;
@@ -1708,14 +1719,20 @@ impl Runner {
                 let Some(parent) = chain.last() else {
                     continue;
                 };
-                let can_issue = parent.parsed_perimeter().is_ok_and(|entries| {
-                    entries
-                        .iter()
-                        .any(|entry| matches!(entry, PerimeterEntry::Issue { depth } if *depth > 0))
-                });
+                let Ok(parent_perimeter) = parent.parsed_perimeter() else {
+                    continue;
+                };
+                let can_issue = parent_perimeter
+                    .iter()
+                    .any(|entry| matches!(entry, PerimeterEntry::Issue { depth } if *depth > 0));
                 if !can_issue {
                     continue;
                 }
+                let session_perimeter = parent_perimeter
+                    .iter()
+                    .filter(|entry| !matches!(entry, PerimeterEntry::Issue { .. }))
+                    .map(PerimeterEntry::to_entry_string)
+                    .collect();
                 let Ok(public_chain) = chain
                     .iter()
                     .map(serde_json::to_value)
@@ -1730,8 +1747,11 @@ impl Runner {
                     not_before: parent.not_before.clone(),
                     not_after: parent.not_after.clone(),
                     perimeter: parent.perimeter.clone(),
+                    session_perimeter,
                     constraints: parent.constraints.clone(),
                     chain: public_chain,
+                    did: did.clone(),
+                    revocations: revocation_entries.clone(),
                 });
             }
         }

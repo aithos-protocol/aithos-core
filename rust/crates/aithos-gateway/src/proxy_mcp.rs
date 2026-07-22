@@ -33,7 +33,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex as StdMutex, RwLock};
 
-use axum::body::Bytes;
+use axum::body::{Body, Bytes};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{extract::State, routing::post, Json, Router};
@@ -775,6 +775,16 @@ pub fn router_oauth<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
         .route("/ceremony/prepare", post(oauth_ceremony_prepare::<U>))
         .route("/ceremony/complete", post(oauth_ceremony_complete::<U>))
         .route("/ceremony/cancel", post(oauth_ceremony_cancel::<U>))
+        .route("/ceremony/app.js", axum::routing::get(ceremony_app))
+        .route(
+            "/ceremony/aithos_wasm.js",
+            axum::routing::get(ceremony_wasm_js),
+        )
+        .route(
+            "/ceremony/aithos_wasm_bg.wasm",
+            axum::routing::get(ceremony_wasm_binary),
+        )
+        .route("/ceremony/style.css", axum::routing::get(ceremony_style))
         .route("/token", post(oauth_token::<U>))
         .with_state(rt)
 }
@@ -854,9 +864,7 @@ async fn oauth_authorize_get<U: Upstream>(
         crate::oauth::AuthorizeOutcome::Consent { html } => {
             axum::response::Html(html).into_response()
         }
-        crate::oauth::AuthorizeOutcome::Ceremony { html, .. } => {
-            axum::response::Html(html).into_response()
-        }
+        crate::oauth::AuthorizeOutcome::Ceremony { html, .. } => ceremony_html(html),
         crate::oauth::AuthorizeOutcome::Redirect { location } => redirect_to(&location),
         crate::oauth::AuthorizeOutcome::HardError { detail } => (
             StatusCode::BAD_REQUEST,
@@ -864,6 +872,52 @@ async fn oauth_authorize_get<U: Upstream>(
         )
             .into_response(),
     }
+}
+
+fn ceremony_response(content_type: &'static str, body: Body) -> Response {
+    Response::builder()
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "no-store")
+        .header("x-content-type-options", "nosniff")
+        .header("referrer-policy", "no-referrer")
+        .header(
+            "content-security-policy",
+            "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        )
+        .body(body)
+        .expect("static ceremony response headers are valid")
+}
+
+fn ceremony_html(html: String) -> Response {
+    ceremony_response("text/html; charset=utf-8", Body::from(html))
+}
+
+async fn ceremony_app() -> Response {
+    ceremony_response(
+        "text/javascript; charset=utf-8",
+        Body::from(include_str!("../assets/ceremony/app.js")),
+    )
+}
+
+async fn ceremony_wasm_js() -> Response {
+    ceremony_response(
+        "text/javascript; charset=utf-8",
+        Body::from(include_str!("../assets/ceremony/aithos_wasm.js")),
+    )
+}
+
+async fn ceremony_wasm_binary() -> Response {
+    ceremony_response(
+        "application/wasm",
+        Body::from(&include_bytes!("../assets/ceremony/aithos_wasm_bg.wasm")[..]),
+    )
+}
+
+async fn ceremony_style() -> Response {
+    ceremony_response(
+        "text/css; charset=utf-8",
+        Body::from(include_str!("../assets/ceremony/style.css")),
+    )
 }
 
 #[derive(Deserialize)]
@@ -893,6 +947,7 @@ async fn oauth_ceremony_prepare<U: Upstream>(
         .eligible_session_parents(&request.delegate_pub, &now);
     Json(json!({
         "v": 1,
+        "verified_at": now,
         "bindings": preparation,
         "eligible_parents": eligible_parents,
     }))
@@ -911,6 +966,7 @@ struct CeremonyCompleteRequest {
 
 async fn oauth_ceremony_complete<U: Upstream>(
     State(rt): State<Arc<McpRouter<U>>>,
+    headers: HeaderMap,
     Json(request): Json<CeremonyCompleteRequest>,
 ) -> Response {
     let Some(oauth) = &rt.oauth else {
@@ -946,6 +1002,18 @@ async fn oauth_ceremony_complete<U: Upstream>(
         }
     };
     match oauth.finalize_ceremony(reserved, &authority, &now) {
+        Ok(location)
+            if headers
+                .get(header::ACCEPT)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| {
+                    value
+                        .split(',')
+                        .any(|item| item.trim() == "application/json")
+                }) =>
+        {
+            Json(json!({ "redirect_to": location })).into_response()
+        }
         Ok(location) => redirect_to(&location),
         Err(error) => oauth_error_response(&error),
     }
@@ -1724,6 +1792,34 @@ mod upstream_transport_tests {
     //! HTTP dialect: SSE responses and session ids, not only the plain
     //! JSON of the early fakes.
     use super::*;
+
+    #[tokio::test]
+    async fn ceremony_assets_are_embedded_no_store_and_secret_storage_free() {
+        let response = ceremony_app().await;
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        assert!(response
+            .headers()
+            .get("content-security-policy")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("default-src 'none'"));
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let source = std::str::from_utf8(&body).unwrap();
+        assert!(source.contains("new DelegateSigner(seed)"));
+        assert!(source.contains("destroySigner()"));
+        assert!(!source.contains("localStorage"));
+        assert!(!source.contains("sessionStorage"));
+
+        let wasm = ceremony_wasm_binary().await;
+        assert_eq!(wasm.headers()[header::CONTENT_TYPE], "application/wasm");
+        assert!(!axum::body::to_bytes(wasm.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .is_empty());
+    }
 
     #[test]
     fn plain_json_is_unchanged() {
