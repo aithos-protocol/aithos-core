@@ -119,6 +119,12 @@ Feature: OAuth 2.1 custody for protected upstreams
   @oac0 @red
   Rule: Client registration is declared and kept in gateway custody
 
+    Scenario: A scope-less MCP registers one public PKCE client
+      Given a scope-less MCP profile using public dynamic client registration
+      When the owner starts consent for the scope-less MCP
+      Then dynamic registration uses public client authentication without a secret
+      And the authorization URL omits the scope parameter
+
     Scenario Outline: The profile selects exactly one client registration strategy
       Given a connector profile declaring <registration_strategy>
       When the connector resolves its OAuth client registration
