@@ -7,6 +7,11 @@ Date : 2026-07-22
 Rollout du moteur amont `oauth2` / OIDC **sur la gateway uniquement**.
 Aucun changement Terraform / Fargate / `aithos.fr`.
 
+La suite locale de sortie est verte au commit `608b392` : package Gateway
+complet avec `--features olr-oauth-libs`, 296 scénarios Cucumber / 1406 étapes,
+`clippy -D warnings`, format et build release. Le live gate Notion/Gmail reste
+une condition de bascule, pas une condition de compilation.
+
 ## Étapes
 
 1. **Démo** — `protocol_engine: oauth2` sur un profil read-only
@@ -14,6 +19,10 @@ Aucun changement Terraform / Fargate / `aithos.fr`.
 3. Étendre profil par profil
 4. **Rollback** — remettre `protocol_engine: native` (ou unset env) ; Vault intact
 5. Retirer le moteur native seulement après fenêtre d'observation convenue
+
+Le protocole de mise en production, les preuves attendues et le rollback exact
+sont détaillés dans
+`docs/RUNBOOK-OLR-PROD-ROLLOUT-ROLLBACK-2026-07-22.md`.
 
 ## Bascule
 
