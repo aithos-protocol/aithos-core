@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use base64::Engine as _;
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{Signer as _, SigningKey};
 use serde::{Deserialize, Serialize};
 
 use aithos_bundle::bundle::Bundle;
@@ -41,7 +41,10 @@ use aithos_core::mandate::{
     covers_act, verify_chain, verify_chain_revocable, verify_op, ActOp, GammaQuery, Mandate,
     MandateSpec, Op, PerimeterEntry, Verb,
 };
-use aithos_core::operation::{verify_session, SessionEvidence};
+use aithos_core::operation::{
+    verify_delegated_session as verify_delegated_session_core, verify_session,
+    DelegatedSessionEvidence as CoreDelegatedSessionEvidence, SessionEvidence,
+};
 use aithos_core::path::Zone;
 use aithos_core::revocation::{chain_revoked_at, revocations, Revocation};
 
@@ -112,6 +115,44 @@ pub fn verify_delegated_session(
         native_leaf_proof: evidence.native_leaf_proof,
         native_leaf_domain: MCP_SESSION_NATIVE_PROOF_DOMAIN,
         session_proof: evidence.session_proof,
+    })
+    .map(|verified| verified.operation_ref().clone())
+    .map_err(|error| GatewayError::MandateDenied {
+        op: "delegated_session".into(),
+        reason: error.to_string(),
+    })
+}
+
+pub struct DelegatedChainSessionEvidence<'a> {
+    pub chain: &'a [Mandate],
+    pub did: &'a DidDocument,
+    pub at: &'a str,
+    pub revocations: &'a [Revocation],
+    pub mandate: &'a serde_json::Value,
+    pub certificate: &'a serde_json::Value,
+    pub projection: &'a serde_json::Value,
+    pub operation_ref: &'a serde_json::Value,
+    pub native_leaf_proof: &'a serde_json::Value,
+    pub session_proof: &'a serde_json::Value,
+}
+
+pub fn verify_delegated_chain_session(
+    evidence: DelegatedChainSessionEvidence<'_>,
+) -> Result<serde_json::Value> {
+    verify_delegated_session_core(CoreDelegatedSessionEvidence {
+        chain: evidence.chain,
+        did: evidence.did,
+        at: evidence.at,
+        revocations: evidence.revocations,
+        session: SessionEvidence {
+            mandate: evidence.mandate,
+            certificate: evidence.certificate,
+            projection: evidence.projection,
+            operation_ref: evidence.operation_ref,
+            native_leaf_proof: Some(evidence.native_leaf_proof),
+            native_leaf_domain: MCP_SESSION_NATIVE_PROOF_DOMAIN,
+            session_proof: Some(evidence.session_proof),
+        },
     })
     .map(|verified| verified.operation_ref().clone())
     .map_err(|error| GatewayError::MandateDenied {
@@ -1623,6 +1664,18 @@ pub struct SessionAuthority {
     pub certificate: serde_json::Value,
 }
 
+pub struct PreparedSessionOperation {
+    pub chain: Vec<Mandate>,
+    pub did: DidDocument,
+    pub revocations: Vec<Revocation>,
+    pub mandate: serde_json::Value,
+    pub certificate: serde_json::Value,
+    pub certificate_digest: String,
+    pub projection: serde_json::Value,
+    pub operation_ref: serde_json::Value,
+    pub native_leaf_proof: serde_json::Value,
+}
+
 #[derive(Debug, Clone)]
 struct HubRuntimeTool {
     context: String,
@@ -1761,9 +1814,223 @@ impl Runner {
         eligible
     }
 
+    fn verified_session_chain(
+        &self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        now: &str,
+    ) -> Result<(Vec<Mandate>, DidDocument, Vec<Revocation>)> {
+        let runtime = self.context(context)?;
+        let did = runtime.bridge.did_doc()?;
+        let entries = runtime.bridge.bundle.gamma_entries().map_err(bridge_err)?;
+        let revocations = revocations(&entries);
+        let gateway_pub = gateway_pub_multibase(&runtime.bridge.keyholder);
+        let chain = runtime
+            .bridge
+            .walk_cert_chains(&gateway_pub)
+            .into_iter()
+            .find(|chain| chain.last().is_some_and(|leaf| leaf.id == leaf_id))
+            .ok_or_else(|| GatewayError::MandateDenied {
+                op: "delegated_session".into(),
+                reason: "the delegated session leaf is unavailable".into(),
+            })?;
+        verify_chain_revocable(&chain, &did, now, &revocations).map_err(|error| {
+            GatewayError::MandateDenied {
+                op: "delegated_session".into(),
+                reason: error.to_string(),
+            }
+        })?;
+        let leaf = chain.last().expect("non-empty verified chain");
+        if leaf
+            .constraints
+            .get("session_bind")
+            .and_then(serde_json::Value::as_str)
+            != Some(session_pub)
+            || serde_json::to_value(leaf).map_err(bridge_err)? != *expected_leaf
+        {
+            return Err(GatewayError::MandateDenied {
+                op: "delegated_session".into(),
+                reason: "the live delegated leaf differs from the OAuth session".into(),
+            });
+        }
+        Ok((chain, did, revocations))
+    }
+
+    pub fn validate_bearer_session(
+        &self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        now: &str,
+    ) -> Result<()> {
+        self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)
+            .map(|_| ())
+    }
+
+    fn session_tool_parts(&self, tool: &str) -> (String, String) {
+        self.runtime_hub_tool(tool).map_or_else(
+            || {
+                (
+                    crate::policy::MCP_CONNECTOR.to_owned(),
+                    crate::policy::action_name(tool),
+                )
+            },
+            |hub| {
+                (
+                    hub.server.clone(),
+                    crate::policy::action_name(&hub.raw_tool),
+                )
+            },
+        )
+    }
+
+    pub fn listed_tools_for_session(
+        &self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        now: &str,
+    ) -> Result<Vec<serde_json::Value>> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let runtime = self.context(context)?;
+        Ok(self
+            .listed_tools()
+            .into_iter()
+            .filter(|descriptor| {
+                let Some(tool) = descriptor.get("name").and_then(serde_json::Value::as_str) else {
+                    return false;
+                };
+                if self.resolve(tool) != Some(context) {
+                    return false;
+                }
+                let (connector, action) = self.session_tool_parts(tool);
+                runtime
+                    .bridge
+                    .bundle
+                    .action_covered(&chain, &connector, &action)
+                    .unwrap_or(false)
+            })
+            .collect())
+    }
+
     #[allow(clippy::too_many_arguments)]
-    pub fn activate_session_leaf(
+    pub fn prepare_session_operation(
         &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        certificate: &serde_json::Value,
+        tool: &str,
+        args: &serde_json::Value,
+        now: &str,
+    ) -> Result<PreparedSessionOperation> {
+        let (chain, did, revocations) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let (connector, action) = self.session_tool_parts(tool);
+        let runtime = self.context_mut(context)?;
+        if !runtime
+            .bridge
+            .bundle
+            .action_covered(&chain, &connector, &action)
+            .map_err(bridge_err)?
+        {
+            return Err(GatewayError::MandateDenied {
+                op: hub_op_for_tool(&connector, &action),
+                reason: format!("exposed tool `{tool}` is outside the delegated session"),
+            });
+        }
+        let history_heads = runtime
+            .bridge
+            .bundle
+            .gamma_entries()
+            .map_err(bridge_err)?
+            .last()
+            .map(|entry| entry.chain_hash().map_err(bridge_err))
+            .transpose()?
+            .into_iter()
+            .collect::<Vec<_>>();
+        let occurrence = format!(
+            "op_{}",
+            Sid(ulid::Ulid::from(u128::from_be_bytes(
+                runtime.bridge.entropy.as_mut().e16()
+            )))
+        );
+        let args_hash = hash_of(args)?;
+        let facts = serde_json::json!({
+            "v": 1,
+            "context": context,
+            "tool": tool,
+            "connector": connector,
+            "action": action,
+            "args_hash": args_hash,
+        });
+        let facts_digest = commitment_of("aithos-core/v1/operation-facts", &facts)?;
+        let mandate =
+            serde_json::to_value(chain.last().expect("verified chain")).map_err(bridge_err)?;
+        let certificate_digest = hash_of(certificate)?;
+        let projection = serde_json::json!({
+            "aithos-operation-core": "1.0.0-draft.1",
+            "occurrence": occurrence,
+            "subject": chain.last().expect("verified chain").subject,
+            "at": now,
+            "history_heads": history_heads,
+            "authority": {
+                "actor": "grantee",
+                "key": chain.last().expect("verified chain").grantee.pubkey,
+                "authorized_by": leaf_id,
+                "authorized_via": [{
+                    "id": leaf_id,
+                    "certificate_digest": hash_of(&mandate)?,
+                }],
+                "session": {
+                    "key": session_pub,
+                    "certificate_digest": certificate_digest,
+                },
+            },
+            "operation": {
+                "kind": "action",
+                "facts_ref": {
+                    "aithos-operation-facts-core": "1.0.0-draft.1",
+                    "digest": facts_digest,
+                },
+            },
+        });
+        let operation_ref = serde_json::json!({
+            "aithos-operation-core": "1.0.0-draft.1",
+            "occurrence": projection["occurrence"],
+            "commitment": commitment_of("aithos-core/v1/operation-commitment", &projection)?,
+        });
+        let mut native_message = MCP_SESSION_NATIVE_PROOF_DOMAIN.to_vec();
+        native_message.extend_from_slice(
+            &aithos_core::jcs::canonical_bytes(&operation_ref).map_err(bridge_err)?,
+        );
+        let gateway = SigningKey::from_bytes(runtime.bridge.keyholder.gateway_seed());
+        let native_leaf_proof = serde_json::json!({
+            "key": chain.last().expect("verified chain").grantee.pubkey,
+            "sig": hex::encode(gateway.sign(&native_message).to_bytes()),
+        });
+        Ok(PreparedSessionOperation {
+            chain,
+            did,
+            revocations,
+            mandate,
+            certificate: certificate.clone(),
+            certificate_digest,
+            projection,
+            operation_ref,
+            native_leaf_proof,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn validated_session_leaf(
+        &self,
         context: &str,
         parent_id: &str,
         delegate_pub: &str,
@@ -1772,12 +2039,12 @@ impl Runner {
         session_pub: &str,
         leaf_value: &serde_json::Value,
         now: &str,
-    ) -> Result<SessionAuthority> {
-        let runtime = self.context_mut(context)?;
+    ) -> Result<(Vec<Mandate>, Mandate)> {
+        let runtime = self.context(context)?;
         let doc = runtime.bridge.did_doc()?;
         let entries = runtime.bridge.bundle.gamma_entries().map_err(bridge_err)?;
         let revs = revocations(&entries);
-        let mut parent_chain = runtime
+        let parent_chain = runtime
             .bridge
             .walk_cert_chains(delegate_pub)
             .into_iter()
@@ -1851,13 +2118,90 @@ impl Runner {
                 reason: "session leaf lifetime exceeds eight hours".into(),
             });
         }
-        parent_chain.push(leaf.clone());
-        verify_chain_revocable(&parent_chain, &doc, now, &revs).map_err(|error| {
+        let mut session_chain = parent_chain.clone();
+        session_chain.push(leaf.clone());
+        verify_chain_revocable(&session_chain, &doc, now, &revs).map_err(|error| {
             GatewayError::MandateDenied {
                 op: "session.issue".into(),
                 reason: error.to_string(),
             }
         })?;
+        Ok((parent_chain, leaf))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_session_grant(
+        &mut self,
+        context: &str,
+        parent_id: &str,
+        delegate_pub: &str,
+        gateway_pub: &str,
+        gateway_kex_pub: &str,
+        session_pub: &str,
+        leaf_value: &serde_json::Value,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let (parent_chain, leaf) = self.validated_session_leaf(
+            context,
+            parent_id,
+            delegate_pub,
+            gateway_pub,
+            gateway_kex_pub,
+            session_pub,
+            leaf_value,
+            now,
+        )?;
+        let runtime = self.context_mut(context)?;
+        let entry = runtime
+            .bridge
+            .bundle
+            .prepare_external_delegated_grant(&parent_chain, &leaf, runtime.bridge.entropy.as_mut())
+            .map_err(bridge_err)?;
+        serde_json::to_value(entry).map_err(bridge_err)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn activate_session_leaf(
+        &mut self,
+        context: &str,
+        parent_id: &str,
+        delegate_pub: &str,
+        gateway_pub: &str,
+        gateway_kex_pub: &str,
+        session_pub: &str,
+        leaf_value: &serde_json::Value,
+        grant_value: &serde_json::Value,
+        now: &str,
+    ) -> Result<SessionAuthority> {
+        let (mut parent_chain, leaf) = self.validated_session_leaf(
+            context,
+            parent_id,
+            delegate_pub,
+            gateway_pub,
+            gateway_kex_pub,
+            session_pub,
+            leaf_value,
+            now,
+        )?;
+        let grant: aithos_core::gamma::Entry = serde_json::from_value(grant_value.clone())
+            .map_err(|_| GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: "delegated Gamma grant is malformed".into(),
+            })?;
+        let runtime = self.context_mut(context)?;
+        let doc = runtime.bridge.did_doc()?;
+        let entries = runtime.bridge.bundle.gamma_entries().map_err(bridge_err)?;
+        let revs = revocations(&entries);
+        Bundle::<GatewayStore>::verify_external_delegated_grant(
+            &grant,
+            &parent_chain,
+            &leaf,
+            &doc,
+            &revs,
+            &entries,
+        )
+        .map_err(bridge_err)?;
+        parent_chain.push(leaf.clone());
 
         let mut certificate = serde_json::json!({
             "aithos-session-core": "1.0.0-draft.1",
@@ -1885,6 +2229,11 @@ impl Runner {
                 &cert_path(&leaf.id),
                 &serde_json::to_vec_pretty(&leaf).map_err(bridge_err)?,
             )
+            .map_err(bridge_err)?;
+        runtime
+            .bridge
+            .bundle
+            .append_external_delegated_grant(&parent_chain[..parent_chain.len() - 1], &leaf, &grant)
             .map_err(bridge_err)?;
         let public_chain = parent_chain
             .iter()
@@ -2350,6 +2699,67 @@ impl Runner {
             }
             None => context.bridge.record_act(tool, args, now)?,
         };
+        let ethos_did = context.bridge.ethos_did().to_owned();
+        self.journal.record_xref(tool, &ethos_did, &entry_id, now)?;
+        Ok(entry_id)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_session_act_with_xref(
+        &mut self,
+        ctx: &str,
+        tool: &str,
+        args: &serde_json::Value,
+        chain: &[Mandate],
+        session_pub: &str,
+        certificate_digest: &str,
+        operation_ref: &serde_json::Value,
+        now: &str,
+    ) -> Result<String> {
+        let hub = self.runtime_hub_tool(tool).cloned();
+        let context = self.context_mut(ctx)?;
+        let (connector, action, mut detail) = match hub {
+            Some(hub) => (
+                hub.server.clone(),
+                crate::policy::action_name(&hub.raw_tool),
+                serde_json::json!({
+                    "tool": tool,
+                    "server": hub.server,
+                    "upstream_tool": hub.raw_tool,
+                }),
+            ),
+            None => (
+                crate::policy::MCP_CONNECTOR.to_owned(),
+                crate::policy::action_name(tool),
+                serde_json::json!({ "tool": tool }),
+            ),
+        };
+        detail["session"] = serde_json::json!({
+            "key": session_pub,
+            "mandate_id": chain.last().map(|leaf| leaf.id.as_str()),
+            "certificate_digest": certificate_digest,
+        });
+        detail["operation_ref"] = operation_ref.clone();
+        let gateway = SigningKey::from_bytes(context.bridge.keyholder.gateway_seed());
+        let args_hash = hash_of(args)?;
+        let entry = context
+            .bridge
+            .bundle
+            .log_action(
+                chain,
+                &gateway,
+                &ActionSpec {
+                    connector: &connector,
+                    action: &action,
+                    args_hash: &args_hash,
+                    now,
+                    budget: Some(detail),
+                    sealed_args: None,
+                },
+                context.bridge.entropy.as_mut(),
+            )
+            .map_err(|error| GatewayError::LogAppendRefused(error.to_string()))?;
+        let entry_id = entry.id;
         let ethos_did = context.bridge.ethos_did().to_owned();
         self.journal.record_xref(tool, &ethos_did, &entry_id, now)?;
         Ok(entry_id)
@@ -2854,6 +3264,53 @@ pub fn owner_grant_context(
         now,
         ent,
     )
+}
+
+/// Enrol one person public key as a session issuer for an existing context.
+/// The enterprise keeps the owner key; the gateway receives only this signed
+/// root mandate. The delegate may attenuate the listed actions exactly one
+/// level, with at most three simultaneously active MCP sessions.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_session_delegate(
+    master: &[u8; 32],
+    label: &str,
+    delegate_pub_mb: &str,
+    tools: &[String],
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<String> {
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    let delegate_pub = decode_pub(delegate_pub_mb)?;
+    let mut perimeter = tools
+        .iter()
+        .map(|tool| PerimeterEntry::parse(&op_for_tool(tool)).map_err(bridge_err))
+        .collect::<Result<Vec<_>>>()?;
+    perimeter.push(PerimeterEntry::Issue { depth: 1 });
+    let mandate = mint_entries(
+        &owner,
+        &bundle,
+        ent,
+        "session-delegate",
+        &delegate_pub,
+        perimeter,
+        serde_json::json!({ "max_sessions": 3 }),
+        window,
+        now,
+    )?;
+    bundle
+        .store
+        .put(
+            &cert_path(&mandate.id),
+            &serde_json::to_vec_pretty(&mandate).map_err(bridge_err)?,
+        )
+        .map_err(bridge_err)?;
+    bundle
+        .log_owner_grant(&owner, &mandate.id, now, ent)
+        .map_err(bridge_err)?;
+    Ok(mandate.id)
 }
 
 /// Mint an exact `act.x.<connector>.config` delegate for the signed control
@@ -4345,6 +4802,17 @@ fn hash_of(value: &serde_json::Value) -> Result<String> {
     Ok(format!("sha256:{}", aithos_core::gamma::sha256_hex(&canon)))
 }
 
+fn commitment_of(domain: &str, value: &serde_json::Value) -> Result<String> {
+    let canon = aithos_core::jcs::canonical_bytes(value).map_err(bridge_err)?;
+    let mut preimage = domain.as_bytes().to_vec();
+    preimage.push(0);
+    preimage.extend_from_slice(&canon);
+    Ok(format!(
+        "sha256:{}",
+        aithos_core::gamma::sha256_hex(&preimage)
+    ))
+}
+
 fn read_json<T: serde::de::DeserializeOwned>(
     bundle: &Bundle<GatewayStore>,
     path: &str,
@@ -4532,14 +5000,39 @@ fn write_denied(e: aithos_core::error::Error) -> GatewayError {
 mod delegated_session_tests {
     use super::*;
 
-    fn vector() -> serde_json::Value {
+    fn historical_vector() -> serde_json::Value {
         serde_json::from_str(include_str!("../../../../vectors/cb2-session-proof.json"))
             .expect("historical CB2 vector parses")
     }
 
+    fn delegated_chain_vector() -> serde_json::Value {
+        serde_json::from_str(include_str!(
+            "../../../../vectors/cb14-delegated-session-chain.json"
+        ))
+        .expect("CB14 delegated chain vector parses")
+    }
+
+    fn vector_revocations(candidate: &serde_json::Value) -> Vec<Revocation> {
+        candidate["revocations"]
+            .as_array()
+            .expect("revocations array")
+            .iter()
+            .map(|item| Revocation {
+                mandate_id: item["mandate_id"]
+                    .as_str()
+                    .expect("revoked mandate id")
+                    .to_owned(),
+                revoked_at: item["revoked_at"]
+                    .as_str()
+                    .expect("revocation time")
+                    .to_owned(),
+            })
+            .collect()
+    }
+
     #[test]
     fn gateway_bridge_consumes_the_historical_sc1_vector_exactly() {
-        let vector = vector();
+        let vector = historical_vector();
         let positive = &vector["positive"];
         let verified = verify_delegated_session(DelegatedSessionEvidence {
             mandate: &positive["mandate"],
@@ -4570,6 +5063,60 @@ mod delegated_session_tests {
             session_proof: None,
         })
         .is_err());
+    }
+
+    #[test]
+    fn gateway_bridge_verifies_the_non_root_chain_before_unchanged_sc1() {
+        let vector = delegated_chain_vector();
+        let positive = &vector["positive"];
+        let chain: Vec<Mandate> =
+            serde_json::from_value(positive["chain"].clone()).expect("mandate chain parses");
+        let did: DidDocument =
+            serde_json::from_value(positive["did"].clone()).expect("DID document parses");
+        let revocations = vector_revocations(positive);
+
+        let verified = verify_delegated_chain_session(DelegatedChainSessionEvidence {
+            chain: &chain,
+            did: &did,
+            at: positive["at"].as_str().expect("verification time"),
+            revocations: &revocations,
+            mandate: &positive["mandate"],
+            certificate: &positive["certificate"],
+            projection: &positive["operation_projection"],
+            operation_ref: &positive["operation_ref"],
+            native_leaf_proof: &positive["native_leaf_proof"],
+            session_proof: &positive["session_proof"],
+        })
+        .expect("delegated chain and unchanged SC1 pass through Core");
+        assert_eq!(verified, positive["operation_ref"]);
+
+        let revoked = vector["negative_cases"]
+            .as_array()
+            .expect("negative cases")
+            .iter()
+            .find(|case| case["id"] == "revoked-parent")
+            .expect("revoked parent case");
+        let candidate = &revoked["candidate"];
+        let chain: Vec<Mandate> =
+            serde_json::from_value(candidate["chain"].clone()).expect("mandate chain parses");
+        let did: DidDocument =
+            serde_json::from_value(candidate["did"].clone()).expect("DID document parses");
+        let revocations = vector_revocations(candidate);
+        assert!(
+            verify_delegated_chain_session(DelegatedChainSessionEvidence {
+                chain: &chain,
+                did: &did,
+                at: candidate["at"].as_str().expect("verification time"),
+                revocations: &revocations,
+                mandate: &candidate["mandate"],
+                certificate: &candidate["certificate"],
+                projection: &candidate["operation_projection"],
+                operation_ref: &candidate["operation_ref"],
+                native_leaf_proof: &candidate["native_leaf_proof"],
+                session_proof: &candidate["session_proof"],
+            })
+            .is_err()
+        );
     }
 
     #[test]

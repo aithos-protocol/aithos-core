@@ -213,6 +213,7 @@ pub fn build_ceremony_challenge(
     context: &str,
     parent_id: &str,
     leaf_json: &str,
+    grant_json: &str,
 ) -> Result<String, JsError> {
     let bindings: CeremonyBindings = serde_json::from_str(bindings_json)
         .map_err(|_| JsError::new("ceremony bindings are malformed"))?;
@@ -220,6 +221,10 @@ pub fn build_ceremony_challenge(
         serde_json::from_str(leaf_json).map_err(|_| JsError::new("session leaf is malformed"))?;
     let leaf_jcs = serde_jcs::to_vec(&leaf)
         .map_err(|_| JsError::new("session leaf is not canonicalizable"))?;
+    let grant: Value = serde_json::from_str(grant_json)
+        .map_err(|_| JsError::new("delegated grant is malformed"))?;
+    let grant_jcs = serde_jcs::to_vec(&grant)
+        .map_err(|_| JsError::new("delegated grant is not canonicalizable"))?;
     let challenge = serde_json::json!({
         "v": 1,
         "transaction_id": bindings.transaction_id,
@@ -240,6 +245,10 @@ pub fn build_ceremony_challenge(
             "sha256:{}",
             aithos_core::gamma::sha256_hex(&leaf_jcs)
         ),
+        "grant_digest": format!(
+            "sha256:{}",
+            aithos_core::gamma::sha256_hex(&grant_jcs)
+        ),
     });
     let challenge_jcs = serde_jcs::to_vec(&challenge)
         .map_err(|_| JsError::new("ceremony challenge is not canonicalizable"))?;
@@ -251,6 +260,39 @@ pub fn build_ceremony_challenge(
         "challenge": challenge,
     })
     .to_string())
+}
+
+/// Sign one gateway-prepared existing Gamma v1 `grant` entry. The delegate
+/// seed stays in WASM custody; only the signed public entry is returned.
+#[wasm_bindgen]
+pub fn sign_delegated_grant(delegate_seed: &mut [u8], grant_json: &str) -> Result<String, JsError> {
+    let delegate_seed = DelegateSeed(delegate_seed);
+    let key = signing_key(&delegate_seed)?;
+    sign_delegated_grant_with_key(&key, grant_json)
+}
+
+fn sign_delegated_grant_with_key(key: &SigningKey, grant_json: &str) -> Result<String, JsError> {
+    let mut entry: Entry = serde_json::from_str(grant_json)
+        .map_err(|_| JsError::new("delegated grant is malformed"))?;
+    let public = aithos_core::wire::ed25519_pub_to_multibase(&key.verifying_key().to_bytes());
+    if entry.kind != "grant"
+        || entry.signature.alg != "ed25519"
+        || entry.signature.key != public
+        || !entry.signature.value.is_empty()
+        || entry.authorized_by.is_none()
+        || entry.authorized_via.as_ref().is_none_or(Vec::is_empty)
+    {
+        return Err(JsError::new(
+            "delegated grant is not an unsigned entry for this signer",
+        ));
+    }
+    entry
+        .check_form()
+        .map_err(|error| JsError::new(&error.to_string()))?;
+    let canonical = serde_jcs::to_vec(&entry)
+        .map_err(|_| JsError::new("delegated grant is not canonicalizable"))?;
+    entry.signature.value = hex::encode(key.sign(&canonical).to_bytes());
+    serde_json::to_string(&entry).map_err(|_| JsError::new("delegated grant serialization failed"))
 }
 
 /// Canonicalize and sign the complete WYSIWYS challenge. The returned proof
@@ -320,6 +362,10 @@ impl DelegateSigner {
     pub fn sign_ceremony_challenge(&self, challenge_json: &str) -> Result<String, JsError> {
         sign_ceremony_challenge_with_key(&self.key, challenge_json)
     }
+
+    pub fn sign_delegated_grant(&self, grant_json: &str) -> Result<String, JsError> {
+        sign_delegated_grant_with_key(&self.key, grant_json)
+    }
 }
 
 #[cfg(test)]
@@ -338,5 +384,21 @@ mod tests {
         assert_eq!(proof["delegate_pub"], public);
         assert!(proof.get("seed").is_none());
         assert_eq!(proof.as_object().unwrap().len(), 4);
+
+        let vector: Value = serde_json::from_str(include_str!(
+            "../../../../vectors/cb15-external-delegated-grant.json"
+        ))
+        .unwrap();
+        let mut seed = [0x62u8; 32];
+        let signed = sign_delegated_grant(
+            &mut seed,
+            &serde_json::to_string(&vector["positive"]["unsigned_entry"]).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(seed, [0u8; 32]);
+        assert_eq!(
+            serde_json::from_str::<Value>(&signed).unwrap(),
+            vector["positive"]["signed_entry"]
+        );
     }
 }

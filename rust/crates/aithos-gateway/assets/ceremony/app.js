@@ -19,6 +19,7 @@ const cancelButton = document.querySelector("#cancel");
 let signer = null;
 let preparation = null;
 let selectedLeaf = null;
+let selectedGrant = null;
 let selectedChallenge = null;
 let completed = false;
 
@@ -180,7 +181,7 @@ function renderReview(parent, leaf, challengeEnvelope) {
   addReview("WYSIWYS digest", challengeEnvelope.digest);
 }
 
-function buildSelection() {
+async function buildSelection() {
   if (!signer || !preparation) return;
   const parent = preparation.eligible_parents[Number(parentSelect.value)];
   if (!parent) return;
@@ -218,13 +219,28 @@ function buildSelection() {
     verifiedAt,
     JSON.stringify(parent.revocations),
   );
+  const preparedGrant = await postJson("/ceremony/prepare-grant", {
+    transaction_id: bindings.transaction_id,
+    delegate_pub: bindings.delegate_pub,
+    context: parent.context,
+    parent_id: parent.parent_id,
+    leaf,
+  });
+  if (preparedGrant?.v !== 1 || !preparedGrant.grant) {
+    throw new Error("The gateway returned a malformed delegated grant");
+  }
+  const signedGrant = JSON.parse(
+    signer.sign_delegated_grant(JSON.stringify(preparedGrant.grant)),
+  );
   const challengeEnvelope = JSON.parse(build_ceremony_challenge(
     JSON.stringify(bindings),
     parent.context,
     parent.parent_id,
     leafJson,
+    JSON.stringify(signedGrant),
   ));
   selectedLeaf = leaf;
+  selectedGrant = signedGrant;
   selectedChallenge = challengeEnvelope.challenge;
   renderReview(parent, leaf, challengeEnvelope);
   reviewPanel.classList.remove("hidden");
@@ -235,6 +251,7 @@ unlockButton.addEventListener("click", async () => {
   unlockButton.disabled = true;
   preparation = null;
   selectedLeaf = null;
+  selectedGrant = null;
   selectedChallenge = null;
   setStatus("Unlocking and verifying locally…");
   try {
@@ -270,7 +287,7 @@ unlockButton.addEventListener("click", async () => {
       parentSelect.append(option);
     });
     parentPanel.classList.remove("hidden");
-    buildSelection();
+    await buildSelection();
   } catch (error) {
     if (preparation) {
       await postJson("/ceremony/cancel", { transaction_id: main.dataset.ceremony }).catch(() => null);
@@ -283,11 +300,17 @@ unlockButton.addEventListener("click", async () => {
   }
 });
 
-parentSelect.addEventListener("change", () => {
+parentSelect.addEventListener("change", async () => {
   try {
-    buildSelection();
+    selectedLeaf = null;
+    selectedGrant = null;
+    selectedChallenge = null;
+    reviewPanel.classList.add("hidden");
+    setStatus("Preparing the exact delegated grant…");
+    await buildSelection();
   } catch (error) {
     selectedLeaf = null;
+    selectedGrant = null;
     selectedChallenge = null;
     reviewPanel.classList.add("hidden");
     setStatus(error instanceof Error ? error.message : "The selected chain was refused", "error");
@@ -295,7 +318,7 @@ parentSelect.addEventListener("change", () => {
 });
 
 authorizeButton.addEventListener("click", async () => {
-  if (!signer || !selectedLeaf || !selectedChallenge || !preparation) return;
+  if (!signer || !selectedLeaf || !selectedGrant || !selectedChallenge || !preparation) return;
   authorizeButton.disabled = true;
   parentSelect.disabled = true;
   setStatus("Signing inside WASM and completing the one-shot ceremony…");
@@ -307,6 +330,7 @@ authorizeButton.addEventListener("click", async () => {
       context: parent.context,
       parent_id: parent.parent_id,
       leaf: selectedLeaf,
+      grant: selectedGrant,
       proof,
     });
     if (typeof answer?.redirect_to !== "string") {

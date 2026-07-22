@@ -370,6 +370,43 @@ struct OAuthSessionRecord {
     certificate: Value,
 }
 
+#[derive(Clone)]
+pub struct BearerSession {
+    pub sid: String,
+    pub subject: String,
+    pub context: String,
+    pub client_id: String,
+    pub resource: String,
+    pub parent_id: String,
+    pub leaf_id: String,
+    pub session_pub: String,
+    pub not_before: String,
+    pub not_after: String,
+    pub chain: Vec<Value>,
+    pub leaf: Value,
+    pub certificate: Value,
+}
+
+impl From<OAuthSessionRecord> for BearerSession {
+    fn from(session: OAuthSessionRecord) -> Self {
+        Self {
+            sid: session.sid,
+            subject: session.subject,
+            context: session.context,
+            client_id: session.client_id,
+            resource: session.resource,
+            parent_id: session.parent_id,
+            leaf_id: session.leaf_id,
+            session_pub: session.session_pub,
+            not_before: session.not_before,
+            not_after: session.not_after,
+            chain: session.chain,
+            leaf: session.leaf,
+            certificate: session.certificate,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SessionIndexRecord {
@@ -414,10 +451,14 @@ pub fn build_ceremony_challenge(
     context: &str,
     parent_id: &str,
     leaf: &Value,
+    grant: &Value,
 ) -> Result<CeremonyChallenge> {
     let leaf_jcs = serde_jcs::to_vec(leaf)
         .map_err(|_| oauth_err("invalid_request", "session leaf is not canonicalizable"))?;
     let leaf_digest = format!("sha256:{}", aithos_core::gamma::sha256_hex(&leaf_jcs));
+    let grant_jcs = serde_jcs::to_vec(grant)
+        .map_err(|_| oauth_err("invalid_request", "delegated grant is not canonicalizable"))?;
+    let grant_digest = format!("sha256:{}", aithos_core::gamma::sha256_hex(&grant_jcs));
     let challenge = json!({
         "v": 1,
         "transaction_id": preparation.transaction_id,
@@ -435,6 +476,7 @@ pub fn build_ceremony_challenge(
         "context": context,
         "parent_id": parent_id,
         "leaf_digest": leaf_digest,
+        "grant_digest": grant_digest,
     });
     let challenge_jcs = serde_jcs::to_vec(&challenge)
         .map_err(|_| oauth_state_error("ceremony challenge serialization failed"))?;
@@ -620,6 +662,7 @@ impl AuthServer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_production_with_state(
         adapter: AdapterKey,
         issuer: &str,
@@ -1041,6 +1084,7 @@ impl AuthServer {
         context: &str,
         parent_id: &str,
         leaf: &Value,
+        grant: &Value,
         proof: &CeremonyProof,
         now: &str,
     ) -> Result<ReservedCeremony> {
@@ -1085,7 +1129,8 @@ impl AuthServer {
                 nonce: pending.nonce.clone(),
                 expires_at_epoch: pending.expires_at_epoch,
             };
-            let challenge = build_ceremony_challenge(&preparation, context, parent_id, leaf)?;
+            let challenge =
+                build_ceremony_challenge(&preparation, context, parent_id, leaf, grant)?;
             if proof.digest != challenge.digest {
                 return Err(oauth_err(
                     "invalid_request",
@@ -1540,11 +1585,10 @@ impl AuthServer {
         Ok(session)
     }
 
-    /// Validate a bearer token presented on `/mcp`: signature (adapter
-    /// key), audience (this resource), expiry. Returns nothing useful to
-    /// leak — success means "may enter", the mandate chain still decides
-    /// every act behind it.
-    pub fn validate_bearer(&self, token: &str, now: &str) -> Result<()> {
+    /// Validate a bearer token presented on `/mcp`: signature, audience and
+    /// expiry. Production returns the public durable session selected by
+    /// `sid`; no signing seed crosses this boundary.
+    pub fn validate_bearer(&self, token: &str, now: &str) -> Result<Option<BearerSession>> {
         let claims = self.adapter.verify_jwt(token)?;
         if claims.get("iss").and_then(Value::as_str) != Some(self.issuer.as_str())
             || claims.get("aud").and_then(Value::as_str) != Some(self.resource.as_str())
@@ -1567,10 +1611,57 @@ impl AuthServer {
                 .get("client_id")
                 .and_then(Value::as_str)
                 .ok_or_else(invalid_token)?;
-            self.live_session(sid, client_id, &self.resource, now)
-                .map_err(|_| invalid_token())?;
+            return self
+                .live_session(sid, client_id, &self.resource, now)
+                .map(BearerSession::from)
+                .map(Some)
+                .map_err(|_| invalid_token());
         }
-        Ok(())
+        Ok(None)
+    }
+
+    pub fn sign_session_proof(
+        &self,
+        session: &BearerSession,
+        operation_ref: &Value,
+        now: &str,
+    ) -> Result<Value> {
+        let live = self
+            .live_session(&session.sid, &session.client_id, &session.resource, now)
+            .map_err(|_| invalid_token())?;
+        if live.leaf_id != session.leaf_id
+            || live.session_pub != session.session_pub
+            || live.context != session.context
+        {
+            return Err(invalid_token());
+        }
+        let (key_record, _) = self
+            .load_record::<SessionKeyRecord>(StateNamespace::SessionKey, &session.sid)?
+            .ok_or_else(|| oauth_state_error("delegated session signer is unavailable"))?;
+        if key_record.expires_at_epoch <= epoch(now)? {
+            return Err(invalid_token());
+        }
+        let mut seed: [u8; 32] = hex::decode(&key_record.seed_hex)
+            .ok()
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(|| oauth_state_error("delegated session signer is malformed"))?;
+        let key = SigningKey::from_bytes(&seed);
+        seed.zeroize();
+        let derived = aithos_core::wire::ed25519_pub_to_multibase(&key.verifying_key().to_bytes());
+        if derived != live.session_pub {
+            return Err(oauth_state_error(
+                "delegated session signer does not match its public key",
+            ));
+        }
+        let mut unsigned = serde_json::json!({
+            "aithos-session-proof-core": "1.0.0-draft.1",
+            "operation_ref": operation_ref,
+            "key": live.session_pub,
+        });
+        let preimage = serde_jcs::to_vec(&unsigned)
+            .map_err(|_| oauth_state_error("session proof serialization failed"))?;
+        unsigned["sig"] = Value::String(hex::encode(key.sign(&preimage).to_bytes()));
+        Ok(unsigned)
     }
 
     #[cfg(test)]
@@ -2300,8 +2391,10 @@ mod tests {
             .prepare_ceremony(&pending.transaction_id, &delegate_pub, T0)
             .unwrap();
         let leaf = json!({ "signed": "leaf-placeholder-for-AS-boundary" });
+        let grant = json!({ "signed": "grant-placeholder-for-AS-boundary" });
         let challenge =
-            build_ceremony_challenge(&preparation, "finance", "mandate_parent", &leaf).unwrap();
+            build_ceremony_challenge(&preparation, "finance", "mandate_parent", &leaf, &grant)
+                .unwrap();
         let proof = CeremonyProof {
             version: "1.0.0".into(),
             digest: challenge.digest,
@@ -2314,6 +2407,7 @@ mod tests {
                 "finance",
                 "mandate_parent",
                 &leaf,
+                &grant,
                 &proof,
                 T0,
             )
@@ -2357,8 +2451,33 @@ mod tests {
             .exchange_code(code, &verifier, &resource(), uri, None, T0)
             .expect("sid-bound code exchanges without legacy agent ceiling");
         assert_eq!(who, client);
-        as_.validate_bearer(&grant.access_token, T0)
-            .expect("bearer resolves its durable live sid");
+        let session = as_
+            .validate_bearer(&grant.access_token, T0)
+            .expect("bearer resolves its durable live sid")
+            .expect("production bearer selects a delegated session");
+        assert_eq!(session.leaf_id, authority.leaf_id);
+        assert_eq!(session.session_pub, authority.session_pub);
+
+        let operation_ref = json!({
+            "aithos-operation-core": "1.0.0-draft.1",
+            "occurrence": "op_01J00000000000000000000071",
+            "commitment": format!("sha256:{}", "ab".repeat(32)),
+        });
+        let mut proof = as_
+            .sign_session_proof(&session, &operation_ref, T0)
+            .expect("the durable session key signs its operation reference");
+        assert_eq!(proof["key"], authority.session_pub);
+        let sig = proof
+            .as_object_mut()
+            .and_then(|object| object.remove("sig"))
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .expect("session proof signature");
+        let sig = ed25519_dalek::Signature::from_slice(&hex::decode(sig).unwrap()).unwrap();
+        let public = aithos_core::wire::multibase_to_ed25519_pub(&authority.session_pub).unwrap();
+        VerifyingKey::from_bytes(&public)
+            .unwrap()
+            .verify(&serde_jcs::to_vec(&proof).unwrap(), &sig)
+            .expect("session proof is signed by the sid-bound ephemeral key");
         as_.refresh(&grant.refresh_token, None, T0)
             .expect("refresh resolves the same session ceiling");
     }

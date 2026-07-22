@@ -1,3 +1,5 @@
+/* @ts-self-types="./aithos_wasm.d.ts" */
+
 /**
  * One short-lived signer retained only inside WASM for a browser ceremony.
  * Construction zeroizes the caller's plaintext buffer; `free()` drops and
@@ -118,6 +120,36 @@ export class DelegateSigner {
             wasm.__wbindgen_export3(deferred3_0, deferred3_1, 1);
         }
     }
+    /**
+     * @param {string} grant_json
+     * @returns {string}
+     */
+    sign_delegated_grant(grant_json) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(grant_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.delegatesigner_sign_delegated_grant(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            var ptr2 = r0;
+            var len2 = r1;
+            if (r3) {
+                ptr2 = 0; len2 = 0;
+                throw takeObject(r2);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export3(deferred3_0, deferred3_1, 1);
+        }
+    }
 }
 if (Symbol.dispose) DelegateSigner.prototype[Symbol.dispose] = DelegateSigner.prototype.free;
 
@@ -128,11 +160,12 @@ if (Symbol.dispose) DelegateSigner.prototype[Symbol.dispose] = DelegateSigner.pr
  * @param {string} context
  * @param {string} parent_id
  * @param {string} leaf_json
+ * @param {string} grant_json
  * @returns {string}
  */
-export function build_ceremony_challenge(bindings_json, context, parent_id, leaf_json) {
-    let deferred6_0;
-    let deferred6_1;
+export function build_ceremony_challenge(bindings_json, context, parent_id, leaf_json, grant_json) {
+    let deferred7_0;
+    let deferred7_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         const ptr0 = passStringToWasm0(bindings_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
@@ -143,23 +176,25 @@ export function build_ceremony_challenge(bindings_json, context, parent_id, leaf
         const len2 = WASM_VECTOR_LEN;
         const ptr3 = passStringToWasm0(leaf_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len3 = WASM_VECTOR_LEN;
-        wasm.build_ceremony_challenge(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        const ptr4 = passStringToWasm0(grant_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len4 = WASM_VECTOR_LEN;
+        wasm.build_ceremony_challenge(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        var ptr5 = r0;
-        var len5 = r1;
+        var ptr6 = r0;
+        var len6 = r1;
         if (r3) {
-            ptr5 = 0; len5 = 0;
+            ptr6 = 0; len6 = 0;
             throw takeObject(r2);
         }
-        deferred6_0 = ptr5;
-        deferred6_1 = len5;
-        return getStringFromWasm0(ptr5, len5);
+        deferred7_0 = ptr6;
+        deferred7_1 = len6;
+        return getStringFromWasm0(ptr6, len6);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred6_0, deferred6_1, 1);
+        wasm.__wbindgen_export3(deferred7_0, deferred7_1, 1);
     }
 }
 
@@ -286,6 +321,42 @@ export function sign_ceremony_challenge(delegate_seed, challenge_json) {
         const ptr1 = passStringToWasm0(challenge_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len1 = WASM_VECTOR_LEN;
         wasm.sign_ceremony_challenge(retptr, ptr0, len0, addHeapObject(delegate_seed), ptr1, len1);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        var ptr3 = r0;
+        var len3 = r1;
+        if (r3) {
+            ptr3 = 0; len3 = 0;
+            throw takeObject(r2);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export3(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * Sign one gateway-prepared existing Gamma v1 `grant` entry. The delegate
+ * seed stays in WASM custody; only the signed public entry is returned.
+ * @param {Uint8Array} delegate_seed
+ * @param {string} grant_json
+ * @returns {string}
+ */
+export function sign_delegated_grant(delegate_seed, grant_json) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        var ptr0 = passArray8ToWasm0(delegate_seed, wasm.__wbindgen_export);
+        var len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(grant_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.sign_delegated_grant(retptr, ptr0, len0, addHeapObject(delegate_seed), ptr1, len1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);

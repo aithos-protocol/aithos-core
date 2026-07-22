@@ -643,20 +643,61 @@ async fn handle_multi<U: Upstream>(
     // Order is deliberate — Origin (above) outranks a missing token, and
     // a valid token only grants ENTRY: the mandate chain still decides
     // every act behind it (a token is never an authority).
-    if let Some(oauth) = &rt.oauth {
+    let delegated_session = if let Some(oauth) = &rt.oauth {
         let now = (rt.clock)();
         let presented = bearer_token(&headers);
-        let ok = presented
-            .as_deref()
-            .is_some_and(|token| oauth.validate_bearer(token, &now).is_ok());
-        if !ok {
+        let Some(token) = presented.as_deref() else {
             let mut resp = StatusCode::UNAUTHORIZED.into_response();
-            if let Ok(v) = HeaderValue::from_str(&oauth.www_authenticate(presented.is_some())) {
+            if let Ok(v) = HeaderValue::from_str(&oauth.www_authenticate(false)) {
                 resp.headers_mut().insert(header::WWW_AUTHENTICATE, v);
             }
             return resp;
+        };
+        match oauth.validate_bearer(token, &now) {
+            Ok(Some(session)) => {
+                let mut runner = rt.runner.lock().await;
+                if runner
+                    .validate_bearer_session(
+                        &session.context,
+                        &session.leaf_id,
+                        &session.session_pub,
+                        &session.leaf,
+                        &now,
+                    )
+                    .is_err()
+                {
+                    let deny = GatewayError::MandateDenied {
+                        op: "delegated_session".to_owned(),
+                        reason: "the durable delegated authority is unavailable".to_owned(),
+                    };
+                    runner.record_refusal(
+                        Some(&session.context),
+                        "<session>",
+                        deny.refusal_code(),
+                        &now,
+                    );
+                    drop(runner);
+                    let mut resp = StatusCode::UNAUTHORIZED.into_response();
+                    if let Ok(v) = HeaderValue::from_str(&oauth.www_authenticate(true)) {
+                        resp.headers_mut().insert(header::WWW_AUTHENTICATE, v);
+                    }
+                    return resp;
+                }
+                drop(runner);
+                Some(session)
+            }
+            Ok(None) => None,
+            Err(_) => {
+                let mut resp = StatusCode::UNAUTHORIZED.into_response();
+                if let Ok(v) = HeaderValue::from_str(&oauth.www_authenticate(true)) {
+                    resp.headers_mut().insert(header::WWW_AUTHENTICATE, v);
+                }
+                return resp;
+            }
         }
-    }
+    } else {
+        None
+    };
     let Ok(msg) = serde_json::from_slice::<Value>(&body) else {
         return (
             StatusCode::BAD_REQUEST,
@@ -693,7 +734,8 @@ async fn handle_multi<U: Upstream>(
     }
     let is_initialize = msg.get("method").and_then(Value::as_str) == Some("initialize");
     let presented = headers.get(MCP_SESSION_HEADER).cloned();
-    let mut resp = Json(process_multi(&rt, msg).await).into_response();
+    let mut resp =
+        Json(process_multi_as(&rt, msg, delegated_session.as_ref()).await).into_response();
     if is_initialize {
         if let Ok(v) = HeaderValue::from_str(&rt.mint_session_id()) {
             resp.headers_mut().insert(MCP_SESSION_HEADER, v);
@@ -773,6 +815,10 @@ pub fn router_oauth<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
             axum::routing::get(oauth_authorize_get::<U>).post(oauth_authorize_post::<U>),
         )
         .route("/ceremony/prepare", post(oauth_ceremony_prepare::<U>))
+        .route(
+            "/ceremony/prepare-grant",
+            post(oauth_ceremony_prepare_grant::<U>),
+        )
         .route("/ceremony/complete", post(oauth_ceremony_complete::<U>))
         .route("/ceremony/cancel", post(oauth_ceremony_cancel::<U>))
         .route("/ceremony/app.js", axum::routing::get(ceremony_app))
@@ -956,11 +1002,51 @@ async fn oauth_ceremony_prepare<U: Upstream>(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct CeremonyPrepareGrantRequest {
+    transaction_id: String,
+    delegate_pub: String,
+    context: String,
+    parent_id: String,
+    leaf: Value,
+}
+
+async fn oauth_ceremony_prepare_grant<U: Upstream>(
+    State(rt): State<Arc<McpRouter<U>>>,
+    Json(request): Json<CeremonyPrepareGrantRequest>,
+) -> Response {
+    let Some(oauth) = &rt.oauth else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let now = (rt.clock)();
+    let preparation =
+        match oauth.prepare_ceremony(&request.transaction_id, &request.delegate_pub, &now) {
+            Ok(preparation) => preparation,
+            Err(error) => return oauth_error_response(&error),
+        };
+    let grant = rt.runner.lock().await.prepare_session_grant(
+        &request.context,
+        &request.parent_id,
+        &preparation.delegate_pub,
+        &preparation.gateway_pub,
+        &preparation.gateway_kex_pub,
+        &preparation.session_pub,
+        &request.leaf,
+        &now,
+    );
+    match grant {
+        Ok(grant) => Json(json!({ "v": 1, "grant": grant })).into_response(),
+        Err(error) => oauth_error_response(&error),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CeremonyCompleteRequest {
     transaction_id: String,
     context: String,
     parent_id: String,
     leaf: Value,
+    grant: Value,
     proof: crate::oauth::CeremonyProof,
 }
 
@@ -978,6 +1064,7 @@ async fn oauth_ceremony_complete<U: Upstream>(
         &request.context,
         &request.parent_id,
         &request.leaf,
+        &request.grant,
         &request.proof,
         &now,
     ) {
@@ -992,6 +1079,7 @@ async fn oauth_ceremony_complete<U: Upstream>(
         &reserved.gateway_kex_pub,
         &reserved.session_pub,
         &request.leaf,
+        &request.grant,
         &now,
     );
     let authority = match authority {
@@ -1116,6 +1204,14 @@ fn redirect_to(location: &str) -> Response {
 /// `initialize` and `tools/list` itself, refuses the rest (v1 — see the
 /// module doc).
 pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value {
+    process_multi_as(rt, msg, None).await
+}
+
+async fn process_multi_as<U: Upstream>(
+    rt: &McpRouter<U>,
+    msg: Value,
+    session: Option<&crate::oauth::BearerSession>,
+) -> Value {
     let method = msg
         .get("method")
         .and_then(Value::as_str)
@@ -1124,7 +1220,7 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
     let id = msg.get("id").cloned().unwrap_or(Value::Null);
 
     match method.as_str() {
-        "tools/call" => tool_call_multi(rt, msg).await,
+        "tools/call" => tool_call_multi(rt, msg, session).await,
         // The MCP liveness probe: an empty result, promptly, touching
         // neither the runner nor any upstream (spec utilities/ping).
         "ping" => json!({ "jsonrpc": "2.0", "id": id, "result": {} }),
@@ -1143,27 +1239,29 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
                     "version": env!("CARGO_PKG_VERSION"),
                 }
             });
-            let now = (rt.clock)();
-            let runner = rt.runner.lock().await;
-            let briefed = runner.briefing_available();
-            let surface = runner.ethos_surface(&now);
-            drop(runner);
             let mut instructions = String::new();
-            if briefed {
-                instructions.push_str(
-                    "The owner left directives for this agent: call `briefing.read` \
-                     FIRST, before any outbound action, and follow what it says.",
-                );
-            }
-            if !surface.is_empty() {
-                if !instructions.is_empty() {
-                    instructions.push(' ');
+            if session.is_none() {
+                let now = (rt.clock)();
+                let runner = rt.runner.lock().await;
+                let briefed = runner.briefing_available();
+                let surface = runner.ethos_surface(&now);
+                drop(runner);
+                if briefed {
+                    instructions.push_str(
+                        "The owner left directives for this agent: call `briefing.read` \
+                         FIRST, before any outbound action, and follow what it says.",
+                    );
                 }
-                instructions.push_str(&format!(
-                    "Governed Ethos data is readable here — call `ethos.context` for \
-                     the map (zones by context: {}).",
-                    ethos_coverage(&surface)
-                ));
+                if !surface.is_empty() {
+                    if !instructions.is_empty() {
+                        instructions.push(' ');
+                    }
+                    instructions.push_str(&format!(
+                        "Governed Ethos data is readable here — call `ethos.context` for \
+                         the map (zones by context: {}).",
+                        ethos_coverage(&surface)
+                    ));
+                }
             }
             if !instructions.is_empty() {
                 result["instructions"] = Value::String(instructions);
@@ -1185,15 +1283,29 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
             // brief (conditional surface, lot K).
             let now = (rt.clock)();
             let runner = rt.runner.lock().await;
-            let mut tools = runner.listed_tools();
-            tools.extend(native_journal_tools());
-            if runner.briefing_available() {
-                tools.push(briefing_tool());
-            }
-            let surface = runner.ethos_surface(&now);
-            if !surface.is_empty() {
-                tools.extend(ethos_tools(&surface));
-            }
+            let tools = if let Some(session) = session {
+                match runner.listed_tools_for_session(
+                    &session.context,
+                    &session.leaf_id,
+                    &session.session_pub,
+                    &session.leaf,
+                    &now,
+                ) {
+                    Ok(tools) => tools,
+                    Err(error) => return error_response(id, &error),
+                }
+            } else {
+                let mut tools = runner.listed_tools();
+                tools.extend(native_journal_tools());
+                if runner.briefing_available() {
+                    tools.push(briefing_tool());
+                }
+                let surface = runner.ethos_surface(&now);
+                if !surface.is_empty() {
+                    tools.extend(ethos_tools(&surface));
+                }
+                tools
+            };
             drop(runner);
             json!({
                 "jsonrpc": "2.0",
@@ -1218,7 +1330,204 @@ pub async fn process_multi<U: Upstream>(rt: &McpRouter<U>, msg: Value) -> Value 
 /// act there + the xref in the journal (log-before-relay) → relay to the
 /// context's own upstream. Refusals follow §3bis.8: journal always, the
 /// context too when the tool names one.
-async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Value {
+async fn tool_call_multi<U: Upstream>(
+    rt: &McpRouter<U>,
+    msg: Value,
+    session: Option<&crate::oauth::BearerSession>,
+) -> Value {
+    if let Some(session) = session {
+        return tool_call_delegated(rt, msg, session).await;
+    }
+    tool_call_legacy(rt, msg).await
+}
+
+async fn tool_call_delegated<U: Upstream>(
+    rt: &McpRouter<U>,
+    mut msg: Value,
+    session: &crate::oauth::BearerSession,
+) -> Value {
+    let id = msg.get("id").cloned().unwrap_or(Value::Null);
+    let now = (rt.clock)();
+    let Some(tool) = msg
+        .pointer("/params/name")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+    else {
+        let deny = GatewayError::RequestRejected("tools/call without params.name".into());
+        let mut runner = rt.runner.lock().await;
+        runner.record_refusal(None, "<unnamed>", deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    };
+    let args = msg
+        .pointer("/params/arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+
+    // A production bearer names a durable delegated session, but carries no
+    // authority by itself. Re-resolve the tool against the live runner, build
+    // an operation from the current chain and gamma head, have the embedded
+    // session key co-sign it, then ask Core to verify the whole chain and both
+    // proofs. Nothing below this guard contacts an upstream or its credentials.
+    let mut runner = rt.runner.lock().await;
+    let Some(ctx) = runner.resolve(&tool).map(str::to_owned) else {
+        let deny = GatewayError::ToolNotMapped(tool.clone());
+        runner.record_refusal(None, &tool, deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    };
+    if ctx != session.context {
+        let deny = GatewayError::MandateDenied {
+            op: "delegated_session".into(),
+            reason: format!(
+                "tool `{tool}` belongs to context `{ctx}`, not delegated context `{}`",
+                session.context
+            ),
+        };
+        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    }
+    if let Some(deny) = runner.manifest_drift_for(&tool) {
+        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    }
+    if let Err(deny) = runner.check_bounds(&tool, &args) {
+        runner.record_bound_refusal(Some(&ctx), &tool, &deny, &now);
+        return error_response(id, &deny);
+    }
+    let relay = match runner.relay_target(&ctx, &tool) {
+        Ok(relay) => relay,
+        Err(deny) => {
+            runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+            return error_response(id, &deny);
+        }
+    };
+    let prepared = match runner.prepare_session_operation(
+        &ctx,
+        &session.leaf_id,
+        &session.session_pub,
+        &session.leaf,
+        &session.certificate,
+        &tool,
+        &args,
+        &now,
+    ) {
+        Ok(prepared) => prepared,
+        Err(deny) => {
+            runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+            return error_response(id, &deny);
+        }
+    };
+    let Some(oauth) = rt.oauth.as_ref() else {
+        let deny = GatewayError::RequestRejected(
+            "delegated bearer reached a router without an authorization server".into(),
+        );
+        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    };
+    let session_proof = match oauth.sign_session_proof(session, &prepared.operation_ref, &now) {
+        Ok(proof) => proof,
+        Err(deny) => {
+            runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+            return error_response(id, &deny);
+        }
+    };
+    if let Err(deny) = crate::core_bridge::verify_delegated_chain_session(
+        crate::core_bridge::DelegatedChainSessionEvidence {
+            chain: &prepared.chain,
+            did: &prepared.did,
+            at: &now,
+            revocations: &prepared.revocations,
+            mandate: &prepared.mandate,
+            certificate: &prepared.certificate,
+            projection: &prepared.projection,
+            operation_ref: &prepared.operation_ref,
+            native_leaf_proof: &prepared.native_leaf_proof,
+            session_proof: &session_proof,
+        },
+    ) {
+        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    }
+    if let Err(error) = runner.record_session_act_with_xref(
+        &ctx,
+        &tool,
+        &args,
+        &prepared.chain,
+        &session.session_pub,
+        &prepared.certificate_digest,
+        &prepared.operation_ref,
+        &now,
+    ) {
+        let deny = GatewayError::LogAppendRefused(error.to_string());
+        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+        return error_response(id, &deny);
+    }
+    drop(runner);
+
+    if let Some(name) = msg.pointer_mut("/params/name") {
+        *name = Value::String(relay.raw_tool);
+    }
+    let forwarded = if relay.hot {
+        let upstream = rt
+            .dynamic_upstreams
+            .read()
+            .map_err(|_| {
+                GatewayError::UpstreamFailed("dynamic upstream registry unavailable".into())
+            })
+            .and_then(|upstreams| {
+                upstreams.get(&relay.server).cloned().ok_or_else(|| {
+                    GatewayError::UpstreamFailed(format!(
+                        "no active connector upstream for route `{}`",
+                        relay.server
+                    ))
+                })
+            });
+        match upstream {
+            Ok(upstream) => upstream.forward(msg).await,
+            Err(error) => Err(error),
+        }
+    } else {
+        match rt.upstreams.get(&relay.server) {
+            Some(upstream) => upstream.forward(msg).await,
+            None => Err(GatewayError::UpstreamFailed(format!(
+                "no upstream for route `{}`",
+                relay.server
+            ))),
+        }
+    };
+    match forwarded {
+        Ok(resp) if resp.get("error").is_none() => resp,
+        Ok(resp) => {
+            if let Err(drift) = refresh_server_manifest(rt, &relay.server).await {
+                if matches!(drift, GatewayError::ManifestDrift { .. }) {
+                    let mut runner = rt.runner.lock().await;
+                    runner.record_refusal(Some(&ctx), &tool, drift.refusal_code(), &now);
+                    return error_response(id, &drift);
+                }
+            }
+            resp
+        }
+        Err(
+            deny @ (GatewayError::CredentialUnavailable(_)
+            | GatewayError::UpstreamOauthUnavailable(_)),
+        ) => {
+            let mut runner = rt.runner.lock().await;
+            runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+            error_response(id, &deny)
+        }
+        Err(error) => {
+            if let Err(drift) = refresh_server_manifest(rt, &relay.server).await {
+                if matches!(drift, GatewayError::ManifestDrift { .. }) {
+                    let mut runner = rt.runner.lock().await;
+                    runner.record_refusal(Some(&ctx), &tool, drift.refusal_code(), &now);
+                    return error_response(id, &drift);
+                }
+            }
+            error_response(id, &error)
+        }
+    }
+}
+
+async fn tool_call_legacy<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Value {
     let id = msg.get("id").cloned().unwrap_or(Value::Null);
     let now = (rt.clock)();
 
@@ -1809,6 +2118,8 @@ mod upstream_transport_tests {
             .unwrap();
         let source = std::str::from_utf8(&body).unwrap();
         assert!(source.contains("new DelegateSigner(seed)"));
+        assert!(source.contains("sign_delegated_grant"));
+        assert!(source.contains("/ceremony/prepare-grant"));
         assert!(source.contains("destroySigner()"));
         assert!(!source.contains("localStorage"));
         assert!(!source.contains("sessionStorage"));
