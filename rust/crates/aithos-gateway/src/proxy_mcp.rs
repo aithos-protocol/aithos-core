@@ -28,15 +28,17 @@
 //! routed scenarios need. Streaming/SSE and per-upstream capability
 //! merging land with Phase D.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex as StdMutex, RwLock};
 
 use axum::body::{Body, Bytes};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::extract::{Extension, Request, State};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{routing::get, routing::post, Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
@@ -73,6 +75,221 @@ pub const PARSE_ERROR_CODE: i64 = -32700;
 /// one. Authority never rides this header: it stays with the mandate
 /// chain (per-session chains arrive with G5, through OAuth).
 pub const MCP_SESSION_HEADER: &str = "mcp-session-id";
+
+const CORS_MAX_AGE_SECONDS: &str = "300";
+
+#[derive(Clone)]
+pub struct BrowserCorsState {
+    origins: Arc<BTreeSet<String>>,
+}
+
+impl BrowserCorsState {
+    pub fn new(origins: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            origins: Arc::new(origins.into_iter().collect()),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct BrowserOriginAuthorized;
+
+#[derive(Clone, Copy)]
+enum BrowserRoute {
+    OAuth { get: bool, post: bool },
+    Mcp,
+}
+
+/// Exact browser CORS for the SDK-facing OAuth, ceremony and MCP routes.
+/// It is installed only when `dashboard` is configured; non-browser clients
+/// and every unrelated route retain their historical behaviour.
+pub async fn browser_cors(
+    State(state): State<Arc<BrowserCorsState>>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let Some(route) = browser_route(request.uri().path()) else {
+        return next.run(request).await;
+    };
+    if !request.headers().contains_key(header::ORIGIN) {
+        return next.run(request).await;
+    }
+    let Some(origin) = single_browser_header(request.headers(), header::ORIGIN).map(str::to_owned)
+    else {
+        return browser_cors_error();
+    };
+    if !state.origins.contains(&origin) {
+        return browser_cors_error();
+    }
+    if request.method() == Method::OPTIONS {
+        return browser_preflight(&request, route, &origin);
+    }
+    request.extensions_mut().insert(BrowserOriginAuthorized);
+    browser_cors_response(next.run(request).await, &origin, route, false)
+}
+
+fn browser_route(path: &str) -> Option<BrowserRoute> {
+    match path {
+        "/.well-known/oauth-protected-resource" | "/.well-known/oauth-authorization-server" => {
+            Some(BrowserRoute::OAuth {
+                get: true,
+                post: false,
+            })
+        }
+        "/register"
+        | "/token"
+        | "/ceremony/prepare"
+        | "/ceremony/prepare-grant"
+        | "/ceremony/complete"
+        | "/ceremony/cancel" => Some(BrowserRoute::OAuth {
+            get: false,
+            post: true,
+        }),
+        "/authorize" => Some(BrowserRoute::OAuth {
+            get: true,
+            post: true,
+        }),
+        "/mcp" => Some(BrowserRoute::Mcp),
+        _ => None,
+    }
+}
+
+fn browser_preflight(request: &Request, route: BrowserRoute, origin: &str) -> Response {
+    let Some(requested_method) =
+        single_browser_header(request.headers(), header::ACCESS_CONTROL_REQUEST_METHOD)
+    else {
+        return browser_cors_error();
+    };
+    let method_allowed = match route {
+        BrowserRoute::OAuth { get, post } => {
+            (requested_method == "GET" && get) || (requested_method == "POST" && post)
+        }
+        BrowserRoute::Mcp => requested_method == "POST",
+    };
+    if !method_allowed {
+        return browser_cors_error();
+    }
+    let requested_headers = match request
+        .headers()
+        .get(header::ACCESS_CONTROL_REQUEST_HEADERS)
+    {
+        None => BTreeSet::new(),
+        Some(value) => match value.to_str().ok().and_then(parse_browser_headers) {
+            Some(headers) => headers,
+            None => return browser_cors_error(),
+        },
+    };
+    let allowed_headers: BTreeSet<&str> = match route {
+        BrowserRoute::OAuth { .. } => ["accept", "content-type"].into_iter().collect(),
+        BrowserRoute::Mcp => [
+            "accept",
+            "authorization",
+            "content-type",
+            "mcp-protocol-version",
+            MCP_SESSION_HEADER,
+        ]
+        .into_iter()
+        .collect(),
+    };
+    if !requested_headers
+        .iter()
+        .all(|header| allowed_headers.contains(header.as_str()))
+    {
+        return browser_cors_error();
+    }
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    if let Ok(value) = HeaderValue::from_str(requested_method) {
+        response
+            .headers_mut()
+            .insert(header::ACCESS_CONTROL_ALLOW_METHODS, value);
+    } else {
+        return browser_cors_error();
+    }
+    if !requested_headers.is_empty() {
+        let rendered = requested_headers.into_iter().collect::<Vec<_>>().join(", ");
+        let Ok(value) = HeaderValue::from_str(&rendered) else {
+            return browser_cors_error();
+        };
+        response
+            .headers_mut()
+            .insert(header::ACCESS_CONTROL_ALLOW_HEADERS, value);
+    }
+    response.headers_mut().insert(
+        header::ACCESS_CONTROL_MAX_AGE,
+        HeaderValue::from_static(CORS_MAX_AGE_SECONDS),
+    );
+    browser_cors_response(response, origin, route, true)
+}
+
+fn parse_browser_headers(value: &str) -> Option<BTreeSet<String>> {
+    if value.len() > 512 {
+        return None;
+    }
+    let mut headers = BTreeSet::new();
+    for header in value.split(',') {
+        let header = header.trim();
+        if header.is_empty()
+            || header.len() > 64
+            || !header
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            || !headers.insert(header.to_ascii_lowercase())
+        {
+            return None;
+        }
+    }
+    Some(headers)
+}
+
+fn single_browser_header(headers: &HeaderMap, name: header::HeaderName) -> Option<&str> {
+    let mut values = headers.get_all(name).iter();
+    let value = values.next()?.to_str().ok()?;
+    values.next().is_none().then_some(value)
+}
+
+fn browser_cors_response(
+    mut response: Response,
+    origin: &str,
+    route: BrowserRoute,
+    preflight: bool,
+) -> Response {
+    if let Ok(value) = HeaderValue::from_str(origin) {
+        response
+            .headers_mut()
+            .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, value);
+    }
+    response.headers_mut().insert(
+        header::VARY,
+        HeaderValue::from_static(if preflight {
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+        } else {
+            "Origin"
+        }),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    let exposed = match route {
+        BrowserRoute::Mcp => "MCP-Session-Id, WWW-Authenticate",
+        BrowserRoute::OAuth { .. } => "WWW-Authenticate",
+    };
+    response.headers_mut().insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static(exposed),
+    );
+    response
+}
+
+fn browser_cors_error() -> Response {
+    let mut response = StatusCode::FORBIDDEN.into_response();
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static("Origin"));
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
 
 /// The native journal tools (lot C2): served by the gateway itself on
 /// `/mcp`, never relayed to any upstream. The `journal` prefix is
@@ -618,6 +835,15 @@ impl<U> McpRouter<U> {
 /// Streamable HTTP endpoint as the mono proxy.
 pub fn router_multi<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
     Router::new()
+        .route(
+            "/healthz",
+            get(|| async {
+                (
+                    [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+                    "ok",
+                )
+            }),
+        )
         .route("/mcp", post(handle_multi::<U>))
         .with_state(rt)
 }
@@ -632,10 +858,11 @@ pub fn router_multi<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
 /// when presented, required never (stateless, decided 2026-07-16).
 async fn handle_multi<U: Upstream>(
     State(rt): State<Arc<McpRouter<U>>>,
+    authorized_origin: Option<Extension<BrowserOriginAuthorized>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if !origin_is_local(&headers) {
+    if !origin_is_allowed(&headers, authorized_origin.is_some()) {
         return StatusCode::FORBIDDEN.into_response();
     }
     // The bearer gate (lot G3): only when the `as:` stanza is active.
@@ -760,13 +987,16 @@ fn rpc_error_null_id(code: i64, message: &str) -> Value {
 /// absent = a non-browser client, pass; present and loopback-hosted =
 /// pass; anything else = refused before any JSON-RPC processing. The
 /// error never carries the offending value anywhere near a log.
-fn origin_is_local(headers: &HeaderMap) -> bool {
-    let Some(origin) = headers.get(header::ORIGIN) else {
+fn origin_is_allowed(headers: &HeaderMap, authorized_browser_origin: bool) -> bool {
+    if !headers.contains_key(header::ORIGIN) {
         return true;
-    };
-    let Ok(origin) = origin.to_str() else {
+    }
+    let Some(origin) = single_browser_header(headers, header::ORIGIN) else {
         return false;
     };
+    if authorized_browser_origin {
+        return true;
+    }
     let rest = origin
         .strip_prefix("http://")
         .or_else(|| origin.strip_prefix("https://"))
@@ -1036,11 +1266,11 @@ async fn oauth_ceremony_prepare<U: Upstream>(
             Ok(preparation) => preparation,
             Err(error) => return oauth_error_response(&error),
         };
-    let eligible_parents = rt
-        .runner
-        .lock()
-        .await
-        .eligible_session_parents(&request.delegate_pub, &now);
+    let eligible_parents = rt.runner.lock().await.eligible_session_parents(
+        &request.delegate_pub,
+        &preparation.resource,
+        &now,
+    );
     Json(json!({
         "v": 1,
         "verified_at": now,
@@ -2221,6 +2451,118 @@ mod upstream_transport_tests {
     //! HTTP dialect: SSE responses and session ids, not only the plain
     //! JSON of the early fakes.
     use super::*;
+    use tower::ServiceExt as _;
+
+    fn cors_test_app() -> Router {
+        Router::new()
+            .route(
+                "/.well-known/oauth-authorization-server",
+                axum::routing::get(|| async { StatusCode::OK }),
+            )
+            .route("/ceremony/prepare", post(|| async { StatusCode::OK }))
+            .route("/mcp", post(|| async { StatusCode::UNAUTHORIZED }))
+            .layer(axum::middleware::from_fn_with_state(
+                Arc::new(BrowserCorsState::new(["http://localhost:3000".to_owned()])),
+                browser_cors,
+            ))
+    }
+
+    #[tokio::test]
+    async fn browser_cors_is_exact_and_route_bounded() {
+        let preflight = cors_test_app()
+            .oneshot(
+                Request::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/mcp")
+                    .header(header::ORIGIN, "http://localhost:3000")
+                    .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                    .header(
+                        header::ACCESS_CONTROL_REQUEST_HEADERS,
+                        "authorization, content-type, mcp-protocol-version, mcp-session-id",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(preflight.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            preflight.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+            "http://localhost:3000"
+        );
+        assert!(preflight
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_CREDENTIALS)
+            .is_none());
+
+        let discovery = cors_test_app()
+            .oneshot(
+                Request::builder()
+                    .uri("/.well-known/oauth-authorization-server")
+                    .header(header::ORIGIN, "http://localhost:3000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(discovery.status(), StatusCode::OK);
+        assert_eq!(
+            discovery.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+            "http://localhost:3000"
+        );
+
+        let denied = cors_test_app()
+            .oneshot(
+                Request::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/ceremony/prepare")
+                    .header(header::ORIGIN, "https://attacker.example")
+                    .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                    .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+        assert!(denied
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .is_none());
+
+        let duplicate_origin = cors_test_app()
+            .oneshot(
+                Request::builder()
+                    .uri("/.well-known/oauth-authorization-server")
+                    .header(header::ORIGIN, "http://localhost:3000")
+                    .header(header::ORIGIN, "https://attacker.example")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(duplicate_origin.status(), StatusCode::FORBIDDEN);
+        assert!(duplicate_origin
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .is_none());
+    }
+
+    #[test]
+    fn external_mcp_origin_requires_the_cors_authorization_marker() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ORIGIN,
+            HeaderValue::from_static("https://app.aithos.fr"),
+        );
+        assert!(!origin_is_allowed(&headers, false));
+        assert!(origin_is_allowed(&headers, true));
+        headers.append(
+            header::ORIGIN,
+            HeaderValue::from_static("http://localhost:3000"),
+        );
+        assert!(!origin_is_allowed(&headers, true));
+    }
 
     #[tokio::test]
     async fn ceremony_assets_are_embedded_no_store_and_secret_storage_free() {

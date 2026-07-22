@@ -102,6 +102,7 @@ async fn local_cache_navigation_p50_under_5ms() {
         dns: Arc::new(MemDnsTxt::new()),
         acme: AcmeState::new(),
         authority: format!("127.0.0.1:{port}"),
+        browser_origins: Arc::default(),
         test_now_enabled: false,
     });
     tokio::spawn(async move {

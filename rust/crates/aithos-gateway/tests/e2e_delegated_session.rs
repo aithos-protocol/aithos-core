@@ -93,7 +93,7 @@ async fn issue_session(
     let parent_view = runner
         .lock()
         .await
-        .eligible_session_parents(&delegate_pub, NOW)
+        .eligible_session_parents(&delegate_pub, auth.resource(), NOW)
         .into_iter()
         .find(|parent| parent.context == "finance")
         .expect("delegate has one issuing parent");
@@ -209,6 +209,12 @@ async fn post_mcp(base: &str, token: &str, body: Value) -> reqwest::Response {
 
 #[tokio::test]
 async fn delegated_sessions_isolate_surface_log_full_chain_and_cut_on_revocation() {
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    let address = listener.local_addr().unwrap();
+    let issuer = format!("http://{address}");
+    let gateway_audience = format!("{issuer}/mcp");
     let scratch = tempfile::tempdir().unwrap();
     let context_root = scratch.path().join("finance");
     let journal_root = scratch.path().join("journal");
@@ -277,6 +283,7 @@ async fn delegated_sessions_isolate_surface_log_full_chain_and_cut_on_revocation
         &MASTER,
         "finance",
         &delegate_pub,
+        &gateway_audience,
         &[
             "issues.list".to_owned(),
             "issues.create".to_owned(),
@@ -310,12 +317,20 @@ async fn delegated_sessions_isolate_surface_log_full_chain_and_cut_on_revocation
     let runner = Arc::new(Mutex::new(
         Runner::open(&config, keyholder, || Box::new(SeqEntropy::default())).unwrap(),
     ));
-
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+    assert_eq!(
+        runner
+            .lock()
+            .await
+            .eligible_session_parents(&delegate_pub, &gateway_audience, NOW)
+            .len(),
+        1
+    );
+    assert!(runner
+        .lock()
         .await
-        .unwrap();
-    let address = listener.local_addr().unwrap();
-    let issuer = format!("http://{address}");
+        .eligible_session_parents(&delegate_pub, "https://other.example/mcp", NOW)
+        .is_empty());
+
     let auth = Arc::new(AuthServer::new_production_with_state(
         AdapterKey::from_seed([0x43; 32]),
         &issuer,

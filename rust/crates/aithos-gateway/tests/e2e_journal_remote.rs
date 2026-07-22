@@ -103,6 +103,7 @@ async fn boot_service(did: &str) -> (String, u16) {
         dns: Arc::new(MemDnsTxt::new()),
         acme: AcmeState::new(),
         authority: format!("127.0.0.1:{port}"),
+        browser_origins: Arc::default(),
         test_now_enabled: false,
     });
     let router = build_router(state);

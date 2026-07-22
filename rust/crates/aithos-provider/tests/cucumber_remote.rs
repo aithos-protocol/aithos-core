@@ -197,6 +197,7 @@ async fn boot_wire() -> Wire {
         // The authority the CLIENT addresses (A.2 host = request
         // authority): the proxy's socket.
         authority: format!("127.0.0.1:{}", proxy_addr.port()),
+        browser_origins: Arc::default(),
         test_now_enabled: false,
     });
 

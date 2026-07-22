@@ -50,6 +50,7 @@ async fn signed_put_and_delete_apply_only_to_the_bound_gateway_hostname() {
         dns: dns.clone(),
         acme: AcmeState::new(),
         authority: addr.to_string(),
+        browser_origins: Arc::default(),
         test_now_enabled: false,
     });
     let server = tokio::spawn(async move {

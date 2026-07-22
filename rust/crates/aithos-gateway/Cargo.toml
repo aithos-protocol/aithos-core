@@ -65,6 +65,7 @@ tempfile = { workspace = true }
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
 chrono = { workspace = true }
+tower = { workspace = true, features = ["util"] }
 
 [[test]]
 name = "cucumber"

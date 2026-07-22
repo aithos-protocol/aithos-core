@@ -24,6 +24,7 @@
 //! | `AITHOS_STORE_NONCE_WINDOW_SECS` | reservation window, clamped ≥ 600 (A.2 #6) |
 //! | `AITHOS_STORE_DNS_BACKEND`  | `route53` (the deployed B.5 surface), `memory` (dev/tests), or `off` (default: /acme effects refuse 503, the data plane serves) |
 //! | `AITHOS_STORE_ACME_ZONE_ID` | REQUIRED when the DNS backend is route53 — the delegated mcp zone |
+//! | `AITHOS_STORE_BROWSER_ORIGINS` | optional comma-separated exact origins allowed to perform signed browser publications; HTTP is loopback-only |
 //! | `AITHOS_STORE_TEST_NOW`     | `1` enables the `X-Aithos-Test-Now` override — replay harness ONLY, never set in a deployment |
 //!
 //! No secret ever enters this process: the bootstrap carries public keys
@@ -38,7 +39,7 @@ use aithos_provider::dns::{DnsTxt, MemDnsTxt, NoDnsTxt, Route53DnsTxt};
 use aithos_provider::heads::{DynamoDbHeads, HeadsTable, MemHeads};
 use aithos_provider::nonces::{DynamoDbNonces, MemNonces, NonceStore, MIN_WINDOW_SECS};
 use aithos_provider::objects::{MemObjects, ObjectStore, S3Objects};
-use aithos_provider::service::{build_router, AppState};
+use aithos_provider::service::{build_router, parse_browser_origins, AppState};
 use aithos_provider::STORE_WIRE_VERSION;
 
 fn required(name: &str) -> String {
@@ -63,6 +64,15 @@ async fn main() {
 
     let listen = std::env::var("AITHOS_STORE_LISTEN").unwrap_or_else(|_| "0.0.0.0:8080".into());
     let authority = required("AITHOS_STORE_AUTHORITY").to_ascii_lowercase();
+    let browser_origins = match parse_browser_origins(
+        &std::env::var("AITHOS_STORE_BROWSER_ORIGINS").unwrap_or_default(),
+    ) {
+        Ok(origins) => Arc::new(origins),
+        Err(error) => {
+            eprintln!("fatal: AITHOS_STORE_BROWSER_ORIGINS rejected: {error}");
+            std::process::exit(2);
+        }
+    };
 
     // P7 — the control-plane seam. Default memory: the bootstrap file
     // rules, exactly the P1/P6 shape (an old task definition boots the
@@ -270,6 +280,7 @@ async fn main() {
         dns,
         acme: AcmeState::new(),
         authority: authority.clone(),
+        browser_origins,
         test_now_enabled,
     });
 

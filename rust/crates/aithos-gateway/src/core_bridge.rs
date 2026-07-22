@@ -1788,11 +1788,13 @@ impl Runner {
     }
 
     /// Discover only fresh, revocation-checked chains whose current leaf is
-    /// held by `delegate_pub` and carries an issue right. The OAuth request
-    /// contributes no context or mandate selector.
+    /// held by `delegate_pub`, carries an issue right and is signed for the
+    /// exact OAuth resource. The OAuth request contributes no context or
+    /// mandate selector beyond that byte-exact audience binding.
     pub fn eligible_session_parents(
         &self,
         delegate_pub: &str,
+        resource: &str,
         now: &str,
     ) -> Vec<EligibleSessionParent> {
         let mut eligible = Vec::new();
@@ -1826,6 +1828,15 @@ impl Runner {
                     .iter()
                     .any(|entry| matches!(entry, PerimeterEntry::Issue { depth } if *depth > 0));
                 if !can_issue {
+                    continue;
+                }
+                if parent
+                    .constraints
+                    .as_object()
+                    .and_then(|constraints| constraints.get("purpose"))
+                    .and_then(serde_json::Value::as_str)
+                    != Some(resource)
+                {
                     continue;
                 }
                 let session_perimeter = parent_perimeter
@@ -3359,6 +3370,7 @@ pub fn owner_grant_session_delegate(
     master: &[u8; 32],
     label: &str,
     delegate_pub_mb: &str,
+    gateway_audience: &str,
     tools: &[String],
     store: GatewayStore,
     window: &MandateWindow,
@@ -3387,7 +3399,10 @@ pub fn owner_grant_session_delegate(
         "session-delegate",
         &delegate_pub,
         perimeter,
-        serde_json::json!({ "max_sessions": 3 }),
+        serde_json::json!({
+            "max_sessions": 3,
+            "purpose": gateway_audience,
+        }),
         window,
         now,
     )?;

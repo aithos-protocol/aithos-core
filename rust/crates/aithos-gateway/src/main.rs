@@ -172,6 +172,9 @@ enum Command {
         label: String,
         #[arg(long)]
         delegate_pub: String,
+        /// Exact OAuth protected resource this parent may authorize.
+        #[arg(long)]
+        gateway_audience: String,
         /// Exact agent-facing MCP tool granted to the future session.
         #[arg(long = "tool", required = true)]
         tools: Vec<String>,
@@ -592,6 +595,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::OwnerGrantSessionDelegate {
             label,
             delegate_pub,
+            gateway_audience,
             tools,
             store_root,
             ttl_days,
@@ -602,6 +606,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 &master,
                 label,
                 delegate_pub,
+                gateway_audience,
                 tools,
                 GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
                     root: store_root.into(),
@@ -1205,6 +1210,14 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         control = control.with_connectors(connectors);
                     }
                     app = app.merge(aithos_gateway::control::router(Arc::new(control)));
+                }
+                if let Some(dashboard) = &cfg.dashboard {
+                    app = app.layer(axum::middleware::from_fn_with_state(
+                        Arc::new(aithos_gateway::proxy_mcp::BrowserCorsState::new(
+                            dashboard.allowed_origins.clone(),
+                        )),
+                        aithos_gateway::proxy_mcp::browser_cors,
+                    ));
                 }
                 app
             } else {

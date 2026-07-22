@@ -1,6 +1,7 @@
 //! SDK-1 RED/GREEN contract: the public reader is anonymous and cannot
 //! accidentally be used as an authenticated/private store client.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use aithos_bundle::remote::{PublicRemoteError, PublicRemoteStore};
@@ -56,6 +57,7 @@ async fn public_reader_fetches_anonymously_and_refuses_private_paths() {
         dns: Arc::new(MemDnsTxt::new()),
         acme: AcmeState::new(),
         authority: format!("127.0.0.1:{port}"),
+        browser_origins: Arc::new(BTreeSet::from(["http://localhost:3000".to_owned()])),
         test_now_enabled: false,
     });
     tokio::spawn(async move {
@@ -96,4 +98,66 @@ async fn public_reader_fetches_anonymously_and_refuses_private_paths() {
             .and_then(|value| value.to_str().ok()),
         Some("*")
     );
+
+    let http = reqwest::Client::new();
+    let public_preflight = http
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("http://127.0.0.1:{port}/t/{tenant}/{did}/e/public/welcome.md"),
+        )
+        .header("Origin", "https://any-browser.example")
+        .header("Access-Control-Request-Method", "GET")
+        .header("Access-Control-Request-Headers", "x-aithos-store")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(public_preflight.status(), 204);
+    assert_eq!(
+        public_preflight.headers()["access-control-allow-origin"],
+        "*"
+    );
+
+    let signed_preflight = http
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("http://127.0.0.1:{port}/t/{tenant}/{did}/manifest.json"),
+        )
+        .header("Origin", "http://localhost:3000")
+        .header("Access-Control-Request-Method", "PUT")
+        .header(
+            "Access-Control-Request-Headers",
+            "content-type,if-head,x-aithos-auth,x-aithos-store",
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(signed_preflight.status(), 204);
+    assert_eq!(
+        signed_preflight.headers()["access-control-allow-origin"],
+        "http://localhost:3000"
+    );
+    assert!(signed_preflight
+        .headers()
+        .get("access-control-allow-credentials")
+        .is_none());
+
+    let denied = http
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("http://127.0.0.1:{port}/t/{tenant}/{did}/manifest.json"),
+        )
+        .header("Origin", "https://attacker.example")
+        .header("Access-Control-Request-Method", "PUT")
+        .header(
+            "Access-Control-Request-Headers",
+            "content-type,if-head,x-aithos-auth,x-aithos-store",
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), 403);
+    assert!(denied
+        .headers()
+        .get("access-control-allow-origin")
+        .is_none());
 }
