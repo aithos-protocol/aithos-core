@@ -9,10 +9,12 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
+use crate::did::DidDocument;
 use crate::ids::Sid;
 use crate::jcs;
 use crate::mandate::{self, CanonicalTimestamp, Mandate};
 use crate::path::Zone;
+use crate::revocation::Revocation;
 use crate::wire;
 use crate::{Error, Result};
 
@@ -304,6 +306,19 @@ pub struct SessionEvidence<'a> {
     pub native_leaf_proof: Option<&'a Value>,
     pub native_leaf_domain: &'a [u8],
     pub session_proof: Option<&'a Value>,
+}
+
+/// A delegated SC1 session whose authority is a verified non-root mandate
+/// chain. The certificate/projection/proof wire remains exactly the one
+/// consumed by [`verify_session`]; this wrapper supplies the prerequisite
+/// chain, DID and fresh revocation state that a non-root leaf needs.
+#[derive(Debug, Clone, Copy)]
+pub struct DelegatedSessionEvidence<'a> {
+    pub chain: &'a [Mandate],
+    pub did: &'a DidDocument,
+    pub at: &'a str,
+    pub revocations: &'a [Revocation],
+    pub session: SessionEvidence<'a>,
 }
 
 #[derive(Debug)]
@@ -2070,8 +2085,10 @@ fn session_projection<'a>(
     Ok((projection, session))
 }
 
-pub fn verify_session(evidence: SessionEvidence<'_>) -> Result<VerifiedSession> {
-    let mandate = session_mandate(evidence.mandate)?;
+fn verify_session_with_mandate(
+    evidence: SessionEvidence<'_>,
+    mandate: Mandate,
+) -> Result<VerifiedSession> {
     let session_key = mandate.constraints["session_bind"]
         .as_str()
         .filter(|key| is_key(key))
@@ -2251,4 +2268,64 @@ pub fn verify_session(evidence: SessionEvidence<'_>) -> Result<VerifiedSession> 
     Ok(VerifiedSession {
         operation_ref: expected_reference,
     })
+}
+
+pub fn verify_session(evidence: SessionEvidence<'_>) -> Result<VerifiedSession> {
+    let mandate = session_mandate(evidence.mandate)?;
+    verify_session_with_mandate(evidence, mandate)
+}
+
+/// Verify a non-root session leaf and then reuse the frozen SC1/W1.1 and
+/// double-possession verifier. Every chain failure is surfaced as one closed
+/// session refusal; callers never get a partial authority token.
+pub fn verify_delegated_session(evidence: DelegatedSessionEvidence<'_>) -> Result<VerifiedSession> {
+    if evidence.chain.len() < 2
+        || evidence
+            .chain
+            .last()
+            .is_none_or(|leaf| leaf.parent.is_none())
+    {
+        return Err(rejected(
+            Rejection::Session,
+            "delegated session requires a non-root mandate chain",
+        ));
+    }
+    mandate::verify_chain_revocable(
+        evidence.chain,
+        evidence.did,
+        evidence.at,
+        evidence.revocations,
+    )
+    .map_err(|error| {
+        rejected(
+            Rejection::Session,
+            format!("delegated session chain is invalid: {error}"),
+        )
+    })?;
+    let leaf = evidence.chain.last().expect("length checked");
+    let leaf_value = serde_json::to_value(leaf).map_err(|error| {
+        rejected(
+            Rejection::Session,
+            format!("delegated session leaf is not serializable: {error}"),
+        )
+    })?;
+    if &leaf_value != evidence.session.mandate {
+        return Err(rejected(
+            Rejection::Session,
+            "SC1 mandate does not select the verified delegated leaf",
+        ));
+    }
+    if evidence
+        .session
+        .projection
+        .get("at")
+        .and_then(Value::as_str)
+        != Some(evidence.at)
+    {
+        return Err(rejected(
+            Rejection::Session,
+            "operation time differs from delegated chain verification time",
+        ));
+    }
+    verify_session_with_mandate(evidence.session, leaf.clone())
 }

@@ -4,9 +4,7 @@
 use aithos_core::did::DidDocument;
 use aithos_core::error::Error;
 use aithos_core::mandate::Mandate;
-use aithos_core::operation::{
-    verify_delegated_session, DelegatedSessionEvidence, SessionEvidence,
-};
+use aithos_core::operation::{verify_delegated_session, DelegatedSessionEvidence, SessionEvidence};
 use aithos_core::revocation::Revocation;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
