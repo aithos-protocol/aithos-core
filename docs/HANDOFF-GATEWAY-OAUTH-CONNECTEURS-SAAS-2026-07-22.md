@@ -36,8 +36,8 @@ Le socle générique ne doit pas être réécrit. Sont déjà livrés et testés
 - API owner `/control/v1/connectors/**`, staging d'un connecteur préapprouvé,
   activation à chaud et contrôle du manifeste MCP pinné.
 
-La cible suivante est donc une **bibliothèque de profils de connecteurs** sur un
-socle OAuth commun, avec deux chemins d'exécution :
+La cible suivante est donc une **bibliothèque de profils déclaratifs de
+connecteurs** sur un socle OAuth commun, avec deux chemins d'exécution :
 
 | Famille | Première cible | Exécution | Pourquoi |
 |---|---|---|---|
@@ -49,6 +49,20 @@ Un serveur MCP tiers ou auto-hébergé reste possible, mais n'est pas la voie pa
 défaut : il exige la même approbation de manifeste, le même pin et une décision de
 confiance explicite. Ne pas inventer un « MCP Gmail officiel stable » comme
 prérequis du plan.
+
+Notion, Google Sheets et Gmail sont des **canaries de compatibilité**, pas des
+exceptions architecturales. Le moteur générique ne doit contenir ni branchement
+`if notion`, `if gmail` ou équivalent, ni adaptation implicite d'un protocole à
+un fournisseur. Un `ConnectorProfile` ne fournit que des données fermées et
+validées : discovery/endpoints autorisés, méthode OAuth, scopes, paramètres
+typés, audience/resource, manifeste et classe de risque. Les variantes MCP
+standard passent par le relay MCP commun. Les extensions Google REST sont des
+adaptateurs explicites, compilés et gouvernés, séparés du client MCP générique.
+
+Ce développement est **additionnel et désactivé par défaut** : l'absence de
+profil nouveau conserve strictement les chemins actuels (bearer statique, hub,
+OAuth amont déjà livré et OAuth entrant G4). Aucun changement de wire Core, de
+grammaire de mandat ou de sémantique d'autorité n'est autorisé dans ce plan.
 
 ## 2. Écart exact du socle actuel
 
@@ -97,6 +111,8 @@ hub, de Gamma, des mandats ou de la garde Vault.
   REST n'expose que les outils synthétiques compilés et pinnés par Aithos.
 - Une perte OAuth désactive seulement le connecteur concerné et ne provoque jamais
   un appel anonyme.
+- L'activation d'un nouveau profil est explicite ; une configuration existante
+  sans ce profil garde son comportement et sa surface d'outils.
 - Toute action d'écriture est idempotente ou protégée par digest/idempotency key ;
   Gmail Send exige en plus la politique et l'approbation prévues par GSE.
 
@@ -273,6 +289,26 @@ fichiers d'implémentation provider. Les modifications du routeur, de
 `upstream_oauth.rs`, de `config.rs` et des features centrales restent sous un seul
 ownership à la fois.
 
+### Parallélisation avec le chantier client/SDK
+
+OAC-0 à OAC-5 peuvent avancer en parallèle de la reprise décrite dans
+`HANDOFF-CLIENT-SDK-G4-INTEGRATION-2026-07-22.md`, avec les frontières suivantes :
+
+- le chantier OAuth possède uniquement `aithos-core`, principalement
+  `config.rs`, `upstream_oauth.rs`, `connectors.rs`, `control.rs`, les extensions
+  compilées et les features associées ;
+- le chantier client possède uniquement `aithos-client`, `aithos-sdk` et
+  `aithos-sdk-example` ;
+- `proxy_mcp.rs` et le routeur gateway ont un seul owner à la fois et chaque
+  intervention y est un lot étroit précédé des tests G4/hub ;
+- OAC-6, qui modifie le dashboard et consomme le SDK, attend l'intégration
+  client/SDK ou se fait ensuite sur une branche synchronisée ;
+- l'OAuth entrant G4 (`oauth.rs`, cérémonie, sessions déléguées) reste inchangé,
+  sauf bug démontré et revue de périmètre explicite.
+
+Ainsi, le travail peut être parallèle au niveau des dépôts sans fusionner les
+responsabilités ni faire évoluer deux fois la même interface.
+
 ## 6. Gates de vérification par lot
 
 ```sh
@@ -288,6 +324,10 @@ runbook séparé, un compte de test, des scopes minimaux et un protocole de retr
 
 Critères transverses :
 
+- configuration par défaut inchangée et profils nouveaux absents de la surface
+  tant qu'ils ne sont pas explicitement activés ;
+- scénarios existants bearer statique, hub, connecteurs et OAuth entrant G4
+  toujours verts avant et après chaque lot ;
 - zéro sortie amont avant autorité + log durable ;
 - zéro appel anonyme après erreur OAuth ;
 - zéro secret/token dans les sorties et preuves ;
@@ -317,7 +357,7 @@ L'audit du 2026-07-22 ne conclut pas à un workspace globalement propre :
 
 | Dépôt | Branche / HEAD | État |
 |---|---|---|
-| `code/aithos-core` | `codex/publish-aithos-core-busl` / `1c11bb1` | 2 fichiers provider modifiés étrangers, répertoires de transfert et 7 docs non suivis ; branche 48 commits devant `origin/main` |
+| `code/aithos-core` | `codex/publish-aithos-core-busl` / `1c11bb1` | état d'entrée avant nettoyage : 2 fichiers provider modifiés, répertoires de transfert et 7 docs non suivis |
 | `provider` | `feat/p6-p7-tunnel` / `5536840` | propre |
 | `code/aithos-client` | `codex/client-sdk-v2-parking` / `e082ca6` | 11 fichiers modifiés |
 | `code/aithos-sdk` | `codex/g1-g7-enterprise-sdk` / `648e24b` | 7 chemins modifiés/non suivis |
@@ -325,8 +365,10 @@ L'audit du 2026-07-22 ne conclut pas à un workspace globalement propre :
 | `landings` | `main` / `ba1afba` | propre et synchronisé avec son upstream |
 | `marketing/landings/agent-native` | `main` / `7516f28` | propre |
 
-Ne pas stasher, restaurer, formater globalement ni absorber ces changements. Avant
-chaque lot, attribuer les fichiers concernés et n'indexer que le périmètre du lot.
+Cet inventaire décrit l'état au début de l'audit et reste utile pour l'attribution.
+Le nettoyage de `aithos-core` est traité séparément ; ne pas stasher, restaurer,
+formater globalement ni absorber les changements des trois dépôts client. Avant
+chaque lot, attribuer les fichiers concernés et n'indexer que son périmètre.
 
 ## 9. Références fournisseur vérifiées
 
@@ -353,6 +395,9 @@ chaque lot, attribuer les fichiers concernés et n'indexer que le périmètre du
 > `proxy_mcp.rs`. Préserver tout changement étranger. Commencer uniquement par
 > OAC-0 : écrire les contrats RED pour discovery, client public/confidentiel,
 > DCR/CIMD, paramètres Google typés, liaison de compte, réauthentification et
-> isolation multi-compte. Ne contacter aucun fournisseur réel, ne modifier ni le
-> Core ni la grammaire des mandats, et ne passer à OAC-1 qu'après revue des
-> contrats et commit étroit.
+> isolation multi-compte. Les fournisseurs nommés sont des canaries : ne créer
+> aucune logique MCP spécifique à Notion, Gmail ou Sheets. Garantir que toute
+> configuration existante conserve son comportement lorsque les nouveaux profils
+> sont absents. Ne contacter aucun fournisseur réel, ne modifier ni le Core ni la
+> grammaire des mandats, et ne passer à OAC-1 qu'après revue des contrats et commit
+> étroit. Ne commencer OAC-6 qu'après synchronisation avec le chantier client/SDK.
