@@ -159,15 +159,28 @@ Après rollback, vérifier Store `2/2`, `/healthz`, discovery, tunnel public et
 une lecture MCP connue. Conserver les logs des nouvelles tasks et du nouveau
 process pour l'analyse, sans y copier de credentials.
 
-## Gate restant avant autorisation de prod
+## État du rollout du 22 juillet 2026
 
-Le code et les plans ferment les écarts structurels, mais quatre preuves
-restent volontairement à produire avec les credentials et artifacts finaux :
+Le rollout structurel est effectif :
 
-- image Store refactorisée construite, poussée et épinglée par son digest ;
-- binaire/config Gateway refactorisés installés côte à côte ;
-- plan Terraform final recalculé avec ce nouveau digest ;
-- parcours navigateur Sheets read-only complet sur les endpoints publics.
+- Store sur `aithos-provider-prod-store-api:8`, image épinglée au digest
+  `sha256:344a5a6002dc1ae228e21840b1cc00480419414f78777bfb6d2a5f72416d123e`,
+  rollout ECS `COMPLETED`, `2/2` tâches et zéro échec ;
+- Gateway publique sur le binaire `aithos-gateway-sdk-demo-869f08b2`, SHA-256
+  `223a4e07443b8057fc3ddb13711a227df1661b1253909cb804681070943a9cbd` ;
+- `/healthz`, les deux documents discovery, les preflights cérémonie et MCP,
+  le refus d'une origine hostile et le challenge bearer MCP sont validés sur
+  `https://demo.mcp.aithos.fr` ;
+- le plan Terraform recalculé avec le digest déployé conclut `No changes`.
 
-Ces quatre points sont des opérations de déploiement et de qualification, pas
-des changements d'architecture supplémentaires.
+Le rollback Store reste la task definition `:7`. Le rollback Gateway est figé
+dans `/Volumes/Math17/aithos-runtime/demo/rollback/20260722-sdk-demo` avec le
+binaire, la configuration et le lanceur précédents.
+
+Le gate fonctionnel restant est le parcours client réel, d'abord avec la CLI,
+puis avec le SDK navigateur. La configuration publique déployée ne provisionne
+encore que GitHub. Avant un essai Notion ou Gmail, ajouter le profil de
+connecteur correspondant, sa surface d'outils et son mandat, provisionner son
+OAuth amont, puis autoriser exactement son chemin dans la policy Vault de la
+Gateway. Commencer par un profil read-only ; les écritures Gmail restent
+soumises à une approbation explicite.
