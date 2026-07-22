@@ -13,6 +13,7 @@
 //! and every refusal is logged.
 
 pub mod config;
+pub mod connectors;
 pub mod control;
 pub mod core_bridge;
 pub mod credentials;

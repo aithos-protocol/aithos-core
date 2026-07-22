@@ -128,6 +128,12 @@ pub struct UpstreamOAuthConfig {
     pub client_secret: CredentialRef,
     pub scopes: Vec<String>,
     pub redirect_uri: String,
+    /// Optional dedicated KV field for the one-shot PKCE/state record.
+    /// Historic static configs keep pending and connected custody in
+    /// `token_vault`; G7 connector bindings derive a distinct logical
+    /// record so a browser never chooses a Vault path.
+    #[serde(default)]
+    pub pending_vault: Option<CredentialRef>,
     /// Dedicated KV field containing the encrypted-at-rest OAuth state.
     /// It must not alias `client_secret`: token writes replace this field.
     pub token_vault: CredentialRef,
@@ -985,13 +991,34 @@ fn validate_upstream_oauth(
         &oauth.client_secret,
         brokers,
     )?;
+    if let Some(pending) = &oauth.pending_vault {
+        validate_credential_ref(&format!("{at}.pending_vault"), pending, brokers)?;
+        if same_credential_record(pending, &oauth.client_secret)
+            || same_credential_record(pending, &oauth.token_vault)
+        {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.pending_vault` must not alias the client-secret or token record"
+            )));
+        }
+        if pending.broker != oauth.token_vault.broker {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.pending_vault` must use the token Vault broker"
+            )));
+        }
+    }
     validate_credential_ref(&format!("{at}.token_vault"), &oauth.token_vault, brokers)?;
-    if oauth.client_secret == oauth.token_vault {
+    if same_credential_record(&oauth.client_secret, &oauth.token_vault) {
         return Err(GatewayError::ConfigRejected(format!(
-            "`{at}.token_vault` must not alias the client-secret field"
+            "`{at}.token_vault` must not alias the client-secret record"
         )));
     }
     Ok(())
+}
+
+/// Vault KV v2 writes replace the complete data object at one broker/path.
+/// Different field names therefore still alias the same durable record.
+fn same_credential_record(left: &CredentialRef, right: &CredentialRef) -> bool {
+    left.broker == right.broker && left.path == right.path
 }
 
 /// Is this `http://` URL bounded to loopback? (`127.*`, `localhost`,
@@ -2263,9 +2290,14 @@ journal:
                 "scopes: [resource.read, resource.read]",
             ),
             oauth_hub().replace("path: aithos/oauth/github", "path: ../escape"),
+            oauth_hub().replace("path: aithos/oauth/github", "path: aithos/oauth/client"),
             oauth_hub()
                 .replace("path: aithos/oauth/github", "path: aithos/oauth/client")
                 .replace("field: state", "field: client_secret"),
+            oauth_hub().replace(
+                "      token_vault:\n",
+                "      pending_vault:\n        broker: enterprise\n        path: aithos/oauth/github\n        field: pending\n      token_vault:\n",
+            ),
         ] {
             assert!(matches!(
                 GatewayConfig::from_yaml(&text),

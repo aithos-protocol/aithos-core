@@ -21,7 +21,7 @@
 //! the full verification (chain, revocations, budgets) at append time —
 //! the bundle itself refuses to log an uncovered act.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use base64::Engine as _;
@@ -44,7 +44,7 @@ use aithos_core::path::Zone;
 use aithos_core::revocation::{chain_revoked_at, revocations, Revocation};
 
 use crate::config::{ContextTools, GatewayConfig, ToolAccess};
-use crate::hub::{validate_approved, ApprovedManifest, ApprovedTool};
+use crate::hub::{validate_approved, ApprovedManifest, ApprovedTool, ProposedManifest};
 use crate::keyholder::Keyholder;
 use crate::policy::{hub_op_for_tool, op_for_tool, Policy};
 use crate::store_adapter::{replicate_owner_history, GatewayStore, OwnerReplicationReport};
@@ -508,6 +508,17 @@ impl Bridge {
         Ok(manifest)
     }
 
+    /// Re-open the approved connector through the existing sealed H3 reader,
+    /// after semantic Gamma replay verifies. A full edition verification is
+    /// deliberately not run here: certificates and Gamma entries are valid
+    /// append-only post-publication state and therefore appear as unpinned
+    /// files to an old edition snapshot. The H3 header/AEAD/manifest validator
+    /// remains the approval oracle; normal tools/list remains memory-only.
+    pub fn verified_hub_manifest(&self, server: &str) -> Result<ApprovedManifest> {
+        self.bundle.gamma_verify().map_err(bridge_err)?;
+        self.read_hub_manifest(server)
+    }
+
     // ------------------------------------------------------------ policy
 
     /// Is this tool covered by the agent's mandate at `now`? The polite
@@ -701,6 +712,43 @@ impl Bridge {
                 self.entropy.as_mut(),
             )
             .map_err(|e| GatewayError::LogAppendRefused(e.to_string()))?;
+        Ok(entry.id)
+    }
+
+    /// One non-secret gateway governance intent for the local connector
+    /// binding registry. This reuses the existing `action` Gamma kind and
+    /// the gateway's `act.x.gateway.*` mandate; it does not mint a new
+    /// protocol operation or pretend the sidecar itself is a Core proof.
+    pub fn record_connector_config(
+        &mut self,
+        context: &str,
+        connector: &str,
+        event: &str,
+        now: &str,
+    ) -> Result<String> {
+        let gateway_sk = SigningKey::from_bytes(self.keyholder.gateway_seed());
+        let detail = serde_json::json!({
+            "context": context,
+            "connector": connector,
+            "event": event,
+        });
+        let args_hash = hash_of(&detail)?;
+        let entry = self
+            .bundle
+            .log_action(
+                &self.gateway_chain,
+                &gateway_sk,
+                &ActionSpec {
+                    connector: "gateway",
+                    action: "connector_config",
+                    args_hash: &args_hash,
+                    now,
+                    budget: Some(detail),
+                    sealed_args: None,
+                },
+                self.entropy.as_mut(),
+            )
+            .map_err(|error| GatewayError::LogAppendRefused(error.to_string()))?;
         Ok(entry.id)
     }
 
@@ -1510,6 +1558,10 @@ struct HubRuntimeTool {
 pub struct HubRelayTarget {
     pub server: String,
     pub raw_tool: String,
+    /// Hot routes must resolve only through the dynamic registry. This bit
+    /// prevents a removed/poisoned connector entry from falling through to
+    /// a same-name static template or context upstream.
+    pub hot: bool,
 }
 
 /// The multi-Ethos runtime (Phase B lot 3): N context bridges plus the
@@ -1523,6 +1575,8 @@ pub struct Runner {
     hub_tools: BTreeMap<String, HubRuntimeTool>,
     hub_server_pins: BTreeMap<String, BTreeMap<String, String>>,
     hub_drift: BTreeMap<String, String>,
+    hot_tools: BTreeMap<String, HubRuntimeTool>,
+    hot_server_pins: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 impl Runner {
@@ -1534,6 +1588,8 @@ impl Runner {
             hub_tools: BTreeMap::new(),
             hub_server_pins: BTreeMap::new(),
             hub_drift: BTreeMap::new(),
+            hot_tools: BTreeMap::new(),
+            hot_server_pins: BTreeMap::new(),
         }
     }
 
@@ -1627,7 +1683,127 @@ impl Runner {
             hub_tools,
             hub_server_pins,
             hub_drift: BTreeMap::new(),
+            hot_tools: BTreeMap::new(),
+            hot_server_pins: BTreeMap::new(),
         })
+    }
+
+    fn runtime_hub_tool(&self, tool: &str) -> Option<&HubRuntimeTool> {
+        self.hot_tools
+            .get(tool)
+            .or_else(|| self.hub_tools.get(tool))
+    }
+
+    /// Resolve and verify one already-sealed connector approval in exactly
+    /// the context named by the signed control principal.
+    pub fn approved_connector(
+        &self,
+        context: &str,
+        connector: &str,
+    ) -> Result<(ApprovedManifest, String)> {
+        let manifest = self
+            .context(context)?
+            .bridge
+            .verified_hub_manifest(connector)?;
+        let digest = approved_manifest_catalog_digest(&manifest)?;
+        Ok((manifest, digest))
+    }
+
+    /// Validate a complete hot runtime view without mutating it. The
+    /// caller persists the complete registry only after this passes.
+    pub fn validate_hot_connector(
+        &self,
+        context: &str,
+        connector: &str,
+        manifest: &ApprovedManifest,
+    ) -> Result<()> {
+        self.context(context)?;
+        validate_approved(manifest)?;
+        if manifest.server != connector {
+            return Err(GatewayError::ConfigRejected(
+                "approved connector id does not match its sealed manifest".into(),
+            ));
+        }
+        if self.hub_server_pins.contains_key(connector) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "connector `{connector}` is already statically routed"
+            )));
+        }
+        for tool in &manifest.tools {
+            if let Some(existing) = self.hub_tools.get(&tool.exposed_name) {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "hot connector tool `{}` collides with static route `{}/{}`",
+                    tool.exposed_name, existing.server, existing.raw_tool
+                )));
+            }
+            if let Some(existing) = self.hot_tools.get(&tool.exposed_name) {
+                if existing.server != connector {
+                    return Err(GatewayError::ConfigRejected(format!(
+                        "hot connector tool `{}` collides with connector `{}`",
+                        tool.exposed_name, existing.server
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Replace one connector's in-memory tool/pin view while the caller
+    /// holds the runner mutex. Every descriptor comes from the sealed
+    /// approval; live discovery contributes only a comparison verdict.
+    pub fn install_hot_connector(
+        &mut self,
+        context: &str,
+        connector: &str,
+        manifest: &ApprovedManifest,
+    ) -> Result<()> {
+        self.validate_hot_connector(context, connector, manifest)?;
+        self.hot_tools.retain(|_, tool| tool.server != connector);
+        for approved in &manifest.tools {
+            self.hot_tools.insert(
+                approved.exposed_name.clone(),
+                HubRuntimeTool {
+                    context: context.to_owned(),
+                    server: connector.to_owned(),
+                    raw_tool: approved.name.clone(),
+                    description: approved.description.clone(),
+                    input_schema: approved.input_schema.clone(),
+                    pin_sha256: approved.pin_sha256.clone(),
+                    access: approved.risk_class,
+                    granted: approved.is_granted(),
+                    bounds: approved.bounds.clone(),
+                },
+            );
+        }
+        self.hot_server_pins.insert(
+            connector.to_owned(),
+            manifest
+                .tools
+                .iter()
+                .map(|tool| (tool.name.clone(), tool.pin_sha256.clone()))
+                .collect(),
+        );
+        self.clear_manifest_drift(connector);
+        Ok(())
+    }
+
+    pub fn remove_hot_connector(&mut self, connector: &str) {
+        self.hot_tools.retain(|_, tool| tool.server != connector);
+        self.hot_server_pins.remove(connector);
+        self.hub_drift.remove(connector);
+    }
+
+    /// Log-before-sidecar for stage/secret/OAuth/activation lifecycle
+    /// changes. Details are finite non-secret labels only.
+    pub fn record_connector_config(
+        &mut self,
+        context: &str,
+        connector: &str,
+        event: &str,
+        now: &str,
+    ) -> Result<String> {
+        self.journal
+            .record_connector_config(context, connector, event, now)
     }
 
     /// The OAuth authority ceiling (lot G3): the latest `not_after`
@@ -1648,6 +1824,9 @@ impl Runner {
     /// Unambiguous by construction: config v2 rejects cross-context
     /// collisions. Unknown everywhere → `None` (default-deny).
     pub fn resolve(&self, tool: &str) -> Option<&str> {
+        if let Some(runtime) = self.hot_tools.get(tool) {
+            return Some(runtime.context.as_str());
+        }
         self.contexts
             .iter()
             .find(|(_, c)| c.policy.is_mapped(tool))
@@ -1667,7 +1846,7 @@ impl Runner {
     /// (lot W: reads and writes alike — the decision, not the class);
     /// legacy mode preserves the v2 names-only surface.
     pub fn listed_tools(&self) -> Vec<serde_json::Value> {
-        if self.hub_tools.is_empty() {
+        if self.hub_tools.is_empty() && self.hot_tools.is_empty() {
             return self
                 .mapped_tools()
                 .into_iter()
@@ -1681,6 +1860,7 @@ impl Runner {
         }
         self.hub_tools
             .iter()
+            .chain(self.hot_tools.iter())
             .filter(|(_, tool)| tool.granted)
             .map(|(name, tool)| {
                 let mut descriptor = serde_json::json!({
@@ -1696,6 +1876,19 @@ impl Runner {
     }
 
     pub fn relay_target(&self, ctx: &str, tool: &str) -> Result<HubRelayTarget> {
+        if let Some(hub) = self.hot_tools.get(tool) {
+            if hub.context != ctx {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "hub route `{tool}` resolved to `{ctx}`, pin belongs to `{}`",
+                    hub.context
+                )));
+            }
+            return Ok(HubRelayTarget {
+                server: hub.server.clone(),
+                raw_tool: hub.raw_tool.clone(),
+                hot: true,
+            });
+        }
         if let Some(hub) = self.hub_tools.get(tool) {
             if hub.context != ctx {
                 return Err(GatewayError::ConfigRejected(format!(
@@ -1706,20 +1899,35 @@ impl Runner {
             return Ok(HubRelayTarget {
                 server: hub.server.clone(),
                 raw_tool: hub.raw_tool.clone(),
+                hot: false,
             });
         }
         Ok(HubRelayTarget {
             server: ctx.to_owned(),
             raw_tool: tool.to_owned(),
+            hot: false,
         })
     }
 
+    pub fn is_hot_server(&self, server: &str) -> bool {
+        self.hot_server_pins.contains_key(server)
+    }
+
     pub fn server_pins(&self, server: &str) -> Option<BTreeMap<String, String>> {
-        self.hub_server_pins.get(server).cloned()
+        self.hot_server_pins
+            .get(server)
+            .or_else(|| self.hub_server_pins.get(server))
+            .cloned()
     }
 
     pub fn hub_servers(&self) -> Vec<String> {
-        self.hub_server_pins.keys().cloned().collect()
+        self.hub_server_pins
+            .keys()
+            .chain(self.hot_server_pins.keys())
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 
     pub fn mark_manifest_drift(&mut self, server: &str, reason: String) {
@@ -1731,7 +1939,7 @@ impl Runner {
     }
 
     pub fn manifest_drift_for(&self, tool: &str) -> Option<GatewayError> {
-        let hub = self.hub_tools.get(tool)?;
+        let hub = self.runtime_hub_tool(tool)?;
         match manifest_tool_pin(&hub.raw_tool, hub.description.as_deref(), &hub.input_schema) {
             Ok(pin) if pin == hub.pin_sha256 => {}
             Ok(_) => {
@@ -1760,7 +1968,7 @@ impl Runner {
     /// act is logged. A violation refuses the whole call — the gateway
     /// never rewrites arguments. Non-hub tools carry no bounds.
     pub fn check_bounds(&self, tool: &str, args: &serde_json::Value) -> Result<()> {
-        let Some(hub) = self.hub_tools.get(tool) else {
+        let Some(hub) = self.runtime_hub_tool(tool) else {
             return Ok(());
         };
         for bound in &hub.bounds {
@@ -1791,7 +1999,7 @@ impl Runner {
     /// Pre-check on the resolved context: does its mandate cover the
     /// tool at `now`? (`record_act_with_xref` re-verifies at append.)
     pub fn authorize(&self, ctx: &str, tool: &str, now: &str) -> Result<()> {
-        if let Some(hub) = self.hub_tools.get(tool) {
+        if let Some(hub) = self.runtime_hub_tool(tool) {
             return self
                 .context(ctx)?
                 .bridge
@@ -1820,7 +2028,7 @@ impl Runner {
         args: &serde_json::Value,
         now: &str,
     ) -> Result<String> {
-        let hub = self.hub_tools.get(tool).cloned();
+        let hub = self.runtime_hub_tool(tool).cloned();
         let context = self.context_mut(ctx)?;
         let entry_id = match hub {
             Some(hub) => {
@@ -2224,6 +2432,13 @@ pub struct EquipOutcome {
     pub memory_mandate: Option<String>,
 }
 
+/// One narrowly scoped control-plane delegate. The seed is handed to the
+/// enterprise client once; the gateway persists only the signed mandate.
+pub struct ConnectorConfigGrant {
+    pub mandate: String,
+    pub seed_hex: String,
+}
+
 /// Governed replacement result: fresh active equipment plus the prior
 /// certificates that were politically revoked in the same owner gesture.
 #[derive(Debug, Clone)]
@@ -2327,6 +2542,50 @@ pub fn owner_grant_context(
         now,
         ent,
     )
+}
+
+/// Mint an exact `act.x.<connector>.config` delegate for the signed control
+/// plane. This consumes Core's existing perimeter grammar and grant log; it
+/// does not create a gateway-local authority dialect.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_connector_config(
+    master: &[u8; 32],
+    label: &str,
+    connector: &str,
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<ConnectorConfigGrant> {
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    let seed = ent.e32();
+    let signer = SigningKey::from_bytes(&seed);
+    let mandate = mint(
+        &owner,
+        &bundle,
+        ent,
+        "connector-config",
+        &signer.verifying_key(),
+        &[format!("act.x.{connector}.config")],
+        no_constraints(),
+        window,
+        now,
+    )?;
+    bundle
+        .store
+        .put(
+            &cert_path(&mandate.id),
+            &serde_json::to_vec_pretty(&mandate).map_err(bridge_err)?,
+        )
+        .map_err(bridge_err)?;
+    bundle
+        .log_owner_grant(&owner, &mandate.id, now, ent)
+        .map_err(bridge_err)?;
+    Ok(ConnectorConfigGrant {
+        mandate: mandate.id,
+        seed_hex: hex::encode(seed),
+    })
 }
 
 /// Discover/approval has already produced a validated manifest. Pin it
@@ -3391,6 +3650,46 @@ pub fn manifest_tool_pin(
         "description": description,
         "inputSchema": input_schema,
     }))
+}
+
+fn manifest_catalog_digest<'a>(
+    server: &str,
+    tools: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Result<String> {
+    let mut tools = tools
+        .into_iter()
+        .map(|(name, pin_sha256)| serde_json::json!({ "name": name, "pin_sha256": pin_sha256 }))
+        .collect::<Vec<_>>();
+    tools.sort_by(|left, right| left["name"].as_str().cmp(&right["name"].as_str()));
+    hash_of(&serde_json::json!({
+        "version": crate::hub::MANIFEST_VERSION,
+        "server": server,
+        "tools": tools,
+    }))
+}
+
+/// Stable digest of the exact upstream-controlled catalogue sealed in an
+/// owner-approved H3 manifest. Risk/grant/bounds remain owner policy and do
+/// not alter the live-discovery comparison digest.
+pub fn approved_manifest_catalog_digest(manifest: &ApprovedManifest) -> Result<String> {
+    validate_approved(manifest)?;
+    manifest_catalog_digest(
+        &manifest.server,
+        manifest
+            .tools
+            .iter()
+            .map(|tool| (tool.name.as_str(), tool.pin_sha256.as_str())),
+    )
+}
+
+pub fn proposed_manifest_catalog_digest(manifest: &ProposedManifest) -> Result<String> {
+    manifest_catalog_digest(
+        &manifest.server,
+        manifest
+            .tools
+            .iter()
+            .map(|tool| (tool.name.as_str(), tool.pin_sha256.as_str())),
+    )
 }
 
 // ------------------------------------------------- effective policy (M2)

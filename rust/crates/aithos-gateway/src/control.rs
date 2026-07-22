@@ -8,17 +8,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
-use axum::body::{to_bytes, Body};
-use axum::extract::{Extension, Request, State};
+use axum::body::{to_bytes, Body, Bytes};
+use axum::extract::{Extension, Path, Request, State};
 use axum::http::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
-    ACCESS_CONTROL_MAX_AGE, ACCESS_CONTROL_REQUEST_HEADERS, ACCESS_CONTROL_REQUEST_METHOD,
-    CACHE_CONTROL, HOST, ORIGIN, VARY,
+    ACCESS_CONTROL_EXPOSE_HEADERS, ACCESS_CONTROL_MAX_AGE, ACCESS_CONTROL_REQUEST_HEADERS,
+    ACCESS_CONTROL_REQUEST_METHOD, CACHE_CONTROL, HOST, ORIGIN, VARY,
 };
 use axum::http::{HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
@@ -27,6 +27,7 @@ use serde_json::json;
 use tokio::sync::Semaphore;
 
 use crate::config::DashboardConfig;
+use crate::connectors::{ConnectorControl, ConnectorFailure, ConnectorStageRequest};
 use crate::core_bridge::{
     prepare_control_envelope, valid_control_gamma_kind, ControlAccess, ControlAuthError,
     ControlContextProof, ControlHeadsProof, ControlPage, ControlPrincipal, ControlProofReader,
@@ -43,9 +44,13 @@ const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
 const PREFLIGHT_MAX_AGE_SECONDS: &str = "300";
 const DEFAULT_PAGE_LIMIT: usize = 50;
 const MAX_PAGE_LIMIT: usize = 100;
+const MAX_CONNECTORS_PAGE_LIMIT: usize = 64;
 const NONCE_RETENTION_MS: i64 = 601_000;
 const MAX_NONCES: usize = 65_536;
 const MAX_CONTROL_WORKERS: usize = 32;
+const MAX_STAGE_BODY_BYTES: usize = 32 * 1024;
+const MAX_SECRET_BODY_BYTES: usize = 8 * 1024;
+const CONNECTOR_TIMEOUT: Duration = Duration::from_secs(20);
 
 type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 
@@ -58,6 +63,7 @@ pub struct ControlState {
     workers: Arc<Semaphore>,
     relay: RelayHealth,
     brokers: Arc<BTreeMap<String, Arc<dyn CredentialBroker>>>,
+    connectors: Option<Arc<ConnectorControl>>,
     clock: Clock,
 }
 
@@ -92,6 +98,7 @@ impl ControlState {
             workers: Arc::new(Semaphore::new(MAX_CONTROL_WORKERS)),
             relay,
             brokers: Arc::new(brokers),
+            connectors: None,
             clock: Arc::new(system_now_ms),
         })
     }
@@ -99,6 +106,11 @@ impl ControlState {
     /// Deterministic clock seam used by contract/E2E harnesses.
     pub fn with_clock(mut self, clock: Clock) -> Self {
         self.clock = clock;
+        self
+    }
+
+    pub fn with_connectors(mut self, connectors: Arc<ConnectorControl>) -> Self {
+        self.connectors = Some(connectors);
         self
     }
 
@@ -161,6 +173,14 @@ struct ControlRoute {
     access: ControlAccess,
     offset: usize,
     limit: usize,
+    body: ControlBody,
+    timeout: Duration,
+}
+
+#[derive(Clone, Copy)]
+enum ControlBody {
+    Empty,
+    Json { maximum: usize },
 }
 
 pub fn router(state: Arc<ControlState>) -> Router {
@@ -181,6 +201,34 @@ pub fn router(state: Arc<ControlState>) -> Router {
         .route(
             "/control/v1/contexts/{name}/heads",
             get(heads).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors",
+            get(connectors).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/stage",
+            post(stage_connector).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/client-secret",
+            put(set_client_secret).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/oauth/start",
+            post(start_oauth).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/oauth/status",
+            get(oauth_status).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/activate",
+            post(activate_connector).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/draft",
+            delete(delete_draft).options(preflight_sink),
         )
         .route_layer(middleware::from_fn_with_state(
             Arc::clone(&state),
@@ -243,12 +291,10 @@ async fn control_guard(
             )
         }
     };
-    if !body.is_empty() {
-        return cors(
-            public_error(StatusCode::UNAUTHORIZED, "authority_denied"),
-            &origin,
-        );
-    }
+    let body_allowed = match route.body {
+        ControlBody::Empty => body.is_empty(),
+        ControlBody::Json { maximum } => !body.is_empty() && body.len() <= maximum,
+    };
     let now_ms = (state.clock)();
     let prepared = match prepare_control_envelope(
         &auth,
@@ -310,10 +356,20 @@ async fn control_guard(
             )
         }
     };
+    // A.2 binds the exact body before route semantics inspect its shape.
+    // Thus a body changed after signing is an authority failure (above),
+    // while an intentionally signed but route-invalid body is a 400 here.
+    if !body_allowed {
+        return cors(
+            public_error(StatusCode::BAD_REQUEST, "authority_denied"),
+            &origin,
+        );
+    }
     request = Request::from_parts(parts, Body::from(body));
     request.extensions_mut().insert(principal);
+    let route_timeout = route.timeout;
     request.extensions_mut().insert(route);
-    let response = match tokio::time::timeout(CONTROL_TIMEOUT, next.run(request)).await {
+    let response = match tokio::time::timeout(route_timeout, next.run(request)).await {
         Ok(response) => response,
         Err(_) => public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline"),
     };
@@ -327,19 +383,21 @@ fn preflight(request: &Request, origin: &str) -> Response {
         .path_and_query()
         .map(|value| value.as_str())
         .unwrap_or_else(|| request.uri().path());
-    let Some(method) = requested_method.filter(|method| *method == "GET") else {
+    let Some(method) = requested_method else {
         return cors(public_error(StatusCode::FORBIDDEN, "origin_denied"), origin);
     };
-    if classify_route(method, target).is_none() {
+    let Some(route) = classify_route(method, target) else {
         return cors(public_error(StatusCode::FORBIDDEN, "origin_denied"), origin);
-    }
+    };
     let requested_headers =
         single_header(request.headers(), ACCESS_CONTROL_REQUEST_HEADERS.as_str())
             .and_then(parse_requested_headers);
     let Some(requested_headers) = requested_headers else {
         return cors(public_error(StatusCode::FORBIDDEN, "origin_denied"), origin);
     };
+    let needs_content_type = matches!(route.body, ControlBody::Json { .. });
     if !requested_headers.contains(X_AITHOS_AUTH)
+        || (needs_content_type && !requested_headers.contains("content-type"))
         || requested_headers
             .iter()
             .any(|header| !matches!(header.as_str(), X_AITHOS_AUTH | "content-type"))
@@ -347,10 +405,12 @@ fn preflight(request: &Request, origin: &str) -> Response {
         return cors(public_error(StatusCode::FORBIDDEN, "origin_denied"), origin);
     }
     let mut response = StatusCode::NO_CONTENT.into_response();
-    response.headers_mut().insert(
-        ACCESS_CONTROL_ALLOW_METHODS,
-        HeaderValue::from_static("GET"),
-    );
+    let Ok(method) = HeaderValue::from_str(method) else {
+        return cors(public_error(StatusCode::FORBIDDEN, "origin_denied"), origin);
+    };
+    response
+        .headers_mut()
+        .insert(ACCESS_CONTROL_ALLOW_METHODS, method);
     let allowed_headers = if requested_headers.contains("content-type") {
         "Content-Type, X-Aithos-Auth"
     } else {
@@ -407,6 +467,15 @@ fn cors(mut response: Response, origin: &str) -> Response {
     response
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    if response
+        .headers()
+        .contains_key("x-aithos-cleanup-limitation")
+    {
+        response.headers_mut().insert(
+            ACCESS_CONTROL_EXPOSE_HEADERS,
+            HeaderValue::from_static("X-Aithos-Cleanup-Limitation"),
+        );
+    }
     response
 }
 
@@ -442,25 +511,82 @@ fn canonical_authority(raw: &str) -> Option<String> {
 }
 
 fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
-    if method != "GET" || target.len() > MAX_CONTROL_TARGET_BYTES {
+    if target.len() > MAX_CONTROL_TARGET_BYTES {
         return None;
     }
     let (path, query) = target
         .split_once('?')
         .map_or((target, None), |(path, query)| (path, Some(query)));
-    if path == "/control/v1/status" && query.is_none() {
+    if method == "GET" && path == "/control/v1/status" && query.is_none() {
         return Some(ControlRoute {
             access: ControlAccess::Status,
             offset: 0,
             limit: DEFAULT_PAGE_LIMIT,
+            body: ControlBody::Empty,
+            timeout: CONTROL_TIMEOUT,
         });
     }
-    if path == "/control/v1/contexts" && query.is_none() {
+    if method == "GET" && path == "/control/v1/contexts" && query.is_none() {
         return Some(ControlRoute {
             access: ControlAccess::Contexts,
             offset: 0,
             limit: DEFAULT_PAGE_LIMIT,
+            body: ControlBody::Empty,
+            timeout: CONTROL_TIMEOUT,
         });
+    }
+    if method == "GET" && path == "/control/v1/connectors" && query.is_none() {
+        return Some(ControlRoute {
+            access: ControlAccess::Connectors,
+            offset: 0,
+            limit: MAX_CONNECTORS_PAGE_LIMIT,
+            body: ControlBody::Empty,
+            timeout: CONTROL_TIMEOUT,
+        });
+    }
+    if query.is_none() {
+        if let Some(rest) = path.strip_prefix("/control/v1/connectors/") {
+            let mut parts = rest.split('/');
+            let connector = parts.next()?;
+            let first = parts.next()?;
+            let second = parts.next();
+            if parts.next().is_some() || !canonical_label(connector) {
+                return None;
+            }
+            let action = match (first, second) {
+                ("stage", None) => "stage",
+                ("client-secret", None) => "client-secret",
+                ("oauth", Some("start")) => "oauth/start",
+                ("oauth", Some("status")) => "oauth/status",
+                ("activate", None) => "activate",
+                ("draft", None) => "draft",
+                _ => return None,
+            };
+            let body = match (method, action) {
+                ("POST", "stage") => ControlBody::Json {
+                    maximum: MAX_STAGE_BODY_BYTES,
+                },
+                ("PUT", "client-secret") => ControlBody::Json {
+                    maximum: MAX_SECRET_BODY_BYTES,
+                },
+                ("POST", "oauth/start" | "activate")
+                | ("GET", "oauth/status")
+                | ("DELETE", "draft") => ControlBody::Empty,
+                _ => return None,
+            };
+            return Some(ControlRoute {
+                access: ControlAccess::ConnectorConfigAny {
+                    connector: connector.to_owned(),
+                },
+                offset: 0,
+                limit: DEFAULT_PAGE_LIMIT,
+                body,
+                timeout: CONNECTOR_TIMEOUT,
+            });
+        }
+    }
+    if method != "GET" {
+        return None;
     }
     let rest = path.strip_prefix("/control/v1/contexts/")?;
     let (context, surface) = rest.split_once('/')?;
@@ -476,6 +602,8 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
                 },
                 offset: page.offset,
                 limit: page.limit,
+                body: ControlBody::Empty,
+                timeout: CONTROL_TIMEOUT,
             })
         }
         "gamma" => {
@@ -487,6 +615,8 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
                 },
                 offset: page.offset,
                 limit: page.limit,
+                body: ControlBody::Empty,
+                timeout: CONTROL_TIMEOUT,
             })
         }
         "heads" if query.is_none() => Some(ControlRoute {
@@ -495,6 +625,8 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
             },
             offset: 0,
             limit: DEFAULT_PAGE_LIMIT,
+            body: ControlBody::Empty,
+            timeout: CONTROL_TIMEOUT,
         }),
         _ => None,
     }
@@ -559,7 +691,7 @@ fn canonical_kind(value: &str) -> bool {
 
 async fn status(State(state): State<Arc<ControlState>>) -> Json<StatusResponse> {
     Json(StatusResponse {
-        version: 1,
+        v: 1,
         process: "ready",
         vault: state.vault_readiness().await,
         relay: match state.relay.get() {
@@ -622,6 +754,137 @@ async fn heads(
     proof_response(&state, move || reader.heads(&principal).map(heads_dto)).await
 }
 
+async fn connectors(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control.list(principal.context()) {
+        Ok(page) => Json(page).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn stage_connector(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    let descriptor: ConnectorStageRequest = match ConnectorControl::parse_stage(&body) {
+        Ok(descriptor) => descriptor,
+        Err(error) => return connector_error(error),
+    };
+    match control.stage(principal.context(), &id, descriptor).await {
+        Ok(view) => (StatusCode::CREATED, Json(view)).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn set_client_secret(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    let secret = match ConnectorControl::parse_client_secret(&body) {
+        Ok(secret) => secret,
+        Err(error) => return connector_error(error),
+    };
+    match control
+        .set_client_secret(principal.context(), &id, secret)
+        .await
+    {
+        Ok(status) => Json(status).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn start_oauth(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control.start_oauth(principal.context(), &id).await {
+        Ok(start) => Json(start).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn oauth_status(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control.oauth_status(principal.context(), &id).await {
+        Ok(status) => Json(status).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn activate_connector(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control.activate(principal.context(), &id).await {
+        Ok(activation) => Json(activation).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn delete_draft(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control.delete_draft(principal.context(), &id).await {
+        Ok(()) => {
+            let mut response = StatusCode::NO_CONTENT.into_response();
+            response.headers_mut().insert(
+                "x-aithos-cleanup-limitation",
+                HeaderValue::from_static("vault-records-retained"),
+            );
+            response
+        }
+        Err(error) => connector_error(error),
+    }
+}
+
+fn connector_error(error: ConnectorFailure) -> Response {
+    let status = match error {
+        ConnectorFailure::NotApproved | ConnectorFailure::OauthDenied => StatusCode::FORBIDDEN,
+        ConnectorFailure::SecretUnavailable | ConnectorFailure::OauthUnavailable => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+        ConnectorFailure::OauthPending
+        | ConnectorFailure::ManifestDrift
+        | ConnectorFailure::ActivationFailed => StatusCode::CONFLICT,
+        ConnectorFailure::UpstreamDenied => StatusCode::BAD_GATEWAY,
+    };
+    public_error(status, error.code())
+}
+
 async fn proof_response<T, F>(state: &ControlState, proof: F) -> Response
 where
     T: Serialize + Send + 'static,
@@ -646,7 +909,7 @@ where
 
 #[derive(Serialize)]
 struct StatusResponse {
-    version: u8,
+    v: u8,
     process: &'static str,
     vault: &'static str,
     relay: &'static str,
@@ -660,7 +923,7 @@ struct ArtifactDto {
 
 #[derive(Serialize)]
 struct PageDto {
-    version: u8,
+    v: u8,
     items: Vec<ArtifactDto>,
     next_cursor: Option<String>,
 }
@@ -674,13 +937,13 @@ struct ContextDto {
 
 #[derive(Serialize)]
 struct ContextsDto {
-    version: u8,
+    v: u8,
     items: Vec<ContextDto>,
 }
 
 #[derive(Serialize)]
 struct HeadsDto {
-    version: u8,
+    v: u8,
     context: String,
     did: String,
     manifest: Option<ArtifactDto>,
@@ -696,7 +959,7 @@ fn artifact_dto(artifact: ControlRawArtifact) -> ArtifactDto {
 
 fn page_dto(page: ControlPage) -> PageDto {
     PageDto {
-        version: 1,
+        v: 1,
         items: page.items.into_iter().map(artifact_dto).collect(),
         next_cursor: page.next_offset.map(|offset| format!("v1.{offset}")),
     }
@@ -704,7 +967,7 @@ fn page_dto(page: ControlPage) -> PageDto {
 
 fn contexts_dto(contexts: Vec<ControlContextProof>) -> ContextsDto {
     ContextsDto {
-        version: 1,
+        v: 1,
         items: contexts
             .into_iter()
             .map(|context| ContextDto {
@@ -718,7 +981,7 @@ fn contexts_dto(contexts: Vec<ControlContextProof>) -> ContextsDto {
 
 fn heads_dto(heads: ControlHeadsProof) -> HeadsDto {
     HeadsDto {
-        version: 1,
+        v: 1,
         context: heads.context,
         did: heads.did,
         manifest: heads.manifest.map(artifact_dto),

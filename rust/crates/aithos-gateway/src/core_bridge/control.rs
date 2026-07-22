@@ -102,10 +102,19 @@ pub enum ControlAccess {
     Heads {
         context: String,
     },
+    /// Owner-only list of bindings in the context selected by the owner's
+    /// signing key. No registry read is needed to choose that context.
+    Connectors,
     /// G7b consumes this already-closed authority seam. A wildcard act does
     /// not cover connector binding: the leaf must name `config` literally.
     ConnectorConfig {
         context: String,
+        connector: String,
+    },
+    /// Connector routes classify before any registry read. Authority is
+    /// therefore checked across contexts; the exact owner key or exact
+    /// `act.x.<connector>.config` leaf selects one context fail-closed.
+    ConnectorConfigAny {
         connector: String,
     },
 }
@@ -113,7 +122,9 @@ pub enum ControlAccess {
 impl ControlAccess {
     fn context(&self) -> Option<&str> {
         match self {
-            Self::Status | Self::Contexts => None,
+            Self::Status | Self::Contexts | Self::Connectors | Self::ConnectorConfigAny { .. } => {
+                None
+            }
             Self::Certificates { context }
             | Self::Gamma { context, .. }
             | Self::Heads { context }
@@ -554,7 +565,9 @@ fn verify_in_context(
         .cloned()
         .collect();
     let role = match access {
-        ControlAccess::Status => return Err(ControlAuthError::NotCovered),
+        ControlAccess::Status | ControlAccess::Connectors => {
+            return Err(ControlAuthError::NotCovered)
+        }
         ControlAccess::Contexts
         | ControlAccess::Certificates { .. }
         | ControlAccess::Heads { .. }
@@ -573,6 +586,7 @@ fn verify_in_context(
             ControlRole::Auditor
         }
         ControlAccess::ConnectorConfig { connector, .. }
+        | ControlAccess::ConnectorConfigAny { connector }
             if perimeter.iter().any(|entry| {
                 matches!(
                     entry,

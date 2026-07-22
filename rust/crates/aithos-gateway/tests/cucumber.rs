@@ -55,9 +55,10 @@ use aithos_gateway::oauth::{b64url_decode, s256_challenge, AdapterKey, AuthServe
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{process_llm, LlmProxy, LlmUpstream, LLM_TOOL};
 use aithos_gateway::proxy_mcp::{
-    process, process_multi, refresh_server_manifest, router_multi, router_oauth, HttpUpstream,
-    McpProxy, McpRouter, Upstream, BRIEFING_READ, ETHOS_CONTEXT, ETHOS_LIST, ETHOS_READ,
-    JOURNAL_SEARCH, JOURNAL_WRITE, METHOD_NOT_FOUND_CODE, POLICY_DENIED_CODE,
+    empty_dynamic_upstreams, process, process_multi, refresh_server_manifest, router_multi,
+    router_oauth, HttpUpstream, McpProxy, McpRouter, Upstream, BRIEFING_READ, ETHOS_CONTEXT,
+    ETHOS_LIST, ETHOS_READ, JOURNAL_SEARCH, JOURNAL_WRITE, METHOD_NOT_FOUND_CODE,
+    POLICY_DENIED_CODE,
 };
 use aithos_gateway::public_tls::{
     load_private_pem, AcmeCertificateManager, CertificateIssuer, CertificateSource,
@@ -73,6 +74,9 @@ use aithos_provider::envelope::{
     header_value as a2_header_value, sign_envelope as a2_sign_envelope, Envelope as A2Envelope,
     EnvelopeSignature as A2EnvelopeSignature,
 };
+
+#[path = "support/g7b_steps.rs"]
+mod g7b_steps;
 
 /// Fixed test instants (RFC 3339 Z — the wire's instant format).
 const T0: &str = "2026-07-10T12:00:00Z";
@@ -687,6 +691,8 @@ struct GatewayWorld {
     /// G7a: one real socket-bound control router per scenario. The harness
     /// owns the signed authorities, proof stores and every captured response.
     control: Option<CucumberControlHarness>,
+    /// G7b: pre-approved connector binding, OAuth custody and hot runtime.
+    g7b: Option<g7b_steps::G7bHarness>,
 }
 
 /// One raw Streamable HTTP exchange (G2): what the wire actually said.
@@ -896,6 +902,7 @@ impl GatewayWorld {
             relay_oauth_vault_only: false,
             relay_oauth_redacted: false,
             control: None,
+            g7b: None,
         }
     }
 
@@ -1137,6 +1144,7 @@ journal:
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
+        dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
@@ -1277,6 +1285,7 @@ journal:
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
+        dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
@@ -1589,6 +1598,7 @@ journal:
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([("github".to_owned(), w.upstream.clone())]),
+        dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
@@ -2247,6 +2257,7 @@ async fn provision_runner(w: &mut GatewayWorld, a: String, b: String, strip_memo
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(Runner::from_parts(contexts, journal))),
         upstreams: w.multi_upstreams.clone(),
+        dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
@@ -3666,6 +3677,7 @@ async fn provision_vault_hub(w: &mut GatewayWorld, specs: Vec<VaultServerSpec>, 
         router: Arc::new(McpRouter {
             runner: Arc::new(Mutex::new(runner)),
             upstreams,
+            dynamic_upstreams: empty_dynamic_upstreams(),
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
             oauth: None,
@@ -4265,6 +4277,7 @@ fn open_grants_runtime(
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([(GRANTS_SERVER.to_owned(), w.upstream.clone())]),
+        dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
@@ -4831,6 +4844,7 @@ async fn provision_briefing_world(w: &mut GatewayWorld) {
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(Runner::from_parts(contexts, journal))),
         upstreams: w.multi_upstreams.clone(),
+        dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
@@ -5370,6 +5384,7 @@ async fn provision_bounds_world(w: &mut GatewayWorld, raw_tool: &str, bounds: Ve
         router: Arc::new(McpRouter {
             runner: Arc::new(Mutex::new(runner)),
             upstreams,
+            dynamic_upstreams: empty_dynamic_upstreams(),
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
             oauth: None,
@@ -5417,6 +5432,7 @@ fn reopen_bounds_runtime(w: &mut GatewayWorld) {
     harness.router = Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(runner)),
         upstreams,
+        dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
@@ -6365,6 +6381,7 @@ async fn provision_demo_world(w: &mut GatewayWorld) {
         router: Arc::new(McpRouter {
             runner: Arc::new(Mutex::new(runner)),
             upstreams,
+            dynamic_upstreams: empty_dynamic_upstreams(),
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
             oauth: None,
@@ -7978,6 +7995,7 @@ async fn serve_with_as(w: &mut GatewayWorld, extra_allow: Vec<String>, clock0: &
     let routing = Arc::new(McpRouter {
         runner,
         upstreams: w.multi_upstreams.clone(),
+        dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(move || cc.lock().unwrap().clone()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: Some(Arc::clone(&auth)),
@@ -10757,7 +10775,7 @@ fn g7a_status_is_bounded(w: &mut GatewayWorld) {
     assert_eq!(response.status, 200);
     assert_eq!(response.header("cache-control"), Some("no-store"));
     let status = response.json();
-    assert_eq!(status["version"], 1);
+    assert_eq!(status["v"], 1);
     assert_eq!(status["process"], "ready");
     assert!(matches!(
         status["vault"].as_str(),

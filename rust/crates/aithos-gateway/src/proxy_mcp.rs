@@ -29,7 +29,9 @@
 //! merging land with Phase D.
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex as StdMutex, RwLock};
 
 use axum::body::Bytes;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
@@ -109,6 +111,46 @@ pub type Clock = Arc<dyn Fn() -> String + Send + Sync>;
 /// the acceptance tests (GATEWAY-BOOTSTRAP §8).
 pub trait Upstream: Send + Sync + 'static {
     fn forward(&self, body: Value) -> impl std::future::Future<Output = Result<Value>> + Send;
+}
+
+trait ErasedUpstream: Send + Sync {
+    fn forward_erased(
+        &self,
+        body: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<Value>> + Send + '_>>;
+}
+
+impl<T: Upstream> ErasedUpstream for T {
+    fn forward_erased(
+        &self,
+        body: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<Value>> + Send + '_>> {
+        Box::pin(self.forward(body))
+    }
+}
+
+/// Cloneable type-erased upstream used only for connector bindings that are
+/// activated after boot. Static configurations keep their generic map and
+/// byte-identical path.
+#[derive(Clone)]
+pub struct DynamicUpstream(Arc<dyn ErasedUpstream>);
+
+impl DynamicUpstream {
+    pub fn new<T: Upstream>(upstream: T) -> Self {
+        Self(Arc::new(upstream))
+    }
+}
+
+impl Upstream for DynamicUpstream {
+    fn forward(&self, body: Value) -> impl Future<Output = Result<Value>> + Send {
+        self.0.forward_erased(body)
+    }
+}
+
+pub type DynamicUpstreams = Arc<RwLock<BTreeMap<String, DynamicUpstream>>>;
+
+pub fn empty_dynamic_upstreams() -> DynamicUpstreams {
+    Arc::new(RwLock::new(BTreeMap::new()))
 }
 
 /// How one HTTP upstream authenticates on the wire. The agent never
@@ -237,6 +279,15 @@ impl HttpUpstream {
             });
         }
         Self::for_server(server, brokers)
+    }
+
+    pub fn with_oauth_client(url: String, client: Arc<UpstreamOAuthClient>) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            url,
+            auth: UpstreamAuth::OAuth(client),
+            session: StdMutex::new(None),
+        }
     }
 }
 
@@ -540,6 +591,9 @@ fn error_response(id: Value, err: &GatewayError) -> Value {
 pub struct McpRouter<U> {
     pub runner: Arc<Mutex<Runner>>,
     pub upstreams: BTreeMap<String, U>,
+    /// Hot connector targets. The control plane swaps complete entries;
+    /// readers clone one handle and release the lock before network I/O.
+    pub dynamic_upstreams: DynamicUpstreams,
     pub clock: Clock,
     pub session_entropy: std::sync::Mutex<Box<dyn EntropySource + Send>>,
     /// The embedded OAuth authorization server (lot G3), when the `as:`
@@ -1127,16 +1181,41 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Valu
     }
     drop(runner);
 
-    // Relay to THAT context's upstream. A missing upstream is a config
-    // mismatch, surfaced as an upstream failure (fail closed).
-    let Some(upstream) = rt.upstreams.get(&relay.server) else {
-        let e = GatewayError::UpstreamFailed(format!("no upstream for route `{}`", relay.server));
-        return error_response(id, &e);
-    };
     if let Some(name) = msg.pointer_mut("/params/name") {
         *name = Value::String(relay.raw_tool);
     }
-    match upstream.forward(msg).await {
+    // The relay target records whether governance resolved a hot binding.
+    // A hot route may never fall through to a same-name static template when
+    // its dynamic entry is removed or the registry is unavailable.
+    let forwarded = if relay.hot {
+        let upstream = rt
+            .dynamic_upstreams
+            .read()
+            .map_err(|_| {
+                GatewayError::UpstreamFailed("dynamic upstream registry unavailable".into())
+            })
+            .and_then(|upstreams| {
+                upstreams.get(&relay.server).cloned().ok_or_else(|| {
+                    GatewayError::UpstreamFailed(format!(
+                        "no active connector upstream for route `{}`",
+                        relay.server
+                    ))
+                })
+            });
+        match upstream {
+            Ok(upstream) => upstream.forward(msg).await,
+            Err(error) => Err(error),
+        }
+    } else {
+        match rt.upstreams.get(&relay.server) {
+            Some(upstream) => upstream.forward(msg).await,
+            None => Err(GatewayError::UpstreamFailed(format!(
+                "no upstream for route `{}`",
+                relay.server
+            ))),
+        }
+    };
+    match forwarded {
         Ok(resp) if resp.get("error").is_none() => resp,
         Ok(resp) => {
             if let Err(drift) = refresh_server_manifest(rt, &relay.server).await {
@@ -1153,7 +1232,10 @@ async fn tool_call_multi<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Valu
         // this is a governed refusal, not an upstream failure — logged
         // as such, and no drift probe (it would only wake the vault
         // again for a route that is already closed).
-        Err(deny @ GatewayError::CredentialUnavailable(_)) => {
+        Err(
+            deny @ (GatewayError::CredentialUnavailable(_)
+            | GatewayError::UpstreamOauthUnavailable(_)),
+        ) => {
             let mut runner = rt.runner.lock().await;
             runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
             error_response(id, &deny)
@@ -1203,14 +1285,34 @@ pub async fn verify_hub_upstreams_except<U: Upstream>(
 /// Refresh one server's control-plane observation. Exposed for the
 /// explicit test seam and reused after an upstream tool error.
 pub async fn refresh_server_manifest<U: Upstream>(rt: &McpRouter<U>, server: &str) -> Result<()> {
-    let expected =
-        rt.runner.lock().await.server_pins(server).ok_or_else(|| {
+    let (expected, hot) = {
+        let runner = rt.runner.lock().await;
+        let expected = runner.server_pins(server).ok_or_else(|| {
             GatewayError::ConfigRejected(format!("unknown hub server `{server}`"))
         })?;
-    let upstream = rt.upstreams.get(server).ok_or_else(|| {
-        GatewayError::UpstreamFailed(format!("no upstream for hub server `{server}`"))
-    })?;
-    let observed = discover_server(server, upstream).await?;
+        (expected, runner.is_hot_server(server))
+    };
+    let observed = if hot {
+        let upstream = rt
+            .dynamic_upstreams
+            .read()
+            .map_err(|_| {
+                GatewayError::UpstreamFailed("dynamic upstream registry unavailable".into())
+            })?
+            .get(server)
+            .cloned()
+            .ok_or_else(|| {
+                GatewayError::UpstreamFailed(format!(
+                    "no active connector upstream for hub server `{server}`"
+                ))
+            })?;
+        discover_server(server, &upstream).await?
+    } else {
+        let upstream = rt.upstreams.get(server).ok_or_else(|| {
+            GatewayError::UpstreamFailed(format!("no upstream for hub server `{server}`"))
+        })?;
+        discover_server(server, upstream).await?
+    };
     let actual: BTreeMap<String, String> = observed
         .tools
         .into_iter()

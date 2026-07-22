@@ -7,13 +7,13 @@ Feature: Pre-approved connector attachment and hot activation
   Rule: Staging accepts only a closed approved descriptor
 
     Scenario Outline: Invalid connector input is rejected before Vault
-      Given a signed config request containing <input defect>
+      Given a signed config request containing <input_defect>
       When the owner stages the connector instance
       Then staging is refused with a stable redacted error
       And Vault, the local registry and upstream receive zero requests
 
       Examples:
-        | input defect                         |
+        | input_defect                         |
         | an invalid connector id              |
         | a browser-selected Vault path         |
         | a non-HTTPS non-loopback endpoint     |
@@ -23,13 +23,13 @@ Feature: Pre-approved connector attachment and hot activation
         | a redirect URI different from callback|
 
     Scenario Outline: Missing enterprise approval refuses the draft
-      Given the requested connector has <approval defect>
+      Given the requested connector has <approval_defect>
       When a correctly mandated config authority stages it
       Then the connector is refused as not approved
       And no draft, secret record or upstream request is created
 
       Examples:
-        | approval defect              |
+        | approval_defect              |
         | no sealed manifest           |
         | a mismatched manifest pin    |
         | a manifest for another id    |
@@ -82,12 +82,12 @@ Feature: Pre-approved connector attachment and hot activation
 
     Scenario Outline: Invalid callback never connects
       Given a pending upstream OAuth attempt in Vault
-      When the callback carries <callback defect>
+      When the callback carries <callback_defect>
       Then OAuth remains fail-closed with a public non-connected state
       And no code, state, verifier or token appears in any public output
 
       Examples:
-        | callback defect        |
+        | callback_defect        |
         | provider denial        |
         | a replayed callback    |
         | the wrong state        |
@@ -115,13 +115,13 @@ Feature: Pre-approved connector attachment and hot activation
       And the approved tools become visible without restarting the gateway
 
     Scenario Outline: Any live catalogue drift exposes zero tools
-      Given a connected approved connector with <catalogue drift>
+      Given a connected approved connector with <catalogue_drift>
       When a valid config authority activates it
       Then activation is refused as manifest drift
       And the connector exposes zero tools and the previous runtime remains intact
 
       Examples:
-        | catalogue drift           |
+        | catalogue_drift           |
         | an added tool             |
         | a removed tool            |
         | a modified input schema   |

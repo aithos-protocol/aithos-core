@@ -13,6 +13,7 @@ use rustls::pki_types::UnixTime;
 use tokio::sync::watch;
 
 use aithos_gateway::config::{GatewayConfig, RelayCertificateConfig, RelayConfig};
+use aithos_gateway::connectors::ConnectorControl;
 use aithos_gateway::core_bridge::{
     Bridge, ControlProofReader, EntropySource, MandateWindow, OnboardOutcome, OsEntropy, Runner,
 };
@@ -20,7 +21,8 @@ use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::policy::Policy;
 use aithos_gateway::proxy_llm::{router_llm, HttpLlmUpstream, LlmProxy};
 use aithos_gateway::proxy_mcp::{
-    router, router_multi, verify_hub_upstreams_except, HttpUpstream, McpProxy, McpRouter,
+    empty_dynamic_upstreams, router, router_multi, verify_hub_upstreams_except, HttpUpstream,
+    McpProxy, McpRouter,
 };
 use aithos_gateway::public_tls::{
     load_private_pem, public_tls_slot, AcmeCertificateManager, AcmeTxtClient, CertificateSource,
@@ -982,6 +984,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 let routing = Arc::new(McpRouter {
                     runner: Arc::clone(&runner),
                     upstreams,
+                    dynamic_upstreams: empty_dynamic_upstreams(),
                     clock: Arc::new(|| ts(now_secs())),
                     session_entropy: std::sync::Mutex::new(Box::new(OsEntropy)),
                     oauth: oauth.clone(),
@@ -990,6 +993,24 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     let deferred = rt.block_on(upstream_oauth.disconnected_server_names());
                     rt.block_on(verify_hub_upstreams_except(&routing, &deferred))?;
                 }
+                let connector_control = if cfg.dashboard.is_some() {
+                    let control = Arc::new(ConnectorControl::from_config(
+                        &cfg,
+                        Arc::clone(&runner),
+                        Arc::clone(&routing.dynamic_upstreams),
+                        Arc::clone(&upstream_oauth),
+                        brokers.clone(),
+                    )?);
+                    rt.block_on(control.restore()).map_err(|error| {
+                        aithos_gateway::GatewayError::ConfigRejected(format!(
+                            "connector restore failed: {}",
+                            error.code()
+                        ))
+                    })?;
+                    Some(control)
+                } else {
+                    None
+                };
                 let mut app = router_multi(Arc::clone(&routing));
                 if !upstream_oauth.is_empty() {
                     app = app.merge(upstream_oauth::router(Arc::clone(&upstream_oauth)));
@@ -1017,13 +1038,16 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(relay) = &cfg.relay {
                         authorities.push(relay.hostname.clone());
                     }
-                    let control = aithos_gateway::control::ControlState::new(
+                    let mut control = aithos_gateway::control::ControlState::new(
                         reader,
                         dashboard,
                         authorities,
                         relay_health.clone(),
                         brokers.clone(),
                     )?;
+                    if let Some(connectors) = connector_control {
+                        control = control.with_connectors(connectors);
+                    }
                     app = app.merge(aithos_gateway::control::router(Arc::new(control)));
                 }
                 app

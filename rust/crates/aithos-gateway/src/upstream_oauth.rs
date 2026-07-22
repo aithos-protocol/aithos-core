@@ -7,7 +7,7 @@
 //! upstream request is sent.
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::extract::{Query, State};
@@ -55,6 +55,10 @@ enum VaultRecord {
         expires_at: i64,
         scopes: Vec<String>,
     },
+    /// A distinct pending record cannot be deleted through the current
+    /// broker seam. Replacing it with this non-secret tombstone prevents
+    /// replay without inventing secret deletion-by-overwrite.
+    Consumed { consumed_at: i64 },
 }
 
 impl Drop for VaultRecord {
@@ -78,6 +82,7 @@ impl Drop for VaultRecord {
                 refresh_token.zeroize();
                 scopes.zeroize();
             }
+            Self::Consumed { .. } => {}
         }
     }
 }
@@ -104,6 +109,15 @@ impl Drop for TokenAnswer {
 
 pub struct ConsentStart {
     pub authorization_url: String,
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpstreamOAuthState {
+    Pending { expires_at: i64 },
+    Connected,
+    Expired,
+    Unavailable,
 }
 
 /// One configured OAuth client. Clone/share through `Arc`; the refresh lock
@@ -145,21 +159,28 @@ impl UpstreamOAuthClient {
         &self.config
     }
 
-    async fn read_record(&self) -> Result<VaultRecord> {
+    fn pending_vault(&self) -> &CredentialRef {
+        self.config
+            .pending_vault
+            .as_ref()
+            .unwrap_or(&self.config.token_vault)
+    }
+
+    async fn read_record(&self, reference: &CredentialRef) -> Result<VaultRecord> {
         let value = self
             .token_broker
-            .resolve(&self.config.token_vault)
+            .resolve(reference)
             .await
             .map_err(|_| unavailable("OAuth token record is unavailable"))?;
         serde_json::from_str(value.expose())
             .map_err(|_| unavailable("OAuth token record is malformed"))
     }
 
-    async fn write_record(&self, record: &VaultRecord) -> Result<()> {
+    async fn write_record(&self, reference: &CredentialRef, record: &VaultRecord) -> Result<()> {
         let encoded = serde_json::to_string(record)
             .map_err(|_| unavailable("cannot encode OAuth token record"))?;
         self.token_broker
-            .store(&self.config.token_vault, SecretValue::new(encoded))
+            .store(reference, SecretValue::new(encoded))
             .await
             .map_err(|_| unavailable("cannot persist OAuth token record"))
     }
@@ -180,10 +201,10 @@ impl UpstreamOAuthClient {
             code_verifier: verifier,
             created_at: (self.clock)(),
         };
-        self.write_record(&pending).await?;
+        self.write_record(self.pending_vault(), &pending).await?;
         let state = match &pending {
             VaultRecord::Pending { state, .. } => state,
-            VaultRecord::Connected { .. } => unreachable!(),
+            VaultRecord::Connected { .. } | VaultRecord::Consumed { .. } => unreachable!(),
         };
         let mut url = reqwest::Url::parse(&self.config.auth_url)
             .map_err(|_| unavailable("authorization URL is invalid"))?;
@@ -197,12 +218,21 @@ impl UpstreamOAuthClient {
             .append_pair("code_challenge_method", "S256");
         Ok(ConsentStart {
             authorization_url: url.into(),
+            expires_at: (self.clock)().saturating_add(PENDING_TTL_SECS),
         })
     }
 
     async fn pending_matches(&self, state: &str) -> bool {
+        if self.config.pending_vault.is_some()
+            && matches!(
+                self.read_record(&self.config.token_vault).await,
+                Ok(VaultRecord::Connected { .. })
+            )
+        {
+            return false;
+        }
         matches!(
-            self.read_record().await,
+            self.read_record(self.pending_vault()).await,
             Ok(VaultRecord::Pending { state: ref expected, .. }) if expected == state
         )
     }
@@ -264,7 +294,15 @@ impl UpstreamOAuthClient {
         if state.is_empty() || code.is_empty() {
             return Err(unavailable("OAuth callback is incomplete"));
         }
-        let record = self.read_record().await?;
+        if self.config.pending_vault.is_some()
+            && matches!(
+                self.read_record(&self.config.token_vault).await,
+                Ok(VaultRecord::Connected { .. })
+            )
+        {
+            return Err(unavailable("no OAuth consent is pending"));
+        }
+        let record = self.read_record(self.pending_vault()).await?;
         let (expected_state, verifier, created_at) = match &record {
             VaultRecord::Pending {
                 state,
@@ -272,6 +310,9 @@ impl UpstreamOAuthClient {
                 created_at,
             } => (state, code_verifier, *created_at),
             VaultRecord::Connected { .. } => {
+                return Err(unavailable("no OAuth consent is pending"));
+            }
+            VaultRecord::Consumed { .. } => {
                 return Err(unavailable("no OAuth consent is pending"));
             }
         };
@@ -310,11 +351,61 @@ impl UpstreamOAuthClient {
             expires_at: (self.clock)().saturating_add(answer.expires_in as i64),
             scopes,
         };
-        self.write_record(&connected).await
+        self.write_record(&self.config.token_vault, &connected)
+            .await?;
+        if self.config.pending_vault.is_some() {
+            // Best-effort non-secret tombstone. A failed cleanup never
+            // re-opens replay: `pending_matches` checks the connected token
+            // record first.
+            let _ = self
+                .write_record(
+                    self.pending_vault(),
+                    &VaultRecord::Consumed {
+                        consumed_at: (self.clock)(),
+                    },
+                )
+                .await;
+        }
+        Ok(())
     }
 
     pub async fn is_connected(&self) -> bool {
-        matches!(self.read_record().await, Ok(VaultRecord::Connected { .. }))
+        matches!(
+            self.read_record(&self.config.token_vault).await,
+            Ok(VaultRecord::Connected { .. })
+        )
+    }
+
+    pub async fn public_state(&self) -> UpstreamOAuthState {
+        match self.read_record(&self.config.token_vault).await {
+            Ok(VaultRecord::Connected { expires_at, .. }) => {
+                return if expires_at > (self.clock)().saturating_add(EXPIRY_SKEW_SECS) {
+                    UpstreamOAuthState::Connected
+                } else {
+                    UpstreamOAuthState::Expired
+                }
+            }
+            Ok(VaultRecord::Pending { created_at, .. }) if self.config.pending_vault.is_none() => {
+                let expires_at = created_at.saturating_add(PENDING_TTL_SECS);
+                return if (self.clock)() <= expires_at {
+                    UpstreamOAuthState::Pending { expires_at }
+                } else {
+                    UpstreamOAuthState::Expired
+                };
+            }
+            Ok(VaultRecord::Consumed { .. }) | Ok(VaultRecord::Pending { .. }) | Err(_) => {}
+        }
+        match self.read_record(self.pending_vault()).await {
+            Ok(VaultRecord::Pending { created_at, .. }) => {
+                let expires_at = created_at.saturating_add(PENDING_TTL_SECS);
+                if (self.clock)() <= expires_at {
+                    UpstreamOAuthState::Pending { expires_at }
+                } else {
+                    UpstreamOAuthState::Expired
+                }
+            }
+            _ => UpstreamOAuthState::Unavailable,
+        }
     }
 
     /// Resolve a usable access token at the last possible moment. Expiry or
@@ -322,7 +413,7 @@ impl UpstreamOAuthClient {
     /// request builder can be sent.
     pub async fn access_token(&self) -> Result<SecretValue> {
         let _guard = self.refresh_lock.lock().await;
-        let record = self.read_record().await?;
+        let record = self.read_record(&self.config.token_vault).await?;
         let (access_token, refresh_token, expires_at, scopes) = match &record {
             VaultRecord::Connected {
                 access_token,
@@ -331,6 +422,9 @@ impl UpstreamOAuthClient {
                 scopes,
             } => (access_token, refresh_token, *expires_at, scopes),
             VaultRecord::Pending { .. } => {
+                return Err(unavailable("OAuth consent is not complete"));
+            }
+            VaultRecord::Consumed { .. } => {
                 return Err(unavailable("OAuth consent is not complete"));
             }
         };
@@ -365,16 +459,24 @@ impl UpstreamOAuthClient {
             expires_at: (self.clock)().saturating_add(answer.expires_in as i64),
             scopes: next_scopes,
         };
-        self.write_record(&connected).await?;
+        self.write_record(&self.config.token_vault, &connected)
+            .await?;
         Ok(SecretValue::new(next_access))
     }
 }
 
 /// All configured upstream OAuth clients, shared by callback routing, owner
 /// onboarding and the HTTP upstream authorization seam.
-#[derive(Default)]
 pub struct UpstreamOAuthRegistry {
-    clients: BTreeMap<String, Arc<UpstreamOAuthClient>>,
+    clients: RwLock<BTreeMap<String, Arc<UpstreamOAuthClient>>>,
+}
+
+impl Default for UpstreamOAuthRegistry {
+    fn default() -> Self {
+        Self {
+            clients: RwLock::new(BTreeMap::new()),
+        }
+    }
 }
 
 impl UpstreamOAuthRegistry {
@@ -400,48 +502,104 @@ impl UpstreamOAuthRegistry {
                 )?),
             );
         }
-        Ok(Self { clients })
+        Ok(Self {
+            clients: RwLock::new(clients),
+        })
     }
 
     pub fn get(&self, server: &str) -> Option<Arc<UpstreamOAuthClient>> {
-        self.clients.get(server).cloned()
+        self.clients.read().ok()?.get(server).cloned()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.clients.is_empty()
+        self.clients
+            .read()
+            .map_or(true, |clients| clients.is_empty())
     }
 
-    pub fn server_names(&self) -> impl Iterator<Item = &str> {
-        self.clients.keys().map(String::as_str)
+    pub fn server_names(&self) -> Vec<String> {
+        self.clients
+            .read()
+            .map_or_else(|_| Vec::new(), |clients| clients.keys().cloned().collect())
+    }
+
+    pub fn upsert(
+        &self,
+        server: &str,
+        config: UpstreamOAuthConfig,
+        brokers: &BTreeMap<String, Arc<dyn CredentialBroker>>,
+    ) -> Result<Arc<UpstreamOAuthClient>> {
+        let secret_broker = broker_for(brokers, &config.client_secret)?;
+        let token_broker = broker_for(brokers, &config.token_vault)?;
+        let client = Arc::new(UpstreamOAuthClient::new(
+            config,
+            secret_broker,
+            token_broker,
+            Box::new(OsEntropy),
+            Arc::new(system_epoch),
+        )?);
+        self.clients
+            .write()
+            .map_err(|_| unavailable("OAuth registry is unavailable"))?
+            .insert(server.to_owned(), Arc::clone(&client));
+        Ok(client)
+    }
+
+    pub fn remove(&self, server: &str) {
+        if let Ok(mut clients) = self.clients.write() {
+            clients.remove(server);
+        }
     }
 
     pub async fn disconnected_server_names(&self) -> std::collections::BTreeSet<String> {
         let mut disconnected = std::collections::BTreeSet::new();
-        for (name, client) in &self.clients {
+        let clients = self.clients.read().map_or_else(
+            |_| Vec::new(),
+            |clients| {
+                clients
+                    .iter()
+                    .map(|(name, client)| (name.clone(), Arc::clone(client)))
+                    .collect()
+            },
+        );
+        for (name, client) in clients {
             if !client.is_connected().await {
-                disconnected.insert(name.clone());
+                disconnected.insert(name);
             }
         }
         disconnected
     }
 
     pub async fn start(&self, server: &str) -> Result<ConsentStart> {
-        self.clients
-            .get(server)
+        self.get(server)
             .ok_or_else(|| unavailable("unknown OAuth upstream server"))?
             .build_consent_url()
             .await
     }
 
     pub async fn is_connected(&self, server: &str) -> bool {
-        match self.clients.get(server) {
+        match self.get(server) {
             Some(client) => client.is_connected().await,
             None => false,
         }
     }
 
+    pub async fn public_state(&self, server: &str) -> UpstreamOAuthState {
+        match self.get(server) {
+            Some(client) => client.public_state().await,
+            None => UpstreamOAuthState::Unavailable,
+        }
+    }
+
     pub async fn exchange_callback(&self, state: &str, code: &str) -> Result<()> {
-        for client in self.clients.values() {
+        let clients = self
+            .clients
+            .read()
+            .map_err(|_| unavailable("OAuth registry is unavailable"))?
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        for client in clients {
             if client.pending_matches(state).await {
                 return client.exchange_callback(state, code).await;
             }
