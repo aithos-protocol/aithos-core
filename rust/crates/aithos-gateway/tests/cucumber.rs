@@ -10812,7 +10812,9 @@ fn g7a_status_is_bounded(w: &mut GatewayWorld) {
         status["relay"].as_str(),
         Some("ready" | "connecting" | "unavailable" | "disabled")
     ));
-    assert_eq!(status.as_object().unwrap().len(), 4);
+    assert!(status["upstream_oauth"]["native_success"].is_u64());
+    assert!(status["upstream_oauth"]["oauth2_failure"].is_u64());
+    assert_eq!(status.as_object().unwrap().len(), 5);
 }
 
 #[then("no sentinel or upstream error detail appears in the response or logs")]
@@ -10843,8 +10845,12 @@ async fn main() {
     GatewayWorld::cucumber()
         .max_concurrent_scenarios(Some(1))
         .fail_on_skipped()
-        .filter_run_and_exit(features, |_, _, scenario| {
-            !scenario.tags.iter().any(|t| t == "wip")
+        .filter_run_and_exit(features, |feature, rule, scenario| {
+            let has_wip =
+                |tags: &[String]| tags.iter().any(|tag| tag.trim_start_matches('@') == "wip");
+            !has_wip(&feature.tags)
+                && !rule.is_some_and(|rule| has_wip(&rule.tags))
+                && !has_wip(&scenario.tags)
         })
         .await;
 }

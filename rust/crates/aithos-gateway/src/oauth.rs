@@ -32,7 +32,7 @@ use serde_json::{json, Value};
 use zeroize::Zeroize;
 
 use crate::core_bridge::EntropySource;
-use crate::oauth_state::{AsStateStore, MemoryAsStateStore, StateNamespace};
+use crate::oauth_state::{is_valid_state_id, AsStateStore, MemoryAsStateStore, StateNamespace};
 use crate::{GatewayError, Result};
 
 /// The exact Claude custom-connector callback (verified 2026-07-16):
@@ -870,6 +870,13 @@ impl AuthServer {
     }
 
     fn authorize_inner(&self, req: &AuthorizeRequest, now: Option<&str>) -> AuthorizeOutcome {
+        if !is_valid_state_id(&req.client_id) {
+            return AuthorizeOutcome::HardError {
+                detail: "unknown client_id — register dynamically first (RFC 7591); \
+                         self-asserted client_id URLs (CIMD) are not served yet"
+                    .into(),
+            };
+        }
         let client =
             match self.load_record::<ClientRecord>(StateNamespace::DcrClient, &req.client_id) {
                 Ok(Some((client, _))) => client,
@@ -2381,6 +2388,28 @@ mod tests {
             as_.authorize(&req),
             AuthorizeOutcome::HardError { .. }
         ));
+    }
+
+    #[test]
+    fn a_self_asserted_client_url_names_dynamic_registration_not_state_outage() {
+        let as_ = server();
+        let req = AuthorizeRequest {
+            client_id: "https://cimd.example/client.json".to_owned(),
+            redirect_uri: "http://127.0.0.1:9410/cb".to_owned(),
+            response_type: "code".to_owned(),
+            code_challenge: Some("x".to_owned()),
+            code_challenge_method: Some("S256".to_owned()),
+            resource: Some(resource()),
+            scope: None,
+            state: None,
+        };
+        match as_.authorize(&req) {
+            AuthorizeOutcome::HardError { detail } => {
+                assert!(detail.contains("register dynamically"));
+                assert!(!detail.contains("temporarily unavailable"));
+            }
+            _ => panic!("an unknown self-asserted client must fail without redirect"),
+        }
     }
 
     #[test]
