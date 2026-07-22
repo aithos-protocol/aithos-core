@@ -992,15 +992,31 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                             &mut OsEntropy,
                         )?
                     };
-                    Some(Arc::new(aithos_gateway::oauth::AuthServer::new_with_state(
-                        adapter,
-                        &as_cfg.issuer,
-                        as_cfg.access_ttl_secs as i64,
-                        as_cfg.refresh_ttl_secs as i64,
-                        as_cfg.redirect_allowlist.clone(),
-                        Box::new(OsEntropy),
-                        state,
-                    )))
+                    let server = if as_cfg.profile == aithos_gateway::config::AsProfile::Production
+                    {
+                        aithos_gateway::oauth::AuthServer::new_production_with_state(
+                            adapter,
+                            &as_cfg.issuer,
+                            as_cfg.access_ttl_secs as i64,
+                            as_cfg.refresh_ttl_secs as i64,
+                            as_cfg.redirect_allowlist.clone(),
+                            Box::new(OsEntropy),
+                            state,
+                            aithos_gateway::core_bridge::gateway_pub_multibase(&keyholder),
+                            aithos_gateway::core_bridge::gateway_kex_pub_multibase(&keyholder),
+                        )
+                    } else {
+                        aithos_gateway::oauth::AuthServer::new_with_state(
+                            adapter,
+                            &as_cfg.issuer,
+                            as_cfg.access_ttl_secs as i64,
+                            as_cfg.refresh_ttl_secs as i64,
+                            as_cfg.redirect_allowlist.clone(),
+                            Box::new(OsEntropy),
+                            state,
+                        )
+                    };
+                    Some(Arc::new(server))
                 } else {
                     None
                 };

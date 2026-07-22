@@ -323,6 +323,8 @@ struct CodeRecord {
     code_challenge: String,
     resource: String,
     expires: i64,
+    #[serde(default)]
+    sid: Option<String>,
 }
 
 /// A refresh rotation family. Only token digests are persisted. Reusing any
@@ -336,6 +338,114 @@ struct RefreshFamilyRecord {
     current_hash: String,
     consumed_hashes: Vec<String>,
     revoked: bool,
+    #[serde(default)]
+    sid: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SessionStatus {
+    Active,
+    Disabled,
+    Revoked,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OAuthSessionRecord {
+    v: u64,
+    sid: String,
+    subject: String,
+    context: String,
+    client_id: String,
+    resource: String,
+    parent_id: String,
+    leaf_id: String,
+    session_pub: String,
+    not_before: String,
+    not_after: String,
+    status: SessionStatus,
+    chain: Vec<Value>,
+    leaf: Value,
+    certificate: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionIndexRecord {
+    v: u64,
+    sids: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReservedCeremony {
+    pub transaction_id: String,
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub resource: String,
+    pub state: Option<String>,
+    pub gateway_pub: String,
+    pub gateway_kex_pub: String,
+    pub session_pub: String,
+    pub delegate_pub: String,
+    pub context: String,
+    pub parent_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CeremonyProof {
+    #[serde(rename = "aithos-mcp-ceremony")]
+    pub version: String,
+    pub digest: String,
+    pub delegate_pub: String,
+    pub sig: String,
+}
+
+pub struct CeremonyChallenge {
+    pub digest: String,
+    pub challenge: Value,
+    pub signing_preimage: Vec<u8>,
+}
+
+pub fn build_ceremony_challenge(
+    preparation: &CeremonyPreparation,
+    context: &str,
+    parent_id: &str,
+    leaf: &Value,
+) -> Result<CeremonyChallenge> {
+    let leaf_jcs = serde_jcs::to_vec(leaf)
+        .map_err(|_| oauth_err("invalid_request", "session leaf is not canonicalizable"))?;
+    let leaf_digest = format!("sha256:{}", aithos_core::gamma::sha256_hex(&leaf_jcs));
+    let challenge = json!({
+        "v": 1,
+        "transaction_id": preparation.transaction_id,
+        "delegate_pub": preparation.delegate_pub,
+        "client_id": preparation.client_id,
+        "redirect_uri": preparation.redirect_uri,
+        "resource": preparation.resource,
+        "code_challenge": preparation.code_challenge,
+        "scope": preparation.scope,
+        "state_digest": preparation.state_digest,
+        "gateway_pub": preparation.gateway_pub,
+        "gateway_kex_pub": preparation.gateway_kex_pub,
+        "session_pub": preparation.session_pub,
+        "nonce": preparation.nonce,
+        "context": context,
+        "parent_id": parent_id,
+        "leaf_digest": leaf_digest,
+    });
+    let challenge_jcs = serde_jcs::to_vec(&challenge)
+        .map_err(|_| oauth_state_error("ceremony challenge serialization failed"))?;
+    let digest = format!("sha256:{}", aithos_core::gamma::sha256_hex(&challenge_jcs));
+    let mut signing_preimage = b"aithos-gateway/mcp-ceremony/v1\x00".to_vec();
+    signing_preimage.extend_from_slice(&challenge_jcs);
+    Ok(CeremonyChallenge {
+        digest,
+        challenge,
+        signing_preimage,
+    })
 }
 
 // --------------------------------------------------------- authorize IO
@@ -345,6 +455,12 @@ struct RefreshFamilyRecord {
 pub enum AuthorizeOutcome {
     /// Render the DEV consent page (HTML) — the request is well-formed.
     Consent { html: String },
+    /// Production WYSIWYS ceremony. The page contains public bindings only;
+    /// no authorization code exists until signed completion succeeds.
+    Ceremony {
+        html: String,
+        pending: PendingCeremonyView,
+    },
     /// Redirect back to the client's registered URI with query params
     /// (a code on approval, or an OAuth `error` on a recoverable fault).
     Redirect { location: String },
@@ -372,6 +488,69 @@ pub struct TokenGrant {
     pub access_expires_secs: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthorizationProfile {
+    Development,
+    Production,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PendingCeremonyView {
+    pub transaction_id: String,
+    pub client_id: String,
+    pub resource: String,
+    pub gateway_pub: String,
+    pub gateway_kex_pub: String,
+    pub session_pub: String,
+    pub nonce: String,
+    pub expires_at_epoch: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CeremonyPreparation {
+    pub transaction_id: String,
+    pub delegate_pub: String,
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub resource: String,
+    pub code_challenge: String,
+    pub scope: Option<String>,
+    pub state_digest: Option<String>,
+    pub gateway_pub: String,
+    pub gateway_kex_pub: String,
+    pub session_pub: String,
+    pub nonce: String,
+    pub expires_at_epoch: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PendingCeremonyRecord {
+    v: u64,
+    transaction_id: String,
+    client_id: String,
+    redirect_uri: String,
+    code_challenge: String,
+    resource: String,
+    scope: Option<String>,
+    state: Option<String>,
+    gateway_pub: String,
+    gateway_kex_pub: String,
+    session_pub: String,
+    nonce: String,
+    created_at: String,
+    expires_at_epoch: i64,
+    delegate_pub: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionKeyRecord {
+    v: u64,
+    seed_hex: String,
+    expires_at_epoch: i64,
+}
+
 // ------------------------------------------------------------ the AS
 
 /// The authorization server state. Raw codes and refresh tokens are never
@@ -386,6 +565,9 @@ pub struct AuthServer {
     refresh_ttl: i64,
     /// Extra redirect_uris accepted beyond the built-in allowlist.
     extra_redirects: Vec<String>,
+    profile: AuthorizationProfile,
+    gateway_pub: Option<String>,
+    gateway_kex_pub: Option<String>,
     state: Arc<dyn AsStateStore>,
     entropy: Mutex<Box<dyn EntropySource + Send>>,
 }
@@ -430,9 +612,38 @@ impl AuthServer {
             access_ttl,
             refresh_ttl,
             extra_redirects,
+            profile: AuthorizationProfile::Development,
+            gateway_pub: None,
+            gateway_kex_pub: None,
             state,
             entropy: Mutex::new(entropy),
         }
+    }
+
+    pub fn new_production_with_state(
+        adapter: AdapterKey,
+        issuer: &str,
+        access_ttl: i64,
+        refresh_ttl: i64,
+        extra_redirects: Vec<String>,
+        entropy: Box<dyn EntropySource + Send>,
+        state: Arc<dyn AsStateStore>,
+        gateway_pub: String,
+        gateway_kex_pub: String,
+    ) -> Self {
+        let mut server = Self::new_with_state(
+            adapter,
+            issuer,
+            access_ttl,
+            refresh_ttl,
+            extra_redirects,
+            entropy,
+            state,
+        );
+        server.profile = AuthorizationProfile::Production;
+        server.gateway_pub = Some(gateway_pub);
+        server.gateway_kex_pub = Some(gateway_kex_pub);
+        server
     }
 
     pub fn resource(&self) -> &str {
@@ -597,6 +808,14 @@ impl AuthServer {
     /// DEV consent; a recoverable fault redirects an OAuth `error`; an
     /// unknown client or a mismatched redirect never redirects.
     pub fn authorize(&self, req: &AuthorizeRequest) -> AuthorizeOutcome {
+        self.authorize_inner(req, None)
+    }
+
+    pub fn authorize_at(&self, req: &AuthorizeRequest, now: &str) -> AuthorizeOutcome {
+        self.authorize_inner(req, Some(now))
+    }
+
+    fn authorize_inner(&self, req: &AuthorizeRequest, now: Option<&str>) -> AuthorizeOutcome {
         let client =
             match self.load_record::<ClientRecord>(StateNamespace::DcrClient, &req.client_id) {
                 Ok(Some((client, _))) => client,
@@ -659,6 +878,23 @@ impl AuthServer {
             return err_redirect("invalid_target", "the resource does not match this hub");
         }
 
+        if self.profile == AuthorizationProfile::Production {
+            let Some(now) = now else {
+                return AuthorizeOutcome::HardError {
+                    detail: "production authorization requires an injected clock".into(),
+                };
+            };
+            return match self.begin_ceremony(req, &challenge, &resource, now) {
+                Ok(pending) => AuthorizeOutcome::Ceremony {
+                    html: ceremony_page(&pending),
+                    pending,
+                },
+                Err(_) => AuthorizeOutcome::HardError {
+                    detail: "authorization ceremony state is temporarily unavailable".into(),
+                },
+            };
+        }
+
         // Well-formed: the DEV consent page. It carries the request in a
         // signed-free hidden form; approval POSTs it back to /authorize.
         let html = consent_page(
@@ -672,10 +908,345 @@ impl AuthServer {
         AuthorizeOutcome::Consent { html }
     }
 
+    fn begin_ceremony(
+        &self,
+        req: &AuthorizeRequest,
+        challenge: &str,
+        resource: &str,
+        now: &str,
+    ) -> Result<PendingCeremonyView> {
+        let gateway_pub = self
+            .gateway_pub
+            .as_deref()
+            .ok_or_else(|| oauth_state_error("production gateway key is unavailable"))?;
+        let gateway_kex_pub = self
+            .gateway_kex_pub
+            .as_deref()
+            .ok_or_else(|| oauth_state_error("production gateway KEX key is unavailable"))?;
+        let now_epoch = epoch(now)?;
+        let expires_at_epoch = now_epoch + CODE_TTL_SECS;
+        let transaction_id = self.mint_opaque("ceremony");
+        let nonce = self.mint_opaque("nonce");
+        let mut seed = {
+            let mut entropy = self.entropy.lock().expect("entropy lock");
+            entropy.e32()
+        };
+        let session_signing = SigningKey::from_bytes(&seed);
+        let session_pub = aithos_core::wire::ed25519_pub_to_multibase(
+            &session_signing.verifying_key().to_bytes(),
+        );
+        let key_record = SessionKeyRecord {
+            v: 1,
+            seed_hex: hex::encode(seed),
+            expires_at_epoch,
+        };
+        seed.zeroize();
+        self.create_record(StateNamespace::SessionKey, &transaction_id, &key_record)?;
+        let record = PendingCeremonyRecord {
+            v: 1,
+            transaction_id: transaction_id.clone(),
+            client_id: req.client_id.clone(),
+            redirect_uri: req.redirect_uri.clone(),
+            code_challenge: challenge.to_owned(),
+            resource: resource.to_owned(),
+            scope: req.scope.clone(),
+            state: req.state.clone(),
+            gateway_pub: gateway_pub.to_owned(),
+            gateway_kex_pub: gateway_kex_pub.to_owned(),
+            session_pub: session_pub.clone(),
+            nonce: nonce.clone(),
+            created_at: now.to_owned(),
+            expires_at_epoch,
+            delegate_pub: None,
+        };
+        self.create_record(StateNamespace::Pending, &transaction_id, &record)?;
+        Ok(PendingCeremonyView {
+            transaction_id,
+            client_id: req.client_id.clone(),
+            resource: resource.to_owned(),
+            gateway_pub: gateway_pub.to_owned(),
+            gateway_kex_pub: gateway_kex_pub.to_owned(),
+            session_pub,
+            nonce,
+            expires_at_epoch,
+        })
+    }
+
+    pub fn prepare_ceremony(
+        &self,
+        transaction_id: &str,
+        delegate_pub: &str,
+        now: &str,
+    ) -> Result<CeremonyPreparation> {
+        if self.profile != AuthorizationProfile::Production {
+            return Err(oauth_err(
+                "invalid_request",
+                "delegated ceremonies are available only in production profile",
+            ));
+        }
+        aithos_core::wire::multibase_to_ed25519_pub(delegate_pub)
+            .map_err(|_| oauth_err("invalid_request", "delegate public key is malformed"))?;
+        let (mut pending, version) = self
+            .load_record::<PendingCeremonyRecord>(StateNamespace::Pending, transaction_id)?
+            .ok_or_else(|| oauth_err("invalid_request", "unknown or consumed ceremony"))?;
+        if epoch(now)? >= pending.expires_at_epoch {
+            let _ = self.state.take(StateNamespace::Pending, transaction_id)?;
+            let _ = self
+                .state
+                .take(StateNamespace::SessionKey, transaction_id)?;
+            return Err(oauth_err("invalid_request", "the ceremony expired"));
+        }
+        match pending.delegate_pub.as_deref() {
+            Some(bound) if bound != delegate_pub => {
+                return Err(oauth_err(
+                    "invalid_request",
+                    "the ceremony is already bound to another delegate key",
+                ))
+            }
+            Some(_) => {}
+            None => {
+                pending.delegate_pub = Some(delegate_pub.to_owned());
+                self.replace_record(StateNamespace::Pending, transaction_id, version, &pending)?;
+            }
+        }
+        Ok(CeremonyPreparation {
+            transaction_id: pending.transaction_id,
+            delegate_pub: delegate_pub.to_owned(),
+            client_id: pending.client_id,
+            redirect_uri: pending.redirect_uri,
+            resource: pending.resource,
+            code_challenge: pending.code_challenge,
+            scope: pending.scope,
+            state_digest: pending.state.as_deref().map(token_digest),
+            gateway_pub: pending.gateway_pub,
+            gateway_kex_pub: pending.gateway_kex_pub,
+            session_pub: pending.session_pub,
+            nonce: pending.nonce,
+            expires_at_epoch: pending.expires_at_epoch,
+        })
+    }
+
+    pub fn cancel_ceremony(&self, transaction_id: &str) -> Result<()> {
+        let _ = self.state.take(StateNamespace::Pending, transaction_id)?;
+        let _ = self
+            .state
+            .take(StateNamespace::SessionKey, transaction_id)?;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn reserve_ceremony_completion(
+        &self,
+        transaction_id: &str,
+        context: &str,
+        parent_id: &str,
+        leaf: &Value,
+        proof: &CeremonyProof,
+        now: &str,
+    ) -> Result<ReservedCeremony> {
+        let value = self
+            .state
+            .take(StateNamespace::Pending, transaction_id)?
+            .ok_or_else(|| oauth_err("invalid_request", "unknown or consumed ceremony"))?;
+        let pending: PendingCeremonyRecord = serde_json::from_value(value)
+            .map_err(|_| oauth_state_error("stored ceremony is malformed"))?;
+        let result = (|| {
+            if epoch(now)? >= pending.expires_at_epoch {
+                return Err(oauth_err("invalid_request", "the ceremony expired"));
+            }
+            let delegate_pub = pending.delegate_pub.clone().ok_or_else(|| {
+                oauth_err(
+                    "invalid_request",
+                    "the ceremony was not prepared by a signer",
+                )
+            })?;
+            if proof.version != "1.0.0"
+                || proof.delegate_pub != delegate_pub
+                || context.is_empty()
+                || parent_id.is_empty()
+            {
+                return Err(oauth_err(
+                    "invalid_request",
+                    "ceremony proof binding mismatch",
+                ));
+            }
+            let preparation = CeremonyPreparation {
+                transaction_id: pending.transaction_id.clone(),
+                delegate_pub: delegate_pub.clone(),
+                client_id: pending.client_id.clone(),
+                redirect_uri: pending.redirect_uri.clone(),
+                resource: pending.resource.clone(),
+                code_challenge: pending.code_challenge.clone(),
+                scope: pending.scope.clone(),
+                state_digest: pending.state.as_deref().map(token_digest),
+                gateway_pub: pending.gateway_pub.clone(),
+                gateway_kex_pub: pending.gateway_kex_pub.clone(),
+                session_pub: pending.session_pub.clone(),
+                nonce: pending.nonce.clone(),
+                expires_at_epoch: pending.expires_at_epoch,
+            };
+            let challenge = build_ceremony_challenge(&preparation, context, parent_id, leaf)?;
+            if proof.digest != challenge.digest {
+                return Err(oauth_err(
+                    "invalid_request",
+                    "ceremony presentation digest mismatch",
+                ));
+            }
+            let key_bytes = aithos_core::wire::multibase_to_ed25519_pub(&delegate_pub)
+                .map_err(|_| oauth_err("invalid_request", "delegate public key is malformed"))?;
+            let verifying = VerifyingKey::from_bytes(&key_bytes)
+                .map_err(|_| oauth_err("invalid_request", "delegate public key is malformed"))?;
+            let signature_bytes: [u8; 64] = hex::decode(&proof.sig)
+                .ok()
+                .and_then(|bytes| bytes.try_into().ok())
+                .ok_or_else(|| oauth_err("invalid_request", "ceremony signature is malformed"))?;
+            verifying
+                .verify(
+                    &challenge.signing_preimage,
+                    &ed25519_dalek::Signature::from_bytes(&signature_bytes),
+                )
+                .map_err(|_| oauth_err("invalid_request", "ceremony signature is invalid"))?;
+            Ok(ReservedCeremony {
+                transaction_id: pending.transaction_id,
+                client_id: pending.client_id,
+                redirect_uri: pending.redirect_uri,
+                code_challenge: pending.code_challenge,
+                resource: pending.resource,
+                state: pending.state,
+                gateway_pub: pending.gateway_pub,
+                gateway_kex_pub: pending.gateway_kex_pub,
+                session_pub: pending.session_pub,
+                delegate_pub,
+                context: context.to_owned(),
+                parent_id: parent_id.to_owned(),
+            })
+        })();
+        if result.is_err() {
+            let _ = self.state.take(StateNamespace::SessionKey, transaction_id);
+        }
+        result
+    }
+
+    pub fn finalize_ceremony(
+        &self,
+        reserved: ReservedCeremony,
+        authority: &crate::core_bridge::SessionAuthority,
+        now: &str,
+    ) -> Result<String> {
+        if authority.context != reserved.context
+            || authority.parent_id != reserved.parent_id
+            || authority.session_pub != reserved.session_pub
+        {
+            let _ = self
+                .state
+                .take(StateNamespace::SessionKey, &reserved.transaction_id);
+            return Err(oauth_err(
+                "invalid_request",
+                "verified session authority differs from the ceremony",
+            ));
+        }
+        let now_epoch = epoch(now)?;
+        let index_id = format!("index.{}", token_digest(&authority.subject));
+        let loaded = self.load_record::<SessionIndexRecord>(StateNamespace::Session, &index_id)?;
+        let (mut index, version) = loaded
+            .map(|(index, version)| (index, Some(version)))
+            .unwrap_or((
+                SessionIndexRecord {
+                    v: 1,
+                    sids: Vec::new(),
+                },
+                None,
+            ));
+        let mut active_keys = Vec::new();
+        let mut active_sids = Vec::new();
+        for sid in &index.sids {
+            let (session, _) = self
+                .load_record::<OAuthSessionRecord>(StateNamespace::Session, sid)?
+                .ok_or_else(|| oauth_state_error("session index is inconsistent"))?;
+            if matches!(session.status, SessionStatus::Active)
+                && epoch(&session.not_after)? > now_epoch
+            {
+                active_keys.push(session.session_pub);
+                active_sids.push(sid.clone());
+            }
+        }
+        active_keys.push(authority.session_pub.clone());
+        let active_refs: Vec<&str> = active_keys.iter().map(String::as_str).collect();
+        crate::core_bridge::enforce_max_sessions(3, &active_refs).map_err(|_| {
+            oauth_err(
+                "access_denied",
+                "the delegate already has three active sessions",
+            )
+        })?;
+        let sid = self.mint_opaque("sid");
+        active_sids.push(sid.clone());
+        index.sids = active_sids;
+        match version {
+            Some(version) => {
+                self.replace_record(StateNamespace::Session, &index_id, version, &index)?;
+            }
+            None => {
+                self.create_record(StateNamespace::Session, &index_id, &index)?;
+            }
+        }
+        let key_value = self
+            .state
+            .take(StateNamespace::SessionKey, &reserved.transaction_id)?
+            .ok_or_else(|| oauth_state_error("temporary session key is unavailable"))?;
+        let key: SessionKeyRecord = serde_json::from_value(key_value)
+            .map_err(|_| oauth_state_error("temporary session key is malformed"))?;
+        if key.expires_at_epoch <= now_epoch {
+            return Err(oauth_err("invalid_request", "the ceremony expired"));
+        }
+        self.create_record(StateNamespace::SessionKey, &sid, &key)?;
+        let session = OAuthSessionRecord {
+            v: 1,
+            sid: sid.clone(),
+            subject: authority.subject.clone(),
+            context: authority.context.clone(),
+            client_id: reserved.client_id.clone(),
+            resource: reserved.resource.clone(),
+            parent_id: authority.parent_id.clone(),
+            leaf_id: authority.leaf_id.clone(),
+            session_pub: authority.session_pub.clone(),
+            not_before: authority.not_before.clone(),
+            not_after: authority.not_after.clone(),
+            status: SessionStatus::Active,
+            chain: authority.chain.clone(),
+            leaf: authority.leaf.clone(),
+            certificate: authority.certificate.clone(),
+        };
+        self.create_record(StateNamespace::Session, &sid, &session)?;
+        let code = self.mint_opaque("code");
+        self.create_record(
+            StateNamespace::Code,
+            &token_digest(&code),
+            &CodeRecord {
+                client_id: reserved.client_id,
+                redirect_uri: reserved.redirect_uri.clone(),
+                code_challenge: reserved.code_challenge,
+                resource: reserved.resource,
+                expires: now_epoch + CODE_TTL_SECS,
+                sid: Some(sid),
+            },
+        )?;
+        Ok(redirect_with(
+            &reserved.redirect_uri,
+            &[("code", &code)],
+            reserved.state.as_deref(),
+        ))
+    }
+
     /// The consent POST: the user approved, so mint a one-shot code and
     /// redirect back. Re-validates the client and redirect (never trust
     /// the form blindly).
     pub fn approve(&self, req: &AuthorizeRequest, now: &str) -> Result<String> {
+        if self.profile == AuthorizationProfile::Production {
+            return Err(oauth_err(
+                "access_denied",
+                "production authorization requires the signed delegated-session ceremony",
+            ));
+        }
         let (client, _) = self
             .load_record::<ClientRecord>(StateNamespace::DcrClient, &req.client_id)?
             .ok_or_else(|| oauth_err("invalid_request", "unknown client_id"))?;
@@ -704,6 +1275,7 @@ impl AuthServer {
                 code_challenge: challenge,
                 resource,
                 expires,
+                sid: None,
             },
         )?;
         Ok(redirect_with(
@@ -751,7 +1323,21 @@ impl AuthServer {
         if !pkce_matches(verifier, &record.code_challenge) {
             return Err(oauth_err("invalid_grant", "PKCE verifier does not match"));
         }
-        let grant = self.mint_pair(&record.client_id, resource, ceiling, now_epoch)?;
+        let session_ceiling = match record.sid.as_deref() {
+            Some(sid) => Some(
+                self.live_session(sid, &record.client_id, resource, now)?
+                    .not_after,
+            ),
+            None => None,
+        };
+        let effective_ceiling = session_ceiling.as_deref().or(ceiling);
+        let grant = self.mint_pair(
+            &record.client_id,
+            resource,
+            effective_ceiling,
+            now_epoch,
+            record.sid.as_deref(),
+        )?;
         Ok((grant, record.client_id))
     }
 
@@ -797,9 +1383,17 @@ impl AuthServer {
             self.replace_record(StateNamespace::RefreshFamily, family, version, &record)?;
             return Err(oauth_err("invalid_grant", "the refresh token expired"));
         }
+        let session_ceiling = match record.sid.as_deref() {
+            Some(sid) => Some(
+                self.live_session(sid, &record.client_id, &record.resource, now)?
+                    .not_after,
+            ),
+            None => None,
+        };
+        let effective_ceiling = session_ceiling.as_deref().or(ceiling);
         // The authority ceiling MUST still be live — this is where "past
         // not_after, redo the ceremony" bites.
-        let ceiling_epoch = match ceiling {
+        let ceiling_epoch = match effective_ceiling {
             Some(c) => epoch(c)?,
             None => {
                 return Err(oauth_err(
@@ -827,8 +1421,13 @@ impl AuthServer {
         record.consumed_hashes.push(presented_hash);
         record.current_hash = token_digest(&refresh_token);
         self.replace_record(StateNamespace::RefreshFamily, family, version, &record)?;
-        let (access_token, access_expires_secs) =
-            self.mint_access(&record.client_id, &record.resource, ceiling, now_epoch)?;
+        let (access_token, access_expires_secs) = self.mint_access(
+            &record.client_id,
+            &record.resource,
+            effective_ceiling,
+            now_epoch,
+            record.sid.as_deref(),
+        )?;
         let client_id = record.client_id;
         Ok((
             TokenGrant {
@@ -848,6 +1447,7 @@ impl AuthServer {
         resource: &str,
         ceiling: Option<&str>,
         now_epoch: i64,
+        sid: Option<&str>,
     ) -> Result<TokenGrant> {
         let ceiling_epoch = ceiling.map(epoch).transpose()?;
         let refresh_exp = ceiling_epoch
@@ -865,10 +1465,11 @@ impl AuthServer {
                 current_hash: token_digest(&refresh_token),
                 consumed_hashes: Vec::new(),
                 revoked: false,
+                sid: sid.map(str::to_owned),
             },
         )?;
         let (access_token, access_expires_secs) =
-            self.mint_access(client_id, resource, ceiling, now_epoch)?;
+            self.mint_access(client_id, resource, ceiling, now_epoch, sid)?;
         Ok(TokenGrant {
             access_token,
             refresh_token,
@@ -882,13 +1483,14 @@ impl AuthServer {
         resource: &str,
         ceiling: Option<&str>,
         now_epoch: i64,
+        sid: Option<&str>,
     ) -> Result<(String, i64)> {
         let ceiling_epoch = ceiling.map(epoch).transpose()?;
         let access_exp = ceiling_epoch
             .map(|ceiling| (now_epoch + self.access_ttl).min(ceiling))
             .unwrap_or(now_epoch + self.access_ttl);
         let jti = self.mint_opaque("jti");
-        let claims = json!({
+        let mut claims = json!({
             "iss": self.issuer,
             "sub": "aithos-runner",
             "aud": resource,
@@ -897,8 +1499,34 @@ impl AuthServer {
             "jti": jti,
             "client_id": client_id,
         });
+        if let Some(sid) = sid {
+            claims["sid"] = Value::String(sid.to_owned());
+        }
         let access_token = self.adapter.sign_jwt(ACCESS_TYP, &claims);
         Ok((access_token, (access_exp - now_epoch).max(0)))
+    }
+
+    fn live_session(
+        &self,
+        sid: &str,
+        client_id: &str,
+        resource: &str,
+        now: &str,
+    ) -> Result<OAuthSessionRecord> {
+        let (session, _) = self
+            .load_record::<OAuthSessionRecord>(StateNamespace::Session, sid)?
+            .ok_or_else(|| oauth_err("invalid_grant", "the delegated session is unavailable"))?;
+        if !matches!(session.status, SessionStatus::Active)
+            || session.client_id != client_id
+            || session.resource != resource
+            || epoch(now)? >= epoch(&session.not_after)?
+        {
+            return Err(oauth_err(
+                "invalid_grant",
+                "the delegated session is inactive or mismatched",
+            ));
+        }
+        Ok(session)
     }
 
     /// Validate a bearer token presented on `/mcp`: signature (adapter
@@ -907,7 +1535,9 @@ impl AuthServer {
     /// every act behind it.
     pub fn validate_bearer(&self, token: &str, now: &str) -> Result<()> {
         let claims = self.adapter.verify_jwt(token)?;
-        if claims.get("aud").and_then(Value::as_str) != Some(self.resource.as_str()) {
+        if claims.get("iss").and_then(Value::as_str) != Some(self.issuer.as_str())
+            || claims.get("aud").and_then(Value::as_str) != Some(self.resource.as_str())
+        {
             return Err(invalid_token());
         }
         let exp = claims
@@ -916,6 +1546,18 @@ impl AuthServer {
             .ok_or_else(invalid_token)?;
         if epoch(now)? >= exp {
             return Err(invalid_token());
+        }
+        if self.profile == AuthorizationProfile::Production {
+            let sid = claims
+                .get("sid")
+                .and_then(Value::as_str)
+                .ok_or_else(invalid_token)?;
+            let client_id = claims
+                .get("client_id")
+                .and_then(Value::as_str)
+                .ok_or_else(invalid_token)?;
+            self.live_session(sid, client_id, &self.resource, now)
+                .map_err(|_| invalid_token())?;
         }
         Ok(())
     }
@@ -1090,6 +1732,33 @@ fn consent_page(
     )
 }
 
+fn ceremony_page(pending: &PendingCeremonyView) -> String {
+    format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+         <meta name=\"referrer\" content=\"no-referrer\">\
+         <title>Aithos — delegated session ceremony</title></head><body>\
+         <main data-ceremony=\"{transaction}\" \
+               style=\"font-family:system-ui;max-width:44rem;margin:3rem auto\">\
+         <h1>Authorize a delegated session</h1>\
+         <p>Unlock your local signer to discover the mandate chains that this \
+         public key may attenuate. The OAuth client cannot choose them.</p>\
+         <dl><dt>Client</dt><dd><code>{client}</code></dd>\
+         <dt>Resource</dt><dd><code>{resource}</code></dd>\
+         <dt>Gateway key</dt><dd><code>{gateway}</code></dd>\
+         <dt>Session key</dt><dd><code>{session}</code></dd>\
+         <dt>Transaction nonce</dt><dd><code>{nonce}</code></dd></dl>\
+         <p id=\"ceremony-status\">Waiting for the local signer.</p>\
+         <noscript>This production ceremony requires the local signer application.</noscript>\
+         </main></body></html>",
+        transaction = html_escape(&pending.transaction_id),
+        client = html_escape(&pending.client_id),
+        resource = html_escape(&pending.resource),
+        gateway = html_escape(&pending.gateway_pub),
+        session = html_escape(&pending.session_pub),
+        nonce = html_escape(&pending.nonce),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1121,6 +1790,21 @@ mod tests {
             Vec::new(),
             Box::new(SeqEntropy::default()),
             state,
+        )
+    }
+
+    fn production_server(state: Arc<MemoryAsStateStore>) -> AuthServer {
+        let gateway = SigningKey::from_bytes(&[9; 32]);
+        AuthServer::new_production_with_state(
+            AdapterKey::from_seed([42; 32]),
+            ISSUER,
+            15 * 60,
+            8 * 60 * 60,
+            Vec::new(),
+            Box::new(SeqEntropy::default()),
+            state,
+            aithos_core::wire::ed25519_pub_to_multibase(&gateway.verifying_key().to_bytes()),
+            aithos_core::wire::x25519_pub_to_multibase(&[5; 32]),
         )
     }
 
@@ -1499,5 +2183,136 @@ mod tests {
             }
             _ => panic!("a well-formed request renders the consent"),
         }
+    }
+
+    #[test]
+    fn production_authorize_creates_a_short_pending_without_dev_approval() {
+        let state = Arc::new(MemoryAsStateStore::default());
+        let as_ = production_server(state.clone());
+        let uri = "http://127.0.0.1:9410/cb";
+        let client = register(&as_, uri);
+        let (_verifier, challenge) = pkce();
+        let request = AuthorizeRequest {
+            client_id: client,
+            redirect_uri: uri.to_owned(),
+            response_type: "code".into(),
+            code_challenge: Some(challenge),
+            code_challenge_method: Some("S256".into()),
+            resource: Some(resource()),
+            scope: None,
+            state: Some("oauth-state".into()),
+        };
+        let pending = match as_.authorize_at(&request, T0) {
+            AuthorizeOutcome::Ceremony { html, pending } => {
+                assert!(!html.contains("DEV consent"));
+                assert!(!html.contains(">Approve<"));
+                assert!(html.contains(&pending.session_pub));
+                pending
+            }
+            _ => panic!("production renders the delegated ceremony"),
+        };
+        assert_eq!(pending.expires_at_epoch, epoch(T0).unwrap() + 120);
+        assert!(state
+            .read(StateNamespace::SessionKey, &pending.transaction_id)
+            .unwrap()
+            .is_some());
+        assert!(as_.approve(&request, T0).is_err());
+
+        let delegate = SigningKey::from_bytes(&[8; 32]);
+        let delegate_pub =
+            aithos_core::wire::ed25519_pub_to_multibase(&delegate.verifying_key().to_bytes());
+        let prepared = as_
+            .prepare_ceremony(&pending.transaction_id, &delegate_pub, T0)
+            .unwrap();
+        assert_eq!(prepared.delegate_pub, delegate_pub);
+        let other = SigningKey::from_bytes(&[7; 32]);
+        let other_pub =
+            aithos_core::wire::ed25519_pub_to_multibase(&other.verifying_key().to_bytes());
+        assert!(as_
+            .prepare_ceremony(&pending.transaction_id, &other_pub, T0)
+            .is_err());
+
+        as_.cancel_ceremony(&pending.transaction_id).unwrap();
+        assert!(state
+            .read(StateNamespace::Pending, &pending.transaction_id)
+            .unwrap()
+            .is_none());
+        assert!(state
+            .read(StateNamespace::SessionKey, &pending.transaction_id)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn signed_ceremony_binds_a_durable_sid_to_code_refresh_and_bearer() {
+        let state = Arc::new(MemoryAsStateStore::default());
+        let as_ = production_server(state);
+        let uri = "http://127.0.0.1:9410/cb";
+        let client = register(&as_, uri);
+        let (verifier, pkce_challenge) = pkce();
+        let request = AuthorizeRequest {
+            client_id: client.clone(),
+            redirect_uri: uri.to_owned(),
+            response_type: "code".into(),
+            code_challenge: Some(pkce_challenge),
+            code_challenge_method: Some("S256".into()),
+            resource: Some(resource()),
+            scope: Some("mcp".into()),
+            state: Some("opaque-state".into()),
+        };
+        let pending = match as_.authorize_at(&request, T0) {
+            AuthorizeOutcome::Ceremony { pending, .. } => pending,
+            _ => panic!("production ceremony"),
+        };
+        let delegate = SigningKey::from_bytes(&[8; 32]);
+        let delegate_pub =
+            aithos_core::wire::ed25519_pub_to_multibase(&delegate.verifying_key().to_bytes());
+        let preparation = as_
+            .prepare_ceremony(&pending.transaction_id, &delegate_pub, T0)
+            .unwrap();
+        let leaf = json!({ "signed": "leaf-placeholder-for-AS-boundary" });
+        let challenge =
+            build_ceremony_challenge(&preparation, "finance", "mandate_parent", &leaf).unwrap();
+        let proof = CeremonyProof {
+            version: "1.0.0".into(),
+            digest: challenge.digest,
+            delegate_pub,
+            sig: hex::encode(delegate.sign(&challenge.signing_preimage).to_bytes()),
+        };
+        let reserved = as_
+            .reserve_ceremony_completion(
+                &pending.transaction_id,
+                "finance",
+                "mandate_parent",
+                &leaf,
+                &proof,
+                T0,
+            )
+            .unwrap();
+        let authority = crate::core_bridge::SessionAuthority {
+            context: "finance".into(),
+            subject: "did:aithos:test-subject".into(),
+            parent_id: "mandate_parent".into(),
+            leaf_id: "mandate_leaf".into(),
+            not_before: T0.into(),
+            not_after: CHAIN_END.into(),
+            session_pub: preparation.session_pub,
+            chain: vec![],
+            leaf,
+            certificate: json!({ "public": "SC1" }),
+        };
+        let location = as_.finalize_ceremony(reserved, &authority, T0).unwrap();
+        let code = location
+            .split(['?', '&'])
+            .find_map(|part| part.strip_prefix("code="))
+            .unwrap();
+        let (grant, who) = as_
+            .exchange_code(code, &verifier, &resource(), uri, None, T0)
+            .expect("sid-bound code exchanges without legacy agent ceiling");
+        assert_eq!(who, client);
+        as_.validate_bearer(&grant.access_token, T0)
+            .expect("bearer resolves its durable live sid");
+        as_.refresh(&grant.refresh_token, None, T0)
+            .expect("refresh resolves the same session ceiling");
     }
 }

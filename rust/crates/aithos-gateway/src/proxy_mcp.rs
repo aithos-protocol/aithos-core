@@ -37,6 +37,7 @@ use axum::body::Bytes;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{extract::State, routing::post, Json, Router};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
@@ -771,6 +772,9 @@ pub fn router_oauth<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
             "/authorize",
             axum::routing::get(oauth_authorize_get::<U>).post(oauth_authorize_post::<U>),
         )
+        .route("/ceremony/prepare", post(oauth_ceremony_prepare::<U>))
+        .route("/ceremony/complete", post(oauth_ceremony_complete::<U>))
+        .route("/ceremony/cancel", post(oauth_ceremony_cancel::<U>))
         .route("/token", post(oauth_token::<U>))
         .with_state(rt)
 }
@@ -845,8 +849,12 @@ async fn oauth_authorize_get<U: Upstream>(
     let Some(oauth) = &rt.oauth else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match oauth.authorize(&authorize_request(&params)) {
+    let now = (rt.clock)();
+    match oauth.authorize_at(&authorize_request(&params), &now) {
         crate::oauth::AuthorizeOutcome::Consent { html } => {
+            axum::response::Html(html).into_response()
+        }
+        crate::oauth::AuthorizeOutcome::Ceremony { html, .. } => {
             axum::response::Html(html).into_response()
         }
         crate::oauth::AuthorizeOutcome::Redirect { location } => redirect_to(&location),
@@ -855,6 +863,110 @@ async fn oauth_authorize_get<U: Upstream>(
             Json(json!({ "error": "invalid_request", "error_description": detail })),
         )
             .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CeremonyPrepareRequest {
+    transaction_id: String,
+    delegate_pub: String,
+}
+
+async fn oauth_ceremony_prepare<U: Upstream>(
+    State(rt): State<Arc<McpRouter<U>>>,
+    Json(request): Json<CeremonyPrepareRequest>,
+) -> Response {
+    let Some(oauth) = &rt.oauth else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let now = (rt.clock)();
+    let preparation =
+        match oauth.prepare_ceremony(&request.transaction_id, &request.delegate_pub, &now) {
+            Ok(preparation) => preparation,
+            Err(error) => return oauth_error_response(&error),
+        };
+    let eligible_parents = rt
+        .runner
+        .lock()
+        .await
+        .eligible_session_parents(&request.delegate_pub, &now);
+    Json(json!({
+        "v": 1,
+        "bindings": preparation,
+        "eligible_parents": eligible_parents,
+    }))
+    .into_response()
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CeremonyCompleteRequest {
+    transaction_id: String,
+    context: String,
+    parent_id: String,
+    leaf: Value,
+    proof: crate::oauth::CeremonyProof,
+}
+
+async fn oauth_ceremony_complete<U: Upstream>(
+    State(rt): State<Arc<McpRouter<U>>>,
+    Json(request): Json<CeremonyCompleteRequest>,
+) -> Response {
+    let Some(oauth) = &rt.oauth else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let now = (rt.clock)();
+    let reserved = match oauth.reserve_ceremony_completion(
+        &request.transaction_id,
+        &request.context,
+        &request.parent_id,
+        &request.leaf,
+        &request.proof,
+        &now,
+    ) {
+        Ok(reserved) => reserved,
+        Err(error) => return oauth_error_response(&error),
+    };
+    let authority = rt.runner.lock().await.activate_session_leaf(
+        &reserved.context,
+        &reserved.parent_id,
+        &reserved.delegate_pub,
+        &reserved.gateway_pub,
+        &reserved.gateway_kex_pub,
+        &reserved.session_pub,
+        &request.leaf,
+        &now,
+    );
+    let authority = match authority {
+        Ok(authority) => authority,
+        Err(error) => {
+            let _ = oauth.cancel_ceremony(&reserved.transaction_id);
+            return oauth_error_response(&error);
+        }
+    };
+    match oauth.finalize_ceremony(reserved, &authority, &now) {
+        Ok(location) => redirect_to(&location),
+        Err(error) => oauth_error_response(&error),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CeremonyCancelRequest {
+    transaction_id: String,
+}
+
+async fn oauth_ceremony_cancel<U: Upstream>(
+    State(rt): State<Arc<McpRouter<U>>>,
+    Json(request): Json<CeremonyCancelRequest>,
+) -> Response {
+    let Some(oauth) = &rt.oauth else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match oauth.cancel_ceremony(&request.transaction_id) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => oauth_error_response(&error),
     }
 }
 

@@ -150,6 +150,12 @@ pub fn gateway_pub_multibase(kh: &Keyholder) -> String {
     aithos_core::wire::ed25519_pub_to_multibase(&vk.to_bytes())
 }
 
+pub fn gateway_kex_pub_multibase(kh: &Keyholder) -> String {
+    let signing = SigningKey::from_bytes(kh.gateway_seed());
+    let public = ed2x(&signing.verifying_key());
+    aithos_core::wire::x25519_pub_to_multibase(public.as_bytes())
+}
+
 /// Build the one bounded C2/B.2 registration line under the existing
 /// gateway identity. The private seed remains inside the bridge; callers
 /// cannot ask the keyholder to sign arbitrary bytes.
@@ -1208,6 +1214,21 @@ impl Bridge {
     /// (full revocable for serving; signature-only for the pedagogical
     /// "your chain was revoked" refusal).
     fn walk_agent_cert_chains(&self, agent_pub: &str) -> Vec<Vec<Mandate>> {
+        self.walk_cert_chains(agent_pub)
+            .into_iter()
+            .filter(|chain| {
+                chain.last().is_some_and(|leaf| {
+                    leaf.parsed_perimeter().is_ok_and(|entries| {
+                        entries
+                            .iter()
+                            .any(|entry| matches!(entry, PerimeterEntry::Ethos { .. }))
+                    })
+                })
+            })
+            .collect()
+    }
+
+    fn walk_cert_chains(&self, grantee_pub: &str) -> Vec<Vec<Mandate>> {
         let Ok(paths) = self.bundle.store.list("certs/") else {
             return Vec::new();
         };
@@ -1223,18 +1244,7 @@ impl Bridge {
         }
         let mut chains: Vec<Vec<Mandate>> = Vec::new();
         for leaf in by_id.values() {
-            if leaf.grantee.pubkey != agent_pub {
-                continue;
-            }
-            let has_ethos_entry = leaf
-                .parsed_perimeter()
-                .map(|entries| {
-                    entries
-                        .iter()
-                        .any(|entry| matches!(entry, PerimeterEntry::Ethos { .. }))
-                })
-                .unwrap_or(false);
-            if !has_ethos_entry {
+            if leaf.grantee.pubkey != grantee_pub {
                 continue;
             }
             let mut chain = vec![leaf.clone()];
@@ -1584,6 +1594,32 @@ pub struct ContextRuntime {
     pub bridge: Bridge,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct EligibleSessionParent {
+    pub context: String,
+    pub parent_id: String,
+    pub subject: String,
+    pub not_before: String,
+    pub not_after: String,
+    pub perimeter: Vec<String>,
+    pub constraints: serde_json::Value,
+    pub chain: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionAuthority {
+    pub context: String,
+    pub subject: String,
+    pub parent_id: String,
+    pub leaf_id: String,
+    pub not_before: String,
+    pub not_after: String,
+    pub session_pub: String,
+    pub chain: Vec<serde_json::Value>,
+    pub leaf: serde_json::Value,
+    pub certificate: serde_json::Value,
+}
+
 #[derive(Debug, Clone)]
 struct HubRuntimeTool {
     context: String,
@@ -1638,6 +1674,215 @@ impl Runner {
             hot_tools: BTreeMap::new(),
             hot_server_pins: BTreeMap::new(),
         }
+    }
+
+    pub fn gateway_public_key(&self) -> String {
+        gateway_pub_multibase(&self.journal.keyholder)
+    }
+
+    pub fn gateway_kex_public_key(&self) -> String {
+        gateway_kex_pub_multibase(&self.journal.keyholder)
+    }
+
+    /// Discover only fresh, revocation-checked chains whose current leaf is
+    /// held by `delegate_pub` and carries an issue right. The OAuth request
+    /// contributes no context or mandate selector.
+    pub fn eligible_session_parents(
+        &self,
+        delegate_pub: &str,
+        now: &str,
+    ) -> Vec<EligibleSessionParent> {
+        let mut eligible = Vec::new();
+        for (context, runtime) in &self.contexts {
+            let Ok(doc) = runtime.bridge.did_doc() else {
+                continue;
+            };
+            let Ok(entries) = runtime.bridge.bundle.gamma_entries() else {
+                continue;
+            };
+            let revs = revocations(&entries);
+            for chain in runtime.bridge.walk_cert_chains(delegate_pub) {
+                if verify_chain_revocable(&chain, &doc, now, &revs).is_err() {
+                    continue;
+                }
+                let Some(parent) = chain.last() else {
+                    continue;
+                };
+                let can_issue = parent.parsed_perimeter().is_ok_and(|entries| {
+                    entries
+                        .iter()
+                        .any(|entry| matches!(entry, PerimeterEntry::Issue { depth } if *depth > 0))
+                });
+                if !can_issue {
+                    continue;
+                }
+                let Ok(public_chain) = chain
+                    .iter()
+                    .map(serde_json::to_value)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                else {
+                    continue;
+                };
+                eligible.push(EligibleSessionParent {
+                    context: context.clone(),
+                    parent_id: parent.id.clone(),
+                    subject: parent.subject.clone(),
+                    not_before: parent.not_before.clone(),
+                    not_after: parent.not_after.clone(),
+                    perimeter: parent.perimeter.clone(),
+                    constraints: parent.constraints.clone(),
+                    chain: public_chain,
+                });
+            }
+        }
+        eligible.sort_by(|left, right| {
+            (&left.context, &left.parent_id).cmp(&(&right.context, &right.parent_id))
+        });
+        eligible
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn activate_session_leaf(
+        &mut self,
+        context: &str,
+        parent_id: &str,
+        delegate_pub: &str,
+        gateway_pub: &str,
+        gateway_kex_pub: &str,
+        session_pub: &str,
+        leaf_value: &serde_json::Value,
+        now: &str,
+    ) -> Result<SessionAuthority> {
+        let runtime = self.context_mut(context)?;
+        let doc = runtime.bridge.did_doc()?;
+        let entries = runtime.bridge.bundle.gamma_entries().map_err(bridge_err)?;
+        let revs = revocations(&entries);
+        let mut parent_chain = runtime
+            .bridge
+            .walk_cert_chains(delegate_pub)
+            .into_iter()
+            .find(|chain| chain.last().is_some_and(|leaf| leaf.id == parent_id))
+            .ok_or_else(|| GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: "selected parent is not held by the delegate key".into(),
+            })?;
+        verify_chain_revocable(&parent_chain, &doc, now, &revs).map_err(|error| {
+            GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: error.to_string(),
+            }
+        })?;
+        let parent = parent_chain.last().expect("non-empty chain");
+        let parent_can_issue = parent.parsed_perimeter().is_ok_and(|entries| {
+            entries
+                .iter()
+                .any(|entry| matches!(entry, PerimeterEntry::Issue { depth } if *depth > 0))
+        });
+        if !parent_can_issue {
+            return Err(GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: "selected parent grants no issue authority".into(),
+            });
+        }
+        let leaf: Mandate = serde_json::from_value(leaf_value.clone()).map_err(|_| {
+            GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: "session leaf is malformed".into(),
+            }
+        })?;
+        if leaf.parent.as_deref() != Some(parent_id)
+            || leaf.issued_by != delegate_pub
+            || leaf.grantee.pubkey != gateway_pub
+            || leaf.grantee.kex_pubkey != gateway_kex_pub
+        {
+            return Err(GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: "session leaf authority binding mismatch".into(),
+            });
+        }
+        if leaf
+            .constraints
+            .get("session_bind")
+            .and_then(serde_json::Value::as_str)
+            != Some(session_pub)
+        {
+            return Err(GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: "session leaf session_bind mismatch".into(),
+            });
+        }
+        if leaf.parsed_perimeter().is_err()
+            || leaf.parsed_perimeter().is_ok_and(|entries| {
+                entries
+                    .iter()
+                    .any(|entry| matches!(entry, PerimeterEntry::Issue { .. }))
+            })
+        {
+            return Err(GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: "session leaf may not transmit issue authority".into(),
+            });
+        }
+        let before = aithos_core::gamma::ts_epoch(&leaf.not_before).map_err(bridge_err)?;
+        let after = aithos_core::gamma::ts_epoch(&leaf.not_after).map_err(bridge_err)?;
+        if after <= before || after - before > 8 * 60 * 60 {
+            return Err(GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: "session leaf lifetime exceeds eight hours".into(),
+            });
+        }
+        parent_chain.push(leaf.clone());
+        verify_chain_revocable(&parent_chain, &doc, now, &revs).map_err(|error| {
+            GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: error.to_string(),
+            }
+        })?;
+
+        let mut certificate = serde_json::json!({
+            "aithos-session-core": "1.0.0-draft.1",
+            "subject": leaf.subject.clone(),
+            "mandate_id": leaf.id.clone(),
+            "key": session_pub,
+            "not_before": leaf.not_before.clone(),
+            "not_after": leaf.not_after.clone(),
+            "signature": {
+                "alg": "ed25519",
+                "key": gateway_pub,
+                "value": "",
+            },
+        });
+        let preimage = serde_jcs::to_vec(&certificate).map_err(bridge_err)?;
+        let gateway_signing = SigningKey::from_bytes(runtime.bridge.keyholder.gateway_seed());
+        use ed25519_dalek::Signer as _;
+        certificate["signature"]["value"] =
+            serde_json::Value::String(hex::encode(gateway_signing.sign(&preimage).to_bytes()));
+        runtime
+            .bridge
+            .bundle
+            .store
+            .put(
+                &cert_path(&leaf.id),
+                &serde_json::to_vec_pretty(&leaf).map_err(bridge_err)?,
+            )
+            .map_err(bridge_err)?;
+        let public_chain = parent_chain
+            .iter()
+            .map(serde_json::to_value)
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(bridge_err)?;
+        Ok(SessionAuthority {
+            context: context.to_owned(),
+            subject: leaf.subject.clone(),
+            parent_id: parent_id.to_owned(),
+            leaf_id: leaf.id.clone(),
+            not_before: leaf.not_before.clone(),
+            not_after: leaf.not_after.clone(),
+            session_pub: session_pub.to_owned(),
+            chain: public_chain,
+            leaf: serde_json::to_value(&leaf).map_err(bridge_err)?,
+            certificate,
+        })
     }
 
     /// Open every context and the journal declared by a multi-context
