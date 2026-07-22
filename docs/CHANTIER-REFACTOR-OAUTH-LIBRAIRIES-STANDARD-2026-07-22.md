@@ -3,7 +3,7 @@
 Date : 2026-07-22
 
 Statut : **OLR-0 → OLR-4 verts localement** sur
-`feature/olr-oauth-libs-upstream` (seam, oauth2, OIDC, discovery JWKS).
+`codex/olr-oauth-libs-upstream` (seam, oauth2, OIDC, discovery JWKS).
 **OLR-5 prêt pour rollout local, live gates encore requis. OLR-6 borné seulement.**
 Hors provider / relai `aithos.fr`.
 

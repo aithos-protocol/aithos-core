@@ -1,7 +1,7 @@
 # OLR-0 — Corpus de régression OAuth libs (amont)
 
 Date : 2026-07-22
-Branche : `feature/olr-oauth-libs-upstream`
+Branche : `codex/olr-oauth-libs-upstream`
 Base locale seed : `044c497`
 Suite BDD ancre : `gateway-upstream-oauth.feature`
 
