@@ -32,6 +32,7 @@ use aithos_bundle::bundle::Bundle;
 use aithos_bundle::log::{ActionSpec, InferenceSpec, LogFilter};
 use aithos_bundle::remote::{KeySigner, RemoteStore};
 use aithos_bundle::Store;
+use aithos_core::constraints::verify_max_sessions;
 use aithos_core::did::DidDocument;
 use aithos_core::header::{Header, Recipient};
 use aithos_core::ids::Sid;
@@ -40,6 +41,7 @@ use aithos_core::mandate::{
     covers_act, verify_chain, verify_chain_revocable, verify_op, ActOp, GammaQuery, Mandate,
     MandateSpec, Op, PerimeterEntry, Verb,
 };
+use aithos_core::operation::{verify_session, SessionEvidence};
 use aithos_core::path::Zone;
 use aithos_core::revocation::{chain_revoked_at, revocations, Revocation};
 
@@ -82,6 +84,51 @@ pub const BRIEFING_SECTION: &str = "directives";
 /// the same id `owner-init-journal --token-budget` writes into the
 /// inference mandate (v1: one profile, one tap).
 pub const LLM_BUDGET_REF: &str = "llm";
+
+/// Native proof domain fixed by the historical CB2 session vector.
+pub const MCP_SESSION_NATIVE_PROOF_DOMAIN: &[u8] = b"aithos-core/cb2/native-leaf-proof\x00";
+
+/// Closed input passed through the gateway's only Core seam. Keeping Values
+/// here is intentional: Core owns and verifies every exact wire shape.
+pub struct DelegatedSessionEvidence<'a> {
+    pub mandate: &'a serde_json::Value,
+    pub certificate: &'a serde_json::Value,
+    pub projection: &'a serde_json::Value,
+    pub operation_ref: &'a serde_json::Value,
+    pub native_leaf_proof: Option<&'a serde_json::Value>,
+    pub session_proof: Option<&'a serde_json::Value>,
+}
+
+/// Verify SC1 and the two independent proofs over the same operation_ref.
+/// No session-specific verifier is implemented in the gateway.
+pub fn verify_delegated_session(
+    evidence: DelegatedSessionEvidence<'_>,
+) -> Result<serde_json::Value> {
+    verify_session(SessionEvidence {
+        mandate: evidence.mandate,
+        certificate: evidence.certificate,
+        projection: evidence.projection,
+        operation_ref: evidence.operation_ref,
+        native_leaf_proof: evidence.native_leaf_proof,
+        native_leaf_domain: MCP_SESSION_NATIVE_PROOF_DOMAIN,
+        session_proof: evidence.session_proof,
+    })
+    .map(|verified| verified.operation_ref().clone())
+    .map_err(|error| GatewayError::MandateDenied {
+        op: "delegated_session".into(),
+        reason: error.to_string(),
+    })
+}
+
+/// Apply Core's active-session tally to an injected, already-verified set.
+pub fn enforce_max_sessions(max_sessions: u64, active_session_keys: &[&str]) -> Result<usize> {
+    verify_max_sessions(max_sessions, active_session_keys)
+        .map(|verified| verified.active())
+        .map_err(|error| GatewayError::MandateDenied {
+            op: "delegated_session".into(),
+            reason: error.to_string(),
+        })
+}
 /// Vault record name for one approved hub manifest. The parent
 /// `/x/<server>` header is pinned by the bundle's vault root.
 const HUB_MANIFEST_FILE: &str = "manifest.enc";
@@ -4213,5 +4260,65 @@ fn write_denied(e: aithos_core::error::Error) -> GatewayError {
             reason,
         },
         other => GatewayError::LogAppendRefused(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod delegated_session_tests {
+    use super::*;
+
+    fn vector() -> serde_json::Value {
+        serde_json::from_str(include_str!("../../../../vectors/cb2-session-proof.json"))
+            .expect("historical CB2 vector parses")
+    }
+
+    #[test]
+    fn gateway_bridge_consumes_the_historical_sc1_vector_exactly() {
+        let vector = vector();
+        let positive = &vector["positive"];
+        let verified = verify_delegated_session(DelegatedSessionEvidence {
+            mandate: &positive["mandate"],
+            certificate: &positive["certificate"],
+            projection: &positive["operation_projection"],
+            operation_ref: &positive["operation_ref"],
+            native_leaf_proof: Some(&positive["native_leaf_proof_fixture"]),
+            session_proof: Some(&positive["session_proof"]),
+        })
+        .expect("exact SC1 and both proofs pass through Core");
+        assert_eq!(verified, positive["operation_ref"]);
+
+        assert!(verify_delegated_session(DelegatedSessionEvidence {
+            mandate: &positive["mandate"],
+            certificate: &positive["certificate"],
+            projection: &positive["operation_projection"],
+            operation_ref: &positive["operation_ref"],
+            native_leaf_proof: None,
+            session_proof: Some(&positive["session_proof"]),
+        })
+        .is_err());
+        assert!(verify_delegated_session(DelegatedSessionEvidence {
+            mandate: &positive["mandate"],
+            certificate: &positive["certificate"],
+            projection: &positive["operation_projection"],
+            operation_ref: &positive["operation_ref"],
+            native_leaf_proof: Some(&positive["native_leaf_proof_fixture"]),
+            session_proof: None,
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn gateway_delegates_active_session_counting_to_core() {
+        let keys: Vec<String> = (1u8..=4)
+            .map(|byte| {
+                let key = SigningKey::from_bytes(&[byte; 32]).verifying_key();
+                aithos_core::wire::ed25519_pub_to_multibase(&key.to_bytes())
+            })
+            .collect();
+        let first_three: Vec<&str> = keys.iter().take(3).map(String::as_str).collect();
+        assert_eq!(enforce_max_sessions(3, &first_three).unwrap(), 3);
+        let all_four: Vec<&str> = keys.iter().map(String::as_str).collect();
+        assert!(enforce_max_sessions(3, &all_four).is_err());
+        assert!(enforce_max_sessions(3, &[&keys[0], &keys[0]]).is_err());
     }
 }
