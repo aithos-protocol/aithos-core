@@ -1,0 +1,749 @@
+{
+  "description": "Independent Python Ed25519/JCS fixture for a gateway-prepared, delegate-signed existing Gamma v1 grant entry.",
+  "deterministic_test_seed_sha256": {
+    "delegate": "bdb339768bc5e4fecbe55a442056919b2b325907d49bcbf3bf8de13781996a83"
+  },
+  "inventory": {
+    "existing_gamma_wire_is_reused": true,
+    "negative_ids": [
+      "wrong-child-target",
+      "wrong-minting-chain",
+      "time-differs-from-child-issuance",
+      "stale-gamma-head",
+      "forged-delegate-signature"
+    ]
+  },
+  "negative_cases": [
+    {
+      "candidate": {
+        "child": {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "max_sessions": 3,
+            "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+          },
+          "grantee": {
+            "id": "urn:aithos:agent:gateway-session",
+            "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+            "label": "gateway session",
+            "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+          },
+          "id": "mandate_01J00000000000000000000062",
+          "issued_at": "2026-07-22T11:29:00Z",
+          "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "nonce": "62626262626262626262626262626262",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "parent": "mandate_01J00000000000000000000061",
+          "perimeter": [
+            "act.x.github.get_issue"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "did": {
+          "aithos-did-core": "1.0.0-draft.1",
+          "bundle": [
+            "file://cb14-independent-vector"
+          ],
+          "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+          "keys": {
+            "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+            "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+            "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+          },
+          "revocations": "gamma/gamma.jsonl",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+          }
+        },
+        "existing_entries": [],
+        "minting_chain": [
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:delegate",
+              "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+              "label": "delegate",
+              "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+            },
+            "id": "mandate_01J00000000000000000000061",
+            "issued_at": "2026-07-22T09:59:00Z",
+            "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+            "nonce": "61616161616161616161616161616161",
+            "not_after": "2026-07-23T00:00:00Z",
+            "not_before": "2026-07-22T10:00:00Z",
+            "parent": null,
+            "perimeter": [
+              "act.x.github.*",
+              "issue#depth=1"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "#root",
+              "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          }
+        ],
+        "signed_entry": {
+          "at": "2026-07-22T11:29:00Z",
+          "authorized_by": "mandate_01J00000000000000000000061",
+          "authorized_via": [
+            "mandate_01J00000000000000000000061"
+          ],
+          "id": "gamma_01J00000000000000000000071",
+          "kind": "grant",
+          "payload": {},
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "3bee6c5131478ea9eb9984b2e3992acd92ee9ed854aa45e13f0e666d1ff701e352a5abae1d0e176999e17212307cd158cedf681e0192be36c7c032760a31200a"
+          },
+          "target": "mandate_01J00000000000000000000079",
+          "v": 1
+        },
+        "signing_preimage_hex": "7b226174223a22323032362d30372d32325431313a32393a30305a222c22617574686f72697a65645f6279223a226d616e646174655f30314a3030303030303030303030303030303030303030303631222c22617574686f72697a65645f766961223a5b226d616e646174655f30314a3030303030303030303030303030303030303030303631225d2c226964223a2267616d6d615f30314a3030303030303030303030303030303030303030303731222c226b696e64223a226772616e74222c227061796c6f6164223a7b7d2c2270726576223a22222c227369676e6174757265223a7b22616c67223a2265643235353139222c226b6579223a227a364d6b6859617365775173704251776953467059674d5a5639573855645a4761766368477a32557a3166415a6e655a222c2276616c7565223a22227d2c22746172676574223a226d616e646174655f30314a3030303030303030303030303030303030303030303632222c2276223a317d",
+        "unsigned_entry": {
+          "at": "2026-07-22T11:29:00Z",
+          "authorized_by": "mandate_01J00000000000000000000061",
+          "authorized_via": [
+            "mandate_01J00000000000000000000061"
+          ],
+          "id": "gamma_01J00000000000000000000071",
+          "kind": "grant",
+          "payload": {},
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": ""
+          },
+          "target": "mandate_01J00000000000000000000062",
+          "v": 1
+        }
+      },
+      "id": "wrong-child-target"
+    },
+    {
+      "candidate": {
+        "child": {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "max_sessions": 3,
+            "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+          },
+          "grantee": {
+            "id": "urn:aithos:agent:gateway-session",
+            "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+            "label": "gateway session",
+            "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+          },
+          "id": "mandate_01J00000000000000000000062",
+          "issued_at": "2026-07-22T11:29:00Z",
+          "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "nonce": "62626262626262626262626262626262",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "parent": "mandate_01J00000000000000000000061",
+          "perimeter": [
+            "act.x.github.get_issue"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "did": {
+          "aithos-did-core": "1.0.0-draft.1",
+          "bundle": [
+            "file://cb14-independent-vector"
+          ],
+          "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+          "keys": {
+            "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+            "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+            "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+          },
+          "revocations": "gamma/gamma.jsonl",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+          }
+        },
+        "existing_entries": [],
+        "minting_chain": [
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:delegate",
+              "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+              "label": "delegate",
+              "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+            },
+            "id": "mandate_01J00000000000000000000061",
+            "issued_at": "2026-07-22T09:59:00Z",
+            "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+            "nonce": "61616161616161616161616161616161",
+            "not_after": "2026-07-23T00:00:00Z",
+            "not_before": "2026-07-22T10:00:00Z",
+            "parent": null,
+            "perimeter": [
+              "act.x.github.*",
+              "issue#depth=1"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "#root",
+              "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          }
+        ],
+        "signed_entry": {
+          "at": "2026-07-22T11:29:00Z",
+          "authorized_by": "mandate_01J00000000000000000000062",
+          "authorized_via": [
+            "mandate_01J00000000000000000000062"
+          ],
+          "id": "gamma_01J00000000000000000000071",
+          "kind": "grant",
+          "payload": {},
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "d38184b36d648c0d00d2474a9b2d71a1b7c25a3c6fd93edf8a9b976191af3822da070fc973be10e4278d7fa8507ae05277468deb5b98a57eb2a22e366c4f100c"
+          },
+          "target": "mandate_01J00000000000000000000062",
+          "v": 1
+        },
+        "signing_preimage_hex": "7b226174223a22323032362d30372d32325431313a32393a30305a222c22617574686f72697a65645f6279223a226d616e646174655f30314a3030303030303030303030303030303030303030303631222c22617574686f72697a65645f766961223a5b226d616e646174655f30314a3030303030303030303030303030303030303030303631225d2c226964223a2267616d6d615f30314a3030303030303030303030303030303030303030303731222c226b696e64223a226772616e74222c227061796c6f6164223a7b7d2c2270726576223a22222c227369676e6174757265223a7b22616c67223a2265643235353139222c226b6579223a227a364d6b6859617365775173704251776953467059674d5a5639573855645a4761766368477a32557a3166415a6e655a222c2276616c7565223a22227d2c22746172676574223a226d616e646174655f30314a3030303030303030303030303030303030303030303632222c2276223a317d",
+        "unsigned_entry": {
+          "at": "2026-07-22T11:29:00Z",
+          "authorized_by": "mandate_01J00000000000000000000061",
+          "authorized_via": [
+            "mandate_01J00000000000000000000061"
+          ],
+          "id": "gamma_01J00000000000000000000071",
+          "kind": "grant",
+          "payload": {},
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": ""
+          },
+          "target": "mandate_01J00000000000000000000062",
+          "v": 1
+        }
+      },
+      "id": "wrong-minting-chain"
+    },
+    {
+      "candidate": {
+        "child": {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "max_sessions": 3,
+            "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+          },
+          "grantee": {
+            "id": "urn:aithos:agent:gateway-session",
+            "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+            "label": "gateway session",
+            "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+          },
+          "id": "mandate_01J00000000000000000000062",
+          "issued_at": "2026-07-22T11:29:00Z",
+          "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "nonce": "62626262626262626262626262626262",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "parent": "mandate_01J00000000000000000000061",
+          "perimeter": [
+            "act.x.github.get_issue"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "did": {
+          "aithos-did-core": "1.0.0-draft.1",
+          "bundle": [
+            "file://cb14-independent-vector"
+          ],
+          "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+          "keys": {
+            "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+            "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+            "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+          },
+          "revocations": "gamma/gamma.jsonl",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+          }
+        },
+        "existing_entries": [],
+        "minting_chain": [
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:delegate",
+              "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+              "label": "delegate",
+              "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+            },
+            "id": "mandate_01J00000000000000000000061",
+            "issued_at": "2026-07-22T09:59:00Z",
+            "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+            "nonce": "61616161616161616161616161616161",
+            "not_after": "2026-07-23T00:00:00Z",
+            "not_before": "2026-07-22T10:00:00Z",
+            "parent": null,
+            "perimeter": [
+              "act.x.github.*",
+              "issue#depth=1"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "#root",
+              "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          }
+        ],
+        "signed_entry": {
+          "at": "2026-07-22T11:29:01Z",
+          "authorized_by": "mandate_01J00000000000000000000061",
+          "authorized_via": [
+            "mandate_01J00000000000000000000061"
+          ],
+          "id": "gamma_01J00000000000000000000071",
+          "kind": "grant",
+          "payload": {},
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "1d5c8257d52d0ea125fb542873ed73326aba50670977ca8097642e003c15c2441613e04b1e6c051a4c777feba6fc7a37340f9bb425ed601fbf9bd44af054f60a"
+          },
+          "target": "mandate_01J00000000000000000000062",
+          "v": 1
+        },
+        "signing_preimage_hex": "7b226174223a22323032362d30372d32325431313a32393a30305a222c22617574686f72697a65645f6279223a226d616e646174655f30314a3030303030303030303030303030303030303030303631222c22617574686f72697a65645f766961223a5b226d616e646174655f30314a3030303030303030303030303030303030303030303631225d2c226964223a2267616d6d615f30314a3030303030303030303030303030303030303030303731222c226b696e64223a226772616e74222c227061796c6f6164223a7b7d2c2270726576223a22222c227369676e6174757265223a7b22616c67223a2265643235353139222c226b6579223a227a364d6b6859617365775173704251776953467059674d5a5639573855645a4761766368477a32557a3166415a6e655a222c2276616c7565223a22227d2c22746172676574223a226d616e646174655f30314a3030303030303030303030303030303030303030303632222c2276223a317d",
+        "unsigned_entry": {
+          "at": "2026-07-22T11:29:00Z",
+          "authorized_by": "mandate_01J00000000000000000000061",
+          "authorized_via": [
+            "mandate_01J00000000000000000000061"
+          ],
+          "id": "gamma_01J00000000000000000000071",
+          "kind": "grant",
+          "payload": {},
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": ""
+          },
+          "target": "mandate_01J00000000000000000000062",
+          "v": 1
+        }
+      },
+      "id": "time-differs-from-child-issuance"
+    },
+    {
+      "candidate": {
+        "child": {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "max_sessions": 3,
+            "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+          },
+          "grantee": {
+            "id": "urn:aithos:agent:gateway-session",
+            "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+            "label": "gateway session",
+            "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+          },
+          "id": "mandate_01J00000000000000000000062",
+          "issued_at": "2026-07-22T11:29:00Z",
+          "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "nonce": "62626262626262626262626262626262",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "parent": "mandate_01J00000000000000000000061",
+          "perimeter": [
+            "act.x.github.get_issue"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "did": {
+          "aithos-did-core": "1.0.0-draft.1",
+          "bundle": [
+            "file://cb14-independent-vector"
+          ],
+          "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+          "keys": {
+            "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+            "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+            "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+          },
+          "revocations": "gamma/gamma.jsonl",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+          }
+        },
+        "existing_entries": [],
+        "minting_chain": [
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:delegate",
+              "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+              "label": "delegate",
+              "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+            },
+            "id": "mandate_01J00000000000000000000061",
+            "issued_at": "2026-07-22T09:59:00Z",
+            "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+            "nonce": "61616161616161616161616161616161",
+            "not_after": "2026-07-23T00:00:00Z",
+            "not_before": "2026-07-22T10:00:00Z",
+            "parent": null,
+            "perimeter": [
+              "act.x.github.*",
+              "issue#depth=1"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "#root",
+              "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          }
+        ],
+        "signed_entry": {
+          "at": "2026-07-22T11:29:00Z",
+          "authorized_by": "mandate_01J00000000000000000000061",
+          "authorized_via": [
+            "mandate_01J00000000000000000000061"
+          ],
+          "id": "gamma_01J00000000000000000000071",
+          "kind": "grant",
+          "payload": {},
+          "prev": "sha256:7171717171717171717171717171717171717171717171717171717171717171",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "819bb7f2b0975db77cf62594374790a2ce0bfcd5631e523f5b3d23a90d330cfba7673f287d25f494510ab53d32652fd7de899d10778040d410ada8a03b49d00c"
+          },
+          "target": "mandate_01J00000000000000000000062",
+          "v": 1
+        },
+        "signing_preimage_hex": "7b226174223a22323032362d30372d32325431313a32393a30305a222c22617574686f72697a65645f6279223a226d616e646174655f30314a3030303030303030303030303030303030303030303631222c22617574686f72697a65645f766961223a5b226d616e646174655f30314a3030303030303030303030303030303030303030303631225d2c226964223a2267616d6d615f30314a3030303030303030303030303030303030303030303731222c226b696e64223a226772616e74222c227061796c6f6164223a7b7d2c2270726576223a22222c227369676e6174757265223a7b22616c67223a2265643235353139222c226b6579223a227a364d6b6859617365775173704251776953467059674d5a5639573855645a4761766368477a32557a3166415a6e655a222c2276616c7565223a22227d2c22746172676574223a226d616e646174655f30314a3030303030303030303030303030303030303030303632222c2276223a317d",
+        "unsigned_entry": {
+          "at": "2026-07-22T11:29:00Z",
+          "authorized_by": "mandate_01J00000000000000000000061",
+          "authorized_via": [
+            "mandate_01J00000000000000000000061"
+          ],
+          "id": "gamma_01J00000000000000000000071",
+          "kind": "grant",
+          "payload": {},
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": ""
+          },
+          "target": "mandate_01J00000000000000000000062",
+          "v": 1
+        }
+      },
+      "id": "stale-gamma-head"
+    },
+    {
+      "candidate": {
+        "child": {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "max_sessions": 3,
+            "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+          },
+          "grantee": {
+            "id": "urn:aithos:agent:gateway-session",
+            "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+            "label": "gateway session",
+            "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+          },
+          "id": "mandate_01J00000000000000000000062",
+          "issued_at": "2026-07-22T11:29:00Z",
+          "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "nonce": "62626262626262626262626262626262",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "parent": "mandate_01J00000000000000000000061",
+          "perimeter": [
+            "act.x.github.get_issue"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "did": {
+          "aithos-did-core": "1.0.0-draft.1",
+          "bundle": [
+            "file://cb14-independent-vector"
+          ],
+          "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+          "keys": {
+            "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+            "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+            "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+          },
+          "revocations": "gamma/gamma.jsonl",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+          }
+        },
+        "existing_entries": [],
+        "minting_chain": [
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:delegate",
+              "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+              "label": "delegate",
+              "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+            },
+            "id": "mandate_01J00000000000000000000061",
+            "issued_at": "2026-07-22T09:59:00Z",
+            "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+            "nonce": "61616161616161616161616161616161",
+            "not_after": "2026-07-23T00:00:00Z",
+            "not_before": "2026-07-22T10:00:00Z",
+            "parent": null,
+            "perimeter": [
+              "act.x.github.*",
+              "issue#depth=1"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "#root",
+              "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          }
+        ],
+        "signed_entry": {
+          "at": "2026-07-22T11:29:00Z",
+          "authorized_by": "mandate_01J00000000000000000000061",
+          "authorized_via": [
+            "mandate_01J00000000000000000000061"
+          ],
+          "id": "gamma_01J00000000000000000000071",
+          "kind": "grant",
+          "payload": {},
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "target": "mandate_01J00000000000000000000062",
+          "v": 1
+        },
+        "signing_preimage_hex": "7b226174223a22323032362d30372d32325431313a32393a30305a222c22617574686f72697a65645f6279223a226d616e646174655f30314a3030303030303030303030303030303030303030303631222c22617574686f72697a65645f766961223a5b226d616e646174655f30314a3030303030303030303030303030303030303030303631225d2c226964223a2267616d6d615f30314a3030303030303030303030303030303030303030303731222c226b696e64223a226772616e74222c227061796c6f6164223a7b7d2c2270726576223a22222c227369676e6174757265223a7b22616c67223a2265643235353139222c226b6579223a227a364d6b6859617365775173704251776953467059674d5a5639573855645a4761766368477a32557a3166415a6e655a222c2276616c7565223a22227d2c22746172676574223a226d616e646174655f30314a3030303030303030303030303030303030303030303632222c2276223a317d",
+        "unsigned_entry": {
+          "at": "2026-07-22T11:29:00Z",
+          "authorized_by": "mandate_01J00000000000000000000061",
+          "authorized_via": [
+            "mandate_01J00000000000000000000061"
+          ],
+          "id": "gamma_01J00000000000000000000071",
+          "kind": "grant",
+          "payload": {},
+          "prev": "",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": ""
+          },
+          "target": "mandate_01J00000000000000000000062",
+          "v": 1
+        }
+      },
+      "id": "forged-delegate-signature"
+    }
+  ],
+  "positive": {
+    "child": {
+      "aithos-mandate-core": "1.0.0-draft.2",
+      "constraints": {
+        "max_sessions": 3,
+        "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+      },
+      "grantee": {
+        "id": "urn:aithos:agent:gateway-session",
+        "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+        "label": "gateway session",
+        "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+      },
+      "id": "mandate_01J00000000000000000000062",
+      "issued_at": "2026-07-22T11:29:00Z",
+      "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+      "nonce": "62626262626262626262626262626262",
+      "not_after": "2026-07-22T20:00:00Z",
+      "not_before": "2026-07-22T11:30:00Z",
+      "parent": "mandate_01J00000000000000000000061",
+      "perimeter": [
+        "act.x.github.get_issue"
+      ],
+      "signature": {
+        "alg": "ed25519",
+        "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+        "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+      },
+      "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+    },
+    "did": {
+      "aithos-did-core": "1.0.0-draft.1",
+      "bundle": [
+        "file://cb14-independent-vector"
+      ],
+      "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+      "keys": {
+        "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+        "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+        "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+        "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+      },
+      "revocations": "gamma/gamma.jsonl",
+      "signature": {
+        "alg": "ed25519",
+        "key": "#root",
+        "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+      }
+    },
+    "existing_entries": [],
+    "minting_chain": [
+      {
+        "aithos-mandate-core": "1.0.0-draft.2",
+        "constraints": {
+          "max_sessions": 3
+        },
+        "grantee": {
+          "id": "urn:aithos:agent:delegate",
+          "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+          "label": "delegate",
+          "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+        },
+        "id": "mandate_01J00000000000000000000061",
+        "issued_at": "2026-07-22T09:59:00Z",
+        "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+        "nonce": "61616161616161616161616161616161",
+        "not_after": "2026-07-23T00:00:00Z",
+        "not_before": "2026-07-22T10:00:00Z",
+        "parent": null,
+        "perimeter": [
+          "act.x.github.*",
+          "issue#depth=1"
+        ],
+        "signature": {
+          "alg": "ed25519",
+          "key": "#root",
+          "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+        },
+        "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+      }
+    ],
+    "signed_entry": {
+      "at": "2026-07-22T11:29:00Z",
+      "authorized_by": "mandate_01J00000000000000000000061",
+      "authorized_via": [
+        "mandate_01J00000000000000000000061"
+      ],
+      "id": "gamma_01J00000000000000000000071",
+      "kind": "grant",
+      "payload": {},
+      "prev": "",
+      "signature": {
+        "alg": "ed25519",
+        "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+        "value": "1a40f6471607f05cd98b1db1f1269a8e7f5357d3feb2e429e737821e35606cf7ef341c057cf0cc0086060a43545472e998424a899c967af0257465a014f3f301"
+      },
+      "target": "mandate_01J00000000000000000000062",
+      "v": 1
+    },
+    "signing_preimage_hex": "7b226174223a22323032362d30372d32325431313a32393a30305a222c22617574686f72697a65645f6279223a226d616e646174655f30314a3030303030303030303030303030303030303030303631222c22617574686f72697a65645f766961223a5b226d616e646174655f30314a3030303030303030303030303030303030303030303631225d2c226964223a2267616d6d615f30314a3030303030303030303030303030303030303030303731222c226b696e64223a226772616e74222c227061796c6f6164223a7b7d2c2270726576223a22222c227369676e6174757265223a7b22616c67223a2265643235353139222c226b6579223a227a364d6b6859617365775173704251776953467059674d5a5639573855645a4761766368477a32557a3166415a6e655a222c2276616c7565223a22227d2c22746172676574223a226d616e646174655f30314a3030303030303030303030303030303030303030303632222c2276223a317d",
+    "unsigned_entry": {
+      "at": "2026-07-22T11:29:00Z",
+      "authorized_by": "mandate_01J00000000000000000000061",
+      "authorized_via": [
+        "mandate_01J00000000000000000000061"
+      ],
+      "id": "gamma_01J00000000000000000000071",
+      "kind": "grant",
+      "payload": {},
+      "prev": "",
+      "signature": {
+        "alg": "ed25519",
+        "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+        "value": ""
+      },
+      "target": "mandate_01J00000000000000000000062",
+      "v": 1
+    }
+  },
+  "vector": "CB15-EXTERNAL-DELEGATED-GRANT-1",
+  "wire_change": false
+}
