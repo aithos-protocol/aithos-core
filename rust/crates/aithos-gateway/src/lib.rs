@@ -29,6 +29,7 @@ pub mod public_tls;
 pub mod relay;
 pub mod relay_application;
 pub mod store_adapter;
+pub mod tls_bootstrap;
 pub mod upstream_oauth;
 
 mod error;

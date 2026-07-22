@@ -10805,6 +10805,8 @@ fn g7a_status_is_redacted(w: &mut GatewayWorld) {
 
 #[tokio::main]
 async fn main() {
+    aithos_gateway::tls_bootstrap::install_ring_provider()
+        .expect("the gateway acceptance process selects rustls ring first");
     let features = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/features");
     // Serial on purpose: worlds spawn real socket servers and do
     // blocking owner-side crypto inside steps; under concurrent

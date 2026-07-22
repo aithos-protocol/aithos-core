@@ -66,6 +66,10 @@ fn require(condition: bool, message: impl Into<String>) -> Result<(), String> {
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
+    if let Err(error) = aithos_gateway::tls_bootstrap::install_ring_provider() {
+        eprintln!("DEMO REFUSED: TLS bootstrap failed: {error}");
+        return std::process::ExitCode::from(2);
+    }
     match run(Cli::parse()).await {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {

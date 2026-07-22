@@ -353,6 +353,10 @@ enum Command {
 }
 
 fn main() -> std::process::ExitCode {
+    if let Err(error) = aithos_gateway::tls_bootstrap::install_ring_provider() {
+        eprintln!("gateway TLS bootstrap refused: {error}");
+        return std::process::ExitCode::from(2);
+    }
     match run(Cli::parse()) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
