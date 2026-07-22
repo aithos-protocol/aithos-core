@@ -334,3 +334,66 @@ codé en dur n'a été trouvé pendant l'audit.
   étaient explicitement exclus de `aithos-gateway`. Le lead est resté l'unique
   intervenant gateway. Aucun push, merge, déploiement ou publication n'a été
   effectué.
+
+## G7b — attachement de connecteurs approuvés
+
+- Commit étroit : `af42a6f feat(gateway): attach pre-approved connectors at runtime`.
+- Le registry runtime reste local, atomique et sans secret. L'attachement exige
+  le manifeste déjà approuvé, écrit le client secret uniquement dans Vault,
+  réutilise l'OAuth amont existant, valide le drift avant activation et remplace
+  la surface active à chaud sans réécrire le YAML ni redémarrer.
+- Les identifiants de connecteur sont globalement uniques dans le registry
+  validé ; un voisin, un pin divergent, un secret indisponible ou un OAuth en
+  échec sont refusés avant activation et sans exposer les détails amont.
+- Aucun agent secondaire n'a modifié `aithos-gateway` pendant ce lot. Aucun
+  push, merge, déploiement ni publication n'a été effectué.
+
+## STOP documenté — binding de contexte client G7
+
+Le lot client a été contracté par neuf commits RED étroits, jusqu'à
+`9115dfd test(client): require opaque gateway context bindings`. Son
+implémentation est présente uniquement dans le worktree
+`aithos-client/codex/client-sdk-v2-parking` et **n'est pas commitée**.
+
+Les gates de cet état sont verts : rustfmt, clippy workspace `-D warnings`,
+tests workspace, 90 scénarios client dont 64 passés et 26 `@wip` hérités,
+19 scénarios WASM, cible `wasm32-unknown-unknown`, build release, smoke du
+tarball npm incluant enveloppe et preuve, et scan anti-fuite. Le script
+`check-bdd.sh` reste rouge uniquement sur les deux features phase E héritées
+`e-local-genesis` et `e-public-mutation`; elles n'ont pas été détaguées hors
+périmètre.
+
+La contre-revue indépendante impose néanmoins STOP avant commit :
+
+1. `bind_gateway_context` reçoit des octets `/contexts` et vérifie le DID ainsi
+   que `did.json`, mais le nom administratif du contexte n'est engagé par aucun
+   artefact signé. Un appelant peut donc remplacer `operations` par `finance`
+   tout en conservant le DID et le document valides, obtenir un handle opaque
+   `finance`, puis atteindre le keyholder pour les routes ou le stage voisins.
+   Les contrôles actuels ne rendent opaque que le handle, pas la provenance du
+   mapping nom vers DID.
+2. Le body `client-secret` est désérialisé vers un `&str`. Une chaîne JSON
+   échappée utilise le scratch `Vec<u8>` non zeroized de `serde_json` avant
+   d'être refusée ; cela copie un secret sur un chemin d'erreur et rejette une
+   valeur JSON par ailleurs valide.
+3. Le DTO stage exige les clés de premier niveau mais ignore les types et formes
+   de `endpoint`, `transport`, `oauth` et `approved_manifest`. Des valeurs
+   arbitraires peuvent donc atteindre le keyholder avant le refus gateway.
+4. Le sous-chemin npm public `@aithos/client/wasm` expose la classe wasm-bindgen
+   brute et ses handles `u32`; il contourne les garanties de construction opaque
+   de la façade principale tant que cet export reste supporté.
+
+Les points 2 à 4 exigent de nouveaux contrats RED étroits avant correction. Le
+point 1 exige en plus une décision de confiance ou de protocole absente du §4 :
+
+- engager/authentifier le mapping nom vers DID dans une preuve vérifiable, ce
+  qui étendrait le contrat wire actuellement interdit ; ou
+- déclarer la livraison TLS/SDK du catalogue comme source de confiance pour le
+  nom administratif et ajuster explicitement le modèle de menace ; ou
+- introduire une capacité locale native pré-épinglée nom vers DID, avec son
+  propre cycle d'approbation.
+
+Aucune de ces options n'est sélectionnée silencieusement. Conformément au
+handoff, le lot client s'arrête ici ; SDK et dashboard ne commencent pas avant
+l'arbitrage, la correction, un nouveau verdict indépendant GO et le commit
+client étroit.
