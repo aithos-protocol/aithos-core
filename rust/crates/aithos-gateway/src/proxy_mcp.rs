@@ -1116,6 +1116,7 @@ async fn oauth_ceremony_complete<U: Upstream>(
     let authority = match authority {
         Ok(authority) => authority,
         Err(error) => {
+            let _ = oauth.release_ceremony_reservation(&reserved);
             let _ = oauth.cancel_ceremony(&reserved.transaction_id);
             return oauth_error_response(&error);
         }

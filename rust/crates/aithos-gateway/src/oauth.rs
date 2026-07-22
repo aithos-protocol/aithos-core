@@ -412,6 +412,16 @@ impl From<OAuthSessionRecord> for BearerSession {
 struct SessionIndexRecord {
     v: u64,
     sids: Vec<String>,
+    #[serde(default)]
+    reservations: Vec<SessionSlotReservation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionSlotReservation {
+    transaction_id: String,
+    session_pub: String,
+    expires_at_epoch: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -428,6 +438,7 @@ pub struct ReservedCeremony {
     pub delegate_pub: String,
     pub context: String,
     pub parent_id: String,
+    pub subject: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1151,6 +1162,31 @@ impl AuthServer {
                     &ed25519_dalek::Signature::from_bytes(&signature_bytes),
                 )
                 .map_err(|_| oauth_err("invalid_request", "ceremony signature is invalid"))?;
+            let subject = leaf
+                .get("subject")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| oauth_err("invalid_request", "session leaf subject is missing"))?
+                .to_owned();
+            let session_limit = leaf
+                .pointer("/constraints/max_sessions")
+                .and_then(Value::as_u64)
+                .unwrap_or(3)
+                .min(3);
+            if session_limit == 0 {
+                return Err(oauth_err(
+                    "access_denied",
+                    "the delegated mandate permits no active session",
+                ));
+            }
+            self.reserve_session_slot(
+                &subject,
+                &pending.transaction_id,
+                &pending.session_pub,
+                session_limit,
+                pending.expires_at_epoch,
+                epoch(now)?,
+            )?;
             Ok(ReservedCeremony {
                 transaction_id: pending.transaction_id,
                 client_id: pending.client_id,
@@ -1164,6 +1200,7 @@ impl AuthServer {
                 delegate_pub,
                 context: context.to_owned(),
                 parent_id: parent_id.to_owned(),
+                subject,
             })
         })();
         if result.is_err() {
@@ -1172,36 +1209,16 @@ impl AuthServer {
         result
     }
 
-    pub fn finalize_ceremony(
+    fn reserve_session_slot(
         &self,
-        reserved: ReservedCeremony,
-        authority: &crate::core_bridge::SessionAuthority,
-        now: &str,
-    ) -> Result<String> {
-        if authority.context != reserved.context
-            || authority.parent_id != reserved.parent_id
-            || authority.session_pub != reserved.session_pub
-        {
-            let _ = self
-                .state
-                .take(StateNamespace::SessionKey, &reserved.transaction_id);
-            return Err(oauth_err(
-                "invalid_request",
-                "verified session authority differs from the ceremony",
-            ));
-        }
-        let now_epoch = epoch(now)?;
-        let authority_end = epoch(&authority.not_after)?;
-        if authority_end <= now_epoch || authority_end - now_epoch > 8 * 60 * 60 {
-            let _ = self
-                .state
-                .take(StateNamespace::SessionKey, &reserved.transaction_id);
-            return Err(oauth_err(
-                "invalid_request",
-                "verified session lifetime exceeds eight hours",
-            ));
-        }
-        let index_id = format!("index.{}", token_digest(&authority.subject));
+        subject: &str,
+        transaction_id: &str,
+        session_pub: &str,
+        limit: u64,
+        expires_at_epoch: i64,
+        now_epoch: i64,
+    ) -> Result<()> {
+        let index_id = format!("index.{}", token_digest(subject));
         let loaded = self.load_record::<SessionIndexRecord>(StateNamespace::Session, &index_id)?;
         let (mut index, version) = loaded
             .map(|(index, version)| (index, Some(version)))
@@ -1209,6 +1226,7 @@ impl AuthServer {
                 SessionIndexRecord {
                     v: 1,
                     sids: Vec::new(),
+                    reservations: Vec::new(),
                 },
                 None,
             ));
@@ -1225,14 +1243,125 @@ impl AuthServer {
                 active_sids.push(sid.clone());
             }
         }
-        active_keys.push(authority.session_pub.clone());
-        let active_refs: Vec<&str> = active_keys.iter().map(String::as_str).collect();
-        crate::core_bridge::enforce_max_sessions(3, &active_refs).map_err(|_| {
+        index.sids = active_sids;
+        index
+            .reservations
+            .retain(|reservation| reservation.expires_at_epoch > now_epoch);
+        active_keys.extend(
+            index
+                .reservations
+                .iter()
+                .map(|reservation| reservation.session_pub.clone()),
+        );
+        active_keys.push(session_pub.to_owned());
+        let active_refs = active_keys.iter().map(String::as_str).collect::<Vec<_>>();
+        crate::core_bridge::enforce_max_sessions(limit, &active_refs).map_err(|_| {
             oauth_err(
                 "access_denied",
-                "the delegate already has three active sessions",
+                "the delegate already reached its active session limit",
             )
         })?;
+        index.reservations.push(SessionSlotReservation {
+            transaction_id: transaction_id.to_owned(),
+            session_pub: session_pub.to_owned(),
+            expires_at_epoch,
+        });
+        match version {
+            Some(version) => {
+                self.replace_record(StateNamespace::Session, &index_id, version, &index)?;
+            }
+            None => {
+                self.create_record(StateNamespace::Session, &index_id, &index)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn release_ceremony_reservation(&self, reserved: &ReservedCeremony) -> Result<()> {
+        let index_id = format!("index.{}", token_digest(&reserved.subject));
+        let Some((mut index, version)) =
+            self.load_record::<SessionIndexRecord>(StateNamespace::Session, &index_id)?
+        else {
+            return Ok(());
+        };
+        let before = index.reservations.len();
+        index
+            .reservations
+            .retain(|reservation| reservation.transaction_id != reserved.transaction_id);
+        if index.reservations.len() != before {
+            self.replace_record(StateNamespace::Session, &index_id, version, &index)?;
+        }
+        let _ = self
+            .state
+            .take(StateNamespace::SessionKey, &reserved.transaction_id)?;
+        Ok(())
+    }
+
+    pub fn finalize_ceremony(
+        &self,
+        reserved: ReservedCeremony,
+        authority: &crate::core_bridge::SessionAuthority,
+        now: &str,
+    ) -> Result<String> {
+        if authority.context != reserved.context
+            || authority.parent_id != reserved.parent_id
+            || authority.session_pub != reserved.session_pub
+            || authority.subject != reserved.subject
+        {
+            let _ = self.release_ceremony_reservation(&reserved);
+            let _ = self
+                .state
+                .take(StateNamespace::SessionKey, &reserved.transaction_id);
+            return Err(oauth_err(
+                "invalid_request",
+                "verified session authority differs from the ceremony",
+            ));
+        }
+        let now_epoch = epoch(now)?;
+        let authority_end = epoch(&authority.not_after)?;
+        if authority_end <= now_epoch || authority_end - now_epoch > 8 * 60 * 60 {
+            let _ = self.release_ceremony_reservation(&reserved);
+            let _ = self
+                .state
+                .take(StateNamespace::SessionKey, &reserved.transaction_id);
+            return Err(oauth_err(
+                "invalid_request",
+                "verified session lifetime exceeds eight hours",
+            ));
+        }
+        let index_id = format!("index.{}", token_digest(&authority.subject));
+        let loaded = self.load_record::<SessionIndexRecord>(StateNamespace::Session, &index_id)?;
+        let (mut index, version) = loaded
+            .map(|(index, version)| (index, Some(version)))
+            .unwrap_or((
+                SessionIndexRecord {
+                    v: 1,
+                    sids: Vec::new(),
+                    reservations: Vec::new(),
+                },
+                None,
+            ));
+        let mut active_sids = Vec::new();
+        for sid in &index.sids {
+            let (session, _) = self
+                .load_record::<OAuthSessionRecord>(StateNamespace::Session, sid)?
+                .ok_or_else(|| oauth_state_error("session index is inconsistent"))?;
+            if matches!(session.status, SessionStatus::Active)
+                && epoch(&session.not_after)? > now_epoch
+            {
+                active_sids.push(sid.clone());
+            }
+        }
+        let reservation = index
+            .reservations
+            .iter()
+            .position(|reservation| {
+                reservation.transaction_id == reserved.transaction_id
+                    && reservation.session_pub == reserved.session_pub
+                    && reservation.expires_at_epoch > now_epoch
+            })
+            .ok_or_else(|| oauth_state_error("session capacity reservation is unavailable"))?;
+        index.reservations.remove(reservation);
         let sid = self.mint_opaque("sid");
         active_sids.push(sid.clone());
         index.sids = active_sids;
@@ -2363,6 +2492,53 @@ mod tests {
     }
 
     #[test]
+    fn fourth_concurrent_session_is_refused_by_cas_capacity_before_activation() {
+        let state = Arc::new(MemoryAsStateStore::default());
+        let as_ = production_server(state.clone());
+        let subject = "did:aithos:capacity-test";
+        let now = epoch(T0).unwrap();
+        for sequence in 1..=3 {
+            let key = SigningKey::from_bytes(&[sequence; 32]);
+            let session_pub =
+                aithos_core::wire::ed25519_pub_to_multibase(&key.verifying_key().to_bytes());
+            as_.reserve_session_slot(
+                subject,
+                &format!("ceremony-{sequence}"),
+                &session_pub,
+                3,
+                now + 120,
+                now,
+            )
+            .unwrap();
+        }
+        let fourth = SigningKey::from_bytes(&[4; 32]);
+        let fourth_pub =
+            aithos_core::wire::ed25519_pub_to_multibase(&fourth.verifying_key().to_bytes());
+        let error = as_
+            .reserve_session_slot(subject, "ceremony-4", &fourth_pub, 3, now + 120, now)
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            GatewayError::OauthDenied { ref error, .. } if error == "access_denied"
+        ));
+        let index_id = format!("index.{}", token_digest(subject));
+        let index: SessionIndexRecord = serde_json::from_value(
+            state
+                .read(StateNamespace::Session, &index_id)
+                .unwrap()
+                .unwrap()
+                .value,
+        )
+        .unwrap();
+        assert_eq!(index.sids.len(), 0);
+        assert_eq!(index.reservations.len(), 3);
+        assert!(state
+            .read(StateNamespace::Code, "ceremony-4")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
     fn signed_ceremony_binds_a_durable_sid_to_code_refresh_and_bearer() {
         const SESSION_END: &str = "2026-07-17T20:00:00Z";
         let state = Arc::new(MemoryAsStateStore::default());
@@ -2390,7 +2566,11 @@ mod tests {
         let preparation = as_
             .prepare_ceremony(&pending.transaction_id, &delegate_pub, T0)
             .unwrap();
-        let leaf = json!({ "signed": "leaf-placeholder-for-AS-boundary" });
+        let leaf = json!({
+            "signed": "leaf-placeholder-for-AS-boundary",
+            "subject": "did:aithos:test-subject",
+            "constraints": { "max_sessions": 3 },
+        });
         let grant = json!({ "signed": "grant-placeholder-for-AS-boundary" });
         let challenge =
             build_ceremony_challenge(&preparation, "finance", "mandate_parent", &leaf, &grant)
