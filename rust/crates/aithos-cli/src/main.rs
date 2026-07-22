@@ -1,7 +1,8 @@
-//! `aithos-core` — reference CLI (spec §09.1). Everything is local; no
-//! command needs a network to be correct.
+//! `aithos` — local Core operations plus an explicit delegated OAuth client.
+//! Bundle commands remain local; network access is isolated under `oauth`.
 
 mod custody;
+mod delegated_oauth;
 
 use aithos_core::did::DidDocument;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
@@ -52,6 +53,12 @@ enum Command {
     },
     /// Show the active profile, custody backend and verification status.
     Status,
+    /// OAuth client flows that retain signer custody outside process arguments.
+    #[command(name = "oauth")]
+    OAuth {
+        #[command(subcommand)]
+        command: OAuthCommand,
+    },
     /// Create a folder (mkdir -p) in a zone of the bundle.
     FolderAdd {
         #[arg(long)]
@@ -451,6 +458,37 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum OAuthCommand {
+    /// Complete a production delegated-session ceremony using a signer on stdin.
+    AuthorizeDelegated {
+        /// Gateway origin or its protected MCP resource URL.
+        #[arg(long)]
+        gateway: String,
+        /// Read one 32-byte delegate seed as hexadecimal from stdin.
+        #[arg(long, required = true)]
+        signer_stdin: bool,
+        /// Create this private (0600) JSON file with the resulting OAuth tokens.
+        #[arg(long)]
+        token_output: std::path::PathBuf,
+        /// Explicitly approve the locally verified WYSIWYS presentation.
+        #[arg(long, required = true)]
+        approve: bool,
+        /// Select this exact eligible context when more than one is available.
+        #[arg(long)]
+        context: Option<String>,
+        /// Select this exact eligible parent mandate when more than one is available.
+        #[arg(long)]
+        parent_id: Option<String>,
+        /// OAuth scope requested from the gateway.
+        #[arg(long)]
+        scope: Option<String>,
+        /// Public loopback redirect registered for the one-shot code exchange.
+        #[arg(long, default_value = "http://127.0.0.1/aithos/callback")]
+        redirect_uri: String,
+    },
+}
+
 use aithos_bundle::bundle::{Bundle, SectionSpec};
 use aithos_bundle::entropy::OsEntropy;
 use aithos_bundle::{FsStore, Store};
@@ -597,6 +635,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             vault_token_env,
         ),
         Command::Status => status(&home, &profile_name),
+        Command::OAuth {
+            command:
+                OAuthCommand::AuthorizeDelegated {
+                    gateway,
+                    signer_stdin,
+                    token_output,
+                    approve,
+                    context,
+                    parent_id,
+                    scope,
+                    redirect_uri,
+                },
+        } => delegated_oauth::authorize_delegated(delegated_oauth::AuthorizeOptions {
+            gateway,
+            signer_stdin,
+            token_output,
+            approve,
+            context,
+            parent_id,
+            scope,
+            redirect_uri,
+        }),
         Command::FolderAdd {
             dir,
             seed_hex,

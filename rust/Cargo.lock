@@ -48,7 +48,9 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "aithos-bundle",
  "aithos-core",
+ "aithos-wasm",
  "assert_cmd",
+ "base64",
  "clap",
  "ed25519-dalek",
  "hex",
@@ -56,9 +58,11 @@ dependencies = [
  "security-framework",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "ulid",
  "ureq",
+ "url",
  "zeroize",
 ]
 

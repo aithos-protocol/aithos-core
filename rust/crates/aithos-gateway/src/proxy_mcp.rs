@@ -900,6 +900,7 @@ fn authorize_request(params: &BTreeMap<String, String>) -> crate::oauth::Authori
 
 async fn oauth_authorize_get<U: Upstream>(
     State(rt): State<Arc<McpRouter<U>>>,
+    headers: HeaderMap,
     axum::extract::Query(params): axum::extract::Query<BTreeMap<String, String>>,
 ) -> Response {
     let Some(oauth) = &rt.oauth else {
@@ -910,7 +911,13 @@ async fn oauth_authorize_get<U: Upstream>(
         crate::oauth::AuthorizeOutcome::Consent { html } => {
             axum::response::Html(html).into_response()
         }
-        crate::oauth::AuthorizeOutcome::Ceremony { html, .. } => ceremony_html(html),
+        crate::oauth::AuthorizeOutcome::Ceremony { html, pending } => {
+            if accepts_json(&headers) {
+                ceremony_json(json!({ "v": 1, "ceremony": pending }))
+            } else {
+                ceremony_html(html)
+            }
+        }
         crate::oauth::AuthorizeOutcome::Redirect { location } => redirect_to(&location),
         crate::oauth::AuthorizeOutcome::HardError { detail } => (
             StatusCode::BAD_REQUEST,
@@ -918,6 +925,18 @@ async fn oauth_authorize_get<U: Upstream>(
         )
             .into_response(),
     }
+}
+
+fn accepts_json(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(',')
+                .filter_map(|item| item.split(';').next())
+                .any(|item| item.trim().eq_ignore_ascii_case("application/json"))
+        })
 }
 
 fn ceremony_response(content_type: &'static str, body: Body) -> Response {
@@ -936,6 +955,18 @@ fn ceremony_response(content_type: &'static str, body: Body) -> Response {
 
 fn ceremony_html(html: String) -> Response {
     ceremony_response("text/html; charset=utf-8", Body::from(html))
+}
+
+fn ceremony_json(document: Value) -> Response {
+    let mut response = Json(document).into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    response
 }
 
 async fn ceremony_app() -> Response {
@@ -2130,6 +2161,21 @@ mod upstream_transport_tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn delegated_cli_requests_the_existing_authorize_state_machine_as_json() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ACCEPT,
+            HeaderValue::from_static("text/html, application/json; q=1"),
+        );
+        assert!(accepts_json(&headers));
+        let response = ceremony_json(json!({ "v": 1, "ceremony": { "transaction_id": "t" } }));
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+
+        headers.insert(header::ACCEPT, HeaderValue::from_static("text/html, */*"));
+        assert!(!accepts_json(&headers));
     }
 
     #[test]

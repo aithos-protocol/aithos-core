@@ -63,6 +63,7 @@ serde_yaml = "0.9"
 # the path dep lets the gateway's P3 e2e run the REAL service in-process
 aithos-provider = { path = "crates/aithos-provider" }
 base64 = "0.22"
+url = "2"
 # P3 RemoteStore client (aithos-bundle feature `remote`, arbitrage ①
 # 2026-07-21): minimal BLOCKING http client for a sync lib — no async
 # runtime imposed on aithos-bundle consumers; rustls only, never a C TLS.
@@ -100,6 +101,7 @@ instant-acme = { version = "0.7", default-features = false, features = ["hyper-r
 # internal
 aithos-core = { version = "0.1.0-alpha.1", path = "crates/aithos-core" }
 aithos-bundle = { version = "0.1.0-alpha.1", path = "crates/aithos-bundle" }
+aithos-wasm = { version = "0.1.0-alpha.1", path = "crates/aithos-wasm" }
 
 [profile.release]
 lto = true
