@@ -1161,10 +1161,14 @@ async fn seam_binding_remapped(world: &mut RelayWorld, hostname: String) {
     // can see the NEW binding directly, without ever observing None — the
     // « remapped » branch of arbitrage ③ (verdict du témoin P7b, D3).
     let gw = world.gateway_pub.clone();
-    world.scripted.as_ref().expect("scripted control").with(|s| {
-        let binding = s.tunnels.get_mut(&gw).expect("a bound gateway");
-        binding.hostname = hostname;
-    });
+    world
+        .scripted
+        .as_ref()
+        .expect("scripted control")
+        .with(|s| {
+            let binding = s.tunnels.get_mut(&gw).expect("a bound gateway");
+            binding.hostname = hostname;
+        });
 }
 
 #[given(expr = "a control-seam pod is registered and serving {string}")]

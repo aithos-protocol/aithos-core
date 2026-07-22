@@ -640,6 +640,10 @@ mod tests {
         let mut long = vec!["a"; 100].join(".");
         long.push_str(&"a".repeat(253 - long.len()));
         assert!(hostname_ok(&long[..253].trim_end_matches('.').to_string()));
-        assert!(!hostname_ok(&format!("{}.{}", "a".repeat(63), "b".repeat(190))));
+        assert!(!hostname_ok(&format!(
+            "{}.{}",
+            "a".repeat(63),
+            "b".repeat(190)
+        )));
     }
 }
