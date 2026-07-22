@@ -42,7 +42,8 @@ input, select, button {
   font: inherit;
 }
 
-button { border-color: #174e3e; color: #fff; background: #174e3e; cursor: pointer; font-weight: 700; }
+button, a[role="button"] { border-color: #174e3e; color: #fff; background: #174e3e; cursor: pointer; font-weight: 700; }
+a[role="button"] { display: block; margin-top: 1rem; padding: .72rem .8rem; border: 1px solid #174e3e; border-radius: .45rem; text-align: center; text-decoration: none; }
 button.secondary { color: #263a33; background: #fff; }
 button:disabled { cursor: wait; opacity: .55; }
 

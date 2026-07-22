@@ -10,7 +10,9 @@ use std::time::Duration;
 use axum::Router;
 use clap::{Parser, Subcommand};
 use rustls::pki_types::UnixTime;
+use std::io::Read as _;
 use tokio::sync::watch;
+use zeroize::Zeroize as _;
 
 use aithos_gateway::config::{GatewayConfig, RelayCertificateConfig, RelayConfig};
 use aithos_gateway::connectors::ConnectorControl;
@@ -160,6 +162,22 @@ enum Command {
         #[arg(long)]
         store_root: String,
         #[arg(long, default_value_t = 30)]
+        ttl_days: u32,
+    },
+    /// OWNER SIDE: enrol one person public key as a delegated MCP session
+    /// issuer. The owner master seed is read as 32-byte hexadecimal from
+    /// stdin, never from argv; only the signed public mandate is persisted.
+    OwnerGrantSessionDelegate {
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        delegate_pub: String,
+        /// Exact agent-facing MCP tool granted to the future session.
+        #[arg(long = "tool", required = true)]
+        tools: Vec<String>,
+        #[arg(long)]
+        store_root: String,
+        #[arg(long, default_value_t = 7)]
         ttl_days: u32,
     },
     /// OWNER SIDE: capture one upstream tools/list into a proposed
@@ -557,6 +575,34 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
             return Ok(());
         }
+        Command::OwnerGrantSessionDelegate {
+            label,
+            delegate_pub,
+            tools,
+            store_root,
+            ttl_days,
+        } => {
+            let master = decode_master_stdin()?;
+            let start = now_secs();
+            let mandate = aithos_gateway::core_bridge::owner_grant_session_delegate(
+                &master,
+                label,
+                delegate_pub,
+                tools,
+                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                    root: store_root.into(),
+                })?,
+                &MandateWindow {
+                    not_before: ts(start),
+                    not_after: ts(start + u64::from(*ttl_days) * 86_400),
+                },
+                &ts(start),
+                &mut OsEntropy,
+            )?;
+            println!("session_delegate_mandate: {mandate}");
+            println!("delegate_pub: {delegate_pub}");
+            return Ok(());
+        }
         Command::OwnerGrantBriefing {
             master_seed_hex,
             label,
@@ -843,6 +889,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         | Command::OwnerReplicateHistory { .. }
         | Command::DemoLeaRenderConfig { .. }
         | Command::OwnerGrantContext { .. }
+        | Command::OwnerGrantSessionDelegate { .. }
         | Command::OwnerGrantBriefing { .. }
         | Command::OwnerGrantEthosRead { .. }
         | Command::OwnerAddSection { .. }
@@ -1509,6 +1556,18 @@ fn decode_master(hex_str: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> 
         .ok()
         .and_then(|v| <[u8; 32]>::try_from(v).ok())
         .ok_or("master-seed-hex: want 32 hex bytes")?)
+}
+
+fn decode_master_stdin() -> Result<zeroize::Zeroizing<[u8; 32]>, Box<dyn std::error::Error>> {
+    let mut encoded = zeroize::Zeroizing::new(String::new());
+    std::io::stdin().take(130).read_to_string(&mut encoded)?;
+    let mut decoded = zeroize::Zeroizing::new(
+        hex::decode(encoded.trim()).map_err(|_| "stdin master seed is not hexadecimal")?,
+    );
+    let bytes = <[u8; 32]>::try_from(decoded.as_slice())
+        .map_err(|_| "stdin master seed must contain exactly 32 bytes")?;
+    decoded.zeroize();
+    Ok(zeroize::Zeroizing::new(bytes))
 }
 
 fn now_secs() -> u64 {

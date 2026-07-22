@@ -821,6 +821,11 @@ pub fn router_oauth<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
         )
         .route("/ceremony/complete", post(oauth_ceremony_complete::<U>))
         .route("/ceremony/cancel", post(oauth_ceremony_cancel::<U>))
+        .route("/ceremony/enroll", axum::routing::get(ceremony_enroll))
+        .route(
+            "/ceremony/enroll.js",
+            axum::routing::get(ceremony_enroll_app),
+        )
         .route("/ceremony/app.js", axum::routing::get(ceremony_app))
         .route(
             "/ceremony/aithos_wasm.js",
@@ -973,6 +978,20 @@ async fn ceremony_app() -> Response {
     ceremony_response(
         "text/javascript; charset=utf-8",
         Body::from(include_str!("../assets/ceremony/app.js")),
+    )
+}
+
+async fn ceremony_enroll() -> Response {
+    ceremony_response(
+        "text/html; charset=utf-8",
+        Body::from(include_str!("../assets/ceremony/enroll.html")),
+    )
+}
+
+async fn ceremony_enroll_app() -> Response {
+    ceremony_response(
+        "text/javascript; charset=utf-8",
+        Body::from(include_str!("../assets/ceremony/enroll.js")),
     )
 }
 
@@ -2155,6 +2174,18 @@ mod upstream_transport_tests {
         assert!(source.contains("destroySigner()"));
         assert!(!source.contains("localStorage"));
         assert!(!source.contains("sessionStorage"));
+
+        let enrollment = ceremony_enroll_app().await;
+        assert_eq!(enrollment.headers()[header::CACHE_CONTROL], "no-store");
+        let enrollment_body = axum::body::to_bytes(enrollment.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let enrollment_source = std::str::from_utf8(&enrollment_body).unwrap();
+        assert!(enrollment_source.contains("PBKDF2"));
+        assert!(enrollment_source.contains("AES-GCM"));
+        assert!(enrollment_source.contains("seed.fill(0)"));
+        assert!(!enrollment_source.contains("localStorage"));
+        assert!(!enrollment_source.contains("sessionStorage"));
 
         let wasm = ceremony_wasm_binary().await;
         assert_eq!(wasm.headers()[header::CONTENT_TYPE], "application/wasm");
