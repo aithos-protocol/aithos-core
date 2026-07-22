@@ -121,7 +121,7 @@ Feature: OAuth 2.1 custody for protected upstreams
 
     Scenario: A scope-less MCP registers one public PKCE client
       Given a scope-less MCP profile using public dynamic client registration
-      When the owner starts consent for the scope-less MCP
+      When scope-less MCP consent starts
       Then dynamic registration uses public client authentication without a secret
       And the authorization URL omits the scope parameter
 

@@ -367,6 +367,13 @@ async fn registration(
         "registration_client_uri": "https://issuer.example/register/dynamic-client",
         "registration_access_token": "registration-access-token-sentinel"
     });
+    if method == "none" {
+        answer.as_object_mut().unwrap().remove("client_secret");
+        answer
+            .as_object_mut()
+            .unwrap()
+            .remove("client_secret_expires_at");
+    }
     match defect.as_deref() {
         Some("a missing client_id") => answer.as_object_mut().unwrap().remove("client_id"),
         Some("a mismatched token authentication method") => {
@@ -1139,6 +1146,52 @@ fn dynamic_config(base: &str) -> UpstreamOAuthConfig {
         vault: reference("registration"),
     };
     config
+}
+
+fn scope_less_public_dynamic_config(base: &str) -> UpstreamOAuthConfig {
+    let mut config = discovery_config(base);
+    config.client_id.clear();
+    config.client_secret = None;
+    config.scopes.clear();
+    config.client_authentication = OAuthClientAuthentication::None;
+    config.registration = OAuthRegistrationStrategy::Dynamic {
+        endpoint: None,
+        vault: reference("registration"),
+    };
+    config
+}
+
+#[given("a scope-less MCP profile using public dynamic client registration")]
+async fn scope_less_public_dynamic_profile(w: &mut GatewayWorld) {
+    let wire = ensure_wire(w).await;
+    harness(w).config = Some(scope_less_public_dynamic_config(&wire.base));
+}
+
+#[when("scope-less MCP consent starts")]
+async fn scope_less_owner_starts_consent(w: &mut GatewayWorld) {
+    let client = build_client(harness(w));
+    let consent = client.build_consent_url().await.unwrap();
+    harness(w).consent_url = Some(consent.authorization_url);
+}
+
+#[then("dynamic registration uses public client authentication without a secret")]
+fn scope_less_registration_is_public(w: &mut GatewayWorld) {
+    let h = harness(w);
+    let wire = h.wire.as_ref().unwrap();
+    assert_eq!(wire.hit_count("registration"), 1);
+    let stored: Value = serde_json::from_str(
+        &h.registration_broker
+            .value(&reference("registration"))
+            .expect("public registration record"),
+    )
+    .unwrap();
+    assert_eq!(stored["token_endpoint_auth_method"], "none");
+    assert!(stored.get("client_secret").is_none_or(Value::is_null));
+}
+
+#[then("the authorization URL omits the scope parameter")]
+fn scope_less_consent_omits_scope(w: &mut GatewayWorld) {
+    assert!(!consent_query(w).contains_key("scope"));
 }
 
 fn metadata_document_config(base: &str) -> UpstreamOAuthConfig {

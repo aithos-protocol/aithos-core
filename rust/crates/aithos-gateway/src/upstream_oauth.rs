@@ -334,8 +334,12 @@ impl UpstreamOAuthClient {
         url.query_pairs_mut()
             .append_pair("response_type", "code")
             .append_pair("client_id", &registration.client_id)
-            .append_pair("redirect_uri", &self.config.redirect_uri)
-            .append_pair("scope", &self.config.scopes.join(" "))
+            .append_pair("redirect_uri", &self.config.redirect_uri);
+        if !self.config.scopes.is_empty() {
+            url.query_pairs_mut()
+                .append_pair("scope", &self.config.scopes.join(" "));
+        }
+        url.query_pairs_mut()
             .append_pair("state", state)
             .append_pair("code_challenge", &challenge)
             .append_pair("code_challenge_method", "S256");

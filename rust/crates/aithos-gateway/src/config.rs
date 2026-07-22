@@ -1423,7 +1423,18 @@ fn validate_connector_profiles(
                 )));
             }
         }
-        if profile.oauth.scopes.is_empty()
+        let scope_less_public_mcp = profile.oauth.scopes.is_empty()
+            && profile.oauth.client_authentication == OAuthClientAuthentication::None
+            && matches!(
+                &profile.oauth.endpoints,
+                OAuthEndpointStrategy::Discovery { .. }
+            )
+            && matches!(
+                &profile.oauth.registration,
+                ConnectorProfileRegistration::Dynamic { .. }
+                    | ConnectorProfileRegistration::ClientMetadataDocument { .. }
+            );
+        if (!scope_less_public_mcp && profile.oauth.scopes.is_empty())
             || profile.oauth.scopes.len() > 64
             || profile
                 .oauth
@@ -1439,7 +1450,8 @@ fn validate_connector_profiles(
                 != profile.oauth.scopes.len()
         {
             return Err(GatewayError::ConfigRejected(format!(
-                "`{at}.oauth.scopes` must be distinct, bounded and non-empty"
+                "`{at}.oauth.scopes` must be distinct and bounded; an empty set is reserved \
+                 for public discovery-based MCP registration"
             )));
         }
     }
@@ -1540,7 +1552,15 @@ fn validate_upstream_oauth(
             "`{at}.client_id` is empty"
         )));
     }
-    if oauth.scopes.is_empty()
+    let scope_less_public_mcp = oauth.scopes.is_empty()
+        && oauth.client_authentication == OAuthClientAuthentication::None
+        && matches!(&oauth.endpoints, OAuthEndpointStrategy::Discovery { .. })
+        && matches!(
+            &oauth.registration,
+            OAuthRegistrationStrategy::Dynamic { .. }
+                | OAuthRegistrationStrategy::ClientMetadataDocument { .. }
+        );
+    if (!scope_less_public_mcp && oauth.scopes.is_empty())
         || oauth.scopes.iter().any(|scope| scope.trim().is_empty())
         || oauth
             .scopes
@@ -1550,7 +1570,8 @@ fn validate_upstream_oauth(
             != oauth.scopes.len()
     {
         return Err(GatewayError::ConfigRejected(format!(
-            "`{at}.scopes` must contain distinct, non-empty scopes"
+            "`{at}.scopes` must be distinct; an empty set is reserved for public \
+             discovery-based MCP registration"
         )));
     }
     match (oauth.client_authentication, &oauth.client_secret) {
@@ -3033,6 +3054,28 @@ journal:
         assert!(oauth.client_secret.is_none());
         assert!(matches!(
             oauth.registration,
+            OAuthRegistrationStrategy::Dynamic { .. }
+        ));
+    }
+
+    #[test]
+    fn public_discovery_dcr_accepts_an_explicit_scope_less_mcp_profile() {
+        let text = oauth_hub()
+            .replace(
+                "      auth_url: https://accounts.example/authorize\n      token_url: https://accounts.example/token\n      client_id: owner-client\n      client_secret:\n        broker: enterprise\n        path: aithos/oauth/client\n        field: client_secret\n",
+                "      endpoints:\n        strategy: discovery\n        protected_resource: https://mcp.example/mcp\n        issuer: https://mcp.example\n      client_authentication: none\n      registration:\n        strategy: dynamic\n        endpoint: https://mcp.example/register\n        vault:\n          broker: enterprise\n          path: aithos/oauth/registration\n          field: value\n",
+            )
+            .replace("      scopes: [resource.read]", "      scopes: []");
+        let cfg = GatewayConfig::from_yaml(&text).unwrap();
+        let oauth = cfg.servers.as_ref().unwrap()[0].oauth.as_ref().unwrap();
+        assert!(oauth.scopes.is_empty());
+        assert_eq!(oauth.client_authentication, OAuthClientAuthentication::None);
+        assert!(matches!(
+            &oauth.endpoints,
+            OAuthEndpointStrategy::Discovery { .. }
+        ));
+        assert!(matches!(
+            &oauth.registration,
             OAuthRegistrationStrategy::Dynamic { .. }
         ));
     }

@@ -197,8 +197,10 @@ enum Command {
     OwnerDiscoverServer {
         #[arg(long)]
         server: String,
+        /// Public MCP URL. Omit it to resolve the named server from the
+        /// gateway configuration and attach its brokered/OAuth credential.
         #[arg(long)]
-        url: String,
+        url: Option<String>,
         /// JSON proposal to review before enrollment.
         #[arg(long)]
         output: String,
@@ -747,7 +749,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::OwnerDiscoverServer {
             server,
-            url,
+            url: Some(url),
             output,
         } => {
             let upstream = HttpUpstream::new(url.clone());
@@ -761,6 +763,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("tools: {}", proposed.tools.len());
             return Ok(());
         }
+        Command::OwnerDiscoverServer { url: None, .. } => {}
         Command::OwnerEnrollServer {
             master_seed_hex,
             label,
@@ -928,9 +931,42 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         | Command::OwnerGrantEthosRead { .. }
         | Command::OwnerAddSection { .. }
         | Command::OwnerSetBriefing { .. }
-        | Command::OwnerDiscoverServer { .. }
         | Command::OwnerEnrollServer { .. }
         | Command::OwnerPreviewMandate { .. } => unreachable!("handled above"),
+        Command::OwnerDiscoverServer {
+            server,
+            url: None,
+            output,
+        } => {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+            let brokers = aithos_gateway::credentials::build_brokers(&cfg)?;
+            let oauth = UpstreamOAuthRegistry::from_config(&cfg, &brokers)?;
+            let configured = cfg
+                .servers
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .find(|candidate| candidate.name == server)
+                .ok_or_else(|| format!("unknown configured MCP server `{server}`"))?;
+            if configured.oauth.is_some() && !rt.block_on(oauth.is_connected(&server)) {
+                return Err(format!(
+                    "OAuth server `{server}` is not connected; run owner-connect-oauth first"
+                )
+                .into());
+            }
+            let upstream = HttpUpstream::for_server_with_oauth(configured, &brokers, &oauth)?;
+            let proposed = rt.block_on(aithos_gateway::hub::discover_server(&server, &upstream))?;
+            std::fs::write(&output, serde_json::to_vec_pretty(&proposed)?)?;
+            println!("proposal: {output}");
+            println!("server: {server}");
+            println!("tools: {}", proposed.tools.len());
+            Ok(())
+        }
+        Command::OwnerDiscoverServer { url: Some(_), .. } => {
+            unreachable!("public discovery is handled before config loading")
+        }
         Command::OwnerConnectOauth { server, wait_secs } => {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -1628,4 +1664,50 @@ fn ts(secs: u64) -> String {
     let mo = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if mo <= 2 { y + 1 } else { y };
     format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cli, Command};
+    use clap::Parser as _;
+
+    #[test]
+    fn owner_discovery_supports_public_and_configured_upstreams() {
+        let public = Cli::try_parse_from([
+            "aithos-gateway",
+            "owner-discover-server",
+            "--server",
+            "public",
+            "--url",
+            "https://mcp.example/mcp",
+            "--output",
+            "proposal.json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            public.command,
+            Command::OwnerDiscoverServer { url: Some(url), .. }
+                if url == "https://mcp.example/mcp"
+        ));
+
+        let configured = Cli::try_parse_from([
+            "aithos-gateway",
+            "--config",
+            "gateway.yaml",
+            "owner-discover-server",
+            "--server",
+            "notion",
+            "--output",
+            "proposal.json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            configured.command,
+            Command::OwnerDiscoverServer {
+                server,
+                url: None,
+                ..
+            } if server == "notion"
+        ));
+    }
 }
