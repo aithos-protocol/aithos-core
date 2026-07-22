@@ -99,6 +99,19 @@ pub trait CredentialBroker: Send + Sync {
         })
     }
 
+    /// Atomically replace one dedicated record only when its current value
+    /// still equals `expected`. OAuth callback state consumption relies on
+    /// this seam across gateway processes; brokers that cannot provide CAS
+    /// must fail closed instead of emulating it with a read followed by write.
+    fn compare_and_store<'a>(
+        &'a self,
+        _reference: &'a CredentialRef,
+        _expected: SecretValue,
+        _replacement: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<CredentialCompareAndStoreOutcome>> + Send + 'a>> {
+        Box::pin(async { Ok(CredentialCompareAndStoreOutcome::Unsupported) })
+    }
+
     /// Resolve a record while distinguishing a genuine absence from a broker
     /// outage. The default preserves compatibility for existing adapters;
     /// writable durable brokers should override it with an atomic lookup.
@@ -131,6 +144,13 @@ pub trait CredentialBroker: Send + Sync {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CredentialDeleteOutcome {
     Deleted,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialCompareAndStoreOutcome {
+    Stored,
+    Mismatch,
     Unsupported,
 }
 
@@ -253,6 +273,15 @@ impl VaultKv2Broker {
     /// secret. Status-only failures preserve the same redaction discipline
     /// as reads.
     async fn put(&self, reference: &CredentialRef, value: SecretValue) -> Result<()> {
+        self.put_with_cas(reference, value, None).await.map(|_| ())
+    }
+
+    async fn put_with_cas(
+        &self,
+        reference: &CredentialRef,
+        value: SecretValue,
+        cas: Option<u64>,
+    ) -> Result<CredentialCompareAndStoreOutcome> {
         let token = Zeroizing::new(
             std::env::var(&self.token_env)
                 .ok()
@@ -265,9 +294,15 @@ impl VaultKv2Broker {
                 })?,
         );
         let url = format!("{}/v1/{}/data/{}", self.address, self.mount, reference.path);
-        let body = serde_json::json!({
-            "data": { reference.field.clone(): value.expose() }
-        });
+        let body = match cas {
+            Some(version) => serde_json::json!({
+                "options": { "cas": version },
+                "data": { reference.field.clone(): value.expose() }
+            }),
+            None => serde_json::json!({
+                "data": { reference.field.clone(): value.expose() }
+            }),
+        };
         let response = self
             .client
             .post(&url)
@@ -287,13 +322,81 @@ impl VaultKv2Broker {
                     .to_owned(),
                 )
             })?;
+        if cas.is_some() && response.status() == reqwest::StatusCode::BAD_REQUEST {
+            return Ok(CredentialCompareAndStoreOutcome::Mismatch);
+        }
         if !response.status().is_success() {
             return Err(GatewayError::CredentialUnavailable(format!(
                 "vault write answered status {}",
                 response.status().as_u16()
             )));
         }
-        Ok(())
+        Ok(CredentialCompareAndStoreOutcome::Stored)
+    }
+
+    async fn compare_put(
+        &self,
+        reference: &CredentialRef,
+        expected: SecretValue,
+        replacement: SecretValue,
+    ) -> Result<CredentialCompareAndStoreOutcome> {
+        let token = Zeroizing::new(
+            std::env::var(&self.token_env)
+                .ok()
+                .filter(|token| !token.trim().is_empty())
+                .ok_or_else(|| {
+                    GatewayError::CredentialUnavailable("vault token is unavailable".into())
+                })?,
+        );
+        let url = format!("{}/v1/{}/data/{}", self.address, self.mount, reference.path);
+        let response = self
+            .client
+            .get(&url)
+            .header("X-Vault-Token", token.as_str())
+            .send()
+            .await
+            .map_err(|error| {
+                GatewayError::CredentialUnavailable(
+                    if error.is_timeout() {
+                        "vault CAS read timed out"
+                    } else if error.is_connect() {
+                        "vault is unreachable"
+                    } else {
+                        "vault CAS read transport failed"
+                    }
+                    .into(),
+                )
+            })?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(CredentialCompareAndStoreOutcome::Mismatch);
+        }
+        if !response.status().is_success() {
+            return Err(GatewayError::CredentialUnavailable(format!(
+                "vault CAS read answered status {}",
+                response.status().as_u16()
+            )));
+        }
+        let body: serde_json::Value = response.json().await.map_err(|_| {
+            GatewayError::CredentialUnavailable("vault CAS answer is not JSON".into())
+        })?;
+        let current = body
+            .pointer("/data/data")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|fields| fields.get(&reference.field))
+            .and_then(serde_json::Value::as_str);
+        let version = body
+            .pointer("/data/metadata/version")
+            .and_then(serde_json::Value::as_u64);
+        let Some((current, version)) = current.zip(version) else {
+            return Err(GatewayError::CredentialUnavailable(
+                "vault CAS record is malformed".into(),
+            ));
+        };
+        if current != expected.expose() {
+            return Ok(CredentialCompareAndStoreOutcome::Mismatch);
+        }
+        self.put_with_cas(reference, replacement, Some(version))
+            .await
     }
 
     async fn remove(&self, reference: &CredentialRef) -> Result<CredentialDeleteOutcome> {
@@ -366,6 +469,15 @@ impl CredentialBroker for VaultKv2Broker {
         value: SecretValue,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(self.put(reference, value))
+    }
+
+    fn compare_and_store<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+        expected: SecretValue,
+        replacement: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<CredentialCompareAndStoreOutcome>> + Send + 'a>> {
+        Box::pin(self.compare_put(reference, expected, replacement))
     }
 
     fn resolve_optional<'a>(
@@ -621,6 +733,80 @@ mod tests {
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].0.as_deref(), Some(VAULT_TOKEN_SENTINEL));
         assert_eq!(seen[0].1["data"]["token"], MCP_SENTINEL);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn oauth_state_compare_and_store_uses_vault_kv_v2_cas() {
+        use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
+
+        type CasState = Arc<std::sync::Mutex<(String, u64, Vec<u64>)>>;
+        let state: CasState = Arc::new(std::sync::Mutex::new(("pending".into(), 7, Vec::new())));
+        let app = Router::new()
+            .route(
+                "/v1/{*path}",
+                get(|State(state): State<CasState>| async move {
+                    let state = state.lock().unwrap();
+                    Json(serde_json::json!({
+                        "data": {
+                            "data": { "token": state.0.clone() },
+                            "metadata": { "version": state.1 }
+                        }
+                    }))
+                })
+                .post(
+                    |State(state): State<CasState>, Json(body): Json<serde_json::Value>| async move {
+                        let cas = body["options"]["cas"].as_u64().unwrap_or_default();
+                        let replacement = body["data"]["token"].as_str().unwrap_or_default();
+                        let mut state = state.lock().unwrap();
+                        state.2.push(cas);
+                        if cas != state.1 {
+                            return StatusCode::BAD_REQUEST;
+                        }
+                        state.0 = replacement.to_owned();
+                        state.1 += 1;
+                        StatusCode::NO_CONTENT
+                    },
+                ),
+            )
+            .with_state(Arc::clone(&state));
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        std::env::set_var("AITHOS_TEST_VAULT_CAS", VAULT_TOKEN_SENTINEL);
+        let broker = VaultKv2Broker::new(
+            &format!("http://127.0.0.1:{port}"),
+            "secret",
+            "AITHOS_TEST_VAULT_CAS",
+        )
+        .unwrap();
+        assert_eq!(
+            broker
+                .compare_and_store(
+                    &reference(),
+                    SecretValue::new("pending".into()),
+                    SecretValue::new("consumed".into()),
+                )
+                .await
+                .unwrap(),
+            CredentialCompareAndStoreOutcome::Stored
+        );
+        assert_eq!(
+            broker
+                .compare_and_store(
+                    &reference(),
+                    SecretValue::new("pending".into()),
+                    SecretValue::new("replayed".into()),
+                )
+                .await
+                .unwrap(),
+            CredentialCompareAndStoreOutcome::Mismatch
+        );
+        let state = state.lock().unwrap();
+        assert_eq!(state.0, "consumed");
+        assert_eq!(state.2, [7]);
     }
 
     #[tokio::test(flavor = "multi_thread")]

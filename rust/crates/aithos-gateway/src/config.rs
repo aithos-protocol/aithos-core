@@ -126,6 +126,18 @@ pub enum OAuthClientAuthentication {
     None,
 }
 
+/// Which protocol engine executes Authorization Code / PKCE / refresh.
+/// Custody, discovery, DCR and Vault stay in Aithos regardless.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OAuthProtocolEngine {
+    /// Historic hand-rolled token HTTP (default — production safe).
+    #[default]
+    Native,
+    /// `oauth2` crate for token endpoint mechanics (OLR-2).
+    Oauth2,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(tag = "strategy", rename_all = "snake_case", deny_unknown_fields)]
 pub enum OAuthEndpointStrategy {
@@ -180,7 +192,8 @@ pub struct OAuthAuthorizationParameters {
 
 /// Closed source used to bind a token set to a stable upstream identity.
 /// A user-info endpoint is profile-owned and queried with the freshly issued
-/// bearer; browser input can never select it.
+/// bearer; browser input can never select it. ID Token validation (OLR-3)
+/// uses a pinned JWKS URI and never becomes Aithos authority.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum OAuthIdentitySource {
@@ -188,6 +201,13 @@ pub enum OAuthIdentitySource {
     TokenResponse,
     UserInfo {
         endpoint: String,
+    },
+    /// Verify `id_token` with `openidconnect` against a pinned JWKS.
+    IdToken {
+        jwks_uri: String,
+        /// Defaults to the OAuth `client_id` when omitted.
+        #[serde(default)]
+        audience: Option<String>,
     },
 }
 
@@ -223,6 +243,10 @@ pub struct UpstreamOAuthConfig {
     pub endpoints: OAuthEndpointStrategy,
     #[serde(default)]
     pub client_authentication: OAuthClientAuthentication,
+    /// Protocol engine for code exchange and refresh. Default `native`.
+    /// Override for a process with `AITHOS_UPSTREAM_OAUTH_ENGINE=oauth2`.
+    #[serde(default)]
+    pub protocol_engine: OAuthProtocolEngine,
     #[serde(default)]
     pub registration: OAuthRegistrationStrategy,
     #[serde(default)]
@@ -361,6 +385,8 @@ pub struct ConnectorProfileOAuth {
     pub endpoints: OAuthEndpointStrategy,
     #[serde(default)]
     pub client_authentication: OAuthClientAuthentication,
+    #[serde(default)]
+    pub protocol_engine: OAuthProtocolEngine,
     #[serde(default)]
     pub registration: ConnectorProfileRegistration,
     #[serde(default)]
@@ -1230,6 +1256,13 @@ fn validate_connector_profiles(
                 "`{at}.oauth.credential_broker` is unknown"
             )));
         }
+        if profile.oauth.protocol_engine == OAuthProtocolEngine::Oauth2
+            && !cfg!(feature = "olr-oauth-libs")
+        {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.oauth.protocol_engine` requires the `olr-oauth-libs` build feature"
+            )));
+        }
         let validate_url = |field: &str, value: &str| -> Result<()> {
             validate_upstream(value, &format!("{at}.{field}"))?;
             if value.starts_with("http://") && !is_loopback_http(value) {
@@ -1397,8 +1430,19 @@ fn validate_connector_profiles(
         }
         if let Some(binding) = &profile.oauth.account_binding {
             validate_url("oauth.account_binding.issuer", &binding.issuer)?;
-            if let OAuthIdentitySource::UserInfo { endpoint } = &binding.source {
-                validate_url("oauth.account_binding.source.endpoint", endpoint)?;
+            match &binding.source {
+                OAuthIdentitySource::UserInfo { endpoint } => {
+                    validate_url("oauth.account_binding.source.endpoint", endpoint)?;
+                }
+                OAuthIdentitySource::IdToken { jwks_uri, .. } => {
+                    if !cfg!(feature = "olr-oauth-libs") {
+                        return Err(GatewayError::ConfigRejected(format!(
+                            "`{at}.oauth.account_binding.source` requires the `olr-oauth-libs` build feature"
+                        )));
+                    }
+                    validate_url("oauth.account_binding.source.jwks_uri", jwks_uri)?;
+                }
+                OAuthIdentitySource::TokenResponse => {}
             }
             if let OAuthEndpointStrategy::Discovery { issuer, .. } = &profile.oauth.endpoints {
                 if issuer != &binding.issuer {
@@ -1515,6 +1559,11 @@ fn validate_upstream_oauth(
     brokers: Option<&BTreeMap<String, BrokerConfig>>,
 ) -> Result<()> {
     let at = format!("servers[{server}].oauth");
+    if oauth.protocol_engine == OAuthProtocolEngine::Oauth2 && !cfg!(feature = "olr-oauth-libs") {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}.protocol_engine` requires the `olr-oauth-libs` build feature"
+        )));
+    }
     let validate_oauth_url = |field: &str, url: &str| -> Result<()> {
         validate_upstream(url, &format!("{at}.{field}"))?;
         if url.starts_with("http://") && !is_loopback_http(url) {
@@ -1637,8 +1686,19 @@ fn validate_upstream_oauth(
     }
     if let Some(binding) = &oauth.account_binding {
         validate_oauth_url("account_binding.issuer", &binding.issuer)?;
-        if let OAuthIdentitySource::UserInfo { endpoint } = &binding.source {
-            validate_oauth_url("account_binding.source.endpoint", endpoint)?;
+        match &binding.source {
+            OAuthIdentitySource::UserInfo { endpoint } => {
+                validate_oauth_url("account_binding.source.endpoint", endpoint)?;
+            }
+            OAuthIdentitySource::IdToken { jwks_uri, .. } => {
+                if !cfg!(feature = "olr-oauth-libs") {
+                    return Err(GatewayError::ConfigRejected(format!(
+                        "`{at}.account_binding.source` requires the `olr-oauth-libs` build feature"
+                    )));
+                }
+                validate_oauth_url("account_binding.source.jwks_uri", jwks_uri)?;
+            }
+            OAuthIdentitySource::TokenResponse => {}
         }
         for (field, value) in [
             ("subject_field", binding.subject_field.as_str()),
@@ -3098,6 +3158,33 @@ journal:
         assert!(matches!(
             GatewayConfig::from_yaml(&plaintext),
             Err(GatewayError::ConfigRejected(message)) if message.contains("requires TLS")
+        ));
+    }
+
+    #[test]
+    #[cfg(feature = "olr-oauth-libs")]
+    fn upstream_oidc_jwks_requires_tls_off_loopback() {
+        let text = oauth_hub().replace(
+            "      token_vault:\n",
+            "      account_binding:\n        issuer: https://accounts.example\n        source:\n          kind: id_token\n          jwks_uri: http://accounts.example/jwks\n        subject_field: sub\n        account_field: email\n      token_vault:\n",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(message)) if message.contains("requires TLS")
+        ));
+    }
+
+    #[test]
+    #[cfg(not(feature = "olr-oauth-libs"))]
+    fn oauth2_engine_is_rejected_when_the_build_feature_is_absent() {
+        let text = oauth_hub().replace(
+            "      auth_url: https://accounts.example/authorize\n",
+            "      protocol_engine: oauth2\n      auth_url: https://accounts.example/authorize\n",
+        );
+        assert!(matches!(
+            GatewayConfig::from_yaml(&text),
+            Err(GatewayError::ConfigRejected(message))
+                if message.contains("requires the `olr-oauth-libs` build feature")
         ));
     }
 

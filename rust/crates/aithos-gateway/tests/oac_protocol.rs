@@ -12,7 +12,9 @@ use aithos_gateway::config::{
     OAuthEndpointStrategy, OAuthIdentitySource, OAuthRegistrationStrategy, UpstreamOAuthConfig,
 };
 use aithos_gateway::core_bridge::SeqEntropy;
-use aithos_gateway::credentials::{CredentialBroker, CredentialRef, SecretValue};
+use aithos_gateway::credentials::{
+    CredentialBroker, CredentialCompareAndStoreOutcome, CredentialRef, SecretValue,
+};
 use aithos_gateway::oauth_discovery::{OAuthDiscoveryClient, ResolvedOAuthEndpoints};
 use aithos_gateway::oauth_registration::{ClientCredentialSource, OAuthRegistrationClient};
 use aithos_gateway::proxy_mcp::Upstream;
@@ -97,6 +99,23 @@ impl CredentialBroker for MemoryBroker {
             Ok(())
         })
     }
+
+    fn compare_and_store<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+        expected: SecretValue,
+        replacement: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<CredentialCompareAndStoreOutcome>> + Send + 'a>> {
+        Box::pin(async move {
+            let key = (reference.path.clone(), reference.field.clone());
+            let mut values = self.values.lock().unwrap();
+            if values.get(&key).map(String::as_str) != Some(expected.expose()) {
+                return Ok(CredentialCompareAndStoreOutcome::Mismatch);
+            }
+            values.insert(key, replacement.expose().to_owned());
+            Ok(CredentialCompareAndStoreOutcome::Stored)
+        })
+    }
 }
 
 fn credential(path: &str) -> CredentialRef {
@@ -118,6 +137,7 @@ fn static_config(base: &str, authentication: OAuthClientAuthentication) -> Upstr
         redirect_uri: REDIRECT_URI.into(),
         endpoints: OAuthEndpointStrategy::Static,
         client_authentication: authentication,
+        protocol_engine: Default::default(),
         registration: OAuthRegistrationStrategy::Static,
         authorization_parameters: OAuthAuthorizationParameters::default(),
         resource: None,
@@ -144,6 +164,7 @@ fn discovery_config(base: &str) -> UpstreamOAuthConfig {
             issuer: base.into(),
         },
         client_authentication: OAuthClientAuthentication::ClientSecretPost,
+        protocol_engine: Default::default(),
         registration: OAuthRegistrationStrategy::Static,
         authorization_parameters: OAuthAuthorizationParameters::default(),
         resource: None,
@@ -427,6 +448,7 @@ fn resolved_endpoints(base: &str) -> ResolvedOAuthEndpoints {
         token_endpoint: format!("{base}/token"),
         registration_endpoint: Some(format!("{base}/register")),
         revocation_endpoint: None,
+        jwks_uri: None,
     }
 }
 
@@ -763,19 +785,30 @@ async fn callback_state_is_one_shot_under_concurrency() {
         }),
     );
     let (base, task) = spawn(app).await;
-    let broker: Arc<dyn CredentialBroker> = Arc::new(MemoryBroker::default());
-    let client = Arc::new(
+    let broker = Arc::new(MemoryBroker::default());
+    let first_client = Arc::new(
         UpstreamOAuthClient::new(
             static_config(&base, OAuthClientAuthentication::None),
             None,
             None,
-            broker,
+            broker.clone() as Arc<dyn CredentialBroker>,
             Box::new(SeqEntropy::default()),
             Arc::new(|| NOW),
         )
         .unwrap(),
     );
-    let consent = client.build_consent_url().await.unwrap();
+    let second_client = Arc::new(
+        UpstreamOAuthClient::new(
+            static_config(&base, OAuthClientAuthentication::None),
+            None,
+            None,
+            broker as Arc<dyn CredentialBroker>,
+            Box::new(SeqEntropy::default()),
+            Arc::new(|| NOW),
+        )
+        .unwrap(),
+    );
+    let consent = first_client.build_consent_url().await.unwrap();
     let state = reqwest::Url::parse(&consent.authorization_url)
         .unwrap()
         .query_pairs()
@@ -784,12 +817,12 @@ async fn callback_state_is_one_shot_under_concurrency() {
         .1
         .into_owned();
     let first = {
-        let client = Arc::clone(&client);
+        let client = Arc::clone(&first_client);
         let state = state.clone();
         tokio::spawn(async move { client.exchange_callback(&state, "code-a").await })
     };
     let second = {
-        let client = Arc::clone(&client);
+        let client = Arc::clone(&second_client);
         tokio::spawn(async move { client.exchange_callback(&state, "code-b").await })
     };
     let outcomes = [first.await.unwrap(), second.await.unwrap()];

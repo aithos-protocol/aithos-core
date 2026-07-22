@@ -24,7 +24,11 @@ pub mod hub;
 pub mod keyholder;
 pub mod oauth;
 pub mod oauth_discovery;
+#[cfg(feature = "olr-oauth-libs")]
+pub mod oauth_oidc;
+pub mod oauth_protocol;
 pub mod oauth_registration;
+pub mod oauth_rollout;
 pub mod oauth_state;
 pub mod policy;
 pub mod proxy_llm;

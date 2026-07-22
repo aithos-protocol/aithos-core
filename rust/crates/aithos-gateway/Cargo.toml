@@ -8,6 +8,10 @@ description = "Containerised runner gateway: sits between an agent and its depen
 publish = false
 default-run = "aithos-gateway"
 
+[features]
+default = []
+olr-oauth-libs = ["dep:oauth2", "dep:openidconnect"]
+
 [dependencies]
 # the trust engine, consumed as a library — only `core_bridge` (and its
 # `store_adapter` seam) may import from these two crates
@@ -15,6 +19,12 @@ aithos-core = { workspace = true }
 # P3: the `remote` feature carries the RemoteStore client (wire A.2) —
 # the gateway is its first consumer (store_adapter `remote`/`replicated`).
 aithos-bundle = { workspace = true, features = ["remote"] }
+
+# OLR: Authorization Code + PKCE + refresh protocol engine (default path
+# remains selectable via `protocol_engine: native|oauth2`). OIDC ID Token
+# validation (OLR-3) uses openidconnect.
+oauth2 = { workspace = true, optional = true }
+openidconnect = { workspace = true, optional = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -54,7 +64,16 @@ cucumber = { workspace = true }
 tempfile = { workspace = true }
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
+chrono = { workspace = true }
 
 [[test]]
 name = "cucumber"
 harness = false
+
+[[test]]
+name = "olr_oauth2_e2e"
+required-features = ["olr-oauth-libs"]
+
+[[test]]
+name = "olr_oidc_e2e"
+required-features = ["olr-oauth-libs"]
