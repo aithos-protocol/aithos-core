@@ -171,3 +171,117 @@ Feature: Pre-approved connector attachment and hot activation
       When each failure crosses the control API
       Then its public code belongs to the documented finite error set
       And no sentinel appears in body, headers, URL, registry, proof or logs
+
+  @oac0 @red
+  Rule: Connector profiles are sealed versioned capability declarations
+
+    Scenario: An approved profile version materializes one closed connector contract
+      Given a sealed connector profile with one version, OAuth strategy, scope set, risk class and execution kind
+      And the profile pins one approved MCP manifest or compiled extension manifest
+      When the owner stages an instance of that exact profile version
+      Then the durable draft references the sealed profile without copying free-form provider data
+      And no provider-specific branch is added to the generic MCP relay
+      And the connector remains absent until explicitly activated
+
+    Scenario Outline: Profile drift invalidates only the affected connector
+      Given an active connector instantiated from a sealed profile
+      When its profile has <profile_drift>
+      Then that connector is disabled as profile drift
+      And neighboring connectors remain listed and callable
+      And no OAuth credential or upstream request is resolved
+
+      Examples:
+        | profile_drift                         |
+        | a different version                   |
+        | a changed scope set                   |
+        | a changed risk class                  |
+        | a changed execution kind              |
+        | a changed approved manifest pin       |
+
+    Scenario: Existing configuration has no implicit profile surface
+      Given a valid legacy gateway configuration with static bearer, hub and upstream OAuth servers
+      And no connector profile is enabled
+      When the gateway starts after profile support is installed
+      Then its configuration remains valid with identical tools and credential behavior
+      And no profile discovery, registration or extension request occurs
+
+  @oac0 @red
+  Rule: Vault coordinates derive from context principal connector and account
+
+    Scenario: One account receives four non-aliasing derived custody records
+      Given an approved connector instance for one context, principal, connector and account
+      When its registration, pending consent, token and revocation custody are prepared
+      Then the gateway derives every Vault coordinate without browser input
+      And the records share only the prefix "connectors/<context>/<principal>/<connector>/<account>"
+      And registration, pending, token and revocation records do not alias
+
+    Scenario Outline: Unsafe custody identity is rejected before Vault
+      Given connector custody containing <custody_defect>
+      When the owner stages the connector instance
+      Then staging is refused with a stable redacted error
+      And Vault, registry, discovery and upstream receive zero requests
+
+      Examples:
+        | custody_defect                         |
+        | an empty account id                    |
+        | a traversal segment in the account id  |
+        | a browser-selected Vault coordinate    |
+        | a principal from another context       |
+        | an account label used as account id    |
+
+  @oac0 @red
+  Rule: Multi-account consent and runtime are isolated
+
+    Scenario: Two accounts of one connector complete consent independently
+      Given two approved accounts of one connector for the same principal
+      When both owners start consent and callbacks arrive in reverse order
+      Then each one-shot state resolves only its own pending record
+      And each token set is bound to its own issuer subject and account
+      And each account activates only its own namespaced tool surface
+
+    Scenario Outline: Cross-account OAuth material never crosses custody boundaries
+      Given pending or connected accounts A and B for one connector
+      When account A presents <cross_account_material> from account B
+      Then account A remains non-connected or keeps its previous complete token set
+      And account B remains unchanged
+      And token endpoint, protected resource and unrelated Vault records receive zero requests
+
+      Examples:
+        | cross_account_material        |
+        | callback state                |
+        | authorization code            |
+        | refresh token                 |
+        | issuer and subject assertion  |
+
+    Scenario: One account requiring reauthorization leaves its neighbor active
+      Given two active accounts of one connector for the same principal
+      When account A enters "reauth_required"
+      Then account A is removed from the runtime router before its next call
+      And account B remains listed and callable
+      And account A sends zero unauthenticated upstream requests
+
+  @oac0 @red
+  Rule: Disconnect removes authority before provider and Vault cleanup
+
+    Scenario: Provider revocation and Vault cleanup follow immediate runtime removal
+      Given an active connected connector with a declared revocation endpoint
+      When the owner disconnects that account
+      Then its runtime tools and credential reference are removed first
+      And the fake provider receives one bounded revocation request
+      And its registration, pending and token records are safely deleted
+      And the connector reports a public non-connected state
+
+    Scenario: Cleanup limitations never re-enable a disconnected connector
+      Given an active connected connector whose broker cannot safely delete records
+      When the owner disconnects that account
+      Then its runtime tools and credential reference are removed first
+      And the residual custody is reported only as a redacted cleanup limitation
+      And restart does not re-register or reactivate the connector
+      And the protected resource receives zero requests
+
+    Scenario: Revocation failure is visible but remains fail-closed
+      Given an active connected connector whose fake provider refuses revocation
+      When the owner disconnects that account
+      Then its runtime tools and credential reference are removed first
+      And public status reports a redacted revocation residue
+      And no later call retries the effect or reaches the protected resource
