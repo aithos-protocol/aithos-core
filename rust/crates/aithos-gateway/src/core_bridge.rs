@@ -55,6 +55,14 @@ use crate::policy::{hub_op_for_tool, op_for_tool, Policy};
 use crate::store_adapter::{replicate_owner_history, GatewayStore, OwnerReplicationReport};
 use crate::{GatewayError, Result};
 
+/// Closed, non-secret join material for guarded connector decisions/effects.
+pub struct ConnectorEffectProof<'a> {
+    pub event: &'a str,
+    pub approval_id: &'a str,
+    pub payload_digest: &'a str,
+    pub message_id: Option<&'a str>,
+}
+
 /// Entropy seam, re-exported so surfaces (binary, tests) never import
 /// the bundle directly: the bridge is the only door to the core.
 pub use aithos_bundle::entropy::{EntropySource, OsEntropy, SeqEntropy};
@@ -835,6 +843,45 @@ impl Bridge {
                 &ActionSpec {
                     connector: "gateway",
                     action: "connector_config",
+                    args_hash: &args_hash,
+                    now,
+                    budget: Some(detail),
+                    sealed_args: None,
+                },
+                self.entropy.as_mut(),
+            )
+            .map_err(|error| GatewayError::LogAppendRefused(error.to_string()))?;
+        Ok(entry.id)
+    }
+
+    /// Non-secret proof link for a guarded approval/effect. The payload body,
+    /// recipients and OAuth material never enter Gamma; the immutable digest
+    /// and provider message id are sufficient to join decision and outcome.
+    pub fn record_connector_effect(
+        &mut self,
+        context: &str,
+        connector: &str,
+        effect: &ConnectorEffectProof<'_>,
+        now: &str,
+    ) -> Result<String> {
+        let gateway_sk = SigningKey::from_bytes(self.keyholder.gateway_seed());
+        let detail = serde_json::json!({
+            "context": context,
+            "connector": connector,
+            "event": effect.event,
+            "approval_id": effect.approval_id,
+            "payload_digest": effect.payload_digest,
+            "message_id": effect.message_id,
+        });
+        let args_hash = hash_of(&detail)?;
+        let entry = self
+            .bundle
+            .log_action(
+                &self.gateway_chain,
+                &gateway_sk,
+                &ActionSpec {
+                    connector: "gateway",
+                    action: "connector_effect",
                     args_hash: &args_hash,
                     now,
                     budget: Some(detail),
@@ -2485,6 +2532,17 @@ impl Runner {
     ) -> Result<String> {
         self.journal
             .record_connector_config(context, connector, event, now)
+    }
+
+    pub fn record_connector_effect(
+        &mut self,
+        context: &str,
+        connector: &str,
+        effect: &ConnectorEffectProof<'_>,
+        now: &str,
+    ) -> Result<String> {
+        self.journal
+            .record_connector_effect(context, connector, effect, now)
     }
 
     /// The OAuth authority ceiling (lot G3): the latest `not_after`

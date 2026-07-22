@@ -99,6 +99,26 @@ pub trait CredentialBroker: Send + Sync {
         })
     }
 
+    /// Resolve a record while distinguishing a genuine absence from a broker
+    /// outage. The default preserves compatibility for existing adapters;
+    /// writable durable brokers should override it with an atomic lookup.
+    fn resolve_optional<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<SecretValue>>> + Send + 'a>> {
+        Box::pin(async move { self.resolve(reference).await.map(Some) })
+    }
+
+    /// Delete one complete dedicated record. OAuth custody never shares a
+    /// record path, so adapters may remove all versions safely. Unsupported
+    /// cleanup is explicit and never simulated by overwriting a tombstone.
+    fn delete<'a>(
+        &'a self,
+        _reference: &'a CredentialRef,
+    ) -> Pin<Box<dyn Future<Output = Result<CredentialDeleteOutcome>> + Send + 'a>> {
+        Box::pin(async { Ok(CredentialDeleteOutcome::Unsupported) })
+    }
+
     /// Redacted operational probe used by `/control/v1/status`. No location,
     /// token, reference or transport error crosses this seam.
     fn readiness<'a>(
@@ -106,6 +126,12 @@ pub trait CredentialBroker: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = CredentialBrokerReadiness> + Send + 'a>> {
         Box::pin(async { CredentialBrokerReadiness::Unavailable })
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialDeleteOutcome {
+    Deleted,
+    Unsupported,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,7 +177,7 @@ impl VaultKv2Broker {
     /// One strict KV v2 read. Every failure is summarised fail-closed —
     /// status class or fixed cause — and NEVER echoes the vault answer,
     /// a header or any secret material.
-    async fn fetch(&self, reference: &CredentialRef) -> Result<SecretValue> {
+    async fn fetch_optional(&self, reference: &CredentialRef) -> Result<Option<SecretValue>> {
         let token = Zeroizing::new(
             std::env::var(&self.token_env)
                 .ok()
@@ -185,6 +211,9 @@ impl VaultKv2Broker {
                 )
             })?;
         let status = response.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
         if !status.is_success() {
             return Err(GatewayError::CredentialUnavailable(format!(
                 "vault answered status {}",
@@ -204,13 +233,19 @@ impl VaultKv2Broker {
             .and_then(|fields| fields.get(&reference.field))
         {
             Some(serde_json::Value::String(value)) if !value.is_empty() => {
-                Ok(SecretValue::new(value.clone()))
+                Ok(Some(SecretValue::new(value.clone())))
             }
             _ => Err(GatewayError::CredentialUnavailable(format!(
                 "vault secret `{}` has no usable field `{}`",
                 reference.path, reference.field
             ))),
         }
+    }
+
+    async fn fetch(&self, reference: &CredentialRef) -> Result<SecretValue> {
+        self.fetch_optional(reference).await?.ok_or_else(|| {
+            GatewayError::CredentialUnavailable("vault secret record is absent".into())
+        })
     }
 
     /// One strict KV v2 write to a dedicated OAuth record. The caller owns
@@ -261,6 +296,47 @@ impl VaultKv2Broker {
         Ok(())
     }
 
+    async fn remove(&self, reference: &CredentialRef) -> Result<CredentialDeleteOutcome> {
+        let token = Zeroizing::new(
+            std::env::var(&self.token_env)
+                .ok()
+                .filter(|token| !token.trim().is_empty())
+                .ok_or_else(|| {
+                    GatewayError::CredentialUnavailable("vault token is unavailable".into())
+                })?,
+        );
+        let url = format!(
+            "{}/v1/{}/metadata/{}",
+            self.address, self.mount, reference.path
+        );
+        let response = self
+            .client
+            .delete(url)
+            .header("X-Vault-Token", token.as_str())
+            .send()
+            .await
+            .map_err(|error| {
+                GatewayError::CredentialUnavailable(
+                    if error.is_timeout() {
+                        "vault delete timed out"
+                    } else if error.is_connect() {
+                        "vault is unreachable"
+                    } else {
+                        "vault delete transport failed"
+                    }
+                    .into(),
+                )
+            })?;
+        if response.status().is_success() || response.status() == reqwest::StatusCode::NOT_FOUND {
+            Ok(CredentialDeleteOutcome::Deleted)
+        } else {
+            Err(GatewayError::CredentialUnavailable(format!(
+                "vault delete answered status {}",
+                response.status().as_u16()
+            )))
+        }
+    }
+
     async fn probe(&self) -> CredentialBrokerReadiness {
         let response = self
             .client
@@ -290,6 +366,20 @@ impl CredentialBroker for VaultKv2Broker {
         value: SecretValue,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(self.put(reference, value))
+    }
+
+    fn resolve_optional<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<SecretValue>>> + Send + 'a>> {
+        Box::pin(self.fetch_optional(reference))
+    }
+
+    fn delete<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+    ) -> Pin<Box<dyn Future<Output = Result<CredentialDeleteOutcome>> + Send + 'a>> {
+        Box::pin(self.remove(reference))
     }
 
     fn readiness<'a>(

@@ -116,27 +116,277 @@ pub struct ServerConfig {
     pub oauth: Option<UpstreamOAuthConfig>,
 }
 
-/// One protected upstream's OAuth client declaration. URLs and the
-/// `client_id` are public configuration; the client secret, pending PKCE
-/// verifier and token set live only behind brokered Vault references.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OAuthClientAuthentication {
+    /// Historic/default behaviour for existing gateway configurations.
+    #[default]
+    ClientSecretPost,
+    ClientSecretBasic,
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(tag = "strategy", rename_all = "snake_case", deny_unknown_fields)]
+pub enum OAuthEndpointStrategy {
+    /// Authorization and token endpoints are the pinned values below.
+    #[default]
+    Static,
+    /// RFC 9728 protected-resource metadata followed by RFC 8414
+    /// authorization-server metadata. Both identifiers remain pinned.
+    Discovery {
+        protected_resource: String,
+        issuer: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(tag = "strategy", rename_all = "snake_case", deny_unknown_fields)]
+pub enum OAuthRegistrationStrategy {
+    /// `client_id` and optional client-secret custody are pre-provisioned.
+    #[default]
+    Static,
+    /// RFC 7591. When `endpoint` is absent it must come from validated
+    /// authorization-server metadata. The complete response is kept in the
+    /// dedicated registration Vault record.
+    Dynamic {
+        #[serde(default)]
+        endpoint: Option<String>,
+        vault: CredentialRef,
+    },
+    /// A pinned Client ID Metadata Document. The document URL is also the
+    /// public client identifier; no registration mutation is performed.
+    ClientMetadataDocument { url: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OAuthAccessType {
+    Offline,
+}
+
+/// Closed authorization parameters. There is deliberately no query map:
+/// providers are compatibility profiles, never arbitrary URL passthrough.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct OAuthAuthorizationParameters {
+    #[serde(default)]
+    pub access_type: Option<OAuthAccessType>,
+    #[serde(default)]
+    pub include_granted_scopes: bool,
+    #[serde(default)]
+    pub prompt_consent_on_repair: bool,
+}
+
+/// Closed source used to bind a token set to a stable upstream identity.
+/// A user-info endpoint is profile-owned and queried with the freshly issued
+/// bearer; browser input can never select it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum OAuthIdentitySource {
+    #[default]
+    TokenResponse,
+    UserInfo {
+        endpoint: String,
+    },
+}
+
+/// Optional stable identity fields returned by a trusted token endpoint or
+/// an explicitly pinned user-info endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OAuthAccountBinding {
+    pub issuer: String,
+    #[serde(default)]
+    pub source: OAuthIdentitySource,
+    pub subject_field: String,
+    pub account_field: String,
+}
+
+/// One protected upstream's OAuth client declaration. Historic static
+/// declarations deserialize unchanged; every modern behaviour is explicit
+/// and defaults to the legacy confidential-client path.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UpstreamOAuthConfig {
+    #[serde(default)]
     pub auth_url: String,
+    #[serde(default)]
     pub token_url: String,
+    #[serde(default)]
     pub client_id: String,
-    pub client_secret: CredentialRef,
+    #[serde(default)]
+    pub client_secret: Option<CredentialRef>,
     pub scopes: Vec<String>,
     pub redirect_uri: String,
+    #[serde(default)]
+    pub endpoints: OAuthEndpointStrategy,
+    #[serde(default)]
+    pub client_authentication: OAuthClientAuthentication,
+    #[serde(default)]
+    pub registration: OAuthRegistrationStrategy,
+    #[serde(default)]
+    pub authorization_parameters: OAuthAuthorizationParameters,
+    #[serde(default)]
+    pub resource: Option<String>,
+    #[serde(default)]
+    pub audience: Option<String>,
+    #[serde(default)]
+    pub revocation_url: Option<String>,
+    #[serde(default)]
+    pub account_binding: Option<OAuthAccountBinding>,
     /// Optional dedicated KV field for the one-shot PKCE/state record.
     /// Historic static configs keep pending and connected custody in
     /// `token_vault`; G7 connector bindings derive a distinct logical
     /// record so a browser never chooses a Vault path.
     #[serde(default)]
     pub pending_vault: Option<CredentialRef>,
+    /// Optional durable marker for a revocation that must complete before
+    /// cleanup can be reported as clean.
+    #[serde(default)]
+    pub revocation_vault: Option<CredentialRef>,
     /// Dedicated KV field containing the encrypted-at-rest OAuth state.
     /// It must not alias `client_secret`: token writes replace this field.
     pub token_vault: CredentialRef,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectorRiskClass {
+    Read,
+    GuardedWrite,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompiledConnectorAdapter {
+    GoogleSheetsRead,
+    GoogleSheetsWriteGuarded,
+    GmailSendGuarded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CompiledConnectorSettings {
+    GoogleSheetsRead {
+        allowed_ranges: BTreeMap<String, Vec<String>>,
+        #[serde(default = "default_compiled_response_bytes")]
+        max_response_bytes: usize,
+    },
+    GoogleSheetsWriteGuarded {
+        allowed_ranges: BTreeMap<String, Vec<String>>,
+        max_cells: usize,
+        max_request_bytes: usize,
+    },
+    GmailSendGuarded {
+        #[serde(default)]
+        allowed_recipients: Vec<String>,
+        #[serde(default)]
+        allowed_domains: Vec<String>,
+        #[serde(default = "default_gmail_max_recipients")]
+        max_recipients: usize,
+        #[serde(default = "default_gmail_subject_bytes")]
+        max_subject_bytes: usize,
+        #[serde(default = "default_gmail_body_bytes")]
+        max_body_bytes: usize,
+        #[serde(default = "default_gmail_approval_ttl")]
+        approval_ttl_seconds: i64,
+    },
+}
+
+fn default_compiled_response_bytes() -> usize {
+    512 * 1024
+}
+
+fn default_gmail_max_recipients() -> usize {
+    5
+}
+
+fn default_gmail_subject_bytes() -> usize {
+    200
+}
+
+fn default_gmail_body_bytes() -> usize {
+    64 * 1024
+}
+
+fn default_gmail_approval_ttl() -> i64 {
+    15 * 60
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ConnectorExecutionProfile {
+    Mcp {
+        endpoint: String,
+        manifest_id: String,
+        manifest_pin: String,
+    },
+    CompiledRest {
+        adapter: CompiledConnectorAdapter,
+        api_base_url: String,
+        manifest_id: String,
+        manifest_pin: String,
+        settings: CompiledConnectorSettings,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(tag = "strategy", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ConnectorProfileRegistration {
+    #[default]
+    Static,
+    Dynamic {
+        #[serde(default)]
+        endpoint: Option<String>,
+    },
+    ClientMetadataDocument {
+        url: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorProfileOAuth {
+    pub credential_broker: String,
+    #[serde(default)]
+    pub auth_url: String,
+    #[serde(default)]
+    pub token_url: String,
+    #[serde(default)]
+    pub client_id: String,
+    pub scopes: Vec<String>,
+    pub redirect_uri: String,
+    #[serde(default)]
+    pub endpoints: OAuthEndpointStrategy,
+    #[serde(default)]
+    pub client_authentication: OAuthClientAuthentication,
+    #[serde(default)]
+    pub registration: ConnectorProfileRegistration,
+    #[serde(default)]
+    pub authorization_parameters: OAuthAuthorizationParameters,
+    #[serde(default)]
+    pub resource: Option<String>,
+    #[serde(default)]
+    pub audience: Option<String>,
+    #[serde(default)]
+    pub revocation_url: Option<String>,
+    #[serde(default)]
+    pub account_binding: Option<OAuthAccountBinding>,
+}
+
+/// A sealed, declarative connector capability. `enabled` is explicit and
+/// defaults false, so merely shipping a profile never changes tool surface.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorProfileConfig {
+    pub id: String,
+    pub version: String,
+    #[serde(default)]
+    pub enabled: bool,
+    pub risk: ConnectorRiskClass,
+    pub execution: ConnectorExecutionProfile,
+    pub oauth: ConnectorProfileOAuth,
 }
 
 /// One enterprise credential broker (top-level `credential_brokers:`).
@@ -524,6 +774,10 @@ pub struct GatewayConfig {
     /// coordinates of the vault(s) that hold upstream MCP tokens.
     #[serde(default)]
     pub credential_brokers: Option<BTreeMap<String, BrokerConfig>>,
+    /// Optional closed SaaS connector profiles. Profiles are inert unless
+    /// their individual `enabled` bit is true.
+    #[serde(default)]
+    pub connector_profiles: Option<Vec<ConnectorProfileConfig>>,
     /// Multi-context shape (v2): the provisioned contexts. Mutually
     /// exclusive with the mono fields above.
     #[serde(default)]
@@ -595,6 +849,14 @@ impl GatewayConfig {
                     "dashboard context names must be canonical lowercase URL labels".into(),
                 ));
             }
+        }
+        if let Some(profiles) = &self.connector_profiles {
+            if self.dashboard.is_none() || self.contexts.is_none() || self.journal.is_none() {
+                return Err(GatewayError::ConfigRejected(
+                    "`connector_profiles` requires dashboard, contexts and journal".into(),
+                ));
+            }
+            validate_connector_profiles(profiles, self.credential_brokers.as_ref())?;
         }
         match (&self.contexts, &self.journal) {
             // ------------------------------- multi-context v2 / hub v3
@@ -938,6 +1200,252 @@ fn validate_brokers(brokers: &BTreeMap<String, BrokerConfig>) -> Result<()> {
     Ok(())
 }
 
+fn validate_connector_profiles(
+    profiles: &[ConnectorProfileConfig],
+    brokers: Option<&BTreeMap<String, BrokerConfig>>,
+) -> Result<()> {
+    if profiles.is_empty() {
+        return Err(GatewayError::ConfigRejected(
+            "`connector_profiles` is empty".into(),
+        ));
+    }
+    let mut versions = std::collections::BTreeSet::new();
+    for profile in profiles {
+        let at = format!("connector_profiles[{}@{}]", profile.id, profile.version);
+        if !crate::policy::valid_server_name(&profile.id)
+            || profile.version.is_empty()
+            || profile.version.len() > 64
+            || !profile
+                .version
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+            || !versions.insert((profile.id.as_str(), profile.version.as_str()))
+        {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}` has an invalid or duplicate pinned id/version"
+            )));
+        }
+        if !brokers.is_some_and(|brokers| brokers.contains_key(&profile.oauth.credential_broker)) {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.oauth.credential_broker` is unknown"
+            )));
+        }
+        let validate_url = |field: &str, value: &str| -> Result<()> {
+            validate_upstream(value, &format!("{at}.{field}"))?;
+            if value.starts_with("http://") && !is_loopback_http(value) {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "`{at}.{field}` requires HTTPS outside loopback"
+                )));
+            }
+            Ok(())
+        };
+        match &profile.execution {
+            ConnectorExecutionProfile::Mcp {
+                endpoint,
+                manifest_id,
+                manifest_pin,
+            }
+            | ConnectorExecutionProfile::CompiledRest {
+                api_base_url: endpoint,
+                manifest_id,
+                manifest_pin,
+                ..
+            } => {
+                validate_url("execution.endpoint", endpoint)?;
+                if manifest_id.is_empty() || !manifest_pin.starts_with("sha256:") {
+                    return Err(GatewayError::ConfigRejected(format!(
+                        "`{at}.execution` has an invalid manifest pin"
+                    )));
+                }
+            }
+        }
+        if let ConnectorExecutionProfile::CompiledRest {
+            adapter, settings, ..
+        } = &profile.execution
+        {
+            let matched = matches!(
+                (adapter, settings),
+                (
+                    CompiledConnectorAdapter::GoogleSheetsRead,
+                    CompiledConnectorSettings::GoogleSheetsRead { .. }
+                ) | (
+                    CompiledConnectorAdapter::GoogleSheetsWriteGuarded,
+                    CompiledConnectorSettings::GoogleSheetsWriteGuarded { .. }
+                ) | (
+                    CompiledConnectorAdapter::GmailSendGuarded,
+                    CompiledConnectorSettings::GmailSendGuarded { .. }
+                )
+            );
+            if !matched {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "`{at}.execution.settings` does not match its compiled adapter"
+                )));
+            }
+            let risk_matches = matches!(
+                (adapter, profile.risk),
+                (
+                    CompiledConnectorAdapter::GoogleSheetsRead,
+                    ConnectorRiskClass::Read
+                ) | (
+                    CompiledConnectorAdapter::GoogleSheetsWriteGuarded
+                        | CompiledConnectorAdapter::GmailSendGuarded,
+                    ConnectorRiskClass::GuardedWrite
+                )
+            );
+            if !risk_matches {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "`{at}.risk` does not match its compiled effect class"
+                )));
+            }
+            match settings {
+                CompiledConnectorSettings::GoogleSheetsRead {
+                    allowed_ranges,
+                    max_response_bytes,
+                } => {
+                    if allowed_ranges.is_empty()
+                        || *max_response_bytes == 0
+                        || *max_response_bytes > 2 * 1024 * 1024
+                        || allowed_ranges.values().any(|ranges| ranges.is_empty())
+                    {
+                        return Err(GatewayError::ConfigRejected(format!(
+                            "`{at}.execution.settings` has invalid Sheets read bounds"
+                        )));
+                    }
+                }
+                CompiledConnectorSettings::GoogleSheetsWriteGuarded {
+                    allowed_ranges,
+                    max_cells,
+                    max_request_bytes,
+                } => {
+                    if allowed_ranges.is_empty()
+                        || *max_cells == 0
+                        || *max_cells > 10_000
+                        || *max_request_bytes == 0
+                        || *max_request_bytes > 1024 * 1024
+                        || allowed_ranges.values().any(|ranges| ranges.is_empty())
+                    {
+                        return Err(GatewayError::ConfigRejected(format!(
+                            "`{at}.execution.settings` has invalid Sheets write bounds"
+                        )));
+                    }
+                }
+                CompiledConnectorSettings::GmailSendGuarded {
+                    allowed_recipients,
+                    allowed_domains,
+                    max_recipients,
+                    max_subject_bytes,
+                    max_body_bytes,
+                    approval_ttl_seconds,
+                } => {
+                    if (allowed_recipients.is_empty() && allowed_domains.is_empty())
+                        || !(1..=20).contains(max_recipients)
+                        || !(1..=998).contains(max_subject_bytes)
+                        || !(1..=1024 * 1024).contains(max_body_bytes)
+                        || !(30..=86_400).contains(approval_ttl_seconds)
+                    {
+                        return Err(GatewayError::ConfigRejected(format!(
+                            "`{at}.execution.settings` has invalid Gmail bounds"
+                        )));
+                    }
+                }
+            }
+        }
+        validate_url("oauth.redirect_uri", &profile.oauth.redirect_uri)?;
+        match &profile.oauth.endpoints {
+            OAuthEndpointStrategy::Static => {
+                validate_url("oauth.auth_url", &profile.oauth.auth_url)?;
+                validate_url("oauth.token_url", &profile.oauth.token_url)?;
+            }
+            OAuthEndpointStrategy::Discovery {
+                protected_resource,
+                issuer,
+            } => {
+                validate_url("oauth.endpoints.protected_resource", protected_resource)?;
+                validate_url("oauth.endpoints.issuer", issuer)?;
+            }
+        }
+        match &profile.oauth.registration {
+            ConnectorProfileRegistration::Static => {
+                if profile.oauth.client_id.is_empty() {
+                    return Err(GatewayError::ConfigRejected(format!(
+                        "`{at}.oauth.client_id` is required for static registration"
+                    )));
+                }
+            }
+            ConnectorProfileRegistration::Dynamic { endpoint } => {
+                if let Some(endpoint) = endpoint {
+                    validate_url("oauth.registration.endpoint", endpoint)?;
+                }
+            }
+            ConnectorProfileRegistration::ClientMetadataDocument { url } => {
+                validate_url("oauth.registration.url", url)?;
+                if profile.oauth.client_authentication != OAuthClientAuthentication::None {
+                    return Err(GatewayError::ConfigRejected(format!(
+                        "`{at}.oauth.registration` metadata documents require a public client"
+                    )));
+                }
+            }
+        }
+        if profile.oauth.client_authentication == OAuthClientAuthentication::None
+            && matches!(
+                profile.oauth.registration,
+                ConnectorProfileRegistration::Dynamic { .. }
+            )
+        {
+            // Public DCR is allowed, but the resulting registration record
+            // must still declare `none`; registration validation enforces it.
+        }
+        if let Some(binding) = &profile.oauth.account_binding {
+            validate_url("oauth.account_binding.issuer", &binding.issuer)?;
+            if let OAuthIdentitySource::UserInfo { endpoint } = &binding.source {
+                validate_url("oauth.account_binding.source.endpoint", endpoint)?;
+            }
+            if let OAuthEndpointStrategy::Discovery { issuer, .. } = &profile.oauth.endpoints {
+                if issuer != &binding.issuer {
+                    return Err(GatewayError::ConfigRejected(format!(
+                        "`{at}.oauth.account_binding.issuer` must match discovery issuer"
+                    )));
+                }
+            }
+            if [
+                binding.subject_field.as_str(),
+                binding.account_field.as_str(),
+            ]
+            .iter()
+            .any(|field| {
+                field.is_empty()
+                    || !field
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+            }) {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "`{at}.oauth.account_binding` has invalid response fields"
+                )));
+            }
+        }
+        if profile.oauth.scopes.is_empty()
+            || profile.oauth.scopes.len() > 64
+            || profile
+                .oauth
+                .scopes
+                .iter()
+                .any(|scope| scope.is_empty() || scope.len() > 256)
+            || profile
+                .oauth
+                .scopes
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != profile.oauth.scopes.len()
+        {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.oauth.scopes` must be distinct, bounded and non-empty"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// One server's brokered reference: the broker must be declared, the
 /// path must be clean KV segments, the field must be a plain name.
 fn validate_server_credential(
@@ -995,19 +1503,39 @@ fn validate_upstream_oauth(
     brokers: Option<&BTreeMap<String, BrokerConfig>>,
 ) -> Result<()> {
     let at = format!("servers[{server}].oauth");
-    for (field, url) in [
-        ("auth_url", oauth.auth_url.as_str()),
-        ("token_url", oauth.token_url.as_str()),
-        ("redirect_uri", oauth.redirect_uri.as_str()),
-    ] {
+    let validate_oauth_url = |field: &str, url: &str| -> Result<()> {
         validate_upstream(url, &format!("{at}.{field}"))?;
         if url.starts_with("http://") && !is_loopback_http(url) {
             return Err(GatewayError::ConfigRejected(format!(
                 "`{at}.{field}` uses plaintext http off loopback — OAuth requires TLS"
             )));
         }
+        Ok(())
+    };
+    validate_oauth_url("redirect_uri", &oauth.redirect_uri)?;
+    match &oauth.endpoints {
+        OAuthEndpointStrategy::Static => {
+            validate_oauth_url("auth_url", &oauth.auth_url)?;
+            validate_oauth_url("token_url", &oauth.token_url)?;
+        }
+        OAuthEndpointStrategy::Discovery {
+            protected_resource,
+            issuer,
+        } => {
+            validate_oauth_url("endpoints.protected_resource", protected_resource)?;
+            validate_oauth_url("endpoints.issuer", issuer)?;
+            for (field, url) in [
+                ("auth_url", oauth.auth_url.as_str()),
+                ("token_url", oauth.token_url.as_str()),
+            ] {
+                if !url.is_empty() {
+                    validate_oauth_url(field, url)?;
+                }
+            }
+        }
     }
-    if oauth.client_id.trim().is_empty() {
+    let static_registration = matches!(oauth.registration, OAuthRegistrationStrategy::Static);
+    if static_registration && oauth.client_id.trim().is_empty() {
         return Err(GatewayError::ConfigRejected(format!(
             "`{at}.client_id` is empty"
         )));
@@ -1025,18 +1553,105 @@ fn validate_upstream_oauth(
             "`{at}.scopes` must contain distinct, non-empty scopes"
         )));
     }
-    validate_credential_ref(
-        &format!("{at}.client_secret"),
-        &oauth.client_secret,
-        brokers,
-    )?;
+    match (oauth.client_authentication, &oauth.client_secret) {
+        (OAuthClientAuthentication::None, None) => {}
+        (OAuthClientAuthentication::None, Some(_)) => {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.client_secret` is forbidden for public client authentication `none`"
+            )))
+        }
+        (
+            OAuthClientAuthentication::ClientSecretPost
+            | OAuthClientAuthentication::ClientSecretBasic,
+            Some(secret),
+        ) => validate_credential_ref(&format!("{at}.client_secret"), secret, brokers)?,
+        (
+            OAuthClientAuthentication::ClientSecretPost
+            | OAuthClientAuthentication::ClientSecretBasic,
+            None,
+        ) if static_registration => {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.client_secret` is required by the declared client authentication"
+            )))
+        }
+        (
+            OAuthClientAuthentication::ClientSecretPost
+            | OAuthClientAuthentication::ClientSecretBasic,
+            None,
+        ) => {
+            // DCR returns the confidential credential into its dedicated
+            // registration Vault record. Requiring a second static secret
+            // here would make confidential dynamic clients impossible.
+        }
+    }
+    let mut registration_vault = None;
+    match &oauth.registration {
+        OAuthRegistrationStrategy::Static => {}
+        OAuthRegistrationStrategy::Dynamic { endpoint, vault } => {
+            if let Some(endpoint) = endpoint {
+                validate_oauth_url("registration.endpoint", endpoint)?;
+            }
+            validate_credential_ref(&format!("{at}.registration.vault"), vault, brokers)?;
+            registration_vault = Some(vault);
+        }
+        OAuthRegistrationStrategy::ClientMetadataDocument { url } => {
+            validate_oauth_url("registration.url", url)?;
+            if oauth.client_authentication != OAuthClientAuthentication::None
+                || oauth.client_secret.is_some()
+            {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "`{at}.registration` client metadata documents require a public client"
+                )));
+            }
+        }
+    }
+    for (field, url) in [
+        ("resource", oauth.resource.as_deref()),
+        ("audience", oauth.audience.as_deref()),
+        ("revocation_url", oauth.revocation_url.as_deref()),
+    ] {
+        if let Some(url) = url {
+            validate_oauth_url(field, url)?;
+        }
+    }
+    if let Some(binding) = &oauth.account_binding {
+        validate_oauth_url("account_binding.issuer", &binding.issuer)?;
+        if let OAuthIdentitySource::UserInfo { endpoint } = &binding.source {
+            validate_oauth_url("account_binding.source.endpoint", endpoint)?;
+        }
+        for (field, value) in [
+            ("subject_field", binding.subject_field.as_str()),
+            ("account_field", binding.account_field.as_str()),
+        ] {
+            if value.is_empty()
+                || !value
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+            {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "`{at}.account_binding.{field}` must be a plain response field"
+                )));
+            }
+        }
+        if let OAuthEndpointStrategy::Discovery { issuer, .. } = &oauth.endpoints {
+            if issuer != &binding.issuer {
+                return Err(GatewayError::ConfigRejected(format!(
+                    "`{at}.account_binding.issuer` must match the pinned discovery issuer"
+                )));
+            }
+        }
+    }
     if let Some(pending) = &oauth.pending_vault {
         validate_credential_ref(&format!("{at}.pending_vault"), pending, brokers)?;
-        if same_credential_record(pending, &oauth.client_secret)
+        if oauth
+            .client_secret
+            .as_ref()
+            .is_some_and(|secret| same_credential_record(pending, secret))
             || same_credential_record(pending, &oauth.token_vault)
+            || registration_vault.is_some_and(|vault| same_credential_record(pending, vault))
         {
             return Err(GatewayError::ConfigRejected(format!(
-                "`{at}.pending_vault` must not alias the client-secret or token record"
+                "`{at}.pending_vault` must not alias another OAuth custody record"
             )));
         }
         if pending.broker != oauth.token_vault.broker {
@@ -1045,10 +1660,33 @@ fn validate_upstream_oauth(
             )));
         }
     }
+    if let Some(revocation) = &oauth.revocation_vault {
+        validate_credential_ref(&format!("{at}.revocation_vault"), revocation, brokers)?;
+        let aliases = oauth
+            .client_secret
+            .as_ref()
+            .is_some_and(|secret| same_credential_record(revocation, secret))
+            || same_credential_record(revocation, &oauth.token_vault)
+            || oauth
+                .pending_vault
+                .as_ref()
+                .is_some_and(|pending| same_credential_record(revocation, pending))
+            || registration_vault.is_some_and(|vault| same_credential_record(revocation, vault));
+        if aliases || revocation.broker != oauth.token_vault.broker {
+            return Err(GatewayError::ConfigRejected(format!(
+                "`{at}.revocation_vault` must be a distinct record on the token Vault broker"
+            )));
+        }
+    }
     validate_credential_ref(&format!("{at}.token_vault"), &oauth.token_vault, brokers)?;
-    if same_credential_record(&oauth.client_secret, &oauth.token_vault) {
+    if oauth
+        .client_secret
+        .as_ref()
+        .is_some_and(|secret| same_credential_record(secret, &oauth.token_vault))
+        || registration_vault.is_some_and(|vault| same_credential_record(vault, &oauth.token_vault))
+    {
         return Err(GatewayError::ConfigRejected(format!(
-            "`{at}.token_vault` must not alias the client-secret record"
+            "`{at}.token_vault` must not alias another OAuth custody record"
         )));
     }
     Ok(())
@@ -1770,6 +2408,63 @@ journal:
     }
 
     #[test]
+    fn compiled_connector_profiles_are_closed_bounded_and_disabled_by_default() {
+        let profile = "\
+dashboard: {}
+credential_brokers:
+  enterprise:
+    kind: vault-kv2
+    address: http://127.0.0.1:8200
+    mount: secret
+    auth: { kind: token-env, env: VAULT_TOKEN }
+connector_profiles:
+  - id: gmail-send
+    version: '1'
+    risk: guarded_write
+    execution:
+      kind: compiled_rest
+      adapter: gmail_send_guarded
+      api_base_url: https://gmail.googleapis.com/
+      manifest_id: gmail-send
+      manifest_pin: sha256:test
+      settings:
+        kind: gmail_send_guarded
+        allowed_recipients: [demo@example.test]
+        max_recipients: 1
+        max_subject_bytes: 200
+        max_body_bytes: 65536
+        approval_ttl_seconds: 900
+    oauth:
+      credential_broker: enterprise
+      auth_url: https://accounts.google.com/o/oauth2/v2/auth
+      token_url: https://oauth2.googleapis.com/token
+      client_id: test-client
+      scopes: [openid, email, https://www.googleapis.com/auth/gmail.send]
+      redirect_uri: https://gateway.example.test/oauth/callback
+      account_binding:
+        issuer: https://accounts.google.com
+        source:
+          kind: user_info
+          endpoint: https://openidconnect.googleapis.com/v1/userinfo
+        subject_field: sub
+        account_field: email
+";
+        let cfg = GatewayConfig::from_yaml(&format!("{HUB}{profile}")).unwrap();
+        let profiles = cfg.connector_profiles.unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert!(!profiles[0].enabled);
+
+        let mismatch =
+            profile.replace("adapter: gmail_send_guarded", "adapter: google_sheets_read");
+        assert!(GatewayConfig::from_yaml(&format!("{HUB}{mismatch}")).is_err());
+        let free_form = profile.replace(
+            "        approval_ttl_seconds: 900",
+            "        approval_ttl_seconds: 900\n        arbitrary_provider_input: true",
+        );
+        assert!(GatewayConfig::from_yaml(&format!("{HUB}{free_form}")).is_err());
+    }
+
+    #[test]
     fn unsafe_relay_configuration_is_rejected_before_runtime() {
         for broken in [
             relay_yaml().replace("https://127.0.0.1:7443", "http://relay.test:7443"),
@@ -2319,9 +3014,27 @@ journal:
         let oauth = cfg.servers.as_ref().unwrap()[0].oauth.as_ref().unwrap();
         assert_eq!(oauth.client_id, "owner-client");
         assert_eq!(oauth.scopes, ["resource.read"]);
-        assert_eq!(oauth.client_secret.path, "aithos/oauth/client");
+        assert_eq!(
+            oauth.client_secret.as_ref().unwrap().path,
+            "aithos/oauth/client"
+        );
         assert_eq!(oauth.token_vault.path, "aithos/oauth/github");
         assert!(cfg.servers.as_ref().unwrap()[0].credential.is_none());
+    }
+
+    #[test]
+    fn confidential_dcr_uses_its_registration_vault_without_a_static_secret() {
+        let text = oauth_hub().replace(
+            "      client_id: owner-client\n      client_secret:\n        broker: enterprise\n        path: aithos/oauth/client\n        field: client_secret\n",
+            "      client_authentication: client_secret_post\n      registration:\n        strategy: dynamic\n        endpoint: https://accounts.example/register\n        vault:\n          broker: enterprise\n          path: aithos/oauth/registration\n          field: value\n",
+        );
+        let cfg = GatewayConfig::from_yaml(&text).unwrap();
+        let oauth = cfg.servers.as_ref().unwrap()[0].oauth.as_ref().unwrap();
+        assert!(oauth.client_secret.is_none());
+        assert!(matches!(
+            oauth.registration,
+            OAuthRegistrationStrategy::Dynamic { .. }
+        ));
     }
 
     #[test]

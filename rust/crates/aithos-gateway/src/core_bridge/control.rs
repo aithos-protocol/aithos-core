@@ -117,14 +117,21 @@ pub enum ControlAccess {
     ConnectorConfigAny {
         connector: String,
     },
+    /// Plaintext approval review and external-effect decisions are never
+    /// covered by the delegated connector-config perimeter.
+    ConnectorOwnerAny {
+        connector: String,
+    },
 }
 
 impl ControlAccess {
     fn context(&self) -> Option<&str> {
         match self {
-            Self::Status | Self::Contexts | Self::Connectors | Self::ConnectorConfigAny { .. } => {
-                None
-            }
+            Self::Status
+            | Self::Contexts
+            | Self::Connectors
+            | Self::ConnectorConfigAny { .. }
+            | Self::ConnectorOwnerAny { .. } => None,
             Self::Certificates { context }
             | Self::Gamma { context, .. }
             | Self::Heads { context }
@@ -149,6 +156,7 @@ pub struct ControlPrincipal {
     gamma_grants: Vec<PerimeterEntry>,
     certificate_ids: BTreeSet<String>,
     did_b3: String,
+    principal_b3: String,
 }
 
 impl ControlPrincipal {
@@ -158,6 +166,12 @@ impl ControlPrincipal {
 
     pub fn is_owner(&self) -> bool {
         self.role == ControlRole::Owner
+    }
+
+    /// Stable verified principal used only to derive isolated connector
+    /// custody. Public DTOs never expose this DID.
+    pub fn principal_id(&self) -> &str {
+        &self.principal_b3
     }
 
     fn permits_gamma_entry(&self, entry: &Entry) -> bool {
@@ -500,6 +514,7 @@ fn verify_in_context(
             role: ControlRole::Owner,
             gamma_grants: Vec::new(),
             certificate_ids: BTreeSet::new(),
+            principal_b3: did_b3.clone(),
             did_b3,
         });
     }
@@ -585,6 +600,7 @@ fn verify_in_context(
             }
             ControlRole::Auditor
         }
+        ControlAccess::ConnectorOwnerAny { .. } => return Err(ControlAuthError::NotCovered),
         ControlAccess::ConnectorConfig { connector, .. }
         | ControlAccess::ConnectorConfigAny { connector }
             if perimeter.iter().any(|entry| {
@@ -607,12 +623,18 @@ fn verify_in_context(
             certificate_ids.extend(stored.entry.authorized_via.iter().flatten().cloned());
         }
     }
+    let mut principal_material = String::from("aithos-control-principal-v1\0");
+    principal_material.push_str(&prepared.envelope.key);
+    let principal_b3 = blake3::hash(principal_material.as_bytes())
+        .to_hex()
+        .to_string();
     Ok(ControlPrincipal {
         context: name.to_owned(),
         role,
         gamma_grants,
         certificate_ids,
         did_b3,
+        principal_b3,
     })
 }
 

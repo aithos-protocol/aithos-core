@@ -12,7 +12,9 @@
 //! Posture: fail-closed everywhere. Any policy ambiguity is a refusal,
 //! and every refusal is logged.
 
+pub mod compiled_extensions;
 pub mod config;
+pub mod connector_profiles;
 pub mod connectors;
 pub mod control;
 pub mod core_bridge;
@@ -21,6 +23,8 @@ pub mod demo_lea;
 pub mod hub;
 pub mod keyholder;
 pub mod oauth;
+pub mod oauth_discovery;
+pub mod oauth_registration;
 pub mod oauth_state;
 pub mod policy;
 pub mod proxy_llm;

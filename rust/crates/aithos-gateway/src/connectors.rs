@@ -11,17 +11,28 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use zeroize::Zeroize;
 
-use crate::config::{GatewayConfig, ServerConfig, StoreConfig, UpstreamOAuthConfig};
-use crate::core_bridge::{proposed_manifest_catalog_digest, Runner};
+use crate::compiled_extensions::{
+    compiled_manifest, ApprovalReview, ApprovalView, CompiledExtensionUpstream,
+    GmailSendGuardedUpstream, GmailSendPolicy, GoogleSheetsReadConfig, GoogleSheetsWriteConfig,
+};
+use crate::config::{
+    CompiledConnectorAdapter, CompiledConnectorSettings, ConnectorExecutionProfile, GatewayConfig,
+    OAuthClientAuthentication, ServerConfig, StoreConfig, UpstreamOAuthConfig,
+};
+use crate::connector_profiles::{
+    ConnectorInstanceKey, ConnectorProfileCatalog, ConnectorProfileRef, OAuthVaultLayout,
+};
+use crate::core_bridge::{proposed_manifest_catalog_digest, ConnectorEffectProof, Runner};
 use crate::credentials::{CredentialBroker, CredentialRef, SecretValue};
 use crate::hub::discover_server;
-use crate::policy::valid_server_name;
+use crate::hub::{ApprovedManifest, ProposedManifest};
+use crate::policy::{hub_exposed_name, valid_server_name};
 use crate::proxy_mcp::{DynamicUpstream, DynamicUpstreams, HttpUpstream};
 use crate::upstream_oauth::{ConsentStart, UpstreamOAuthRegistry, UpstreamOAuthState};
 use crate::{GatewayError, Result};
@@ -42,6 +53,14 @@ const REGISTRY_RELATIVE_PATH: &str = "gateway/connectors.json";
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(1);
 
+fn legacy_principal() -> String {
+    "legacy".to_owned()
+}
+
+fn legacy_account() -> String {
+    "default".to_owned()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectorState {
@@ -51,8 +70,19 @@ pub enum ConnectorState {
     Pending,
     Connected,
     Expired,
+    ReauthRequired,
     Drifted,
     Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectorCleanupState {
+    #[default]
+    Clean,
+    VaultResidue,
+    RevocationResidue,
+    VaultAndRevocationResidue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +123,15 @@ pub struct ConnectorStageRequest {
     pub approved_manifest: ApprovedManifestRef,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorProfileStageRequest {
+    pub v: u8,
+    pub id: String,
+    pub context: String,
+    pub profile: ConnectorProfileRef,
+}
+
 /// Parsed separately from every other DTO so no derive can ever print or
 /// clone the secret. The string zeroizes even when validation refuses it.
 #[derive(Deserialize)]
@@ -128,7 +167,12 @@ pub struct ConnectorView {
     pub transport: ConnectorTransport,
     pub state: ConnectorState,
     pub active: bool,
+    pub cleanup: ConnectorCleanupState,
     pub approved_manifest: ApprovedManifestRef,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<ConnectorProfileRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live_digest: Option<String>,
 }
@@ -202,8 +246,18 @@ struct PersistedConnector {
     transport: ConnectorTransport,
     oauth: ConnectorOAuthDescriptor,
     approved_manifest: ApprovedManifestRef,
+    #[serde(default)]
+    profile: Option<ConnectorProfileRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    profile_pin: Option<String>,
+    #[serde(default = "legacy_principal")]
+    principal: String,
+    #[serde(default = "legacy_account")]
+    account: String,
     state: ConnectorState,
     active: bool,
+    #[serde(default)]
+    cleanup: ConnectorCleanupState,
     secret_stored: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     live_digest: Option<String>,
@@ -219,7 +273,10 @@ impl PersistedConnector {
             transport: self.transport,
             state: self.state,
             active: self.active,
+            cleanup: self.cleanup,
             approved_manifest: self.approved_manifest.clone(),
+            profile: self.profile.clone(),
+            account_id: self.profile.as_ref().map(|_| self.account.clone()),
             live_digest: self.live_digest.clone(),
         }
     }
@@ -261,7 +318,15 @@ impl RegistryFile {
                 || !valid_id(&connector.id)
                 || !valid_id(&connector.context)
                 || !valid_public_descriptor(connector)
-                || connector.approved_manifest.id != connector.id
+                || (connector.profile.is_none() && connector.approved_manifest.id != connector.id)
+                || (connector.profile.is_some()
+                    && ConnectorInstanceKey::new(
+                        &connector.context,
+                        &connector.principal,
+                        &connector.id,
+                        &connector.account,
+                    )
+                    .is_err())
                 || (connector.active
                     && (connector.state != ConnectorState::Connected
                         || connector.live_digest.is_none()))
@@ -541,6 +606,8 @@ pub struct ConnectorControl {
     oauth: Arc<UpstreamOAuthRegistry>,
     brokers: Arc<BTreeMap<String, Arc<dyn CredentialBroker>>>,
     templates: BTreeMap<String, ConnectorTemplate>,
+    profiles: ConnectorProfileCatalog,
+    gmail_extensions: StdRwLock<BTreeMap<String, GmailSendGuardedUpstream>>,
     store: ConnectorRegistryStore,
     registry: StdMutex<RegistryFile>,
     operation: Mutex<()>,
@@ -560,6 +627,7 @@ impl ConnectorControl {
         })?;
         let store = ConnectorRegistryStore::from_store_config(&journal.store)?;
         let templates = connector_templates(config)?;
+        let profiles = ConnectorProfileCatalog::from_config(config);
         Self::new(
             store,
             runner,
@@ -567,6 +635,7 @@ impl ConnectorControl {
             oauth,
             brokers,
             templates,
+            profiles,
             Arc::new(system_now_rfc3339),
         )
     }
@@ -586,6 +655,7 @@ impl ConnectorControl {
         oauth: Arc<UpstreamOAuthRegistry>,
         brokers: BTreeMap<String, Arc<dyn CredentialBroker>>,
         templates: BTreeMap<String, ConnectorTemplate>,
+        profiles: ConnectorProfileCatalog,
         clock: Arc<dyn Fn() -> String + Send + Sync>,
     ) -> Result<Self> {
         let registry = store.load().map_err(|_| {
@@ -597,6 +667,8 @@ impl ConnectorControl {
             oauth,
             brokers: Arc::new(brokers),
             templates,
+            profiles,
+            gmail_extensions: StdRwLock::new(BTreeMap::new()),
             store,
             registry: StdMutex::new(registry),
             operation: Mutex::new(()),
@@ -614,19 +686,41 @@ impl ConnectorControl {
             .connectors
             .clone();
         for connector in connectors {
-            let template = self.templates.get(&connector.id).ok_or_else(|| {
-                GatewayError::ConfigRejected(format!(
-                    "connector `{}` no longer has an approved server template",
-                    connector.id
-                ))
-            })?;
-            let config = self.oauth_config(&connector, template);
+            let config = if connector.profile.is_some() {
+                match self.profile_oauth_config(&connector) {
+                    Ok(config) => config,
+                    Err(_) => {
+                        let mut registry = self.registry.lock().map_err(|_| {
+                            GatewayError::ConfigRejected("connector registry lock failed".into())
+                        })?;
+                        let mut closed = connector.clone();
+                        closed.active = false;
+                        closed.state = ConnectorState::Drifted;
+                        closed.live_digest = None;
+                        registry.replace(closed);
+                        let _ = self.store.persist(&registry);
+                        continue;
+                    }
+                }
+            } else {
+                let template = self.templates.get(&connector.id).ok_or_else(|| {
+                    GatewayError::ConfigRejected(format!(
+                        "connector `{}` no longer has an approved server template",
+                        connector.id
+                    ))
+                })?;
+                self.oauth_config(&connector, template)
+            };
             self.oauth.upsert(&connector.id, config, &self.brokers)?;
         }
         Ok(())
     }
 
     pub fn parse_stage(bytes: &[u8]) -> ConnectorResult<ConnectorStageRequest> {
+        serde_json::from_slice(bytes).map_err(|_| ConnectorFailure::NotApproved)
+    }
+
+    pub fn parse_profile_stage(bytes: &[u8]) -> ConnectorResult<ConnectorProfileStageRequest> {
         serde_json::from_slice(bytes).map_err(|_| ConnectorFailure::NotApproved)
     }
 
@@ -640,7 +734,7 @@ impl ConnectorControl {
         }
     }
 
-    pub fn list(&self, context: &str) -> ConnectorResult<ConnectorPage> {
+    pub fn list(&self, context: &str, principal_id: &str) -> ConnectorResult<ConnectorPage> {
         let registry = self
             .registry
             .lock()
@@ -650,7 +744,10 @@ impl ConnectorControl {
             items: registry
                 .connectors
                 .iter()
-                .filter(|connector| connector.context == context)
+                .filter(|connector| {
+                    connector.context == context
+                        && (connector.profile.is_none() || connector.principal == principal_id)
+                })
                 .map(PersistedConnector::view)
                 .collect(),
             next_cursor: None,
@@ -701,8 +798,13 @@ impl ConnectorControl {
             transport: request.transport,
             oauth: request.oauth,
             approved_manifest: request.approved_manifest,
+            profile: None,
+            profile_pin: None,
+            principal: legacy_principal(),
+            account: legacy_account(),
             state: ConnectorState::Draft,
             active: false,
+            cleanup: ConnectorCleanupState::Clean,
             secret_stored: false,
             live_digest: None,
         };
@@ -723,15 +825,134 @@ impl ConnectorControl {
         Ok(connector.view())
     }
 
+    pub async fn stage_profile(
+        &self,
+        principal_context: &str,
+        principal_id: &str,
+        path_id: &str,
+        request: ConnectorProfileStageRequest,
+    ) -> ConnectorResult<ConnectorView> {
+        let _operation = self.operation.lock().await;
+        if request.v != REGISTRY_VERSION
+            || request.id != path_id
+            || request.context != principal_context
+            || !valid_id(path_id)
+        {
+            return Err(ConnectorFailure::NotApproved);
+        }
+        let profile = self
+            .profiles
+            .enabled(&request.profile)
+            .map_err(|_| ConnectorFailure::NotApproved)?;
+        let profile_pin = self
+            .profiles
+            .pin(&request.profile)
+            .map_err(|_| ConnectorFailure::NotApproved)?;
+        let (endpoint, manifest_id, manifest_pin) = match &profile.execution {
+            ConnectorExecutionProfile::Mcp {
+                endpoint,
+                manifest_id,
+                manifest_pin,
+            } => (endpoint.clone(), manifest_id.clone(), manifest_pin.clone()),
+            ConnectorExecutionProfile::CompiledRest {
+                api_base_url,
+                manifest_id,
+                manifest_pin,
+                ..
+            } => (
+                api_base_url.clone(),
+                manifest_id.clone(),
+                manifest_pin.clone(),
+            ),
+        };
+        let (_, sealed_digest) = self
+            .runner
+            .lock()
+            .await
+            .approved_connector(principal_context, &manifest_id)
+            .map_err(|_| ConnectorFailure::NotApproved)?;
+        if sealed_digest != manifest_pin {
+            return Err(ConnectorFailure::NotApproved);
+        }
+        let mut next = self.registry_snapshot()?;
+        if next
+            .connectors
+            .iter()
+            .any(|connector| connector.id == path_id)
+        {
+            return Err(ConnectorFailure::NotApproved);
+        }
+        let account = ConnectorInstanceKey::issue_account_id();
+        let key = ConnectorInstanceKey::new(principal_context, principal_id, path_id, &account)
+            .map_err(|_| ConnectorFailure::NotApproved)?;
+        let layout = OAuthVaultLayout::derive(&profile.oauth.credential_broker, &key);
+        let config = self
+            .profiles
+            .materialize_oauth(&request.profile, &layout)
+            .map_err(|_| ConnectorFailure::NotApproved)?;
+        ensure_oauth_brokers(&config, &self.brokers)?;
+        let secret_stored = profile.oauth.client_authentication == OAuthClientAuthentication::None
+            || !matches!(
+                profile.oauth.registration,
+                crate::config::ConnectorProfileRegistration::Static
+            );
+        let connector = PersistedConnector {
+            id: request.id,
+            context: request.context,
+            endpoint,
+            transport: ConnectorTransport::StreamableHttp,
+            oauth: ConnectorOAuthDescriptor {
+                authorization_endpoint: profile.oauth.auth_url.clone(),
+                token_endpoint: profile.oauth.token_url.clone(),
+                client_id: profile.oauth.client_id.clone(),
+                scopes: profile.oauth.scopes.clone(),
+                redirect_uri: profile.oauth.redirect_uri.clone(),
+                client_secret_record: "client-secret".into(),
+                pending_record: "pending".into(),
+                token_record: "token".into(),
+            },
+            approved_manifest: ApprovedManifestRef {
+                id: manifest_id,
+                pin: manifest_pin,
+            },
+            profile: Some(request.profile),
+            profile_pin: Some(profile_pin),
+            principal: principal_id.to_owned(),
+            account,
+            state: if secret_stored {
+                ConnectorState::Disconnected
+            } else {
+                ConnectorState::SecretMissing
+            },
+            active: false,
+            cleanup: ConnectorCleanupState::Clean,
+            secret_stored,
+            live_digest: None,
+        };
+        self.runner
+            .lock()
+            .await
+            .record_connector_config(principal_context, path_id, "stage_profile", &(self.clock)())
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        self.oauth
+            .upsert(path_id, config, &self.brokers)
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        next.replace(connector.clone());
+        self.commit_registry(next)?;
+        Ok(connector.view())
+    }
+
     pub async fn set_client_secret(
         &self,
         context: &str,
+        principal_id: &str,
         id: &str,
         mut body: ClientSecretBody,
     ) -> ConnectorResult<ConnectorOAuthStatus> {
         let _operation = self.operation.lock().await;
         let mut next = self.registry_snapshot()?;
         let mut connector = next.get(context, id)?.clone();
+        ensure_principal_access(&connector, principal_id)?;
         if connector.active {
             return Err(ConnectorFailure::ActivationFailed);
         }
@@ -740,17 +961,22 @@ impl ConnectorControl {
             .await
             .record_connector_config(context, id, "client_secret", &(self.clock)())
             .map_err(|_| ConnectorFailure::ActivationFailed)?;
-        let template = self
-            .templates
-            .get(id)
-            .ok_or(ConnectorFailure::NotApproved)?;
-        let config = self.oauth_config(&connector, template);
+        let config = self.runtime_oauth_config(&connector)?;
+        if self.oauth.get(id).is_none() {
+            self.oauth
+                .upsert(id, config.clone(), &self.brokers)
+                .map_err(|_| ConnectorFailure::OauthUnavailable)?;
+        }
+        let reference = config
+            .client_secret
+            .as_ref()
+            .ok_or(ConnectorFailure::SecretUnavailable)?;
         let broker = self
             .brokers
-            .get(&config.client_secret.broker)
+            .get(&reference.broker)
             .ok_or(ConnectorFailure::SecretUnavailable)?;
         broker
-            .store(&config.client_secret, SecretValue::new(body.take()))
+            .store(reference, SecretValue::new(body.take()))
             .await
             .map_err(|_| ConnectorFailure::SecretUnavailable)?;
         connector.secret_stored = true;
@@ -764,28 +990,33 @@ impl ConnectorControl {
     pub async fn start_oauth(
         &self,
         context: &str,
+        principal_id: &str,
         id: &str,
     ) -> ConnectorResult<ConnectorOAuthStart> {
         let _operation = self.operation.lock().await;
         let mut next = self.registry_snapshot()?;
         let mut connector = next.get(context, id)?.clone();
+        ensure_principal_access(&connector, principal_id)?;
         if !connector.secret_stored || connector.active {
             return Err(ConnectorFailure::SecretUnavailable);
         }
-        let template = self
-            .templates
-            .get(id)
-            .ok_or(ConnectorFailure::NotApproved)?;
-        let config = self.oauth_config(&connector, template);
-        let secret_broker = self
-            .brokers
-            .get(&config.client_secret.broker)
-            .ok_or(ConnectorFailure::SecretUnavailable)?;
-        let secret = secret_broker
-            .resolve(&config.client_secret)
-            .await
-            .map_err(|_| ConnectorFailure::SecretUnavailable)?;
-        drop(secret);
+        let config = self.runtime_oauth_config(&connector)?;
+        if self.oauth.get(id).is_none() {
+            self.oauth
+                .upsert(id, config.clone(), &self.brokers)
+                .map_err(|_| ConnectorFailure::OauthUnavailable)?;
+        }
+        if let Some(reference) = config.client_secret.as_ref() {
+            let secret_broker = self
+                .brokers
+                .get(&reference.broker)
+                .ok_or(ConnectorFailure::SecretUnavailable)?;
+            let secret = secret_broker
+                .resolve(reference)
+                .await
+                .map_err(|_| ConnectorFailure::SecretUnavailable)?;
+            drop(secret);
+        }
         self.runner
             .lock()
             .await
@@ -794,6 +1025,7 @@ impl ConnectorControl {
         let ConsentStart {
             authorization_url,
             expires_at,
+            ..
         } = self
             .oauth
             .start(id)
@@ -812,11 +1044,13 @@ impl ConnectorControl {
     pub async fn oauth_status(
         &self,
         context: &str,
+        principal_id: &str,
         id: &str,
     ) -> ConnectorResult<ConnectorOAuthStatus> {
         let _operation = self.operation.lock().await;
         let mut next = self.registry_snapshot()?;
         let mut connector = next.get(context, id)?.clone();
+        ensure_principal_access(&connector, principal_id)?;
         let observed = if !connector.secret_stored {
             ConnectorState::SecretMissing
         } else {
@@ -824,6 +1058,7 @@ impl ConnectorControl {
                 UpstreamOAuthState::Pending { .. } => ConnectorState::Pending,
                 UpstreamOAuthState::Connected => ConnectorState::Connected,
                 UpstreamOAuthState::Expired => ConnectorState::Expired,
+                UpstreamOAuthState::ReauthRequired => ConnectorState::ReauthRequired,
                 UpstreamOAuthState::Unavailable => ConnectorState::Unavailable,
             }
         };
@@ -850,21 +1085,50 @@ impl ConnectorControl {
         Ok(connector.oauth_status())
     }
 
-    pub async fn activate(&self, context: &str, id: &str) -> ConnectorResult<ConnectorActivation> {
+    pub async fn activate(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+    ) -> ConnectorResult<ConnectorActivation> {
         let _operation = self.operation.lock().await;
         let mut next = self.registry_snapshot()?;
         let mut connector = next.get(context, id)?.clone();
+        ensure_principal_access(&connector, principal_id)?;
         if !connector.secret_stored {
             return Err(ConnectorFailure::SecretUnavailable);
         }
-        self.templates
-            .get(id)
-            .ok_or(ConnectorFailure::NotApproved)?;
+        connector.state = match self.oauth.public_state(id).await {
+            UpstreamOAuthState::Pending { .. } => ConnectorState::Pending,
+            UpstreamOAuthState::Connected => ConnectorState::Connected,
+            UpstreamOAuthState::Expired => ConnectorState::Expired,
+            UpstreamOAuthState::ReauthRequired => ConnectorState::ReauthRequired,
+            UpstreamOAuthState::Unavailable => ConnectorState::Unavailable,
+        };
+        if !matches!(
+            connector.state,
+            ConnectorState::Connected | ConnectorState::Expired
+        ) {
+            return Err(ConnectorFailure::OauthUnavailable);
+        }
+        if let Some(profile) = &connector.profile {
+            let current_pin = self
+                .profiles
+                .pin(profile)
+                .map_err(|_| ConnectorFailure::NotApproved)?;
+            if connector.profile_pin.as_deref() != Some(current_pin.as_str()) {
+                return Err(ConnectorFailure::ManifestDrift);
+            }
+        } else {
+            self.templates
+                .get(id)
+                .ok_or(ConnectorFailure::NotApproved)?;
+        }
         let (manifest, approved_digest) = self
             .runner
             .lock()
             .await
-            .approved_connector(context, id)
+            .approved_connector(context, &connector.approved_manifest.id)
             .map_err(|_| ConnectorFailure::NotApproved)?;
         if connector.approved_manifest.id != manifest.server
             || connector.approved_manifest.pin != approved_digest
@@ -875,27 +1139,116 @@ impl ConnectorControl {
             .oauth
             .get(id)
             .ok_or(ConnectorFailure::OauthUnavailable)?;
-        let upstream = HttpUpstream::with_oauth_client(connector.endpoint.clone(), client);
-        let observed = match discover_server(id, &upstream).await {
-            Ok(observed) => observed,
-            Err(GatewayError::UpstreamOauthUnavailable(_))
-            | Err(GatewayError::CredentialUnavailable(_)) => {
-                connector.state = ConnectorState::Unavailable;
-                connector.active = false;
-                connector.live_digest = None;
-                next.replace(connector);
-                self.disable_runtime(id).await;
-                let _ = self.commit_registry(next);
-                return Err(ConnectorFailure::OauthUnavailable);
+        let execution = connector
+            .profile
+            .as_ref()
+            .map(|profile| self.profiles.execution(profile))
+            .transpose()
+            .map_err(|_| ConnectorFailure::NotApproved)?;
+        let (observed, runtime_upstream, gmail_runtime) = match execution {
+            Some(ConnectorExecutionProfile::CompiledRest {
+                adapter, settings, ..
+            }) => {
+                let observed = compiled_manifest(&connector.approved_manifest.id, *adapter)
+                    .map_err(|_| ConnectorFailure::NotApproved)?;
+                let upstream = match settings {
+                    CompiledConnectorSettings::GoogleSheetsRead {
+                        allowed_ranges,
+                        max_response_bytes,
+                    } => {
+                        let mut config = GoogleSheetsReadConfig::new(
+                            connector.endpoint.clone(),
+                            allowed_ranges
+                                .iter()
+                                .map(|(spreadsheet, ranges)| {
+                                    (spreadsheet.clone(), ranges.iter().cloned().collect())
+                                })
+                                .collect(),
+                        );
+                        config.max_response_bytes = *max_response_bytes;
+                        CompiledExtensionUpstream::google_sheets_read(config, Arc::clone(&client))
+                    }
+                    CompiledConnectorSettings::GmailSendGuarded {
+                        allowed_recipients,
+                        allowed_domains,
+                        max_recipients,
+                        max_subject_bytes,
+                        max_body_bytes,
+                        approval_ttl_seconds,
+                    } => {
+                        let mut policy = GmailSendPolicy::new(connector.endpoint.clone());
+                        policy.allowed_recipients = allowed_recipients.iter().cloned().collect();
+                        policy.allowed_domains = allowed_domains.iter().cloned().collect();
+                        policy.max_recipients = *max_recipients;
+                        policy.max_subject_bytes = *max_subject_bytes;
+                        policy.max_body_bytes = *max_body_bytes;
+                        policy.approval_ttl_seconds = *approval_ttl_seconds;
+                        let (broker, reference) = self.compiled_outbox_storage(&connector)?;
+                        CompiledExtensionUpstream::gmail_send_guarded_durable(
+                            policy,
+                            Arc::clone(&client),
+                            broker,
+                            reference,
+                        )
+                    }
+                    CompiledConnectorSettings::GoogleSheetsWriteGuarded {
+                        allowed_ranges,
+                        max_cells,
+                        max_request_bytes,
+                    } => {
+                        let mut config = GoogleSheetsWriteConfig::new(
+                            connector.endpoint.clone(),
+                            allowed_ranges
+                                .iter()
+                                .map(|(spreadsheet, ranges)| {
+                                    (spreadsheet.clone(), ranges.iter().cloned().collect())
+                                })
+                                .collect(),
+                        );
+                        config.max_cells = *max_cells;
+                        config.max_request_bytes = *max_request_bytes;
+                        CompiledExtensionUpstream::google_sheets_write_guarded(
+                            config,
+                            Arc::clone(&client),
+                        )
+                    }
+                }
+                .map_err(|_| ConnectorFailure::NotApproved)?;
+                upstream
+                    .hydrate()
+                    .await
+                    .map_err(|_| ConnectorFailure::ActivationFailed)?;
+                let gmail = upstream.gmail().cloned();
+                (observed, DynamicUpstream::new(upstream), gmail)
             }
-            Err(_) => {
-                connector.state = ConnectorState::Unavailable;
-                connector.active = false;
-                connector.live_digest = None;
-                next.replace(connector);
-                self.disable_runtime(id).await;
-                let _ = self.commit_registry(next);
-                return Err(ConnectorFailure::UpstreamDenied);
+            Some(ConnectorExecutionProfile::Mcp { .. }) | None => {
+                let upstream = HttpUpstream::with_oauth_client(
+                    connector.endpoint.clone(),
+                    Arc::clone(&client),
+                );
+                let observed = match discover_server(id, &upstream).await {
+                    Ok(observed) => observed,
+                    Err(GatewayError::UpstreamOauthUnavailable(_))
+                    | Err(GatewayError::CredentialUnavailable(_)) => {
+                        connector.state = ConnectorState::Unavailable;
+                        connector.active = false;
+                        connector.live_digest = None;
+                        next.replace(connector);
+                        self.disable_runtime(id).await;
+                        let _ = self.commit_registry(next);
+                        return Err(ConnectorFailure::OauthUnavailable);
+                    }
+                    Err(_) => {
+                        connector.state = ConnectorState::Unavailable;
+                        connector.active = false;
+                        connector.live_digest = None;
+                        next.replace(connector);
+                        self.disable_runtime(id).await;
+                        let _ = self.commit_registry(next);
+                        return Err(ConnectorFailure::UpstreamDenied);
+                    }
+                };
+                (observed, DynamicUpstream::new(upstream), None)
             }
         };
         let live_digest = match proposed_manifest_catalog_digest(&observed) {
@@ -929,9 +1282,10 @@ impl ConnectorControl {
             let _ = self.commit_registry(next);
             return Err(ConnectorFailure::ManifestDrift);
         }
+        let runtime_manifest = instance_manifest(&connector, &manifest);
         let mut runner = self.runner.lock().await;
         runner
-            .validate_hot_connector(context, id, &manifest)
+            .validate_hot_connector(context, id, &runtime_manifest)
             .map_err(|_| ConnectorFailure::ActivationFailed)?;
         runner
             .record_connector_config(context, id, "activate", &(self.clock)())
@@ -943,17 +1297,31 @@ impl ConnectorControl {
         self.commit_registry(next)?;
         let installed_upstream = match self.dynamic_upstreams.write() {
             Ok(mut upstreams) => {
-                upstreams.insert(id.to_owned(), DynamicUpstream::new(upstream));
+                upstreams.insert(id.to_owned(), runtime_upstream);
                 true
             }
             Err(_) => false,
         };
-        let installed_tools =
-            installed_upstream && runner.install_hot_connector(context, id, &manifest).is_ok();
+        let installed_gmail = gmail_runtime.is_none()
+            || self.gmail_extensions.write().is_ok_and(|mut extensions| {
+                extensions.insert(
+                    id.to_owned(),
+                    gmail_runtime.expect("Gmail runtime was checked"),
+                );
+                true
+            });
+        let installed_tools = installed_upstream
+            && installed_gmail
+            && runner
+                .install_hot_connector(context, id, &runtime_manifest)
+                .is_ok();
         if !installed_tools {
             runner.remove_hot_connector(id);
             if let Ok(mut upstreams) = self.dynamic_upstreams.write() {
                 upstreams.remove(id);
+            }
+            if let Ok(mut extensions) = self.gmail_extensions.write() {
+                extensions.remove(id);
             }
             connector.state = ConnectorState::Unavailable;
             connector.active = false;
@@ -978,21 +1346,270 @@ impl ConnectorControl {
         })
     }
 
-    pub async fn delete_draft(&self, context: &str, id: &str) -> ConnectorResult<()> {
+    pub async fn delete_draft(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+    ) -> ConnectorResult<ConnectorCleanupState> {
         let _operation = self.operation.lock().await;
         let mut next = self.registry_snapshot()?;
-        next.get(context, id)?;
+        let mut connector = next.get(context, id)?.clone();
+        ensure_principal_access(&connector, principal_id)?;
+        if connector.active {
+            return Err(ConnectorFailure::ActivationFailed);
+        }
+        let config = self
+            .runtime_oauth_config(&connector)
+            .map_err(|_| ConnectorFailure::OauthUnavailable)?;
+        if self.oauth.get(id).is_none() {
+            self.oauth
+                .upsert(id, config.clone(), &self.brokers)
+                .map_err(|_| ConnectorFailure::OauthUnavailable)?;
+        }
         self.runner
             .lock()
             .await
             .record_connector_config(context, id, "delete_draft", &(self.clock)())
             .map_err(|_| ConnectorFailure::ActivationFailed)?;
-        next.connectors
-            .retain(|connector| !(connector.id == id && connector.context == context));
-        self.commit_registry(next)?;
         self.disable_runtime(id).await;
-        self.oauth.remove(id);
-        Ok(())
+        let outcome = self
+            .oauth
+            .disconnect(id)
+            .await
+            .map_err(|_| ConnectorFailure::OauthUnavailable)?;
+        let mut vault_clean = outcome.vault_cleanup_clean;
+        if outcome.revocation_clean {
+            if let Some(reference) = &config.client_secret {
+                vault_clean &= matches!(
+                    self.brokers
+                        .get(&reference.broker)
+                        .ok_or(ConnectorFailure::SecretUnavailable)?
+                        .delete(reference)
+                        .await,
+                    Ok(crate::credentials::CredentialDeleteOutcome::Deleted)
+                );
+            }
+        }
+        if connector.profile.is_some() && outcome.revocation_clean {
+            vault_clean &= match self.compiled_outbox_storage(&connector) {
+                Ok((broker, reference)) => matches!(
+                    broker.delete(&reference).await,
+                    Ok(crate::credentials::CredentialDeleteOutcome::Deleted)
+                ),
+                Err(_) => false,
+            };
+        }
+        let cleanup = match (vault_clean, outcome.revocation_clean) {
+            (true, true) => ConnectorCleanupState::Clean,
+            (false, true) => ConnectorCleanupState::VaultResidue,
+            (true, false) => ConnectorCleanupState::RevocationResidue,
+            (false, false) => ConnectorCleanupState::VaultAndRevocationResidue,
+        };
+        if outcome.revocation_clean {
+            next.connectors
+                .retain(|candidate| !(candidate.id == id && candidate.context == context));
+        } else {
+            // Keep the derived account/profile metadata as a fail-closed
+            // tombstone so a later DELETE can retry provider revocation.
+            connector.active = false;
+            connector.state = ConnectorState::Disconnected;
+            connector.live_digest = None;
+            connector.cleanup = cleanup;
+            next.replace(connector);
+        }
+        self.commit_registry(next)?;
+        Ok(cleanup)
+    }
+
+    pub async fn disconnect(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+    ) -> ConnectorResult<ConnectorView> {
+        let _operation = self.operation.lock().await;
+        let mut next = self.registry_snapshot()?;
+        let mut connector = next.get(context, id)?.clone();
+        ensure_principal_access(&connector, principal_id)?;
+        if self.oauth.get(id).is_none() {
+            let config = self
+                .runtime_oauth_config(&connector)
+                .map_err(|_| ConnectorFailure::OauthUnavailable)?;
+            self.oauth
+                .upsert(id, config, &self.brokers)
+                .map_err(|_| ConnectorFailure::OauthUnavailable)?;
+        }
+        self.runner
+            .lock()
+            .await
+            .record_connector_config(context, id, "disconnect", &(self.clock)())
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        self.disable_runtime(id).await;
+        connector.active = false;
+        connector.state = ConnectorState::Disconnected;
+        connector.live_digest = None;
+        connector.cleanup = ConnectorCleanupState::Clean;
+        next.replace(connector.clone());
+        self.commit_registry(next)?;
+        let outcome = self
+            .oauth
+            .disconnect(id)
+            .await
+            .map_err(|_| ConnectorFailure::OauthUnavailable)?;
+        let outbox_cleanup_clean = if connector.profile.is_some() {
+            match self.compiled_outbox_storage(&connector) {
+                Ok((broker, reference)) => matches!(
+                    broker.delete(&reference).await,
+                    Ok(crate::credentials::CredentialDeleteOutcome::Deleted)
+                ),
+                Err(_) => false,
+            }
+        } else {
+            true
+        };
+        let vault_cleanup_clean = outcome.vault_cleanup_clean && outbox_cleanup_clean;
+        connector.cleanup = match (vault_cleanup_clean, outcome.revocation_clean) {
+            (true, true) => ConnectorCleanupState::Clean,
+            (false, true) => ConnectorCleanupState::VaultResidue,
+            (true, false) => ConnectorCleanupState::RevocationResidue,
+            (false, false) => ConnectorCleanupState::VaultAndRevocationResidue,
+        };
+        let mut final_state = self.registry_snapshot()?;
+        final_state.replace(connector.clone());
+        self.commit_registry(final_state)?;
+        Ok(connector.view())
+    }
+
+    pub async fn gmail_review(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+        approval_id: &str,
+    ) -> ConnectorResult<ApprovalReview> {
+        self.gmail_extension(context, principal_id, id)?
+            .owner_review(approval_id)
+            .await
+            .map_err(|_| ConnectorFailure::OauthDenied)
+    }
+
+    pub async fn gmail_approve(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+        approval_id: &str,
+    ) -> ConnectorResult<ApprovalView> {
+        let _operation = self.operation.lock().await;
+        let extension = self.gmail_extension(context, principal_id, id)?;
+        let approval = extension
+            .approval_status(approval_id)
+            .await
+            .map_err(|_| ConnectorFailure::OauthDenied)?;
+        self.runner
+            .lock()
+            .await
+            .record_connector_effect(
+                context,
+                id,
+                &ConnectorEffectProof {
+                    event: "gmail_approve",
+                    approval_id,
+                    payload_digest: &approval.payload_digest,
+                    message_id: None,
+                },
+                &(self.clock)(),
+            )
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        extension
+            .owner_approve(approval_id, principal_id)
+            .await
+            .map_err(|_| ConnectorFailure::OauthDenied)
+    }
+
+    pub async fn gmail_deny(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+        approval_id: &str,
+    ) -> ConnectorResult<ApprovalView> {
+        let _operation = self.operation.lock().await;
+        let extension = self.gmail_extension(context, principal_id, id)?;
+        let approval = extension
+            .approval_status(approval_id)
+            .await
+            .map_err(|_| ConnectorFailure::OauthDenied)?;
+        self.runner
+            .lock()
+            .await
+            .record_connector_effect(
+                context,
+                id,
+                &ConnectorEffectProof {
+                    event: "gmail_deny",
+                    approval_id,
+                    payload_digest: &approval.payload_digest,
+                    message_id: None,
+                },
+                &(self.clock)(),
+            )
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        extension
+            .owner_deny(approval_id, principal_id)
+            .await
+            .map_err(|_| ConnectorFailure::OauthDenied)
+    }
+
+    pub async fn gmail_dispatch(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+        approval_id: &str,
+    ) -> ConnectorResult<ApprovalView> {
+        let _operation = self.operation.lock().await;
+        let extension = self.gmail_extension(context, principal_id, id)?;
+        let approval = extension
+            .approval_status(approval_id)
+            .await
+            .map_err(|_| ConnectorFailure::OauthDenied)?;
+        self.runner
+            .lock()
+            .await
+            .record_connector_effect(
+                context,
+                id,
+                &ConnectorEffectProof {
+                    event: "gmail_dispatch",
+                    approval_id,
+                    payload_digest: &approval.payload_digest,
+                    message_id: None,
+                },
+                &(self.clock)(),
+            )
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        let outcome = extension
+            .owner_dispatch(approval_id)
+            .await
+            .map_err(|_| ConnectorFailure::UpstreamDenied)?;
+        self.runner
+            .lock()
+            .await
+            .record_connector_effect(
+                context,
+                id,
+                &ConnectorEffectProof {
+                    event: "gmail_dispatched",
+                    approval_id,
+                    payload_digest: &outcome.payload_digest,
+                    message_id: outcome.message_id.as_deref(),
+                },
+                &(self.clock)(),
+            )
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        Ok(outcome)
     }
 
     /// Revalidate each active record independently at startup. Corrupt
@@ -1024,11 +1641,20 @@ impl ConnectorControl {
     }
 
     async fn restore_one(&self, connector: &PersistedConnector) -> ConnectorResult<()> {
+        if let Some(profile) = &connector.profile {
+            let current_pin = self
+                .profiles
+                .pin(profile)
+                .map_err(|_| ConnectorFailure::NotApproved)?;
+            if connector.profile_pin.as_deref() != Some(current_pin.as_str()) {
+                return Err(ConnectorFailure::ManifestDrift);
+            }
+        }
         let (manifest, approved_digest) = self
             .runner
             .lock()
             .await
-            .approved_connector(&connector.context, &connector.id)
+            .approved_connector(&connector.context, &connector.approved_manifest.id)
             .map_err(|_| ConnectorFailure::NotApproved)?;
         if connector.approved_manifest.pin != approved_digest {
             return Err(ConnectorFailure::ManifestDrift);
@@ -1037,10 +1663,27 @@ impl ConnectorControl {
             .oauth
             .get(&connector.id)
             .ok_or(ConnectorFailure::OauthUnavailable)?;
-        let upstream = HttpUpstream::with_oauth_client(connector.endpoint.clone(), client);
-        let observed = discover_server(&connector.id, &upstream)
-            .await
-            .map_err(|_| ConnectorFailure::OauthUnavailable)?;
+        let execution = connector
+            .profile
+            .as_ref()
+            .map(|profile| self.profiles.execution(profile))
+            .transpose()
+            .map_err(|_| ConnectorFailure::NotApproved)?;
+        let (observed, runtime_upstream, gmail_runtime) = match execution {
+            Some(ConnectorExecutionProfile::CompiledRest {
+                adapter, settings, ..
+            }) => {
+                let storage = self.compiled_outbox_storage(connector).ok();
+                build_compiled_runtime(connector, *adapter, settings, client, storage).await?
+            }
+            Some(ConnectorExecutionProfile::Mcp { .. }) | None => {
+                let upstream = HttpUpstream::with_oauth_client(connector.endpoint.clone(), client);
+                let observed = discover_server(&connector.id, &upstream)
+                    .await
+                    .map_err(|_| ConnectorFailure::OauthUnavailable)?;
+                (observed, DynamicUpstream::new(upstream), None)
+            }
+        };
         let live_digest = proposed_manifest_catalog_digest(&observed)
             .map_err(|_| ConnectorFailure::ManifestDrift)?;
         if live_digest != approved_digest {
@@ -1049,12 +1692,20 @@ impl ConnectorControl {
         self.dynamic_upstreams
             .write()
             .map_err(|_| ConnectorFailure::ActivationFailed)?
-            .insert(connector.id.clone(), DynamicUpstream::new(upstream));
+            .insert(connector.id.clone(), runtime_upstream);
+        let runtime_manifest = instance_manifest(connector, &manifest);
         self.runner
             .lock()
             .await
-            .install_hot_connector(&connector.context, &connector.id, &manifest)
-            .map_err(|_| ConnectorFailure::ActivationFailed)
+            .install_hot_connector(&connector.context, &connector.id, &runtime_manifest)
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        if let Some(gmail) = gmail_runtime {
+            self.gmail_extensions
+                .write()
+                .map_err(|_| ConnectorFailure::ActivationFailed)?
+                .insert(connector.id.clone(), gmail);
+        }
+        Ok(())
     }
 
     async fn disable_runtime(&self, id: &str) {
@@ -1062,6 +1713,57 @@ impl ConnectorControl {
         if let Ok(mut upstreams) = self.dynamic_upstreams.write() {
             upstreams.remove(id);
         }
+        if let Ok(mut gmail) = self.gmail_extensions.write() {
+            gmail.remove(id);
+        }
+    }
+
+    fn gmail_extension(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+    ) -> ConnectorResult<GmailSendGuardedUpstream> {
+        let registry = self.registry_snapshot()?;
+        let connector = registry.get(context, id)?;
+        ensure_principal_access(connector, principal_id)?;
+        if !connector.active {
+            return Err(ConnectorFailure::OauthUnavailable);
+        }
+        self.gmail_extensions
+            .read()
+            .map_err(|_| ConnectorFailure::ActivationFailed)?
+            .get(id)
+            .cloned()
+            .ok_or(ConnectorFailure::NotApproved)
+    }
+
+    fn compiled_outbox_storage(
+        &self,
+        connector: &PersistedConnector,
+    ) -> ConnectorResult<(Arc<dyn CredentialBroker>, CredentialRef)> {
+        let profile = connector
+            .profile
+            .as_ref()
+            .ok_or(ConnectorFailure::NotApproved)?;
+        let configured = self
+            .profiles
+            .enabled(profile)
+            .map_err(|_| ConnectorFailure::NotApproved)?;
+        let key = ConnectorInstanceKey::new(
+            &connector.context,
+            &connector.principal,
+            &connector.id,
+            &connector.account,
+        )
+        .map_err(|_| ConnectorFailure::NotApproved)?;
+        let layout = OAuthVaultLayout::derive(&configured.oauth.credential_broker, &key);
+        let broker = self
+            .brokers
+            .get(&layout.outbox.broker)
+            .cloned()
+            .ok_or(ConnectorFailure::SecretUnavailable)?;
+        Ok((broker, layout.outbox))
     }
 
     fn registry_snapshot(&self) -> ConnectorResult<RegistryFile> {
@@ -1119,11 +1821,13 @@ impl ConnectorControl {
         connector: &PersistedConnector,
         template: &ConnectorTemplate,
     ) -> UpstreamOAuthConfig {
-        let client_secret = derived_reference(
-            &template.oauth.client_secret.broker,
-            &connector.id,
-            &connector.oauth.client_secret_record,
-        );
+        let client_secret = template.oauth.client_secret.as_ref().map(|reference| {
+            derived_reference(
+                &reference.broker,
+                &connector.id,
+                &connector.oauth.client_secret_record,
+            )
+        });
         let pending = derived_reference(
             &template.oauth.token_vault.broker,
             &connector.id,
@@ -1141,8 +1845,54 @@ impl ConnectorControl {
             client_secret,
             scopes: connector.oauth.scopes.clone(),
             redirect_uri: connector.oauth.redirect_uri.clone(),
+            endpoints: template.oauth.endpoints.clone(),
+            client_authentication: template.oauth.client_authentication,
+            registration: template.oauth.registration.clone(),
+            authorization_parameters: template.oauth.authorization_parameters.clone(),
+            resource: template.oauth.resource.clone(),
+            audience: template.oauth.audience.clone(),
+            revocation_url: template.oauth.revocation_url.clone(),
+            account_binding: template.oauth.account_binding.clone(),
             pending_vault: Some(pending),
+            revocation_vault: None,
             token_vault: token,
+        }
+    }
+
+    fn profile_oauth_config(&self, connector: &PersistedConnector) -> Result<UpstreamOAuthConfig> {
+        let profile = connector.profile.as_ref().ok_or_else(|| {
+            GatewayError::ConfigRejected("connector has no profile reference".into())
+        })?;
+        let current_pin = self.profiles.pin(profile)?;
+        if connector.profile_pin.as_deref() != Some(current_pin.as_str()) {
+            return Err(GatewayError::ConfigRejected(
+                "connector profile content drifted under its pinned version".into(),
+            ));
+        }
+        let key = ConnectorInstanceKey::new(
+            &connector.context,
+            &connector.principal,
+            &connector.id,
+            &connector.account,
+        )?;
+        let declared = self.profiles.enabled(profile)?;
+        let layout = OAuthVaultLayout::derive(&declared.oauth.credential_broker, &key);
+        self.profiles.materialize_oauth(profile, &layout)
+    }
+
+    fn runtime_oauth_config(
+        &self,
+        connector: &PersistedConnector,
+    ) -> ConnectorResult<UpstreamOAuthConfig> {
+        if connector.profile.is_some() {
+            self.profile_oauth_config(connector)
+                .map_err(|_| ConnectorFailure::NotApproved)
+        } else {
+            let template = self
+                .templates
+                .get(&connector.id)
+                .ok_or(ConnectorFailure::NotApproved)?;
+            Ok(self.oauth_config(connector, template))
         }
     }
 }
@@ -1172,7 +1922,10 @@ fn ensure_oauth_brokers(
         .pending_vault
         .as_ref()
         .ok_or(ConnectorFailure::ActivationFailed)?;
-    if brokers.contains_key(&config.client_secret.broker)
+    if config
+        .client_secret
+        .as_ref()
+        .is_none_or(|secret| brokers.contains_key(&secret.broker))
         && brokers.contains_key(&pending.broker)
         && brokers.contains_key(&config.token_vault.broker)
     {
@@ -1238,6 +1991,108 @@ fn valid_public_descriptor(connector: &PersistedConnector) -> bool {
         && connector.approved_manifest.pin.starts_with("sha256:")
 }
 
+fn ensure_principal_access(
+    connector: &PersistedConnector,
+    principal_id: &str,
+) -> ConnectorResult<()> {
+    if connector.profile.is_some() && connector.principal != principal_id {
+        Err(ConnectorFailure::NotApproved)
+    } else {
+        Ok(())
+    }
+}
+
+async fn build_compiled_runtime(
+    connector: &PersistedConnector,
+    adapter: CompiledConnectorAdapter,
+    settings: &CompiledConnectorSettings,
+    client: Arc<crate::upstream_oauth::UpstreamOAuthClient>,
+    outbox_storage: Option<(Arc<dyn CredentialBroker>, CredentialRef)>,
+) -> ConnectorResult<(
+    ProposedManifest,
+    DynamicUpstream,
+    Option<GmailSendGuardedUpstream>,
+)> {
+    let observed = compiled_manifest(&connector.approved_manifest.id, adapter)
+        .map_err(|_| ConnectorFailure::NotApproved)?;
+    let upstream = match settings {
+        CompiledConnectorSettings::GoogleSheetsRead {
+            allowed_ranges,
+            max_response_bytes,
+        } => {
+            let mut config = GoogleSheetsReadConfig::new(
+                connector.endpoint.clone(),
+                allowed_ranges
+                    .iter()
+                    .map(|(spreadsheet, ranges)| {
+                        (spreadsheet.clone(), ranges.iter().cloned().collect())
+                    })
+                    .collect(),
+            );
+            config.max_response_bytes = *max_response_bytes;
+            CompiledExtensionUpstream::google_sheets_read(config, client)
+        }
+        CompiledConnectorSettings::GmailSendGuarded {
+            allowed_recipients,
+            allowed_domains,
+            max_recipients,
+            max_subject_bytes,
+            max_body_bytes,
+            approval_ttl_seconds,
+        } => {
+            let mut policy = GmailSendPolicy::new(connector.endpoint.clone());
+            policy.allowed_recipients = allowed_recipients.iter().cloned().collect();
+            policy.allowed_domains = allowed_domains.iter().cloned().collect();
+            policy.max_recipients = *max_recipients;
+            policy.max_subject_bytes = *max_subject_bytes;
+            policy.max_body_bytes = *max_body_bytes;
+            policy.approval_ttl_seconds = *approval_ttl_seconds;
+            let (broker, reference) = outbox_storage.ok_or(ConnectorFailure::SecretUnavailable)?;
+            CompiledExtensionUpstream::gmail_send_guarded_durable(policy, client, broker, reference)
+        }
+        CompiledConnectorSettings::GoogleSheetsWriteGuarded {
+            allowed_ranges,
+            max_cells,
+            max_request_bytes,
+        } => {
+            let mut config = GoogleSheetsWriteConfig::new(
+                connector.endpoint.clone(),
+                allowed_ranges
+                    .iter()
+                    .map(|(spreadsheet, ranges)| {
+                        (spreadsheet.clone(), ranges.iter().cloned().collect())
+                    })
+                    .collect(),
+            );
+            config.max_cells = *max_cells;
+            config.max_request_bytes = *max_request_bytes;
+            CompiledExtensionUpstream::google_sheets_write_guarded(config, client)
+        }
+    }
+    .map_err(|_| ConnectorFailure::NotApproved)?;
+    upstream
+        .hydrate()
+        .await
+        .map_err(|_| ConnectorFailure::ActivationFailed)?;
+    let gmail = upstream.gmail().cloned();
+    Ok((observed, DynamicUpstream::new(upstream), gmail))
+}
+
+fn instance_manifest(
+    connector: &PersistedConnector,
+    manifest: &ApprovedManifest,
+) -> ApprovedManifest {
+    if connector.profile.is_none() || connector.id == manifest.server {
+        return manifest.clone();
+    }
+    let mut runtime = manifest.clone();
+    runtime.server = connector.id.clone();
+    for tool in &mut runtime.tools {
+        tool.exposed_name = hub_exposed_name(&connector.id, &tool.name);
+    }
+    runtime
+}
+
 fn system_epoch() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1300,8 +2155,13 @@ mod tests {
                     id: id.to_owned(),
                     pin: "sha256:approved".into(),
                 },
+                profile: None,
+                profile_pin: None,
+                principal: legacy_principal(),
+                account: legacy_account(),
                 state: ConnectorState::Draft,
                 active: false,
+                cleanup: ConnectorCleanupState::Clean,
                 secret_stored: false,
                 live_digest: None,
             }],

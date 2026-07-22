@@ -27,7 +27,9 @@ use serde_json::json;
 use tokio::sync::Semaphore;
 
 use crate::config::DashboardConfig;
-use crate::connectors::{ConnectorControl, ConnectorFailure, ConnectorStageRequest};
+use crate::connectors::{
+    ConnectorControl, ConnectorFailure, ConnectorProfileStageRequest, ConnectorStageRequest,
+};
 use crate::core_bridge::{
     prepare_control_envelope, valid_control_gamma_kind, ControlAccess, ControlAuthError,
     ControlContextProof, ControlHeadsProof, ControlPage, ControlPrincipal, ControlProofReader,
@@ -211,6 +213,10 @@ pub fn router(state: Arc<ControlState>) -> Router {
             post(stage_connector).options(preflight_sink),
         )
         .route(
+            "/control/v1/connectors/{id}/profile-stage",
+            post(stage_profile_connector).options(preflight_sink),
+        )
+        .route(
             "/control/v1/connectors/{id}/client-secret",
             put(set_client_secret).options(preflight_sink),
         )
@@ -229,6 +235,26 @@ pub fn router(state: Arc<ControlState>) -> Router {
         .route(
             "/control/v1/connectors/{id}/draft",
             delete(delete_draft).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/disconnect",
+            post(disconnect_connector).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/approvals/{approval}",
+            get(gmail_review).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/approvals/{approval}/approve",
+            post(gmail_approve).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/approvals/{approval}/deny",
+            post(gmail_deny).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/approvals/{approval}/dispatch",
+            post(gmail_dispatch).options(preflight_sink),
         )
         .route_layer(middleware::from_fn_with_state(
             Arc::clone(&state),
@@ -546,38 +572,59 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
     }
     if query.is_none() {
         if let Some(rest) = path.strip_prefix("/control/v1/connectors/") {
-            let mut parts = rest.split('/');
-            let connector = parts.next()?;
-            let first = parts.next()?;
-            let second = parts.next();
-            if parts.next().is_some() || !canonical_label(connector) {
+            let parts = rest.split('/').collect::<Vec<_>>();
+            let connector = *parts.first()?;
+            if !canonical_label(connector) {
                 return None;
             }
-            let action = match (first, second) {
-                ("stage", None) => "stage",
-                ("client-secret", None) => "client-secret",
-                ("oauth", Some("start")) => "oauth/start",
-                ("oauth", Some("status")) => "oauth/status",
-                ("activate", None) => "activate",
-                ("draft", None) => "draft",
+            let action = match parts.as_slice() {
+                [_, "stage"] => "stage",
+                [_, "profile-stage"] => "profile-stage",
+                [_, "client-secret"] => "client-secret",
+                [_, "oauth", "start"] => "oauth/start",
+                [_, "oauth", "status"] => "oauth/status",
+                [_, "activate"] => "activate",
+                [_, "draft"] => "draft",
+                [_, "disconnect"] => "disconnect",
+                [_, "approvals", approval] if canonical_approval_id(approval) => "approval/review",
+                [_, "approvals", approval, "approve"] if canonical_approval_id(approval) => {
+                    "approval/approve"
+                }
+                [_, "approvals", approval, "deny"] if canonical_approval_id(approval) => {
+                    "approval/deny"
+                }
+                [_, "approvals", approval, "dispatch"] if canonical_approval_id(approval) => {
+                    "approval/dispatch"
+                }
                 _ => return None,
             };
             let body = match (method, action) {
-                ("POST", "stage") => ControlBody::Json {
+                ("POST", "stage" | "profile-stage") => ControlBody::Json {
                     maximum: MAX_STAGE_BODY_BYTES,
                 },
                 ("PUT", "client-secret") => ControlBody::Json {
                     maximum: MAX_SECRET_BODY_BYTES,
                 },
-                ("POST", "oauth/start" | "activate")
+                ("POST", "oauth/start" | "activate" | "disconnect")
                 | ("GET", "oauth/status")
-                | ("DELETE", "draft") => ControlBody::Empty,
+                | ("DELETE", "draft")
+                | ("GET", "approval/review")
+                | ("POST", "approval/approve" | "approval/deny" | "approval/dispatch") => {
+                    ControlBody::Empty
+                }
                 _ => return None,
             };
-            return Some(ControlRoute {
-                access: ControlAccess::ConnectorConfigAny {
+            let access = if action.starts_with("approval/") {
+                ControlAccess::ConnectorOwnerAny {
                     connector: connector.to_owned(),
-                },
+                }
+            } else {
+                ControlAccess::ConnectorConfigAny {
+                    connector: connector.to_owned(),
+                }
+            };
+            return Some(ControlRoute {
+                access,
                 offset: 0,
                 limit: DEFAULT_PAGE_LIMIT,
                 body,
@@ -685,6 +732,12 @@ fn canonical_label(value: &str) -> bool {
         })
 }
 
+fn canonical_approval_id(value: &str) -> bool {
+    value.strip_prefix("apr-").is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
 fn canonical_kind(value: &str) -> bool {
     valid_control_gamma_kind(value)
 }
@@ -758,10 +811,13 @@ async fn connectors(
     State(state): State<Arc<ControlState>>,
     Extension(principal): Extension<ControlPrincipal>,
 ) -> Response {
+    if !principal.is_owner() {
+        return public_error(StatusCode::FORBIDDEN, "authority_denied");
+    }
     let Some(control) = &state.connectors else {
         return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
     };
-    match control.list(principal.context()) {
+    match control.list(principal.context(), principal.principal_id()) {
         Ok(page) => Json(page).into_response(),
         Err(error) => connector_error(error),
     }
@@ -786,6 +842,34 @@ async fn stage_connector(
     }
 }
 
+async fn stage_profile_connector(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    let descriptor: ConnectorProfileStageRequest =
+        match ConnectorControl::parse_profile_stage(&body) {
+            Ok(descriptor) => descriptor,
+            Err(error) => return connector_error(error),
+        };
+    match control
+        .stage_profile(
+            principal.context(),
+            principal.principal_id(),
+            &id,
+            descriptor,
+        )
+        .await
+    {
+        Ok(view) => (StatusCode::CREATED, Json(view)).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
 async fn set_client_secret(
     State(state): State<Arc<ControlState>>,
     Extension(principal): Extension<ControlPrincipal>,
@@ -800,7 +884,7 @@ async fn set_client_secret(
         Err(error) => return connector_error(error),
     };
     match control
-        .set_client_secret(principal.context(), &id, secret)
+        .set_client_secret(principal.context(), principal.principal_id(), &id, secret)
         .await
     {
         Ok(status) => Json(status).into_response(),
@@ -816,7 +900,10 @@ async fn start_oauth(
     let Some(control) = &state.connectors else {
         return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
     };
-    match control.start_oauth(principal.context(), &id).await {
+    match control
+        .start_oauth(principal.context(), principal.principal_id(), &id)
+        .await
+    {
         Ok(start) => Json(start).into_response(),
         Err(error) => connector_error(error),
     }
@@ -830,7 +917,10 @@ async fn oauth_status(
     let Some(control) = &state.connectors else {
         return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
     };
-    match control.oauth_status(principal.context(), &id).await {
+    match control
+        .oauth_status(principal.context(), principal.principal_id(), &id)
+        .await
+    {
         Ok(status) => Json(status).into_response(),
         Err(error) => connector_error(error),
     }
@@ -844,7 +934,10 @@ async fn activate_connector(
     let Some(control) = &state.connectors else {
         return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
     };
-    match control.activate(principal.context(), &id).await {
+    match control
+        .activate(principal.context(), principal.principal_id(), &id)
+        .await
+    {
         Ok(activation) => Json(activation).into_response(),
         Err(error) => connector_error(error),
     }
@@ -858,15 +951,137 @@ async fn delete_draft(
     let Some(control) = &state.connectors else {
         return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
     };
-    match control.delete_draft(principal.context(), &id).await {
-        Ok(()) => {
+    match control
+        .delete_draft(principal.context(), principal.principal_id(), &id)
+        .await
+    {
+        Ok(cleanup) => {
             let mut response = StatusCode::NO_CONTENT.into_response();
-            response.headers_mut().insert(
-                "x-aithos-cleanup-limitation",
-                HeaderValue::from_static("vault-records-retained"),
-            );
+            if cleanup != crate::connectors::ConnectorCleanupState::Clean {
+                response.headers_mut().insert(
+                    "x-aithos-cleanup-limitation",
+                    HeaderValue::from_static("vault-records-retained"),
+                );
+            }
             response
         }
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn disconnect_connector(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control
+        .disconnect(principal.context(), principal.principal_id(), &id)
+        .await
+    {
+        Ok(view) => Json(view).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn gmail_review(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path((id, approval)): Path<(String, String)>,
+) -> Response {
+    if !principal.is_owner() {
+        return public_error(StatusCode::FORBIDDEN, "authority_denied");
+    }
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control
+        .gmail_review(
+            principal.context(),
+            principal.principal_id(),
+            &id,
+            &approval,
+        )
+        .await
+    {
+        Ok(review) => Json(review).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn gmail_approve(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path((id, approval)): Path<(String, String)>,
+) -> Response {
+    if !principal.is_owner() {
+        return public_error(StatusCode::FORBIDDEN, "authority_denied");
+    }
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control
+        .gmail_approve(
+            principal.context(),
+            principal.principal_id(),
+            &id,
+            &approval,
+        )
+        .await
+    {
+        Ok(view) => Json(view).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn gmail_deny(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path((id, approval)): Path<(String, String)>,
+) -> Response {
+    if !principal.is_owner() {
+        return public_error(StatusCode::FORBIDDEN, "authority_denied");
+    }
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control
+        .gmail_deny(
+            principal.context(),
+            principal.principal_id(),
+            &id,
+            &approval,
+        )
+        .await
+    {
+        Ok(view) => Json(view).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn gmail_dispatch(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path((id, approval)): Path<(String, String)>,
+) -> Response {
+    if !principal.is_owner() {
+        return public_error(StatusCode::FORBIDDEN, "authority_denied");
+    }
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control
+        .gmail_dispatch(
+            principal.context(),
+            principal.principal_id(),
+            &id,
+            &approval,
+        )
+        .await
+    {
+        Ok(view) => Json(view).into_response(),
         Err(error) => connector_error(error),
     }
 }
@@ -1005,6 +1220,21 @@ mod tests {
         assert!(classify_route(
             "GET",
             "/control/v1/contexts/company-brand/gamma?kind=action&cursor=v1.2&limit=10"
+        )
+        .is_some());
+        let approval = format!("apr-{}", "a".repeat(64));
+        let approval_route = classify_route(
+            "GET",
+            &format!("/control/v1/connectors/gmail/approvals/{approval}"),
+        )
+        .unwrap();
+        assert!(matches!(
+            approval_route.access,
+            ControlAccess::ConnectorOwnerAny { .. }
+        ));
+        assert!(classify_route(
+            "POST",
+            &format!("/control/v1/connectors/gmail/approvals/{approval}/dispatch")
         )
         .is_some());
         for rejected in [
