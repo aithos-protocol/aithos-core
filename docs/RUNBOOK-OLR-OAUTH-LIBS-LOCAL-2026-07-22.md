@@ -1,8 +1,8 @@
 # Runbook — suite locale OLR OAuth libs (amont)
 
 Date : 2026-07-22
-Clone isolé : `_isolated/aithos-core-olr-oauth-libs`
-Branche : `feature/olr-oauth-libs-upstream`
+Worktree officiel isolé : `_isolated/aithos-core-official-olr-oauth-libs`
+Branche : `codex/olr-oauth-libs-upstream`
 
 ## Ce qui est livré
 
@@ -14,7 +14,7 @@ Branche : `feature/olr-oauth-libs-upstream`
 ## Lancer la suite
 
 ```bash
-cd /Volumes/Math17/aithos/v2/_isolated/aithos-core-olr-oauth-libs
+cd /Volumes/Math17/aithos/v2/_isolated/aithos-core-official-olr-oauth-libs
 chmod +x scripts/run-olr-oauth-local.sh
 ./scripts/run-olr-oauth-local.sh
 ```

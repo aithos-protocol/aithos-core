@@ -1,7 +1,7 @@
 # OLR-4 — matrice discovery / DCR / CIMD
 
 Date : 2026-07-22
-Branche : `feature/olr-oauth-libs-upstream`
+Branche : `codex/olr-oauth-libs-upstream`
 
 ## Décision (rappel ADR)
 
