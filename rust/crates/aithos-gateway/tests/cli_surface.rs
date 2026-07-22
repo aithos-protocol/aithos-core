@@ -42,6 +42,18 @@ fn delegated_session_owner_grant_keeps_the_master_seed_off_argv() {
 }
 
 #[test]
+fn owner_revocation_keeps_the_master_seed_off_argv() {
+    gateway()
+        .args(["owner-revoke-mandate", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--mandate-id"))
+        .stdout(predicate::str::contains("--store-root"))
+        .stdout(predicate::str::contains("stdin"))
+        .stdout(predicate::str::contains("--master-seed-hex").not());
+}
+
+#[test]
 fn onboard_prints_endpoint_and_cold_seeds_but_never_gateway_keys() {
     let tmp = tempfile::tempdir().unwrap();
     let cfg = write_config(tmp.path());

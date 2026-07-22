@@ -1335,7 +1335,7 @@ async fn process_multi_as<U: Upstream>(
             let now = (rt.clock)();
             let runner = rt.runner.lock().await;
             let tools = if let Some(session) = session {
-                match runner.listed_tools_for_session(
+                let mut tools = match runner.listed_tools_for_session(
                     &session.context,
                     &session.leaf_id,
                     &session.session_pub,
@@ -1344,7 +1344,22 @@ async fn process_multi_as<U: Upstream>(
                 ) {
                     Ok(tools) => tools,
                     Err(error) => return error_response(id, &error),
+                };
+                if runner.briefing_available_for(&session.context) {
+                    match runner.session_covers_tool(
+                        &session.context,
+                        &session.leaf_id,
+                        &session.session_pub,
+                        &session.leaf,
+                        BRIEFING_READ,
+                        &now,
+                    ) {
+                        Ok(true) => tools.push(briefing_tool()),
+                        Ok(false) => {}
+                        Err(error) => return error_response(id, &error),
+                    }
                 }
+                tools
             } else {
                 let mut tools = runner.listed_tools();
                 tools.extend(native_journal_tools());
@@ -1409,7 +1424,7 @@ async fn tool_call_delegated<U: Upstream>(
         runner.record_refusal(None, "<unnamed>", deny.refusal_code(), &now);
         return error_response(id, &deny);
     };
-    let args = msg
+    let mut args = msg
         .pointer("/params/arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
@@ -1420,7 +1435,37 @@ async fn tool_call_delegated<U: Upstream>(
     // session key co-sign it, then ask Core to verify the whole chain and both
     // proofs. Nothing below this guard contacts an upstream or its credentials.
     let mut runner = rt.runner.lock().await;
-    let Some(ctx) = runner.resolve(&tool).map(str::to_owned) else {
+    let native_briefing = tool == BRIEFING_READ;
+    if native_briefing {
+        let Some(arguments) = args.as_object_mut() else {
+            let deny =
+                GatewayError::RequestRejected("briefing.read arguments must be an object".into());
+            runner.record_refusal(Some(&session.context), &tool, deny.refusal_code(), &now);
+            return error_response(id, &deny);
+        };
+        match arguments.get("context").and_then(Value::as_str) {
+            Some(context) if context != session.context => {
+                let deny = GatewayError::MandateDenied {
+                    op: "delegated_session".into(),
+                    reason: format!(
+                        "briefing context `{context}` differs from delegated context `{}`",
+                        session.context
+                    ),
+                };
+                runner.record_refusal(Some(context), &tool, deny.refusal_code(), &now);
+                return error_response(id, &deny);
+            }
+            Some(_) => {}
+            None => {
+                arguments.insert("context".into(), Value::String(session.context.clone()));
+            }
+        }
+    }
+    let ctx = if native_briefing {
+        session.context.clone()
+    } else if let Some(context) = runner.resolve(&tool).map(str::to_owned) {
+        context
+    } else {
         let deny = GatewayError::ToolNotMapped(tool.clone());
         runner.record_refusal(None, &tool, deny.refusal_code(), &now);
         return error_response(id, &deny);
@@ -1436,19 +1481,25 @@ async fn tool_call_delegated<U: Upstream>(
         runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
         return error_response(id, &deny);
     }
-    if let Some(deny) = runner.manifest_drift_for(&tool) {
-        runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
-        return error_response(id, &deny);
-    }
-    if let Err(deny) = runner.check_bounds(&tool, &args) {
-        runner.record_bound_refusal(Some(&ctx), &tool, &deny, &now);
-        return error_response(id, &deny);
-    }
-    let relay = match runner.relay_target(&ctx, &tool) {
-        Ok(relay) => relay,
-        Err(deny) => {
+    if !native_briefing {
+        if let Some(deny) = runner.manifest_drift_for(&tool) {
             runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
             return error_response(id, &deny);
+        }
+        if let Err(deny) = runner.check_bounds(&tool, &args) {
+            runner.record_bound_refusal(Some(&ctx), &tool, &deny, &now);
+            return error_response(id, &deny);
+        }
+    }
+    let relay = if native_briefing {
+        None
+    } else {
+        match runner.relay_target(&ctx, &tool) {
+            Ok(relay) => Some(relay),
+            Err(deny) => {
+                runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+                return error_response(id, &deny);
+            }
         }
     };
     let prepared = match runner.prepare_session_operation(
@@ -1512,7 +1563,25 @@ async fn tool_call_delegated<U: Upstream>(
         runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
         return error_response(id, &deny);
     }
+    if native_briefing {
+        return match briefing_dispatch(&mut runner, &args, &now) {
+            Ok(text) => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "content": [{ "type": "text", "text": text }],
+                    "isError": false
+                }
+            }),
+            Err(deny) => {
+                runner.record_refusal(Some(&ctx), &tool, deny.refusal_code(), &now);
+                error_response(id, &deny)
+            }
+        };
+    }
     drop(runner);
+
+    let relay = relay.expect("non-native delegated tools have a relay target");
 
     if let Some(name) = msg.pointer_mut("/params/name") {
         *name = Value::String(relay.raw_tool);

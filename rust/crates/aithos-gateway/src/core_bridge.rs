@@ -1918,6 +1918,26 @@ impl Runner {
             .collect())
     }
 
+    pub fn session_covers_tool(
+        &self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        tool: &str,
+        now: &str,
+    ) -> Result<bool> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let runtime = self.context(context)?;
+        let (connector, action) = self.session_tool_parts(tool);
+        runtime
+            .bridge
+            .bundle
+            .action_covered(&chain, &connector, &action)
+            .map_err(bridge_err)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn prepare_session_operation(
         &mut self,
@@ -2821,6 +2841,12 @@ impl Runner {
             .any(|context| context.bridge.briefing_available())
     }
 
+    pub fn briefing_available_for(&self, context: &str) -> bool {
+        self.contexts
+            .get(context)
+            .is_some_and(|runtime| runtime.bridge.briefing_available())
+    }
+
     /// Serve the owner's directives across the granted contexts —
     /// `context: None` serves them all, labeled by context name, the
     /// zone named on each directive; a named context serves that one
@@ -3286,7 +3312,14 @@ pub fn owner_grant_session_delegate(
     let delegate_pub = decode_pub(delegate_pub_mb)?;
     let mut perimeter = tools
         .iter()
-        .map(|tool| PerimeterEntry::parse(&op_for_tool(tool)).map_err(bridge_err))
+        .map(|tool| {
+            let entry = if tool.starts_with("act.") {
+                tool.clone()
+            } else {
+                op_for_tool(tool)
+            };
+            PerimeterEntry::parse(&entry).map_err(bridge_err)
+        })
         .collect::<Result<Vec<_>>>()?;
     perimeter.push(PerimeterEntry::Issue { depth: 1 });
     let mandate = mint_entries(

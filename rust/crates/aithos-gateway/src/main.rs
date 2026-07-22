@@ -180,6 +180,18 @@ enum Command {
         #[arg(long, default_value_t = 7)]
         ttl_days: u32,
     },
+    /// OWNER SIDE: revoke one context mandate. The owner master seed is
+    /// read as 32-byte hexadecimal from stdin, never from argv.
+    OwnerRevokeMandate {
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        mandate_id: String,
+        #[arg(long)]
+        store_root: String,
+        #[arg(long, default_value = "revoked by owner")]
+        reason: String,
+    },
     /// OWNER SIDE: capture one upstream tools/list into a proposed
     /// manifest. Discovery grants nothing and stores nothing in an Ethos.
     OwnerDiscoverServer {
@@ -603,6 +615,27 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("delegate_pub: {delegate_pub}");
             return Ok(());
         }
+        Command::OwnerRevokeMandate {
+            label,
+            mandate_id,
+            store_root,
+            reason,
+        } => {
+            let master = decode_master_stdin()?;
+            aithos_gateway::core_bridge::owner_revoke_mandate_id(
+                &master,
+                label,
+                mandate_id,
+                reason,
+                GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
+                    root: store_root.into(),
+                })?,
+                &ts(now_secs()),
+                &mut OsEntropy,
+            )?;
+            println!("revoked_mandate: {mandate_id}");
+            return Ok(());
+        }
         Command::OwnerGrantBriefing {
             master_seed_hex,
             label,
@@ -890,6 +923,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         | Command::DemoLeaRenderConfig { .. }
         | Command::OwnerGrantContext { .. }
         | Command::OwnerGrantSessionDelegate { .. }
+        | Command::OwnerRevokeMandate { .. }
         | Command::OwnerGrantBriefing { .. }
         | Command::OwnerGrantEthosRead { .. }
         | Command::OwnerAddSection { .. }

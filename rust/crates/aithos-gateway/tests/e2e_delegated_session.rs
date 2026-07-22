@@ -15,8 +15,9 @@ use aithos_core::mandate::{Mandate, MandateSpec, PerimeterEntry};
 use aithos_gateway::config::{GatewayConfig, StoreConfig};
 use aithos_gateway::core_bridge::{
     agent_pub_multibase, gamma_view, gateway_kex_pub_multibase, gateway_pub_multibase,
-    owner_grant_context, owner_grant_session_delegate, owner_init_context, owner_init_journal,
-    owner_revoke_mandate_id, MandateWindow, Runner, SeqEntropy,
+    owner_grant_briefing, owner_grant_context, owner_grant_session_delegate, owner_init_context,
+    owner_init_journal, owner_revoke_mandate_id, owner_set_briefing, MandateWindow, Runner,
+    SeqEntropy,
 };
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::oauth::{
@@ -251,11 +252,36 @@ async fn delegated_sessions_isolate_surface_log_full_chain_and_cut_on_revocation
         &mut owner_entropy,
     )
     .unwrap();
+    owner_grant_briefing(
+        &MASTER,
+        "finance",
+        &delegate_pub,
+        context_store.clone(),
+        &window,
+        "2026-07-22T10:00:00Z",
+        &mut owner_entropy,
+    )
+    .unwrap();
+    owner_set_briefing(
+        &MASTER,
+        "finance",
+        "circle",
+        "Session directive",
+        "Read-only delegated work only.",
+        context_store.clone(),
+        "2026-07-22T10:00:00Z",
+        &mut owner_entropy,
+    )
+    .unwrap();
     owner_grant_session_delegate(
         &MASTER,
         "finance",
         &delegate_pub,
-        &["issues.list".to_owned(), "issues.create".to_owned()],
+        &[
+            "issues.list".to_owned(),
+            "issues.create".to_owned(),
+            "briefing.read".to_owned(),
+        ],
         context_store.clone(),
         &window,
         "2026-07-22T10:00:00Z",
@@ -310,6 +336,8 @@ async fn delegated_sessions_isolate_surface_log_full_chain_and_cut_on_revocation
     let list_session = issue_session(&auth, &runner, &client_id, &delegate, "issues.list", 1).await;
     let create_session =
         issue_session(&auth, &runner, &client_id, &delegate, "issues.create", 2).await;
+    let briefing_session =
+        issue_session(&auth, &runner, &client_id, &delegate, "briefing.read", 3).await;
     let upstream = RecordingUpstream::default();
     let routing = Arc::new(McpRouter {
         runner,
@@ -343,6 +371,39 @@ async fn delegated_sessions_isolate_surface_log_full_chain_and_cut_on_revocation
         assert!(names.contains(&expected));
         assert!(!names.contains(&absent));
     }
+
+    let briefing_list = post_mcp(
+        &issuer,
+        &briefing_session.access_token,
+        json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/list" }),
+    )
+    .await;
+    assert_eq!(briefing_list.status(), 200);
+    let briefing_list_body = briefing_list.json::<Value>().await.unwrap();
+    let briefing_names = briefing_list_body["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(briefing_names, vec!["briefing.read"]);
+
+    let briefing = post_mcp(
+        &issuer,
+        &briefing_session.access_token,
+        json!({
+            "jsonrpc": "2.0", "id": 6, "method": "tools/call",
+            "params": { "name": "briefing.read", "arguments": {} }
+        }),
+    )
+    .await;
+    assert_eq!(briefing.status(), 200);
+    let briefing_body = briefing.json::<Value>().await.unwrap();
+    assert_eq!(briefing_body["result"]["isError"], false);
+    assert!(briefing_body["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("Read-only delegated work only."));
 
     let denied = post_mcp(
         &issuer,
