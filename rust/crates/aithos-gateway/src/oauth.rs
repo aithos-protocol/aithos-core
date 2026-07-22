@@ -24,14 +24,15 @@
 //! Redaction discipline (like `credentials.rs`): no token, code, secret
 //! or key byte is ever placed in a log, an error message or a panic.
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use zeroize::Zeroize;
 
 use crate::core_bridge::EntropySource;
+use crate::oauth_state::{AsStateStore, MemoryAsStateStore, StateNamespace};
 use crate::{GatewayError, Result};
 
 /// The exact Claude custom-connector callback (verified 2026-07-16):
@@ -39,8 +40,8 @@ use crate::{GatewayError, Result};
 pub const CLAUDE_CALLBACK: &str = "https://claude.ai/api/mcp/auth_callback";
 
 /// Authorization-code lifetime: one exchange, promptly (RFC 6749 §4.1.2
-/// recommends ≤ 10 min; we keep it tight — the code is one-shot anyway).
-const CODE_TTL_SECS: i64 = 60;
+/// recommends ≤ 10 min; the G4 ceremony contract fixes two minutes).
+const CODE_TTL_SECS: i64 = 2 * 60;
 
 /// The JWT `typ` for our access tokens (RFC 9068 style).
 const ACCESS_TYP: &str = "at+jwt";
@@ -185,6 +186,33 @@ impl AdapterKey {
         }
     }
 
+    /// Load the adapter key from the dedicated AS state custody, or create it
+    /// with CAS on first use. Production never falls back to a local file.
+    pub fn load_or_create_in_state(
+        state: &dyn AsStateStore,
+        entropy: &mut dyn EntropySource,
+    ) -> Result<Self> {
+        if let Some(record) = state.read(StateNamespace::AdapterKey, "active")? {
+            return adapter_from_state(record.value);
+        }
+        let mut raw = entropy.e32();
+        let key = Self::from_seed(raw);
+        let value = json!({ "v": 1, "seed_hex": hex::encode(raw) });
+        let created = state.create(StateNamespace::AdapterKey, "active", value);
+        raw.zeroize();
+        match created {
+            Ok(_) => Ok(key),
+            Err(_) => {
+                // A concurrent first start may have won CAS. Load its key;
+                // any other state fault still fails closed.
+                let record = state
+                    .read(StateNamespace::AdapterKey, "active")?
+                    .ok_or_else(|| oauth_state_error("adapter key creation was refused"))?;
+                adapter_from_state(record.value)
+            }
+        }
+    }
+
     /// Sign an access token (compact EdDSA JWS) with the given claims —
     /// the one public signing primitive. Handy for the acceptance
     /// harness to forge "right key, wrong audience" tokens; the AS uses
@@ -238,6 +266,25 @@ impl AdapterKey {
     }
 }
 
+fn adapter_from_state(value: Value) -> Result<AdapterKey> {
+    let object = value
+        .as_object()
+        .filter(|object| object.len() == 2)
+        .ok_or_else(|| oauth_state_error("stored adapter key is malformed"))?;
+    if object.get("v").and_then(Value::as_u64) != Some(1) {
+        return Err(oauth_state_error("stored adapter key is malformed"));
+    }
+    let mut seed = object
+        .get("seed_hex")
+        .and_then(Value::as_str)
+        .and_then(|encoded| hex::decode(encoded).ok())
+        .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
+        .ok_or_else(|| oauth_state_error("stored adapter key is malformed"))?;
+    let key = AdapterKey::from_seed(seed);
+    seed.zeroize();
+    Ok(key)
+}
+
 /// One `invalid_token` refusal — never carries the token bytes.
 fn invalid_token() -> GatewayError {
     GatewayError::OauthDenied {
@@ -254,15 +301,22 @@ fn oauth_err(error: &str, detail: &str) -> GatewayError {
     }
 }
 
+fn oauth_state_error(detail: &str) -> GatewayError {
+    oauth_err("temporarily_unavailable", detail)
+}
+
 // ---------------------------------------------------------- token stores
 
 /// A registered public client (DCR, RFC 7591): PKCE, no secret ever.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ClientRecord {
     redirect_uris: Vec<String>,
 }
 
 /// A live authorization code (one-shot, PKCE-bound, resource-bound).
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CodeRecord {
     client_id: String,
     redirect_uri: String,
@@ -271,14 +325,17 @@ struct CodeRecord {
     expires: i64,
 }
 
-/// A refresh token in a rotation family. Reusing a consumed token cuts
-/// the whole family (OAuth 2.1 §4.13.2 rotation with reuse detection).
-struct RefreshRecord {
+/// A refresh rotation family. Only token digests are persisted. Reusing any
+/// consumed token cuts the complete family (OAuth 2.1 rotation semantics).
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RefreshFamilyRecord {
     client_id: String,
     resource: String,
-    family: String,
     expires: i64,
-    consumed: bool,
+    current_hash: String,
+    consumed_hashes: Vec<String>,
+    revoked: bool,
 }
 
 // --------------------------------------------------------- authorize IO
@@ -317,8 +374,9 @@ pub struct TokenGrant {
 
 // ------------------------------------------------------------ the AS
 
-/// The authorization server state. All secrets (codes, refresh tokens)
-/// live only here, in memory, and never touch a log or a store.
+/// The authorization server state. Raw codes and refresh tokens are never
+/// persisted; the injected state store receives only closed records and
+/// one-way token digests.
 pub struct AuthServer {
     adapter: AdapterKey,
     issuer: String,
@@ -328,9 +386,7 @@ pub struct AuthServer {
     refresh_ttl: i64,
     /// Extra redirect_uris accepted beyond the built-in allowlist.
     extra_redirects: Vec<String>,
-    clients: Mutex<BTreeMap<String, ClientRecord>>,
-    codes: Mutex<BTreeMap<String, CodeRecord>>,
-    refresh: Mutex<BTreeMap<String, RefreshRecord>>,
+    state: Arc<dyn AsStateStore>,
     entropy: Mutex<Box<dyn EntropySource + Send>>,
 }
 
@@ -343,6 +399,28 @@ impl AuthServer {
         extra_redirects: Vec<String>,
         entropy: Box<dyn EntropySource + Send>,
     ) -> Self {
+        Self::new_with_state(
+            adapter,
+            issuer,
+            access_ttl,
+            refresh_ttl,
+            extra_redirects,
+            entropy,
+            Arc::new(MemoryAsStateStore::default()),
+        )
+    }
+
+    /// Construct the AS over an injected durable store. Reconstructing an AS
+    /// with the same store models a real restart without replaying state.
+    pub fn new_with_state(
+        adapter: AdapterKey,
+        issuer: &str,
+        access_ttl: i64,
+        refresh_ttl: i64,
+        extra_redirects: Vec<String>,
+        entropy: Box<dyn EntropySource + Send>,
+        state: Arc<dyn AsStateStore>,
+    ) -> Self {
         let issuer = issuer.trim_end_matches('/').to_owned();
         let resource = format!("{issuer}/mcp");
         Self {
@@ -352,9 +430,7 @@ impl AuthServer {
             access_ttl,
             refresh_ttl,
             extra_redirects,
-            clients: Mutex::new(BTreeMap::new()),
-            codes: Mutex::new(BTreeMap::new()),
-            refresh: Mutex::new(BTreeMap::new()),
+            state,
             entropy: Mutex::new(entropy),
         }
     }
@@ -404,6 +480,45 @@ impl AuthServer {
     fn mint_opaque(&self, prefix: &str) -> String {
         let mut ent = self.entropy.lock().expect("entropy lock");
         format!("{prefix}_{}", hex::encode(ent.e32()))
+    }
+
+    fn load_record<T: DeserializeOwned>(
+        &self,
+        namespace: StateNamespace,
+        id: &str,
+    ) -> Result<Option<(T, u64)>> {
+        self.state
+            .read(namespace, id)?
+            .map(|record| {
+                serde_json::from_value(record.value)
+                    .map(|value| (value, record.version))
+                    .map_err(|_| oauth_state_error("stored OAuth state is malformed"))
+            })
+            .transpose()
+    }
+
+    fn create_record<T: Serialize>(
+        &self,
+        namespace: StateNamespace,
+        id: &str,
+        record: &T,
+    ) -> Result<u64> {
+        let value = serde_json::to_value(record)
+            .map_err(|_| oauth_state_error("OAuth state serialization failed"))?;
+        self.state.create(namespace, id, value)
+    }
+
+    fn replace_record<T: Serialize>(
+        &self,
+        namespace: StateNamespace,
+        id: &str,
+        expected_version: u64,
+        record: &T,
+    ) -> Result<u64> {
+        let value = serde_json::to_value(record)
+            .map_err(|_| oauth_state_error("OAuth state serialization failed"))?;
+        self.state
+            .compare_and_swap(namespace, id, expected_version, value)
     }
 
     /// Is this redirect_uri acceptable? The built-in allowlist is the
@@ -460,12 +575,13 @@ impl AuthServer {
             }
         }
         let client_id = self.mint_opaque("client");
-        self.clients.lock().expect("clients lock").insert(
-            client_id.clone(),
-            ClientRecord {
+        self.create_record(
+            StateNamespace::DcrClient,
+            &client_id,
+            &ClientRecord {
                 redirect_uris: uris.clone(),
             },
-        );
+        )?;
         Ok(json!({
             "client_id": client_id,
             "token_endpoint_auth_method": "none",
@@ -481,20 +597,27 @@ impl AuthServer {
     /// DEV consent; a recoverable fault redirects an OAuth `error`; an
     /// unknown client or a mismatched redirect never redirects.
     pub fn authorize(&self, req: &AuthorizeRequest) -> AuthorizeOutcome {
-        let clients = self.clients.lock().expect("clients lock");
-        let Some(client) = clients.get(&req.client_id) else {
-            return AuthorizeOutcome::HardError {
-                detail: "unknown client_id — register dynamically first (RFC 7591); \
-                         self-asserted client_id URLs (CIMD) are not served yet"
-                    .into(),
+        let client =
+            match self.load_record::<ClientRecord>(StateNamespace::DcrClient, &req.client_id) {
+                Ok(Some((client, _))) => client,
+                Ok(None) => {
+                    return AuthorizeOutcome::HardError {
+                        detail: "unknown client_id — register dynamically first (RFC 7591); \
+                             self-asserted client_id URLs (CIMD) are not served yet"
+                            .into(),
+                    }
+                }
+                Err(_) => {
+                    return AuthorizeOutcome::HardError {
+                        detail: "authorization state is temporarily unavailable".into(),
+                    }
+                }
             };
-        };
         if !client.redirect_uris.contains(&req.redirect_uri) {
             return AuthorizeOutcome::HardError {
                 detail: "redirect_uri does not match the registration".into(),
             };
         }
-        drop(clients);
 
         // From here every fault is a redirect (the URI is trusted).
         let err_redirect = |error: &str, desc: &str| AuthorizeOutcome::Redirect {
@@ -553,14 +676,12 @@ impl AuthServer {
     /// redirect back. Re-validates the client and redirect (never trust
     /// the form blindly).
     pub fn approve(&self, req: &AuthorizeRequest, now: &str) -> Result<String> {
-        let clients = self.clients.lock().expect("clients lock");
-        let client = clients
-            .get(&req.client_id)
+        let (client, _) = self
+            .load_record::<ClientRecord>(StateNamespace::DcrClient, &req.client_id)?
             .ok_or_else(|| oauth_err("invalid_request", "unknown client_id"))?;
         if !client.redirect_uris.contains(&req.redirect_uri) {
             return Err(oauth_err("invalid_request", "redirect_uri mismatch"));
         }
-        drop(clients);
         let challenge = req
             .code_challenge
             .clone()
@@ -574,16 +695,17 @@ impl AuthServer {
         }
         let code = self.mint_opaque("code");
         let expires = epoch(now)? + CODE_TTL_SECS;
-        self.codes.lock().expect("codes lock").insert(
-            code.clone(),
-            CodeRecord {
+        self.create_record(
+            StateNamespace::Code,
+            &token_digest(&code),
+            &CodeRecord {
                 client_id: req.client_id.clone(),
                 redirect_uri: req.redirect_uri.clone(),
                 code_challenge: challenge,
                 resource,
                 expires,
             },
-        );
+        )?;
         Ok(redirect_with(
             &req.redirect_uri,
             &[("code", &code)],
@@ -608,14 +730,15 @@ impl AuthServer {
         now: &str,
     ) -> Result<(TokenGrant, String)> {
         let now_epoch = epoch(now)?;
-        let record = {
-            let mut codes = self.codes.lock().expect("codes lock");
-            // One-shot: remove on sight, valid or not (a replay finds
-            // nothing).
-            codes
-                .remove(code)
-                .ok_or_else(|| oauth_err("invalid_grant", "unknown, used or expired code"))?
-        };
+        // One-shot: reserve on sight, valid or not (a replay finds nothing).
+        let record: CodeRecord = self
+            .state
+            .take(StateNamespace::Code, &token_digest(code))?
+            .ok_or_else(|| oauth_err("invalid_grant", "unknown, used or expired code"))
+            .and_then(|value| {
+                serde_json::from_value(value)
+                    .map_err(|_| oauth_state_error("stored authorization code is malformed"))
+            })?;
         if now_epoch > record.expires {
             return Err(oauth_err("invalid_grant", "the authorization code expired"));
         }
@@ -628,7 +751,7 @@ impl AuthServer {
         if !pkce_matches(verifier, &record.code_challenge) {
             return Err(oauth_err("invalid_grant", "PKCE verifier does not match"));
         }
-        let grant = self.mint_pair(&record.client_id, resource, ceiling, now_epoch, None)?;
+        let grant = self.mint_pair(&record.client_id, resource, ceiling, now_epoch)?;
         Ok((grant, record.client_id))
     }
 
@@ -642,36 +765,38 @@ impl AuthServer {
         now: &str,
     ) -> Result<(TokenGrant, String)> {
         let now_epoch = epoch(now)?;
-        let (client_id, resource, family) = {
-            let mut store = self.refresh.lock().expect("refresh lock");
-            let Some(record) = store.get(refresh_token) else {
-                return Err(oauth_err("invalid_grant", "unknown refresh token"));
-            };
-            if record.consumed {
-                // Reuse detection: cut every token in the family.
-                let family = record.family.clone();
-                for r in store.values_mut() {
-                    if r.family == family {
-                        r.consumed = true;
-                    }
-                }
-                return Err(oauth_err(
-                    "invalid_grant",
-                    "refresh token already used — the session family has been revoked",
-                ));
-            }
-            if now_epoch > record.expires {
-                return Err(oauth_err("invalid_grant", "the refresh token expired"));
-            }
-            let out = (
-                record.client_id.clone(),
-                record.resource.clone(),
-                record.family.clone(),
-            );
-            // Consume the presented token; the fresh one joins the family.
-            store.get_mut(refresh_token).expect("just read").consumed = true;
-            out
-        };
+        let family = refresh_family_id(refresh_token)
+            .ok_or_else(|| oauth_err("invalid_grant", "unknown refresh token"))?;
+        let (mut record, version) = self
+            .load_record::<RefreshFamilyRecord>(StateNamespace::RefreshFamily, family)?
+            .ok_or_else(|| oauth_err("invalid_grant", "unknown refresh token"))?;
+        if record.revoked {
+            return Err(oauth_err(
+                "invalid_grant",
+                "the refresh session family has been revoked",
+            ));
+        }
+        let presented_hash = token_digest(refresh_token);
+        if record
+            .consumed_hashes
+            .iter()
+            .any(|digest| digest == &presented_hash)
+        {
+            record.revoked = true;
+            self.replace_record(StateNamespace::RefreshFamily, family, version, &record)?;
+            return Err(oauth_err(
+                "invalid_grant",
+                "refresh token already used — the session family has been revoked",
+            ));
+        }
+        if record.current_hash != presented_hash {
+            return Err(oauth_err("invalid_grant", "unknown refresh token"));
+        }
+        if now_epoch > record.expires {
+            record.revoked = true;
+            self.replace_record(StateNamespace::RefreshFamily, family, version, &record)?;
+            return Err(oauth_err("invalid_grant", "the refresh token expired"));
+        }
         // The authority ceiling MUST still be live — this is where "past
         // not_after, redo the ceremony" bites.
         let ceiling_epoch = match ceiling {
@@ -689,28 +814,79 @@ impl AuthServer {
                 "the bound authority has expired — restart the authorization flow",
             ));
         }
-        let grant = self.mint_pair(&client_id, &resource, ceiling, now_epoch, Some(family))?;
-        Ok((grant, client_id))
+        if record.consumed_hashes.len() >= 64 {
+            record.revoked = true;
+            self.replace_record(StateNamespace::RefreshFamily, family, version, &record)?;
+            return Err(oauth_err(
+                "invalid_grant",
+                "the refresh session family reached its rotation bound",
+            ));
+        }
+
+        let refresh_token = format!("refresh.{family}.{}", self.mint_opaque("next"));
+        record.consumed_hashes.push(presented_hash);
+        record.current_hash = token_digest(&refresh_token);
+        self.replace_record(StateNamespace::RefreshFamily, family, version, &record)?;
+        let (access_token, access_expires_secs) =
+            self.mint_access(&record.client_id, &record.resource, ceiling, now_epoch)?;
+        let client_id = record.client_id;
+        Ok((
+            TokenGrant {
+                access_token,
+                refresh_token,
+                access_expires_secs,
+            },
+            client_id,
+        ))
     }
 
-    /// Mint an access+refresh pair, both capped by the ceiling. `family`
-    /// carries a rotation lineage forward (None starts a fresh family).
+    /// Mint an access+refresh pair, both capped by the authority ceiling.
+    /// Only a digest of the refresh token enters durable state.
     fn mint_pair(
         &self,
         client_id: &str,
         resource: &str,
         ceiling: Option<&str>,
         now_epoch: i64,
-        family: Option<String>,
     ) -> Result<TokenGrant> {
         let ceiling_epoch = ceiling.map(epoch).transpose()?;
-        // access exp = min(now + ttl, ceiling); same for refresh.
-        let cap = |ttl: i64| match ceiling_epoch {
-            Some(c) => (now_epoch + ttl).min(c),
-            None => now_epoch + ttl,
-        };
-        let access_exp = cap(self.access_ttl);
-        let refresh_exp = cap(self.refresh_ttl);
+        let refresh_exp = ceiling_epoch
+            .map(|ceiling| (now_epoch + self.refresh_ttl).min(ceiling))
+            .unwrap_or(now_epoch + self.refresh_ttl);
+        let family = self.mint_opaque("fam");
+        let refresh_token = format!("refresh.{family}.{}", self.mint_opaque("first"));
+        self.create_record(
+            StateNamespace::RefreshFamily,
+            &family,
+            &RefreshFamilyRecord {
+                client_id: client_id.to_owned(),
+                resource: resource.to_owned(),
+                expires: refresh_exp,
+                current_hash: token_digest(&refresh_token),
+                consumed_hashes: Vec::new(),
+                revoked: false,
+            },
+        )?;
+        let (access_token, access_expires_secs) =
+            self.mint_access(client_id, resource, ceiling, now_epoch)?;
+        Ok(TokenGrant {
+            access_token,
+            refresh_token,
+            access_expires_secs,
+        })
+    }
+
+    fn mint_access(
+        &self,
+        client_id: &str,
+        resource: &str,
+        ceiling: Option<&str>,
+        now_epoch: i64,
+    ) -> Result<(String, i64)> {
+        let ceiling_epoch = ceiling.map(epoch).transpose()?;
+        let access_exp = ceiling_epoch
+            .map(|ceiling| (now_epoch + self.access_ttl).min(ceiling))
+            .unwrap_or(now_epoch + self.access_ttl);
         let jti = self.mint_opaque("jti");
         let claims = json!({
             "iss": self.issuer,
@@ -722,23 +898,7 @@ impl AuthServer {
             "client_id": client_id,
         });
         let access_token = self.adapter.sign_jwt(ACCESS_TYP, &claims);
-        let refresh_token = self.mint_opaque("refresh");
-        let family = family.unwrap_or_else(|| self.mint_opaque("fam"));
-        self.refresh.lock().expect("refresh lock").insert(
-            refresh_token.clone(),
-            RefreshRecord {
-                client_id: client_id.to_owned(),
-                resource: resource.to_owned(),
-                family,
-                expires: refresh_exp,
-                consumed: false,
-            },
-        );
-        Ok(TokenGrant {
-            access_token,
-            refresh_token,
-            access_expires_secs: (access_exp - now_epoch).max(0),
-        })
+        Ok((access_token, (access_exp - now_epoch).max(0)))
     }
 
     /// Validate a bearer token presented on `/mcp`: signature (adapter
@@ -772,6 +932,23 @@ impl AuthServer {
 fn epoch(now: &str) -> Result<i64> {
     aithos_core::gamma::ts_epoch(now)
         .map_err(|_| GatewayError::BridgeFailed(format!("bad instant `{now}`")))
+}
+
+fn token_digest(token: &str) -> String {
+    aithos_core::gamma::sha256_hex(token.as_bytes())
+}
+
+fn refresh_family_id(token: &str) -> Option<&str> {
+    let mut parts = token.split('.');
+    let (Some("refresh"), Some(family), Some(secret), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return None;
+    };
+    if family.is_empty() || secret.is_empty() {
+        return None;
+    }
+    Some(family)
 }
 
 /// The PKCE S256 challenge for a verifier: `base64url(sha256(verifier))`
@@ -935,6 +1112,18 @@ mod tests {
         )
     }
 
+    fn restarted_server(state: Arc<MemoryAsStateStore>) -> AuthServer {
+        AuthServer::new_with_state(
+            AdapterKey::from_seed([42; 32]),
+            ISSUER,
+            3_600,
+            7 * 86_400,
+            Vec::new(),
+            Box::new(SeqEntropy::default()),
+            state,
+        )
+    }
+
     fn resource() -> String {
         format!("{ISSUER}/mcp")
     }
@@ -1013,6 +1202,24 @@ mod tests {
     }
 
     #[test]
+    fn adapter_key_custody_survives_restart_in_the_secret_namespace() {
+        let state = MemoryAsStateStore::default();
+        let mut first_entropy = SeqEntropy::default();
+        let first = AdapterKey::load_or_create_in_state(&state, &mut first_entropy).unwrap();
+        let first_kid = first.kid();
+        drop(first);
+
+        let mut different_entropy = SeqEntropy::default();
+        let _ = different_entropy.e32();
+        let second = AdapterKey::load_or_create_in_state(&state, &mut different_entropy).unwrap();
+        assert_eq!(second.kid(), first_kid);
+        assert!(state
+            .read(StateNamespace::DcrClient, "active")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
     fn a_forged_token_from_another_key_is_refused() {
         let as_ = server();
         let mut ent = SeqEntropy::default();
@@ -1084,6 +1291,48 @@ mod tests {
             "aud": "https://elsewhere.example/mcp", "exp": 9_999_999_999i64
         }));
         assert!(as_.validate_bearer(&wrong_aud, T0).is_err());
+    }
+
+    #[test]
+    fn dcr_codes_and_refresh_rotation_survive_real_as_reconstruction() {
+        let state = Arc::new(MemoryAsStateStore::default());
+        let uri = "http://127.0.0.1:9410/cb";
+        let (verifier, challenge) = pkce();
+
+        let first = restarted_server(state.clone());
+        let client = register(&first, uri);
+        let code = approve_code(&first, &client, uri, &challenge);
+        drop(first);
+
+        let second = restarted_server(state.clone());
+        assert!(matches!(
+            second.authorize(&AuthorizeRequest {
+                client_id: client.clone(),
+                redirect_uri: uri.to_owned(),
+                response_type: "code".into(),
+                code_challenge: Some(challenge),
+                code_challenge_method: Some("S256".into()),
+                resource: Some(resource()),
+                scope: None,
+                state: None,
+            }),
+            AuthorizeOutcome::Consent { .. }
+        ));
+        let (initial, _) = second
+            .exchange_code(&code, &verifier, &resource(), uri, Some(CHAIN_END), T0)
+            .expect("persisted code exchanges after restart");
+        drop(second);
+
+        let third = restarted_server(state);
+        let (rotated, _) = third
+            .refresh(&initial.refresh_token, Some(CHAIN_END), T0)
+            .expect("persisted refresh rotates after restart");
+        assert!(third
+            .refresh(&initial.refresh_token, Some(CHAIN_END), T0)
+            .is_err());
+        assert!(third
+            .refresh(&rotated.refresh_token, Some(CHAIN_END), T0)
+            .is_err());
     }
 
     #[test]

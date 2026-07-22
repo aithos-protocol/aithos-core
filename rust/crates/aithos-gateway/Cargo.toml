@@ -32,6 +32,7 @@ ulid = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "time", "sync"] }
 axum = { workspace = true }
 reqwest = { workspace = true }
+ureq = { workspace = true }
 futures = { workspace = true }
 rustls = { workspace = true }
 tokio-rustls = { workspace = true }

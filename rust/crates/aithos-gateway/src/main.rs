@@ -970,17 +970,36 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 // 0600 secret beside the identity, NEVER in the
                 // keyholder, from OS entropy on first use.
                 let oauth = if let Some(as_cfg) = &cfg.oauth_as {
-                    let adapter = aithos_gateway::oauth::AdapterKey::load_or_create(
-                        &as_cfg.key_file,
-                        &mut OsEntropy,
-                    )?;
-                    Some(Arc::new(aithos_gateway::oauth::AuthServer::new(
+                    let state: Arc<dyn aithos_gateway::oauth_state::AsStateStore> =
+                        if let Some(state) = &as_cfg.state {
+                            Arc::new(aithos_gateway::oauth_state::VaultAsStateStore::new(
+                                &state.address,
+                                &state.mount,
+                                &state.prefix,
+                                &state.token_env,
+                            )?)
+                        } else {
+                            Arc::new(aithos_gateway::oauth_state::MemoryAsStateStore::default())
+                        };
+                    let adapter = if as_cfg.state.is_some() {
+                        aithos_gateway::oauth::AdapterKey::load_or_create_in_state(
+                            state.as_ref(),
+                            &mut OsEntropy,
+                        )?
+                    } else {
+                        aithos_gateway::oauth::AdapterKey::load_or_create(
+                            &as_cfg.key_file,
+                            &mut OsEntropy,
+                        )?
+                    };
+                    Some(Arc::new(aithos_gateway::oauth::AuthServer::new_with_state(
                         adapter,
                         &as_cfg.issuer,
                         as_cfg.access_ttl_secs as i64,
                         as_cfg.refresh_ttl_secs as i64,
                         as_cfg.redirect_allowlist.clone(),
                         Box::new(OsEntropy),
+                        state,
                     )))
                 } else {
                     None

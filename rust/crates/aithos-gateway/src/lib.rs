@@ -21,6 +21,7 @@ pub mod demo_lea;
 pub mod hub;
 pub mod keyholder;
 pub mod oauth;
+pub mod oauth_state;
 pub mod policy;
 pub mod proxy_llm;
 pub mod proxy_mcp;

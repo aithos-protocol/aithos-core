@@ -111,6 +111,7 @@ dependencies = [
  "tokio-rustls 0.26.4",
  "tokio-util",
  "ulid",
+ "ureq",
  "yamux",
  "zeroize",
 ]

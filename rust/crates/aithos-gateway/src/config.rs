@@ -339,6 +339,10 @@ fn default_provider() -> String {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AsConfig {
+    /// Development keeps the historical local consent flow. Production
+    /// requires durable state and the delegated-session ceremony.
+    #[serde(default)]
+    pub profile: AsProfile,
     /// The URL clients use to reach this AS (RFC 8414 issuer). Explicit
     /// on purpose (decided 2026-07-17): behind the G1 tunnel it is the
     /// public hostname, never guessable from `listen`. Plaintext http
@@ -361,6 +365,29 @@ pub struct AsConfig {
     /// port). Each entry is https, or http bounded to loopback.
     #[serde(default)]
     pub redirect_allowlist: Vec<String>,
+    /// Dedicated Vault KV v2 state custody. Mandatory in production and
+    /// deliberately distinct from connector credential brokers.
+    pub state: Option<AsStateConfig>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AsProfile {
+    #[default]
+    Development,
+    Production,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AsStateConfig {
+    pub address: String,
+    #[serde(default = "default_as_state_mount")]
+    pub mount: String,
+    #[serde(default = "default_as_state_prefix")]
+    pub prefix: String,
+    #[serde(default = "default_as_state_token_env")]
+    pub token_env: String,
 }
 
 fn default_as_key_file() -> PathBuf {
@@ -368,11 +395,23 @@ fn default_as_key_file() -> PathBuf {
 }
 
 fn default_access_ttl() -> u64 {
-    3_600
+    15 * 60
 }
 
 fn default_refresh_ttl() -> u64 {
-    7 * 86_400
+    8 * 60 * 60
+}
+
+fn default_as_state_mount() -> String {
+    "secret".to_owned()
+}
+
+fn default_as_state_prefix() -> String {
+    "aithos/as".to_owned()
+}
+
+fn default_as_state_token_env() -> String {
+    "AITHOS_AS_VAULT_TOKEN".to_owned()
 }
 
 /// Browser control-plane configuration (G7). The stanza is opt-in so
@@ -1382,6 +1421,31 @@ fn validate_as(oauth_as: &AsConfig) -> Result<()> {
         return Err(GatewayError::ConfigRejected(
             "`as.refresh_ttl_secs` must be strictly positive".into(),
         ));
+    }
+    if oauth_as.profile == AsProfile::Production {
+        if oauth_as.access_ttl_secs > 15 * 60 {
+            return Err(GatewayError::ConfigRejected(
+                "`as.access_ttl_secs` exceeds the 15 minute production maximum".into(),
+            ));
+        }
+        if oauth_as.refresh_ttl_secs > 8 * 60 * 60 {
+            return Err(GatewayError::ConfigRejected(
+                "`as.refresh_ttl_secs` exceeds the 8 hour production maximum".into(),
+            ));
+        }
+        if oauth_as.state.is_none() {
+            return Err(GatewayError::ConfigRejected(
+                "`as.state` is required in the production profile".into(),
+            ));
+        }
+    }
+    if let Some(state) = &oauth_as.state {
+        crate::oauth_state::VaultAsStateStore::new(
+            &state.address,
+            &state.mount,
+            &state.prefix,
+            &state.token_env,
+        )?;
     }
     for entry in &oauth_as.redirect_allowlist {
         validate_upstream(entry, "as.redirect_allowlist[]")?;
@@ -2559,8 +2623,10 @@ journal:
         let oauth_as = cfg.oauth_as.as_ref().unwrap();
         assert_eq!(oauth_as.issuer, "http://127.0.0.1:4870");
         assert_eq!(oauth_as.key_file, PathBuf::from("as.key"));
-        assert_eq!(oauth_as.access_ttl_secs, 3_600, "decided 2026-07-17");
-        assert_eq!(oauth_as.refresh_ttl_secs, 7 * 86_400, "decided 2026-07-17");
+        assert_eq!(oauth_as.profile, AsProfile::Development);
+        assert_eq!(oauth_as.access_ttl_secs, 15 * 60, "G4 production cap");
+        assert_eq!(oauth_as.refresh_ttl_secs, 8 * 60 * 60, "G4 session cap");
+        assert!(oauth_as.state.is_none());
         assert!(oauth_as.redirect_allowlist.is_empty());
     }
 
@@ -2611,6 +2677,34 @@ journal:
                 ),
                 "must reject: {broken}"
             );
+        }
+    }
+
+    #[test]
+    fn production_as_requires_dedicated_bounded_vault_state() {
+        let missing = format!("{MULTI}as:\n  profile: production\n  issuer: https://mcp.example\n");
+        assert!(matches!(
+            GatewayConfig::from_yaml(&missing),
+            Err(GatewayError::ConfigRejected(message)) if message.contains("as.state")
+        ));
+
+        let valid = format!(
+            "{MULTI}as:\n  profile: production\n  issuer: https://mcp.example\n  state:\n    address: https://vault.example\n"
+        );
+        let parsed = GatewayConfig::from_yaml(&valid).expect("production Vault state parses");
+        let state = parsed.oauth_as.unwrap().state.unwrap();
+        assert_eq!(state.mount, "secret");
+        assert_eq!(state.prefix, "aithos/as");
+        assert_eq!(state.token_env, "AITHOS_AS_VAULT_TOKEN");
+
+        for ttl in ["  access_ttl_secs: 901\n", "  refresh_ttl_secs: 28801\n"] {
+            let text = format!(
+                "{MULTI}as:\n  profile: production\n  issuer: https://mcp.example\n{ttl}  state:\n    address: https://vault.example\n"
+            );
+            assert!(matches!(
+                GatewayConfig::from_yaml(&text),
+                Err(GatewayError::ConfigRejected(_))
+            ));
         }
     }
 
