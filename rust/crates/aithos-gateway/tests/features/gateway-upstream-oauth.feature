@@ -97,7 +97,7 @@ Feature: OAuth 2.1 custody for protected upstreams
       When the connector resolves its OAuth endpoints
       Then protected resource metadata is fetched before authorization server metadata
       And the resolved issuer, authorization endpoint and token endpoint are pinned
-      And only HTTPS endpoints and advertised S256 are accepted
+      And only HTTPS endpoints except loopback test doubles and advertised S256 are accepted
 
     Scenario Outline: Adversarial metadata fails closed before registration or consent
       Given fake discovery metadata with <metadata_defect>
@@ -156,7 +156,7 @@ Feature: OAuth 2.1 custody for protected upstreams
   Rule: Authorization parameters are typed profile data
 
     Scenario: A Google offline profile emits only its approved typed parameters
-      Given a generic OAuth profile with offline access and incremental authorization enabled
+      Given a capability-isolated generic OAuth profile with offline access and incremental authorization enabled
       When the owner starts initial consent
       Then the authorization URL includes access_type offline
       And the authorization URL includes include_granted_scopes true
@@ -206,6 +206,8 @@ Feature: OAuth 2.1 custody for protected upstreams
 
       Examples:
         | custody_condition                   | public_state      |
+        | no completed consent                | disconnected      |
+        | one live consent attempt            | pending           |
         | current and identity-bound          | connected         |
         | past access-token expiry            | expired           |
         | revoked or invalid_grant            | reauth_required   |

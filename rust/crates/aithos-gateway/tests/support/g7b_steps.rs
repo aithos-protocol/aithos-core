@@ -1102,6 +1102,9 @@ async fn g7b_invalid_descriptor(w: &mut GatewayWorld, defect: String) {
 
 #[when("the owner stages the connector instance")]
 async fn g7b_owner_stages_invalid(w: &mut GatewayWorld) {
+    if oac0_steps::stage_connector_identity_for_shared_step(w) {
+        return;
+    }
     let h = harness_mut(w);
     let body = h.pending_body.clone().unwrap();
     h.send(
@@ -1115,6 +1118,9 @@ async fn g7b_owner_stages_invalid(w: &mut GatewayWorld) {
 
 #[then("staging is refused with a stable redacted error")]
 fn g7b_invalid_stage_is_stable(w: &mut GatewayWorld) {
+    if oac0_steps::assert_connector_identity_refused_for_shared_step(w) {
+        return;
+    }
     let response = harness(w).last.as_ref().unwrap();
     assert_eq!(response.status, 403);
     assert_eq!(

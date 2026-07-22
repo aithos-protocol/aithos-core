@@ -77,6 +77,8 @@ use aithos_provider::envelope::{
 
 #[path = "support/g7b_steps.rs"]
 mod g7b_steps;
+#[path = "support/oac0_steps.rs"]
+mod oac0_steps;
 
 /// Fixed test instants (RFC 3339 Z — the wire's instant format).
 const T0: &str = "2026-07-10T12:00:00Z";
@@ -693,6 +695,8 @@ struct GatewayWorld {
     control: Option<CucumberControlHarness>,
     /// G7b: pre-approved connector binding, OAuth custody and hot runtime.
     g7b: Option<g7b_steps::G7bHarness>,
+    /// OAC-0: closed OAuth profiles, discovery, registration and binding.
+    oac0: Option<oac0_steps::Oac0Harness>,
 }
 
 /// One raw Streamable HTTP exchange (G2): what the wire actually said.
@@ -903,6 +907,7 @@ impl GatewayWorld {
             relay_oauth_redacted: false,
             control: None,
             g7b: None,
+            oac0: None,
         }
     }
 
@@ -9401,6 +9406,10 @@ async fn upstream_oauth_refused(w: &mut GatewayWorld) {
 
 #[then("the protected resource receives zero requests")]
 async fn upstream_oauth_no_resource(w: &mut GatewayWorld) {
+    if let Some(count) = oac0_steps::connector_resource_hit_count(w) {
+        assert_eq!(count, 0);
+        return;
+    }
     assert!(w
         .upstream_oauth
         .as_ref()

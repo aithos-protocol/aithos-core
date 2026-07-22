@@ -384,7 +384,9 @@ async fn signed_control_surface_is_exact_scoped_and_redacted() {
         .send()
         .await
         .unwrap();
-    assert_eq!(bodyful_get.status(), 401);
+    // The exact body is signed, so authority succeeds; the bodyless route
+    // grammar then rejects the otherwise authenticated request as invalid.
+    assert_eq!(bodyful_get.status(), 400);
 
     let unsigned = fixture
         .client

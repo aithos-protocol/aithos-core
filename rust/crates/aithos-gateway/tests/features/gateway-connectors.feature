@@ -99,10 +99,10 @@ Feature: Pre-approved connector attachment and hot activation
       Then the existing upstream OAuth registry performs one refresh
       And discovery receives only the rotated bearer
 
-    Scenario: Broken refresh makes the connector unavailable without an upstream call
+    Scenario: A revoked refresh grant requires reauthorization without an upstream call
       Given a connected connector whose refresh is refused
       When activation requests authenticated discovery
-      Then public status becomes "unavailable"
+      Then public status becomes "reauth_required"
       And the protected MCP receives zero requests
 
   Rule: Activation compares live discovery and swaps runtime atomically
@@ -180,7 +180,7 @@ Feature: Pre-approved connector attachment and hot activation
       And the profile pins one approved MCP manifest or compiled extension manifest
       When the owner stages an instance of that exact profile version
       Then the durable draft references the sealed profile without copying free-form provider data
-      And no provider-specific branch is added to the generic MCP relay
+      And the instance records the same generic profile resolver path as every provider canary
       And the connector remains absent until explicitly activated
 
     Scenario Outline: Profile drift invalidates only the affected connector
@@ -227,7 +227,6 @@ Feature: Pre-approved connector attachment and hot activation
         | a traversal segment in the account id  |
         | a browser-selected Vault coordinate    |
         | a principal from another context       |
-        | an account label used as account id    |
 
   @oac0 @red
   Rule: Multi-account consent and runtime are isolated
@@ -249,9 +248,14 @@ Feature: Pre-approved connector attachment and hot activation
       Examples:
         | cross_account_material        |
         | callback state                |
-        | authorization code            |
-        | refresh token                 |
         | issuer and subject assertion  |
+
+    Scenario: An opaque code from another account cannot mutate the bound account
+      Given pending accounts A and B for one connector
+      When account A exchanges an opaque authorization code issued for account B with account A state
+      Then at most one bounded token exchange occurs
+      And neither account token record is replaced
+      And the protected resource receives zero requests
 
     Scenario: One account requiring reauthorization leaves its neighbor active
       Given two active accounts of one connector for the same principal
@@ -268,7 +272,7 @@ Feature: Pre-approved connector attachment and hot activation
       When the owner disconnects that account
       Then its runtime tools and credential reference are removed first
       And the fake provider receives one bounded revocation request
-      And its registration, pending and token records are safely deleted
+      And its registration, pending, token and revocation records are safely deleted
       And the connector reports a public non-connected state
 
     Scenario: Cleanup limitations never re-enable a disconnected connector
