@@ -21,17 +21,10 @@ fn vector() -> Value {
 
 fn verify(candidate: &Value) -> aithos_core::Result<()> {
     let did: DidDocument = serde_json::from_value(candidate["did"].clone()).unwrap();
-    let chain: Vec<Mandate> =
-        serde_json::from_value(candidate["minting_chain"].clone()).unwrap();
+    let chain: Vec<Mandate> = serde_json::from_value(candidate["minting_chain"].clone()).unwrap();
     let child: Mandate = serde_json::from_value(candidate["child"].clone()).unwrap();
     let entry: Entry = serde_json::from_value(candidate["signed_entry"].clone()).unwrap();
-    Bundle::<FsStore>::verify_external_delegated_grant(
-        &entry,
-        &chain,
-        &child,
-        &did,
-        &[],
-    )
+    Bundle::<FsStore>::verify_external_delegated_grant(&entry, &chain, &child, &did, &[], &[])
 }
 
 #[test]

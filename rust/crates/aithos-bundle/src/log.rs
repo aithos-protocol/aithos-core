@@ -6,15 +6,17 @@ use crate::bundle::{Bundle, SelfIndex, ZoneIndex, KV};
 use crate::entropy::EntropySource;
 use crate::Store;
 use aithos_core::derive::node_key;
+use aithos_core::did::DidDocument;
 use aithos_core::error::{Error, Result};
 use aithos_core::gamma::{
     self, check_action_append, check_grant_append, delegated_entry, open_body, owner_entry,
-    seal_body, verify_delegated_entry, Body, Entry, EntrySpec, Kind,
+    seal_body, verify_delegated_entry, Body, Entry, EntrySpec, Kind, GAMMA_ENTRY_VERSION,
 };
 use aithos_core::ids::Sid;
 use aithos_core::keys::{grantee_kex_secret, OwnerKeys};
 use aithos_core::mandate::{covers_act, covers_gamma_query, ActOp, GammaQuery, Mandate};
 use aithos_core::path::{Leaf, NodePath, Zone};
+use aithos_core::revocation::Revocation;
 use ed25519_dalek::SigningKey;
 use std::collections::BTreeMap;
 
@@ -712,6 +714,125 @@ impl<S: Store> Bundle<S> {
         )?;
         verify_delegated_entry(&entry, minting_chain, &doc)?;
         self.gamma_append(&entry)
+    }
+
+    /// Prepare the existing Gamma v1 `grant` entry for an external delegate
+    /// signer. The returned entry contains no secret and has an empty
+    /// signature value; signing its JCS bytes is byte-identical to Core's
+    /// delegated-entry construction.
+    pub fn prepare_external_delegated_grant(
+        &self,
+        minting_chain: &[Mandate],
+        child: &Mandate,
+        ent: &mut dyn EntropySource,
+    ) -> Result<Entry> {
+        let did = self.did_doc()?;
+        let entries = self.gamma_entries()?;
+        let revocations = self.active_revocations()?;
+        let minter = minting_chain
+            .last()
+            .ok_or_else(|| Error::InvalidGammaEntry("empty minting chain".to_owned()))?;
+        aithos_core::mandate::verify_chain_revocable(
+            minting_chain,
+            &did,
+            &child.issued_at,
+            &revocations,
+        )?;
+        let mut child_chain = minting_chain.to_vec();
+        child_chain.push(child.clone());
+        aithos_core::mandate::verify_chain(&child_chain, &did, &child.not_before)?;
+        check_grant_append(&entries, minter)?;
+        let entry = Entry {
+            v: GAMMA_ENTRY_VERSION,
+            id: self.next_gamma_id(ent),
+            prev: gamma::head(&entries)?,
+            prevs: None,
+            at: child.issued_at.clone(),
+            kind: Kind::Grant.as_str().to_owned(),
+            target: Some(child.id.clone()),
+            authorized_by: Some(minter.id.clone()),
+            authorized_via: Some(
+                minting_chain
+                    .iter()
+                    .map(|mandate| mandate.id.clone())
+                    .collect(),
+            ),
+            payload: Some(serde_json::json!({})),
+            body_enc: None,
+            signature: aithos_core::did::SignatureBlock {
+                alg: "ed25519".to_owned(),
+                key: minter.grantee.pubkey.clone(),
+                value: String::new(),
+            },
+        };
+        entry.check_form()?;
+        Ok(entry)
+    }
+
+    /// Verify a delegate-signed, gateway-prepared Gamma grant without ever
+    /// receiving the delegate's signing key. This pure seam is also consumed
+    /// by the independent CB15 vector.
+    pub fn verify_external_delegated_grant(
+        entry: &Entry,
+        minting_chain: &[Mandate],
+        child: &Mandate,
+        did: &DidDocument,
+        revocations: &[Revocation],
+        existing: &[Entry],
+    ) -> Result<()> {
+        let invalid = |message: &str| Error::InvalidGammaEntry(message.to_owned());
+        let minter = minting_chain
+            .last()
+            .ok_or_else(|| invalid("external grant has an empty minting chain"))?;
+        aithos_core::mandate::verify_chain_revocable(minting_chain, did, &entry.at, revocations)?;
+        let mut child_chain = minting_chain.to_vec();
+        child_chain.push(child.clone());
+        aithos_core::mandate::verify_chain(&child_chain, did, &child.not_before)?;
+        let expected_via = minting_chain
+            .iter()
+            .map(|mandate| mandate.id.clone())
+            .collect::<Vec<_>>();
+        if entry.kind != Kind::Grant.as_str()
+            || entry.target.as_deref() != Some(child.id.as_str())
+            || entry.at != child.issued_at
+            || entry.prev != gamma::head(existing)?
+            || entry.prevs.is_some()
+            || entry.payload.as_ref() != Some(&serde_json::json!({}))
+            || entry.body_enc.is_some()
+            || entry.authorized_by.as_deref() != Some(minter.id.as_str())
+            || entry.authorized_via.as_ref() != Some(&expected_via)
+        {
+            return Err(invalid(
+                "external grant differs from its child, minting chain, issuance time, or Gamma head",
+            ));
+        }
+        if gamma::grant_logged(existing, &child.id) {
+            return Err(invalid("external grant child is already logged"));
+        }
+        check_grant_append(existing, minter)?;
+        verify_delegated_entry(entry, minting_chain, did)
+    }
+
+    /// Verify and append one externally signed grant against the bundle's
+    /// current DID, revocations, counters and exact Gamma head.
+    pub fn append_external_delegated_grant(
+        &mut self,
+        minting_chain: &[Mandate],
+        child: &Mandate,
+        entry: &Entry,
+    ) -> Result<()> {
+        let did = self.did_doc()?;
+        let existing = self.gamma_entries()?;
+        let revocations = self.active_revocations()?;
+        Self::verify_external_delegated_grant(
+            entry,
+            minting_chain,
+            child,
+            &did,
+            &revocations,
+            &existing,
+        )?;
+        self.gamma_append(entry)
     }
 
     // ---------------------------------------------------------- verifying
