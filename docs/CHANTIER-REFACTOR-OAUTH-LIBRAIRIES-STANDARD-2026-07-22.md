@@ -2,7 +2,17 @@
 
 Date : 2026-07-22
 
-Statut : **chantier à venir, non bloquant pour la première démo**.
+Statut : **OLR-0 → OLR-4 verts localement** sur
+`feature/olr-oauth-libs-upstream` (seam, oauth2, OIDC, discovery JWKS).
+**OLR-5 prêt pour rollout local, live gates encore requis. OLR-6 borné seulement.**
+Hors provider / relai `aithos.fr`.
+
+Livrables :
+
+- ADR + corpus + matrices OLR-4/5 + bornage OLR-6
+- `oauth_protocol`, `oauth_oidc`, `oauth_rollout`
+- E2E `olr_oauth2_e2e` + `olr_oidc_e2e`
+- `scripts/run-olr-oauth-local.sh`
 
 ## 1. Décision proposée
 
