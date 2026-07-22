@@ -22,6 +22,22 @@ fn ac() -> Command {
     Command::cargo_bin("aithos").expect("binary builds")
 }
 
+#[test]
+fn delegated_oauth_surface_accepts_only_out_of_argv_signer_custody() {
+    let output = ac()
+        .args(["oauth", "authorize-delegated", "--help"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let help = String::from_utf8(output.stdout).unwrap();
+    assert!(help.contains("--signer-stdin"));
+    assert!(help.contains("--token-output"));
+    assert!(help.contains("--approve"));
+    assert!(!help.contains("--seed"));
+    assert!(!help.contains("--private-key"));
+}
+
 fn init_bundle() -> TempDir {
     let dir = TempDir::new().unwrap();
     ac().args([
