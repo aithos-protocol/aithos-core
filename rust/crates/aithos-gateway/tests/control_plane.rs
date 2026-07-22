@@ -409,6 +409,8 @@ async fn signed_control_surface_is_exact_scoped_and_redacted() {
     assert_eq!(status["process"], "ready");
     assert_eq!(status["vault"], "ready");
     assert_eq!(status["relay"], "ready");
+    assert!(status["upstream_oauth"]["native_success"].is_u64());
+    assert!(status["upstream_oauth"]["oauth2_failure"].is_u64());
     let rendered = status.to_string();
     for sentinel in [
         "/private/customer",

@@ -45,7 +45,8 @@ use aithos_gateway::core_bridge::{
     ReenrollOutcome, Runner, SeqEntropy, EFFECTIVE_POLICY_VERSION, STATE_PATH,
 };
 use aithos_gateway::credentials::{
-    CredentialBroker, CredentialBrokerReadiness, CredentialRef, SecretValue,
+    CredentialBroker, CredentialBrokerReadiness, CredentialCompareAndStoreOutcome, CredentialRef,
+    SecretValue,
 };
 use aithos_gateway::hub::{
     approve_manifest, discover_server, ApprovedManifest, ArgumentBound, ToolApproval,
@@ -755,6 +756,23 @@ impl CredentialBroker for MemoryOAuthVault {
         Box::pin(async move {
             self.put_clear(&reference.path, &reference.field, value.expose());
             Ok(())
+        })
+    }
+
+    fn compare_and_store<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+        expected: SecretValue,
+        replacement: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<CredentialCompareAndStoreOutcome>> + Send + 'a>> {
+        Box::pin(async move {
+            let key = (reference.path.clone(), reference.field.clone());
+            let mut values = self.values.lock().unwrap();
+            if values.get(&key).map(String::as_str) != Some(expected.expose()) {
+                return Ok(CredentialCompareAndStoreOutcome::Mismatch);
+            }
+            values.insert(key, replacement.expose().to_owned());
+            Ok(CredentialCompareAndStoreOutcome::Stored)
         })
     }
 }

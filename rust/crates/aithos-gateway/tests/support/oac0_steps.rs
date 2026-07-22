@@ -110,6 +110,30 @@ impl CredentialBroker for TrackingBroker {
         })
     }
 
+    fn compare_and_store<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+        expected: SecretValue,
+        replacement: SecretValue,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<aithos_gateway::credentials::CredentialCompareAndStoreOutcome>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let key = (reference.path.clone(), reference.field.clone());
+            let mut values = self.values.lock().unwrap();
+            if values.get(&key).map(String::as_str) != Some(expected.expose()) {
+                return Ok(aithos_gateway::credentials::CredentialCompareAndStoreOutcome::Mismatch);
+            }
+            values.insert(key, replacement.expose().to_owned());
+            Ok(aithos_gateway::credentials::CredentialCompareAndStoreOutcome::Stored)
+        })
+    }
+
     fn delete<'a>(
         &'a self,
         reference: &'a CredentialRef,
@@ -649,6 +673,7 @@ fn static_config(base: &str, authentication: OAuthClientAuthentication) -> Upstr
         redirect_uri: REDIRECT_URI.into(),
         endpoints: OAuthEndpointStrategy::Static,
         client_authentication: authentication,
+        protocol_engine: Default::default(),
         registration: OAuthRegistrationStrategy::Static,
         authorization_parameters: OAuthAuthorizationParameters::default(),
         resource: None,
@@ -1210,6 +1235,7 @@ fn endpoints(base: &str) -> ResolvedOAuthEndpoints {
         token_endpoint: format!("{base}/token"),
         registration_endpoint: Some(format!("{base}/register")),
         revocation_endpoint: Some(format!("{base}/revoke")),
+        jwks_uri: None,
     }
 }
 

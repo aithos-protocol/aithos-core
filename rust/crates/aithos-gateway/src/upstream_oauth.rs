@@ -20,16 +20,26 @@ use zeroize::Zeroize;
 
 use crate::config::{
     GatewayConfig, OAuthAccessType, OAuthClientAuthentication, OAuthIdentitySource,
-    OAuthRegistrationStrategy, UpstreamOAuthConfig,
+    OAuthProtocolEngine, OAuthRegistrationStrategy, UpstreamOAuthConfig,
 };
 use crate::core_bridge::{EntropySource, OsEntropy};
-use crate::credentials::{CredentialBroker, CredentialRef, SecretValue};
+use crate::credentials::{
+    CredentialBroker, CredentialCompareAndStoreOutcome, CredentialRef, SecretValue,
+};
 use crate::oauth::{b64url_encode, s256_challenge};
 use crate::oauth_discovery::{OAuthDiscoveryClient, ResolvedOAuthEndpoints};
+#[cfg(feature = "olr-oauth-libs")]
+use crate::oauth_oidc::{self, OidcNoncePolicy, OidcValidationRequest};
+use crate::oauth_protocol::{
+    native_token_request, resolve_protocol_engine, ProtocolTokenAnswer, TokenEndpointContext,
+};
+#[cfg(feature = "olr-oauth-libs")]
+use crate::oauth_protocol::{oauth2_exchange_code, oauth2_refresh};
 use crate::oauth_registration::{
     resolve_registration_secret, ClientCredentialSource, OAuthRegistrationClient,
     ResolvedClientRegistration,
 };
+use crate::oauth_rollout::ROLLOUT_METRICS;
 use crate::{GatewayError, Result};
 
 const TOKEN_TIMEOUT: Duration = Duration::from_secs(10);
@@ -74,6 +84,9 @@ enum VaultRecord {
         state: String,
         code_verifier: String,
         created_at: i64,
+        /// OIDC nonce when account binding uses an ID Token (OLR-3).
+        #[serde(default)]
+        nonce: Option<String>,
     },
     Connected {
         access_token: String,
@@ -104,10 +117,12 @@ impl Drop for VaultRecord {
             Self::Pending {
                 state,
                 code_verifier,
+                nonce,
                 ..
             } => {
                 state.zeroize();
                 code_verifier.zeroize();
+                nonce.zeroize();
             }
             Self::Connected {
                 access_token,
@@ -126,36 +141,6 @@ impl Drop for VaultRecord {
                 account.zeroize();
             }
             Self::Consumed { .. } | Self::ReauthRequired { .. } => {}
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct TokenAnswer {
-    access_token: String,
-    #[serde(default)]
-    refresh_token: Option<String>,
-    expires_in: u64,
-    token_type: String,
-    #[serde(default)]
-    scope: Option<String>,
-    #[serde(flatten)]
-    additional: BTreeMap<String, serde_json::Value>,
-}
-
-#[derive(Deserialize)]
-struct OAuthErrorAnswer {
-    error: String,
-}
-
-impl Drop for TokenAnswer {
-    fn drop(&mut self) {
-        self.access_token.zeroize();
-        if let Some(refresh) = &mut self.refresh_token {
-            refresh.zeroize();
-        }
-        for value in self.additional.values_mut() {
-            zeroize_json(value);
         }
     }
 }
@@ -180,6 +165,12 @@ pub enum UpstreamOAuthState {
     Expired,
     ReauthRequired,
     Unavailable,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum IdentityNoncePolicy<'a> {
+    AuthorizationCode(&'a str),
+    Refresh,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -262,6 +253,33 @@ impl UpstreamOAuthClient {
             .map_err(|_| unavailable("cannot persist OAuth token record"))
     }
 
+    async fn consume_pending_record(&self, record: &VaultRecord) -> Result<()> {
+        let expected = serde_json::to_string(record)
+            .map_err(|_| unavailable("cannot encode OAuth pending record"))?;
+        let consumed = serde_json::to_string(&VaultRecord::Consumed {
+            consumed_at: (self.clock)(),
+        })
+        .map_err(|_| unavailable("cannot encode OAuth consumed record"))?;
+        match self
+            .token_broker
+            .compare_and_store(
+                self.pending_vault(),
+                SecretValue::new(expected),
+                SecretValue::new(consumed),
+            )
+            .await
+            .map_err(|_| unavailable("cannot consume OAuth callback state"))?
+        {
+            CredentialCompareAndStoreOutcome::Stored => Ok(()),
+            CredentialCompareAndStoreOutcome::Mismatch => {
+                Err(unavailable("no OAuth consent is pending"))
+            }
+            CredentialCompareAndStoreOutcome::Unsupported => Err(unavailable(
+                "OAuth token Vault does not support atomic callback state",
+            )),
+        }
+    }
+
     async fn write_revocation_marker(&self, reference: &CredentialRef) -> Result<()> {
         let encoded = serde_json::to_string(&serde_json::json!({
             "v": 1,
@@ -304,12 +322,22 @@ impl UpstreamOAuthClient {
     pub async fn build_consent_url_for(&self, intent: ConsentIntent) -> Result<ConsentStart> {
         let _lifecycle = self.lifecycle_lock.lock().await;
         let (endpoints, registration) = self.resolve_runtime().await?;
-        let (verifier, random_state) = {
+        let oidc_binding = matches!(
+            self.config
+                .account_binding
+                .as_ref()
+                .map(|binding| &binding.source),
+            Some(OAuthIdentitySource::IdToken { .. })
+        );
+        let (verifier, random_state, nonce) = {
             let mut entropy = self
                 .entropy
                 .lock()
                 .map_err(|_| unavailable("OAuth entropy lock is unavailable"))?;
-            (b64url_encode(&entropy.e32()), b64url_encode(&entropy.e32()))
+            let verifier = b64url_encode(&entropy.e32());
+            let random_state = b64url_encode(&entropy.e32());
+            let nonce = oidc_binding.then(|| b64url_encode(&entropy.e32()));
+            (verifier, random_state, nonce)
         };
         let state = format!(
             "{}.{}",
@@ -321,6 +349,7 @@ impl UpstreamOAuthClient {
             state,
             code_verifier: verifier,
             created_at: (self.clock)(),
+            nonce: nonce.clone(),
         };
         self.write_record(self.pending_vault(), &pending).await?;
         let state = match &pending {
@@ -343,6 +372,9 @@ impl UpstreamOAuthClient {
             .append_pair("state", state)
             .append_pair("code_challenge", &challenge)
             .append_pair("code_challenge_method", "S256");
+        if let Some(nonce) = &nonce {
+            url.query_pairs_mut().append_pair("nonce", nonce);
+        }
         if matches!(
             self.config.authorization_parameters.access_type,
             Some(OAuthAccessType::Offline)
@@ -375,75 +407,82 @@ impl UpstreamOAuthClient {
         })
     }
 
-    async fn token_request(&self, mut form: Vec<(&'static str, String)>) -> Result<TokenAnswer> {
-        let (endpoints, registration) = self.resolve_runtime().await?;
-        let mut request = self.http.post(&endpoints.token_endpoint);
-        let mut secret = None;
-        match self.config.client_authentication {
-            OAuthClientAuthentication::None => {
-                form.push(("client_id", registration.client_id.clone()));
-            }
-            OAuthClientAuthentication::ClientSecretPost => {
-                secret = Some(self.resolve_client_secret(&registration.credential).await?);
-                form.push(("client_id", registration.client_id.clone()));
-                form.push((
-                    "client_secret",
-                    secret
-                        .as_ref()
-                        .expect("secret was assigned")
-                        .expose()
-                        .into(),
-                ));
-            }
-            OAuthClientAuthentication::ClientSecretBasic => {
-                secret = Some(self.resolve_client_secret(&registration.credential).await?);
-                request = request.basic_auth(
-                    &registration.client_id,
-                    Some(secret.as_ref().expect("secret was assigned").expose()),
-                );
-            }
-        }
-        let response = request.form(&form).send().await;
+    async fn token_request(
+        &self,
+        mut form: Vec<(&'static str, String)>,
+    ) -> Result<ProtocolTokenAnswer> {
+        let engine = resolve_protocol_engine(self.config.protocol_engine);
+        let result = self.token_request_inner(&form).await;
         for (_, value) in &mut form {
             value.zeroize();
         }
-        drop(secret);
-        let response = response.map_err(|e| {
-            unavailable(if e.is_timeout() {
-                "OAuth token endpoint timed out"
-            } else if e.is_connect() {
-                "OAuth token endpoint is unreachable"
-            } else {
-                "OAuth token exchange failed"
-            })
-        })?;
-        let status = response.status();
-        if !status.is_success() {
-            let invalid_grant = if status == reqwest::StatusCode::BAD_REQUEST {
-                bounded_response_bytes(response, MAX_OAUTH_RESPONSE_BYTES)
-                    .await
-                    .ok()
-                    .and_then(|bytes| serde_json::from_slice::<OAuthErrorAnswer>(&bytes).ok())
-                    .is_some_and(|answer| answer.error == "invalid_grant")
-            } else {
-                false
-            };
-            return Err(unavailable(if invalid_grant {
-                "OAuth token endpoint refused the grant"
-            } else {
-                "OAuth token endpoint is temporarily unavailable"
-            }));
+        ROLLOUT_METRICS.record_token_outcome(engine, result.is_ok());
+        result
+    }
+
+    async fn token_request_inner(
+        &self,
+        form: &[(&'static str, String)],
+    ) -> Result<ProtocolTokenAnswer> {
+        let (endpoints, registration) = self.resolve_runtime().await?;
+        let ctx = TokenEndpointContext {
+            token_url: endpoints.token_endpoint.clone(),
+            client_id: registration.client_id.clone(),
+            redirect_uri: self.config.redirect_uri.clone(),
+            client_authentication: self.config.client_authentication,
+        };
+        let secret = match self.config.client_authentication {
+            OAuthClientAuthentication::None => None,
+            OAuthClientAuthentication::ClientSecretPost
+            | OAuthClientAuthentication::ClientSecretBasic => {
+                Some(self.resolve_client_secret(&registration.credential).await?)
+            }
+        };
+        match resolve_protocol_engine(self.config.protocol_engine) {
+            OAuthProtocolEngine::Native => {
+                native_token_request(&self.http, &ctx, secret.as_ref(), form.to_vec()).await
+            }
+            OAuthProtocolEngine::Oauth2 => {
+                #[cfg(not(feature = "olr-oauth-libs"))]
+                {
+                    Err(unavailable(
+                        "OAuth2 protocol engine is unavailable in this build",
+                    ))
+                }
+                #[cfg(feature = "olr-oauth-libs")]
+                {
+                    let grant = form
+                        .iter()
+                        .find(|(key, _)| *key == "grant_type")
+                        .map(|(_, value)| value.as_str())
+                        .unwrap_or_default();
+                    match grant {
+                        "authorization_code" => {
+                            let code = form
+                                .iter()
+                                .find(|(key, _)| *key == "code")
+                                .map(|(_, value)| value.as_str())
+                                .ok_or_else(|| unavailable("OAuth callback is incomplete"))?;
+                            let verifier = form
+                                .iter()
+                                .find(|(key, _)| *key == "code_verifier")
+                                .map(|(_, value)| value.as_str())
+                                .ok_or_else(|| unavailable("OAuth callback is incomplete"))?;
+                            oauth2_exchange_code(&ctx, secret.as_ref(), code, verifier).await
+                        }
+                        "refresh_token" => {
+                            let refresh = form
+                                .iter()
+                                .find(|(key, _)| *key == "refresh_token")
+                                .map(|(_, value)| value.as_str())
+                                .ok_or_else(|| unavailable("OAuth consent must be renewed"))?;
+                            oauth2_refresh(&ctx, secret.as_ref(), refresh).await
+                        }
+                        _ => Err(unavailable("OAuth token exchange failed")),
+                    }
+                }
+            }
         }
-        let bytes = bounded_response_bytes(response, MAX_OAUTH_RESPONSE_BYTES).await?;
-        let answer: TokenAnswer = serde_json::from_slice(&bytes)
-            .map_err(|_| unavailable("OAuth token answer is malformed"))?;
-        if answer.access_token.is_empty()
-            || !answer.token_type.eq_ignore_ascii_case("bearer")
-            || answer.expires_in == 0
-        {
-            return Err(unavailable("OAuth token answer is incomplete"));
-        }
-        Ok(answer)
     }
 
     async fn resolve_client_secret(&self, source: &ClientCredentialSource) -> Result<SecretValue> {
@@ -468,7 +507,11 @@ impl UpstreamOAuthClient {
         }
     }
 
-    fn scopes_from_answer(&self, answer: &TokenAnswer, fallback: &[String]) -> Result<Vec<String>> {
+    fn scopes_from_answer(
+        &self,
+        answer: &ProtocolTokenAnswer,
+        fallback: &[String],
+    ) -> Result<Vec<String>> {
         let scopes: Vec<String> = answer.scope.as_deref().map_or_else(
             || fallback.to_vec(),
             |scope| scope.split_whitespace().map(str::to_owned).collect(),
@@ -487,7 +530,8 @@ impl UpstreamOAuthClient {
 
     async fn identity_values(
         &self,
-        answer: &TokenAnswer,
+        answer: &ProtocolTokenAnswer,
+        oidc_nonce: Option<IdentityNoncePolicy<'_>>,
     ) -> Result<Option<BTreeMap<String, serde_json::Value>>> {
         let Some(binding) = &self.config.account_binding else {
             return Ok(None);
@@ -510,18 +554,68 @@ impl UpstreamOAuthClient {
                     .map(Some)
                     .map_err(|_| unavailable("OAuth identity response is malformed"))
             }
+            OAuthIdentitySource::IdToken { audience, .. } => {
+                #[cfg(not(feature = "olr-oauth-libs"))]
+                {
+                    if let Some(IdentityNoncePolicy::AuthorizationCode(nonce)) = oidc_nonce {
+                        let _ = nonce;
+                    }
+                    let _ = (answer, audience);
+                    Err(unavailable("OIDC validation is unavailable in this build"))
+                }
+                #[cfg(feature = "olr-oauth-libs")]
+                {
+                    let id_token = answer
+                        .additional
+                        .get("id_token")
+                        .and_then(serde_json::Value::as_str)
+                        .filter(|value| !value.is_empty())
+                        .ok_or_else(|| unavailable("OAuth token answer has no ID token"))?;
+                    let (endpoints, registration) = self.resolve_runtime().await?;
+                    let jwks_uri = endpoints
+                        .jwks_uri
+                        .as_deref()
+                        .ok_or_else(|| unavailable("OIDC JWKS endpoint is unavailable"))?;
+                    let audience = audience
+                        .as_deref()
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or(registration.client_id.as_str());
+                    let validated = oauth_oidc::validate_id_token(OidcValidationRequest {
+                        id_token,
+                        issuer: binding.issuer.as_str(),
+                        audience,
+                        jwks_uri,
+                        nonce: match oidc_nonce
+                            .ok_or_else(|| unavailable("OIDC nonce policy is missing"))?
+                        {
+                            IdentityNoncePolicy::AuthorizationCode(nonce) => {
+                                OidcNoncePolicy::AuthorizationCode(nonce)
+                            }
+                            IdentityNoncePolicy::Refresh => OidcNoncePolicy::Refresh,
+                        },
+                    })
+                    .await;
+                    let ok = validated.is_ok();
+                    ROLLOUT_METRICS.record_oidc_outcome(ok);
+                    validated.map(Some)
+                }
+            }
         }
     }
 
     async fn identity_from_answer(
         &self,
-        answer: &TokenAnswer,
+        answer: &ProtocolTokenAnswer,
+        oidc_nonce: Option<&str>,
     ) -> Result<Option<(String, String, String)>> {
         let Some(binding) = &self.config.account_binding else {
             return Ok(None);
         };
         let mut values = self
-            .identity_values(answer)
+            .identity_values(
+                answer,
+                oidc_nonce.map(IdentityNoncePolicy::AuthorizationCode),
+            )
             .await?
             .ok_or_else(|| unavailable("OAuth identity response is absent"))?;
         let subject = values
@@ -544,7 +638,7 @@ impl UpstreamOAuthClient {
 
     async fn identity_from_refresh(
         &self,
-        answer: &TokenAnswer,
+        answer: &ProtocolTokenAnswer,
         issuer: &Option<String>,
         subject: &Option<String>,
         account: &Option<String>,
@@ -552,7 +646,21 @@ impl UpstreamOAuthClient {
         let Some(binding) = &self.config.account_binding else {
             return Ok((issuer.clone(), subject.clone(), account.clone()));
         };
-        let mut values = self.identity_values(answer).await?.unwrap_or_default();
+        // Refresh responses often omit id_token; keep the bound identity when
+        // the IdToken source yields no fresh claims.
+        if matches!(binding.source, OAuthIdentitySource::IdToken { .. })
+            && answer
+                .additional
+                .get("id_token")
+                .and_then(serde_json::Value::as_str)
+                .is_none_or(str::is_empty)
+        {
+            return Ok((issuer.clone(), subject.clone(), account.clone()));
+        }
+        let mut values = self
+            .identity_values(answer, Some(IdentityNoncePolicy::Refresh))
+            .await?
+            .unwrap_or_default();
         let next_subject = values
             .get(&binding.subject_field)
             .and_then(serde_json::Value::as_str)
@@ -561,10 +669,11 @@ impl UpstreamOAuthClient {
             .get(&binding.account_field)
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned);
-        let response_omitted_identity =
-            matches!(binding.source, OAuthIdentitySource::TokenResponse)
-                && next_subject.is_none()
-                && next_account.is_none();
+        let response_omitted_identity = matches!(
+            binding.source,
+            OAuthIdentitySource::TokenResponse | OAuthIdentitySource::IdToken { .. }
+        ) && next_subject.is_none()
+            && next_account.is_none();
         for value in values.values_mut() {
             zeroize_json(value);
         }
@@ -596,12 +705,13 @@ impl UpstreamOAuthClient {
             return Err(unavailable("no OAuth consent is pending"));
         }
         let record = self.read_record(self.pending_vault()).await?;
-        let (expected_state, verifier, created_at) = match &record {
+        let (expected_state, verifier, created_at, oidc_nonce) = match &record {
             VaultRecord::Pending {
                 state,
                 code_verifier,
                 created_at,
-            } => (state, code_verifier, *created_at),
+                nonce,
+            } => (state, code_verifier, *created_at, nonce.clone()),
             VaultRecord::Connected { .. } => {
                 return Err(unavailable("no OAuth consent is pending"));
             }
@@ -619,6 +729,10 @@ impl UpstreamOAuthClient {
         if !(0..=PENDING_TTL_SECS).contains(&age) {
             return Err(unavailable("OAuth consent has expired"));
         }
+        // Consume the state durably before contacting the token endpoint.
+        // Vault CAS makes this one-shot across gateway processes, not merely
+        // across tasks sharing this client's lifecycle mutex.
+        self.consume_pending_record(&record).await?;
         let answer = self
             .token_request(vec![
                 ("grant_type", "authorization_code".into()),
@@ -634,7 +748,9 @@ impl UpstreamOAuthClient {
             .ok_or_else(|| unavailable("OAuth token answer has no refresh token"))?
             .clone();
         let scopes = self.scopes_from_answer(&answer, &self.config.scopes)?;
-        let identity = self.identity_from_answer(&answer).await?;
+        let identity = self
+            .identity_from_answer(&answer, oidc_nonce.as_deref())
+            .await?;
         let connected = VaultRecord::Connected {
             access_token: answer.access_token.clone(),
             refresh_token,
@@ -646,19 +762,6 @@ impl UpstreamOAuthClient {
         };
         self.write_record(&self.config.token_vault, &connected)
             .await?;
-        if self.config.pending_vault.is_some() {
-            // Best-effort non-secret tombstone. A failed cleanup never
-            // re-opens replay: `pending_matches` checks the connected token
-            // record first.
-            let _ = self
-                .write_record(
-                    self.pending_vault(),
-                    &VaultRecord::Consumed {
-                        consumed_at: (self.clock)(),
-                    },
-                )
-                .await;
-        }
         Ok(())
     }
 

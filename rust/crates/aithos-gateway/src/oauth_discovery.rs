@@ -26,6 +26,9 @@ pub struct ResolvedOAuthEndpoints {
     pub token_endpoint: String,
     pub registration_endpoint: Option<String>,
     pub revocation_endpoint: Option<String>,
+    /// Present when AS metadata advertises `jwks_uri` (OLR-4). Never taken
+    /// from browser input — only from pinned discovery.
+    pub jwks_uri: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -48,6 +51,8 @@ struct AuthorizationServerMetadata {
     registration_endpoint: Option<String>,
     #[serde(default)]
     revocation_endpoint: Option<String>,
+    #[serde(default)]
+    jwks_uri: Option<String>,
     #[serde(default)]
     code_challenge_methods_supported: Vec<String>,
     #[serde(default)]
@@ -81,6 +86,12 @@ impl OAuthDiscoveryClient {
                 token_endpoint: config.token_url.clone(),
                 registration_endpoint: None,
                 revocation_endpoint: config.revocation_url.clone(),
+                jwks_uri: match &config.account_binding.as_ref().map(|b| &b.source) {
+                    Some(crate::config::OAuthIdentitySource::IdToken { jwks_uri, .. }) => {
+                        Some(jwks_uri.clone())
+                    }
+                    _ => None,
+                },
             }),
             OAuthEndpointStrategy::Discovery {
                 protected_resource,
@@ -167,11 +178,31 @@ impl OAuthDiscoveryClient {
                 "authorization server does not pin the protected resource",
             ));
         }
+        if let Some(crate::config::OAuthIdentitySource::IdToken { jwks_uri, .. }) = config
+            .account_binding
+            .as_ref()
+            .map(|binding| &binding.source)
+        {
+            match metadata.jwks_uri.as_deref() {
+                Some(discovered) if discovered == jwks_uri => {}
+                Some(_) => {
+                    return Err(unavailable(
+                        "discovered JWKS endpoint changed its configured pin",
+                    ));
+                }
+                None => {
+                    return Err(unavailable(
+                        "authorization server did not advertise a JWKS endpoint",
+                    ));
+                }
+            }
+        }
         for endpoint in [
             Some(metadata.authorization_endpoint.as_str()),
             Some(metadata.token_endpoint.as_str()),
             metadata.registration_endpoint.as_deref(),
             metadata.revocation_endpoint.as_deref(),
+            metadata.jwks_uri.as_deref(),
         ]
         .into_iter()
         .flatten()
@@ -208,6 +239,7 @@ impl OAuthDiscoveryClient {
             token_endpoint: metadata.token_endpoint,
             registration_endpoint: metadata.registration_endpoint,
             revocation_endpoint: metadata.revocation_endpoint,
+            jwks_uri: metadata.jwks_uri,
         })
     }
 
