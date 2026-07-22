@@ -10,6 +10,7 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::io::{Read, Write};
 use tempfile::TempDir;
 
 const OWNER: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
@@ -18,7 +19,7 @@ const AGENT: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a
 const BODY: &str = "corps secret ultra-prive";
 
 fn ac() -> Command {
-    Command::cargo_bin("aithos-core").expect("binary builds")
+    Command::cargo_bin("aithos").expect("binary builds")
 }
 
 fn init_bundle() -> TempDir {
@@ -80,6 +81,161 @@ fn add_circle_section(dir: &TempDir) {
     ])
     .assert()
     .success();
+}
+
+#[test]
+fn managed_profile_keeps_real_keys_out_of_the_cli_and_reuses_them() {
+    let app_home = TempDir::new().unwrap();
+    let home = app_home.path().to_str().unwrap();
+
+    let init = ac()
+        .args(["--home", home, "init", "--key-store", "file"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("key_store: file"))
+        .get_output()
+        .clone();
+    let shown = format!(
+        "{}{}",
+        String::from_utf8_lossy(&init.stdout),
+        String::from_utf8_lossy(&init.stderr)
+    );
+    assert!(!shown.contains("master_seed_hex"));
+    assert!(!shown.contains("succession_seed_hex"));
+
+    ac().args(["--home", home, "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("custody: OK"));
+    ac().args([
+        "--home",
+        home,
+        "section-add",
+        "circle",
+        "notes/real-key",
+        "--body",
+        "managed",
+    ])
+    .assert()
+    .success();
+    ac().args(["--home", home, "edition-publish"])
+        .assert()
+        .success();
+    ac().args(["--home", home, "log-verify"]).assert().success();
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for path in [
+            app_home.path().join("keys/default.json"),
+            app_home.path().join("profiles/default.json"),
+        ] {
+            let mode = std::fs::metadata(path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+    }
+}
+
+fn read_http_request(mut stream: &std::net::TcpStream) -> (String, Vec<u8>) {
+    let mut bytes = Vec::new();
+    let mut buf = [0u8; 4096];
+    loop {
+        let n = stream.read(&mut buf).unwrap();
+        bytes.extend_from_slice(&buf[..n]);
+        if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
+            break;
+        }
+    }
+    let split = bytes
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .unwrap()
+        + 4;
+    let headers = String::from_utf8(bytes[..split].to_vec()).unwrap();
+    let length = headers
+        .lines()
+        .find_map(|line| {
+            line.to_ascii_lowercase()
+                .strip_prefix("content-length: ")
+                .map(str::to_owned)
+        })
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0);
+    while bytes.len() - split < length {
+        let n = stream.read(&mut buf).unwrap();
+        bytes.extend_from_slice(&buf[..n]);
+    }
+    (headers, bytes[split..split + length].to_vec())
+}
+
+#[test]
+fn managed_profile_roundtrips_through_vault_kv2_wire() {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let (mut write_stream, _) = listener.accept().unwrap();
+        let (headers, body) = read_http_request(&write_stream);
+        assert!(headers.starts_with("POST /v1/secret/data/aithos/ethos/default "));
+        assert!(headers
+            .to_ascii_lowercase()
+            .contains("x-vault-token: test-root"));
+        let written: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            written["data"]["master_seed_hex"].as_str().unwrap().len(),
+            64
+        );
+        assert_eq!(
+            written["data"]["succession_seed_hex"]
+                .as_str()
+                .unwrap()
+                .len(),
+            64
+        );
+        write_stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+            .unwrap();
+
+        let (mut read_stream, _) = listener.accept().unwrap();
+        let (headers, _) = read_http_request(&read_stream);
+        assert!(headers.starts_with("GET /v1/secret/data/aithos/ethos/default "));
+        assert!(headers
+            .to_ascii_lowercase()
+            .contains("x-vault-token: test-root"));
+        let answer = serde_json::to_vec(&serde_json::json!({
+            "data": { "data": written["data"].clone() }
+        }))
+        .unwrap();
+        write!(
+            read_stream,
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            answer.len()
+        )
+        .unwrap();
+        read_stream.write_all(&answer).unwrap();
+    });
+
+    let app_home = TempDir::new().unwrap();
+    std::env::set_var("AITHOS_TEST_VAULT_TOKEN", "test-root");
+    ac().args([
+        "--home",
+        app_home.path().to_str().unwrap(),
+        "init",
+        "--key-store",
+        "vault",
+        "--vault-address",
+        &address,
+        "--vault-token-env",
+        "AITHOS_TEST_VAULT_TOKEN",
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("key_store: vault-kv2"));
+    ac().args(["--home", app_home.path().to_str().unwrap(), "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("custody: OK"));
+    std::env::remove_var("AITHOS_TEST_VAULT_TOKEN");
+    server.join().unwrap();
 }
 
 // ------------------------------------------------------- critical paths ---

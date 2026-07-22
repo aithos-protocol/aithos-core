@@ -8,7 +8,7 @@ description = "aithos-core CLI (spec §09.1) — everything local, no network ne
 publish = false
 
 [[bin]]
-name = "aithos-core"
+name = "aithos"
 path = "src/main.rs"
 
 [dependencies]
@@ -18,7 +18,13 @@ clap.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 ulid.workspace = true
+ureq.workspace = true
+zeroize.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true

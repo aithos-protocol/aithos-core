@@ -1,21 +1,28 @@
 //! `aithos-core` — reference CLI (spec §09.1). Everything is local; no
 //! command needs a network to be correct.
 
+mod custody;
+
 use aithos_core::did::DidDocument;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "aithos-core", version, about = "Aithos Core reference CLI")]
+#[command(name = "aithos", version, about = "Aithos Core CLI")]
 struct Cli {
+    /// Named local profile (bundle location + non-secret key-store reference).
+    #[arg(long, global = true, default_value = "default")]
+    profile: String,
+    /// Override Aithos' application-data directory (also: AITHOS_HOME).
+    #[arg(long, global = true)]
+    home: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
-    /// Generate S, DID doc, empty bundle. (Scaffold: derives and prints the
-    /// owner public keys; bundle writing lands with the bundle crate.)
+    /// Create an Ethos, its DID and real random keys under managed custody.
     Init {
         /// DEV ONLY: fixed 32-byte seed as hex (deterministic, for vectors).
         /// Omit to generate a fresh random seed.
@@ -27,22 +34,39 @@ enum Command {
         /// Also create a bundle (spec 02.3) in this directory.
         #[arg(long)]
         dir: Option<String>,
+        /// keychain (macOS default), file, or vault.
+        #[arg(long, value_parser = ["keychain", "file", "vault"])]
+        key_store: Option<String>,
+        /// HashiCorp Vault base URL (or VAULT_ADDR).
+        #[arg(long)]
+        vault_address: Option<String>,
+        /// Vault KV v2 mount.
+        #[arg(long, default_value = "secret")]
+        vault_mount: String,
+        /// Vault KV v2 secret path (default: aithos/ethos/<profile>).
+        #[arg(long)]
+        vault_path: Option<String>,
+        /// Environment variable carrying the Vault token.
+        #[arg(long, default_value = "VAULT_TOKEN")]
+        vault_token_env: String,
     },
+    /// Show the active profile, custody backend and verification status.
+    Status,
     /// Create a folder (mkdir -p) in a zone of the bundle.
     FolderAdd {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
         zone: String,
         path: String,
     },
     /// Add a section. PATH is folder/…/name; body from --body.
     SectionAdd {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
         zone: String,
         path: String,
         #[arg(long, default_value = "")]
@@ -56,15 +80,15 @@ enum Command {
     /// Show a zone's display tree (owner-side for circle/self).
     ZoneShow {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
         zone: String,
     },
     /// Read one section. Public needs NO key (omit --seed-hex).
     SectionRead {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
         seed_hex: Option<String>,
         zone: String,
@@ -73,32 +97,32 @@ enum Command {
     /// Publish a new edition (height+1), signed by root.
     EditionPublish {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
     },
     /// Verify the whole edition chain and pinned files. No keys needed.
     EditionVerify {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
     },
     /// Merge another copy's competing edition into this bundle (spec 02.6):
     /// disjoint changesets only, deterministic result, signed by root.
     EditionMerge {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         /// The other copy's bundle directory.
         #[arg(long)]
         other: String,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
     },
     /// Grant an agent a circle perimeter: mints the cert AND delivers keys.
     Grant {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
         /// DEV: the agent's Ed25519 seed (its single keypair).
         #[arg(long)]
         agent_seed_hex: String,
@@ -119,7 +143,7 @@ enum Command {
     /// Verify a mandate chain (one cert file) at time T. No keys needed.
     MandateVerify {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
         cert: String,
         #[arg(long)]
@@ -128,7 +152,7 @@ enum Command {
     /// Read a circle section AS an agent, gated by its mandate (spec 04.5).
     SectionReadAgent {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
         cert: String,
         #[arg(long)]
@@ -175,9 +199,9 @@ enum Command {
     /// need no content keys). Counting constraints are enforced by gamma.
     GrantAct {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
         #[arg(long)]
         agent_seed_hex: String,
         #[arg(long, default_value = "agent")]
@@ -223,7 +247,7 @@ enum Command {
     /// entry IS the authorization evidence — no entry, no action (I5).
     Action {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         /// Certificate file(s), root first, leaf last.
         #[arg(long = "cert")]
         certs: Vec<String>,
@@ -291,7 +315,7 @@ enum Command {
     /// Log one metered LLM call (spec 07.9.1): counters only, never text.
     Inference {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long = "cert")]
         certs: Vec<String>,
         #[arg(long)]
@@ -309,7 +333,7 @@ enum Command {
     /// Merkle root (spec 02.10) and verify it offline before printing.
     Prove {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         /// public | circle | self
         zone: String,
         /// Display path (public/circle) or the blob sid (self).
@@ -320,7 +344,7 @@ enum Command {
     /// before printing. Every TOTAL cap check rides one such proof.
     LogProve {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         /// The mandate id whose counters are proven.
         #[arg(long, conflicts_with = "absent")]
         mandate: Option<String>,
@@ -332,7 +356,7 @@ enum Command {
     /// labels added, removed or changed. Defaults to previous → latest.
     EditionDiff {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
         from: Option<u64>,
         #[arg(long)]
@@ -341,9 +365,9 @@ enum Command {
     /// Publish an owner liveness beacon (spec 07.5).
     Heartbeat {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
         #[arg(long, default_value_t = 1)]
         seq: u64,
     },
@@ -352,9 +376,9 @@ enum Command {
     /// to survivors, up-link wrap, re-encryption.
     Revoke {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
         /// The mandate id to revoke.
         mandate_id: String,
         #[arg(long, default_value = "revoked")]
@@ -372,9 +396,9 @@ enum Command {
     /// Old-parent holders are cut; certificates follow the node (04.2).
     Move {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
         /// The circle folder to move (display path).
         folder: String,
         /// The destination parent folder ("" = the zone root).
@@ -384,21 +408,21 @@ enum Command {
     /// Print the log's counting skeleton (what any file-holder sees).
     LogShow {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
     },
     /// Verify the whole gamma chain and every entry signature. No keys needed.
     LogVerify {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
     },
     /// Owner audit of sealed action args (spec 07.9.3): reopen each sealed
     /// argument object, re-check its hash, optionally re-evaluate the
     /// action_params predicates of a mandate.
     LogAudit {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
         /// Re-evaluate this certificate's action_params on the args.
         #[arg(long)]
         cert: Option<String>,
@@ -406,9 +430,9 @@ enum Command {
     /// Owner search over the log (spec 07.8): every present filter narrows.
     LogQuery {
         #[arg(long)]
-        dir: String,
+        dir: Option<String>,
         #[arg(long)]
-        seed_hex: String,
+        seed_hex: Option<String>,
         #[arg(long)]
         kind: Option<String>,
         #[arg(long)]
@@ -431,6 +455,9 @@ use aithos_bundle::bundle::{Bundle, SectionSpec};
 use aithos_bundle::entropy::OsEntropy;
 use aithos_bundle::{FsStore, Store};
 use aithos_core::path::Zone;
+use std::sync::OnceLock;
+
+static RUNTIME_PROFILE: OnceLock<(std::path::PathBuf, String)> = OnceLock::new();
 
 fn now_secs() -> u64 {
     std::time::SystemTime::now()
@@ -462,14 +489,71 @@ fn now_string() -> String {
     ts(now_secs())
 }
 
-fn owner_from(seed_hex: &str) -> Result<OwnerKeys, Box<dyn std::error::Error>> {
-    eprintln!("WARNING: --seed-hex on the command line is DEV ONLY.");
+fn owner_from_hex(seed_hex: &str) -> Result<OwnerKeys, Box<dyn std::error::Error>> {
     let seed = MasterSeed::from_slice(&hex::decode(seed_hex)?)?;
     Ok(OwnerKeys::genesis(&seed))
 }
 
-fn bundle_at(dir: &str) -> Result<Bundle<FsStore>, Box<dyn std::error::Error>> {
-    Ok(Bundle::open(FsStore::new(dir))?)
+trait SeedInput {
+    fn seed_value(&self) -> Option<&str>;
+}
+
+impl SeedInput for String {
+    fn seed_value(&self) -> Option<&str> {
+        Some(self)
+    }
+}
+
+impl SeedInput for Option<String> {
+    fn seed_value(&self) -> Option<&str> {
+        self.as_deref()
+    }
+}
+
+fn owner_from(input: &impl SeedInput) -> Result<OwnerKeys, Box<dyn std::error::Error>> {
+    if let Some(seed) = input.seed_value().filter(|seed| !seed.is_empty()) {
+        eprintln!("WARNING: --seed-hex on the command line is DEV ONLY.");
+        return owner_from_hex(seed);
+    }
+    let (home, profile_name) = RUNTIME_PROFILE
+        .get()
+        .ok_or("CLI profile is not initialised")?;
+    let profile = custody::load_profile(home, profile_name)?;
+    let material = custody::load_keys(&profile.key_store)?;
+    owner_from_hex(&material.master_seed_hex)
+}
+
+trait DirInput {
+    fn dir_value(&self) -> Option<&str>;
+}
+
+impl DirInput for String {
+    fn dir_value(&self) -> Option<&str> {
+        Some(self)
+    }
+}
+
+impl DirInput for Option<String> {
+    fn dir_value(&self) -> Option<&str> {
+        self.as_deref()
+    }
+}
+
+fn resolved_dir(input: &impl DirInput) -> Result<String, Box<dyn std::error::Error>> {
+    if let Some(dir) = input.dir_value().filter(|dir| !dir.is_empty()) {
+        return Ok(dir.to_owned());
+    }
+    let (home, profile_name) = RUNTIME_PROFILE
+        .get()
+        .ok_or("CLI profile is not initialised")?;
+    Ok(custody::load_profile(home, profile_name)?
+        .bundle_dir
+        .to_string_lossy()
+        .into_owned())
+}
+
+fn bundle_at(dir: &impl DirInput) -> Result<Bundle<FsStore>, Box<dyn std::error::Error>> {
+    Ok(Bundle::open(FsStore::new(resolved_dir(dir)?))?)
 }
 
 fn split_path(path: &str) -> (String, String) {
@@ -480,18 +564,46 @@ fn split_path(path: &str) -> (String, String) {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    custody::validate_profile_name(&cli.profile)?;
+    let home = match cli.home {
+        Some(path) => std::path::PathBuf::from(path),
+        None => custody::default_home()?,
+    };
+    let profile_name = cli.profile;
+    RUNTIME_PROFILE
+        .set((home.clone(), profile_name.clone()))
+        .map_err(|_| "CLI profile was initialised twice")?;
+    match cli.command {
         Command::Init {
             seed_hex,
             succession_seed_hex,
             dir,
-        } => init(seed_hex, succession_seed_hex, dir),
+            key_store,
+            vault_address,
+            vault_mount,
+            vault_path,
+            vault_token_env,
+        } => init(
+            seed_hex,
+            succession_seed_hex,
+            dir,
+            &home,
+            &profile_name,
+            key_store,
+            vault_address,
+            vault_mount,
+            vault_path,
+            vault_token_env,
+        ),
+        Command::Status => status(&home, &profile_name),
         Command::FolderAdd {
             dir,
             seed_hex,
             zone,
             path,
         } => {
+            let dir = resolved_dir(&dir)?;
             let owner = owner_from(&seed_hex)?;
             let mut bundle = bundle_at(&dir)?;
             bundle.ensure_folder(Zone::parse(&zone)?, &path, &owner, &mut OsEntropy)?;
@@ -558,7 +670,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let owner = owner_from(&seed)?;
                     bundle_at(&dir)?.read_section(zone, &path, &owner)?
                 }
-                _ => return Err("this zone needs --seed-hex".into()),
+                _ => {
+                    let owner = owner_from(&None)?;
+                    bundle_at(&dir)?.read_section(zone, &path, &owner)?
+                }
             };
             println!("{body}");
             Ok(())
@@ -654,6 +769,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             obligations_json,
             counter_sign,
         } => {
+            let dir = resolved_dir(&dir)?;
             let owner = owner_from(&seed_hex)?;
             let agent = ed25519_dalek::SigningKey::from_bytes(
                 &<[u8; 32]>::try_from(hex::decode(agent_seed_hex)?)
@@ -889,6 +1005,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Command::Prove { dir, zone, path } => {
+            let dir = resolved_dir(&dir)?;
             let bundle = bundle_at(&dir)?;
             let manifest: aithos_bundle::manifest::Manifest =
                 serde_json::from_slice(&std::fs::read(format!("{dir}/manifest.json"))?)?;
@@ -920,6 +1037,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             mandate,
             absent,
         } => {
+            let dir = resolved_dir(&dir)?;
             let bundle = bundle_at(&dir)?;
             let manifest: aithos_bundle::manifest::Manifest =
                 serde_json::from_slice(&std::fs::read(format!("{dir}/manifest.json"))?)?;
@@ -951,6 +1069,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Command::EditionDiff { dir, from, to } => {
+            let dir = resolved_dir(&dir)?;
             let manifest: aithos_bundle::manifest::Manifest =
                 serde_json::from_slice(&std::fs::read(format!("{dir}/manifest.json"))?)?;
             let to = to.unwrap_or(manifest.edition.height);
@@ -1121,6 +1240,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Command::MandateVerify { dir, cert, at } => {
+            let dir = resolved_dir(&dir)?;
             let bundle = bundle_at(&dir)?;
             let doc: DidDocument =
                 serde_json::from_slice(&std::fs::read(format!("{dir}/did.json"))?)?;
@@ -1256,12 +1376,25 @@ fn seed32(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn init(
     seed_hex: Option<String>,
     succession_seed_hex: Option<String>,
     dir: Option<String>,
+    home: &std::path::Path,
+    profile_name: &str,
+    key_store: Option<String>,
+    vault_address: Option<String>,
+    vault_mount: String,
+    vault_path: Option<String>,
+    vault_token_env: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let seed = MasterSeed::from_bytes(seed32(seed_hex, "seed-hex")?);
+    let managed = seed_hex.is_none();
+    if managed && custody::profile_path(home, profile_name).exists() {
+        return Err(format!("profile '{profile_name}' already exists").into());
+    }
+    let seed_bytes = seed32(seed_hex, "seed-hex")?;
+    let seed = MasterSeed::from_bytes(seed_bytes);
     let succession_entropy = seed32(succession_seed_hex, "succession-seed-hex")?;
     let keys = OwnerKeys::genesis(&seed);
     let succession = succession_from_entropy(succession_entropy);
@@ -1272,17 +1405,71 @@ fn init(
         "gamma/gamma.jsonl".to_owned(),
     )?;
     doc.verify()?;
-    if let Some(dir) = dir {
+    let managed_dir = home.join("ethos").join(profile_name).join("bundle");
+    let dir = dir
+        .map(std::path::PathBuf::from)
+        .or_else(|| managed.then_some(managed_dir));
+    if let Some(dir) = &dir {
+        if managed && dir.exists() {
+            return Err(format!("bundle destination already exists: {}", dir.display()).into());
+        }
         Bundle::init(
-            FsStore::new(&dir),
+            FsStore::new(dir),
             &keys,
             &succession.verifying_key(),
             &mut OsEntropy,
             &now_string(),
         )?;
-        eprintln!("bundle initialised in {dir}");
+        eprintln!("bundle initialised in {}", dir.display());
     }
     let root_pub = keys.root_sign.verifying_key().to_bytes();
+    if managed {
+        let bundle_dir = dir.ok_or("managed init requires a bundle directory")?;
+        let store = match key_store.as_deref() {
+            None => custody::default_key_store(home, profile_name, &doc.id),
+            Some("file") => custody::KeyStoreConfig::File {
+                path: home.join("keys").join(format!("{profile_name}.json")),
+            },
+            Some("keychain") => custody::KeyStoreConfig::Keychain {
+                service: "fr.aithos.cli".to_owned(),
+                account: format!("{profile_name}:{}", doc.id),
+            },
+            Some("vault") => {
+                let address = vault_address
+                    .or_else(|| std::env::var("VAULT_ADDR").ok())
+                    .ok_or("Vault custody needs --vault-address or VAULT_ADDR")?;
+                custody::KeyStoreConfig::VaultKv2 {
+                    address,
+                    mount: vault_mount,
+                    path: vault_path.unwrap_or_else(|| format!("aithos/ethos/{profile_name}")),
+                    token_env: vault_token_env,
+                }
+            }
+            Some(_) => return Err("unsupported key store".into()),
+        };
+        let material = custody::KeyMaterial {
+            master_seed_hex: hex::encode(seed_bytes),
+            succession_seed_hex: hex::encode(succession_entropy),
+        };
+        let profile = custody::new_profile(
+            profile_name.to_owned(),
+            doc.id.clone(),
+            bundle_dir.clone(),
+            store,
+        );
+        custody::save_profile(home, &profile)?;
+        if let Err(error) = custody::save_keys(&profile.key_store, &material) {
+            let _ = std::fs::remove_file(custody::profile_path(home, profile_name));
+            let _ = std::fs::remove_dir_all(&bundle_dir);
+            return Err(error);
+        }
+        println!("did: {}", doc.id);
+        println!("profile: {profile_name}");
+        println!("bundle: {}", bundle_dir.display());
+        println!("key_store: {}", profile.key_store.label());
+        eprintln!("owner and succession seeds were stored by the selected custody backend; no secret was printed");
+        return Ok(());
+    }
     let out = serde_json::json!({
         "did": doc.id,
         "root_sign_pub": hex::encode(root_pub),
@@ -1294,6 +1481,27 @@ fn init(
     });
     eprintln!("STORE succession_secret_hex COLD (paper/HSM) — it is shown ONCE and never derivable again.");
     println!("{}", serde_json::to_string_pretty(&out)?);
+    Ok(())
+}
+
+fn status(home: &std::path::Path, profile_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let profile = custody::load_profile(home, profile_name)?;
+    let material = custody::load_keys(&profile.key_store)?;
+    let owner = owner_from_hex(&material.master_seed_hex)?;
+    let did = aithos_core::wire::did_aithos(&owner.root_sign.verifying_key().to_bytes());
+    if did != profile.did {
+        return Err("custody key does not match the profile DID".into());
+    }
+    let bundle = Bundle::open(FsStore::new(&profile.bundle_dir))?;
+    bundle.verify()?;
+    bundle.gamma_verify()?;
+    println!("profile: {}", profile.name);
+    println!("did: {}", profile.did);
+    println!("bundle: {}", profile.bundle_dir.display());
+    println!("key_store: {}", profile.key_store.label());
+    println!("custody: OK");
+    println!("edition_chain: OK");
+    println!("gamma_chain: OK");
     Ok(())
 }
 

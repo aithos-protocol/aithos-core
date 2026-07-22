@@ -26,6 +26,7 @@ chacha20poly1305 = { version = "0.10", default-features = false, features = ["al
 hkdf = "0.12"
 sha2 = "0.10"
 zeroize = { version = "1", features = ["derive"] }
+security-framework = "3.7"
 
 # encoding / ids
 serde = { version = "1", features = ["derive"] }

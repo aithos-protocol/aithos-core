@@ -53,9 +53,13 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "predicates",
+ "security-framework",
+ "serde",
  "serde_json",
  "tempfile",
  "ulid",
+ "ureq",
+ "zeroize",
 ]
 
 [[package]]

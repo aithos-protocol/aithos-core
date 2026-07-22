@@ -9,8 +9,8 @@ RUN apk add --no-cache musl-dev
 WORKDIR /src
 COPY rust/ rust/
 RUN cargo build --release --locked --manifest-path rust/Cargo.toml -p aithos-cli \
- && cp rust/target/release/aithos-core /aithos-core
+ && cp rust/target/release/aithos /aithos
 
 FROM scratch
-COPY --from=build /aithos-core /aithos-core
-ENTRYPOINT ["/aithos-core"]
+COPY --from=build /aithos /aithos
+ENTRYPOINT ["/aithos"]
