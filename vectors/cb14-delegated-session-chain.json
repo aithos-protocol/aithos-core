@@ -1,0 +1,1065 @@
+{
+  "description": "Independent Python Ed25519/JCS fixture for a root mandate, a strictly attenuated non-root session leaf, unchanged SC1/W1.1 and double possession.",
+  "deterministic_test_seed_sha256": {
+    "delegate": "bdb339768bc5e4fecbe55a442056919b2b325907d49bcbf3bf8de13781996a83",
+    "gateway": "cd93782b7fb95559de14f738b65988af85d41dc1565f7c7d1ed2d035665b519c",
+    "root": "3ba3f5f43b92602683c19aee62a20342b084dd5971ddd33808d81a328879a547",
+    "session": "fbbbb6de2aa74c3c9570d2d8db1de31eadb66113c96034a7adb21243754d7683"
+  },
+  "inventory": {
+    "historical_verify_session_must_remain_unchanged": true,
+    "negative_ids": [
+      "truncated-chain",
+      "revoked-parent",
+      "substituted-leaf",
+      "crossed-session-proof",
+      "verification-time-mismatch"
+    ],
+    "required_error_variant": "InvalidSession"
+  },
+  "negative_cases": [
+    {
+      "candidate": {
+        "at": "2026-07-22T12:00:00Z",
+        "certificate": {
+          "aithos-session-core": "1.0.0-draft.1",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+          "mandate_id": "mandate_01J00000000000000000000062",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+            "value": "c03904157304d6038d1803a20ad58254ab94b54eaa0e68816c0a699f50b2d40e04200b0c780019d9277b7c0859c2f1d808f33e8ef3341c33859bdb95af30f50f"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "chain": [
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3,
+              "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:gateway-session",
+              "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+              "label": "gateway session",
+              "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+            },
+            "id": "mandate_01J00000000000000000000062",
+            "issued_at": "2026-07-22T11:29:00Z",
+            "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "nonce": "62626262626262626262626262626262",
+            "not_after": "2026-07-22T20:00:00Z",
+            "not_before": "2026-07-22T11:30:00Z",
+            "parent": "mandate_01J00000000000000000000061",
+            "perimeter": [
+              "act.x.github.get_issue"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+              "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          }
+        ],
+        "did": {
+          "aithos-did-core": "1.0.0-draft.1",
+          "bundle": [
+            "file://cb14-independent-vector"
+          ],
+          "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+          "keys": {
+            "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+            "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+            "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+          },
+          "revocations": "gamma/gamma.jsonl",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+          }
+        },
+        "mandate": {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "max_sessions": 3,
+            "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+          },
+          "grantee": {
+            "id": "urn:aithos:agent:gateway-session",
+            "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+            "label": "gateway session",
+            "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+          },
+          "id": "mandate_01J00000000000000000000062",
+          "issued_at": "2026-07-22T11:29:00Z",
+          "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "nonce": "62626262626262626262626262626262",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "parent": "mandate_01J00000000000000000000061",
+          "perimeter": [
+            "act.x.github.get_issue"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "native_leaf_proof": {
+          "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+          "sig": "71c63d260ea0b8eb4f7da3b5759ff7cb4b1c2900306eb8ea5c6c75ba80bebb0d1e4a21ea0b9f34565904a0dd0e662aa64acc0a799aeaad5ee6668c27052be805"
+        },
+        "operation_projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-22T12:00:00Z",
+          "authority": {
+            "actor": "grantee",
+            "authorized_by": "mandate_01J00000000000000000000062",
+            "authorized_via": [
+              {
+                "certificate_digest": "sha256:909c1b4c1ce569d93e3dc1a2f8a1ed1a5e35698fcc8ca203aa213d0993a9e148",
+                "id": "mandate_01J00000000000000000000062"
+              }
+            ],
+            "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+            "session": {
+              "certificate_digest": "sha256:951c105e6b0fff69172cca47535b01cc50fc79f278441e35be795593ed8bbf80",
+              "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+            }
+          },
+          "history_heads": [
+            "sha256:6161616161616161616161616161616161616161616161616161616161616161"
+          ],
+          "occurrence": "op_01K00000000000000000000061",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:6262626262626262626262626262626262626262626262626262626262626262"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+          "occurrence": "op_01K00000000000000000000061"
+        },
+        "revocations": [],
+        "session_proof": {
+          "aithos-session-proof-core": "1.0.0-draft.1",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+            "occurrence": "op_01K00000000000000000000061"
+          },
+          "sig": "bf9dcd732a787027370c95cb5dbde417d5bcf8c60eda9c59ebbba8229a9b4db94c5d20ba93caea827d50c786fefd9a2e10fb8a2bb6d4d51a986e545d3866e203"
+        }
+      },
+      "id": "truncated-chain"
+    },
+    {
+      "candidate": {
+        "at": "2026-07-22T12:00:00Z",
+        "certificate": {
+          "aithos-session-core": "1.0.0-draft.1",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+          "mandate_id": "mandate_01J00000000000000000000062",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+            "value": "c03904157304d6038d1803a20ad58254ab94b54eaa0e68816c0a699f50b2d40e04200b0c780019d9277b7c0859c2f1d808f33e8ef3341c33859bdb95af30f50f"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "chain": [
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:delegate",
+              "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+              "label": "delegate",
+              "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+            },
+            "id": "mandate_01J00000000000000000000061",
+            "issued_at": "2026-07-22T09:59:00Z",
+            "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+            "nonce": "61616161616161616161616161616161",
+            "not_after": "2026-07-23T00:00:00Z",
+            "not_before": "2026-07-22T10:00:00Z",
+            "parent": null,
+            "perimeter": [
+              "act.x.github.*",
+              "issue#depth=1"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "#root",
+              "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          },
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3,
+              "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:gateway-session",
+              "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+              "label": "gateway session",
+              "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+            },
+            "id": "mandate_01J00000000000000000000062",
+            "issued_at": "2026-07-22T11:29:00Z",
+            "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "nonce": "62626262626262626262626262626262",
+            "not_after": "2026-07-22T20:00:00Z",
+            "not_before": "2026-07-22T11:30:00Z",
+            "parent": "mandate_01J00000000000000000000061",
+            "perimeter": [
+              "act.x.github.get_issue"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+              "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          }
+        ],
+        "did": {
+          "aithos-did-core": "1.0.0-draft.1",
+          "bundle": [
+            "file://cb14-independent-vector"
+          ],
+          "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+          "keys": {
+            "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+            "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+            "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+          },
+          "revocations": "gamma/gamma.jsonl",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+          }
+        },
+        "mandate": {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "max_sessions": 3,
+            "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+          },
+          "grantee": {
+            "id": "urn:aithos:agent:gateway-session",
+            "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+            "label": "gateway session",
+            "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+          },
+          "id": "mandate_01J00000000000000000000062",
+          "issued_at": "2026-07-22T11:29:00Z",
+          "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "nonce": "62626262626262626262626262626262",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "parent": "mandate_01J00000000000000000000061",
+          "perimeter": [
+            "act.x.github.get_issue"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "native_leaf_proof": {
+          "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+          "sig": "71c63d260ea0b8eb4f7da3b5759ff7cb4b1c2900306eb8ea5c6c75ba80bebb0d1e4a21ea0b9f34565904a0dd0e662aa64acc0a799aeaad5ee6668c27052be805"
+        },
+        "operation_projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-22T12:00:00Z",
+          "authority": {
+            "actor": "grantee",
+            "authorized_by": "mandate_01J00000000000000000000062",
+            "authorized_via": [
+              {
+                "certificate_digest": "sha256:909c1b4c1ce569d93e3dc1a2f8a1ed1a5e35698fcc8ca203aa213d0993a9e148",
+                "id": "mandate_01J00000000000000000000062"
+              }
+            ],
+            "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+            "session": {
+              "certificate_digest": "sha256:951c105e6b0fff69172cca47535b01cc50fc79f278441e35be795593ed8bbf80",
+              "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+            }
+          },
+          "history_heads": [
+            "sha256:6161616161616161616161616161616161616161616161616161616161616161"
+          ],
+          "occurrence": "op_01K00000000000000000000061",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:6262626262626262626262626262626262626262626262626262626262626262"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+          "occurrence": "op_01K00000000000000000000061"
+        },
+        "revocations": [
+          {
+            "mandate_id": "mandate_01J00000000000000000000061",
+            "revoked_at": "2026-07-22T11:59:59Z"
+          }
+        ],
+        "session_proof": {
+          "aithos-session-proof-core": "1.0.0-draft.1",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+            "occurrence": "op_01K00000000000000000000061"
+          },
+          "sig": "bf9dcd732a787027370c95cb5dbde417d5bcf8c60eda9c59ebbba8229a9b4db94c5d20ba93caea827d50c786fefd9a2e10fb8a2bb6d4d51a986e545d3866e203"
+        }
+      },
+      "id": "revoked-parent"
+    },
+    {
+      "candidate": {
+        "at": "2026-07-22T12:00:00Z",
+        "certificate": {
+          "aithos-session-core": "1.0.0-draft.1",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+          "mandate_id": "mandate_01J00000000000000000000062",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+            "value": "c03904157304d6038d1803a20ad58254ab94b54eaa0e68816c0a699f50b2d40e04200b0c780019d9277b7c0859c2f1d808f33e8ef3341c33859bdb95af30f50f"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "chain": [
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:delegate",
+              "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+              "label": "delegate",
+              "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+            },
+            "id": "mandate_01J00000000000000000000061",
+            "issued_at": "2026-07-22T09:59:00Z",
+            "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+            "nonce": "61616161616161616161616161616161",
+            "not_after": "2026-07-23T00:00:00Z",
+            "not_before": "2026-07-22T10:00:00Z",
+            "parent": null,
+            "perimeter": [
+              "act.x.github.*",
+              "issue#depth=1"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "#root",
+              "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          },
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3,
+              "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:gateway-session",
+              "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+              "label": "gateway session",
+              "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+            },
+            "id": "mandate_01J00000000000000000000063",
+            "issued_at": "2026-07-22T11:29:00Z",
+            "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "nonce": "63636363636363636363636363636363",
+            "not_after": "2026-07-22T20:00:00Z",
+            "not_before": "2026-07-22T11:30:00Z",
+            "parent": "mandate_01J00000000000000000000061",
+            "perimeter": [
+              "act.x.github.get_issue"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+              "value": "03ef6c87cf00c0d216a81756e840fc1d487996a395d907f6ccd5ead16a224e71749a9cb882bd6fcec809b057b5e71683ede3de4c07d55ce10a6cdbf69e409b0f"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          }
+        ],
+        "did": {
+          "aithos-did-core": "1.0.0-draft.1",
+          "bundle": [
+            "file://cb14-independent-vector"
+          ],
+          "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+          "keys": {
+            "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+            "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+            "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+          },
+          "revocations": "gamma/gamma.jsonl",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+          }
+        },
+        "mandate": {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "max_sessions": 3,
+            "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+          },
+          "grantee": {
+            "id": "urn:aithos:agent:gateway-session",
+            "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+            "label": "gateway session",
+            "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+          },
+          "id": "mandate_01J00000000000000000000062",
+          "issued_at": "2026-07-22T11:29:00Z",
+          "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "nonce": "62626262626262626262626262626262",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "parent": "mandate_01J00000000000000000000061",
+          "perimeter": [
+            "act.x.github.get_issue"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "native_leaf_proof": {
+          "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+          "sig": "71c63d260ea0b8eb4f7da3b5759ff7cb4b1c2900306eb8ea5c6c75ba80bebb0d1e4a21ea0b9f34565904a0dd0e662aa64acc0a799aeaad5ee6668c27052be805"
+        },
+        "operation_projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-22T12:00:00Z",
+          "authority": {
+            "actor": "grantee",
+            "authorized_by": "mandate_01J00000000000000000000062",
+            "authorized_via": [
+              {
+                "certificate_digest": "sha256:909c1b4c1ce569d93e3dc1a2f8a1ed1a5e35698fcc8ca203aa213d0993a9e148",
+                "id": "mandate_01J00000000000000000000062"
+              }
+            ],
+            "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+            "session": {
+              "certificate_digest": "sha256:951c105e6b0fff69172cca47535b01cc50fc79f278441e35be795593ed8bbf80",
+              "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+            }
+          },
+          "history_heads": [
+            "sha256:6161616161616161616161616161616161616161616161616161616161616161"
+          ],
+          "occurrence": "op_01K00000000000000000000061",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:6262626262626262626262626262626262626262626262626262626262626262"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+          "occurrence": "op_01K00000000000000000000061"
+        },
+        "revocations": [],
+        "session_proof": {
+          "aithos-session-proof-core": "1.0.0-draft.1",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+            "occurrence": "op_01K00000000000000000000061"
+          },
+          "sig": "bf9dcd732a787027370c95cb5dbde417d5bcf8c60eda9c59ebbba8229a9b4db94c5d20ba93caea827d50c786fefd9a2e10fb8a2bb6d4d51a986e545d3866e203"
+        }
+      },
+      "id": "substituted-leaf"
+    },
+    {
+      "candidate": {
+        "at": "2026-07-22T12:00:00Z",
+        "certificate": {
+          "aithos-session-core": "1.0.0-draft.1",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+          "mandate_id": "mandate_01J00000000000000000000062",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+            "value": "c03904157304d6038d1803a20ad58254ab94b54eaa0e68816c0a699f50b2d40e04200b0c780019d9277b7c0859c2f1d808f33e8ef3341c33859bdb95af30f50f"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "chain": [
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:delegate",
+              "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+              "label": "delegate",
+              "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+            },
+            "id": "mandate_01J00000000000000000000061",
+            "issued_at": "2026-07-22T09:59:00Z",
+            "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+            "nonce": "61616161616161616161616161616161",
+            "not_after": "2026-07-23T00:00:00Z",
+            "not_before": "2026-07-22T10:00:00Z",
+            "parent": null,
+            "perimeter": [
+              "act.x.github.*",
+              "issue#depth=1"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "#root",
+              "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          },
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3,
+              "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:gateway-session",
+              "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+              "label": "gateway session",
+              "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+            },
+            "id": "mandate_01J00000000000000000000062",
+            "issued_at": "2026-07-22T11:29:00Z",
+            "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "nonce": "62626262626262626262626262626262",
+            "not_after": "2026-07-22T20:00:00Z",
+            "not_before": "2026-07-22T11:30:00Z",
+            "parent": "mandate_01J00000000000000000000061",
+            "perimeter": [
+              "act.x.github.get_issue"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+              "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          }
+        ],
+        "did": {
+          "aithos-did-core": "1.0.0-draft.1",
+          "bundle": [
+            "file://cb14-independent-vector"
+          ],
+          "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+          "keys": {
+            "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+            "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+            "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+          },
+          "revocations": "gamma/gamma.jsonl",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+          }
+        },
+        "mandate": {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "max_sessions": 3,
+            "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+          },
+          "grantee": {
+            "id": "urn:aithos:agent:gateway-session",
+            "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+            "label": "gateway session",
+            "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+          },
+          "id": "mandate_01J00000000000000000000062",
+          "issued_at": "2026-07-22T11:29:00Z",
+          "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "nonce": "62626262626262626262626262626262",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "parent": "mandate_01J00000000000000000000061",
+          "perimeter": [
+            "act.x.github.get_issue"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "native_leaf_proof": {
+          "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+          "sig": "71c63d260ea0b8eb4f7da3b5759ff7cb4b1c2900306eb8ea5c6c75ba80bebb0d1e4a21ea0b9f34565904a0dd0e662aa64acc0a799aeaad5ee6668c27052be805"
+        },
+        "operation_projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-22T12:00:00Z",
+          "authority": {
+            "actor": "grantee",
+            "authorized_by": "mandate_01J00000000000000000000062",
+            "authorized_via": [
+              {
+                "certificate_digest": "sha256:909c1b4c1ce569d93e3dc1a2f8a1ed1a5e35698fcc8ca203aa213d0993a9e148",
+                "id": "mandate_01J00000000000000000000062"
+              }
+            ],
+            "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+            "session": {
+              "certificate_digest": "sha256:951c105e6b0fff69172cca47535b01cc50fc79f278441e35be795593ed8bbf80",
+              "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+            }
+          },
+          "history_heads": [
+            "sha256:6161616161616161616161616161616161616161616161616161616161616161"
+          ],
+          "occurrence": "op_01K00000000000000000000061",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:6262626262626262626262626262626262626262626262626262626262626262"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+          "occurrence": "op_01K00000000000000000000061"
+        },
+        "revocations": [],
+        "session_proof": {
+          "aithos-session-proof-core": "1.0.0-draft.1",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+            "occurrence": "op_01K00000000000000000000066"
+          },
+          "sig": "1b6457376a56924ff3e50892814519c56043eb6a4747835fb178d946ebea3421ac15c8bd9695cfea3014a94b96a8a1be51bef5e2fa2134824bc5b9975a70a302"
+        }
+      },
+      "id": "crossed-session-proof"
+    },
+    {
+      "candidate": {
+        "at": "2026-07-22T12:00:01Z",
+        "certificate": {
+          "aithos-session-core": "1.0.0-draft.1",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+          "mandate_id": "mandate_01J00000000000000000000062",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+            "value": "c03904157304d6038d1803a20ad58254ab94b54eaa0e68816c0a699f50b2d40e04200b0c780019d9277b7c0859c2f1d808f33e8ef3341c33859bdb95af30f50f"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "chain": [
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:delegate",
+              "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+              "label": "delegate",
+              "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+            },
+            "id": "mandate_01J00000000000000000000061",
+            "issued_at": "2026-07-22T09:59:00Z",
+            "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+            "nonce": "61616161616161616161616161616161",
+            "not_after": "2026-07-23T00:00:00Z",
+            "not_before": "2026-07-22T10:00:00Z",
+            "parent": null,
+            "perimeter": [
+              "act.x.github.*",
+              "issue#depth=1"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "#root",
+              "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          },
+          {
+            "aithos-mandate-core": "1.0.0-draft.2",
+            "constraints": {
+              "max_sessions": 3,
+              "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+            },
+            "grantee": {
+              "id": "urn:aithos:agent:gateway-session",
+              "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+              "label": "gateway session",
+              "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+            },
+            "id": "mandate_01J00000000000000000000062",
+            "issued_at": "2026-07-22T11:29:00Z",
+            "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "nonce": "62626262626262626262626262626262",
+            "not_after": "2026-07-22T20:00:00Z",
+            "not_before": "2026-07-22T11:30:00Z",
+            "parent": "mandate_01J00000000000000000000061",
+            "perimeter": [
+              "act.x.github.get_issue"
+            ],
+            "signature": {
+              "alg": "ed25519",
+              "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+              "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+            },
+            "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+          }
+        ],
+        "did": {
+          "aithos-did-core": "1.0.0-draft.1",
+          "bundle": [
+            "file://cb14-independent-vector"
+          ],
+          "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+          "keys": {
+            "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+            "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+            "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+          },
+          "revocations": "gamma/gamma.jsonl",
+          "signature": {
+            "alg": "ed25519",
+            "key": "#root",
+            "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+          }
+        },
+        "mandate": {
+          "aithos-mandate-core": "1.0.0-draft.2",
+          "constraints": {
+            "max_sessions": 3,
+            "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+          },
+          "grantee": {
+            "id": "urn:aithos:agent:gateway-session",
+            "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+            "label": "gateway session",
+            "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+          },
+          "id": "mandate_01J00000000000000000000062",
+          "issued_at": "2026-07-22T11:29:00Z",
+          "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "nonce": "62626262626262626262626262626262",
+          "not_after": "2026-07-22T20:00:00Z",
+          "not_before": "2026-07-22T11:30:00Z",
+          "parent": "mandate_01J00000000000000000000061",
+          "perimeter": [
+            "act.x.github.get_issue"
+          ],
+          "signature": {
+            "alg": "ed25519",
+            "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+            "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "native_leaf_proof": {
+          "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+          "sig": "71c63d260ea0b8eb4f7da3b5759ff7cb4b1c2900306eb8ea5c6c75ba80bebb0d1e4a21ea0b9f34565904a0dd0e662aa64acc0a799aeaad5ee6668c27052be805"
+        },
+        "operation_projection": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "at": "2026-07-22T12:00:00Z",
+          "authority": {
+            "actor": "grantee",
+            "authorized_by": "mandate_01J00000000000000000000062",
+            "authorized_via": [
+              {
+                "certificate_digest": "sha256:909c1b4c1ce569d93e3dc1a2f8a1ed1a5e35698fcc8ca203aa213d0993a9e148",
+                "id": "mandate_01J00000000000000000000062"
+              }
+            ],
+            "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+            "session": {
+              "certificate_digest": "sha256:951c105e6b0fff69172cca47535b01cc50fc79f278441e35be795593ed8bbf80",
+              "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+            }
+          },
+          "history_heads": [
+            "sha256:6161616161616161616161616161616161616161616161616161616161616161"
+          ],
+          "occurrence": "op_01K00000000000000000000061",
+          "operation": {
+            "facts_ref": {
+              "aithos-operation-facts-core": "1.0.0-draft.1",
+              "digest": "sha256:6262626262626262626262626262626262626262626262626262626262626262"
+            },
+            "kind": "action"
+          },
+          "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+        },
+        "operation_ref": {
+          "aithos-operation-core": "1.0.0-draft.1",
+          "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+          "occurrence": "op_01K00000000000000000000061"
+        },
+        "revocations": [],
+        "session_proof": {
+          "aithos-session-proof-core": "1.0.0-draft.1",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+          "operation_ref": {
+            "aithos-operation-core": "1.0.0-draft.1",
+            "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+            "occurrence": "op_01K00000000000000000000061"
+          },
+          "sig": "bf9dcd732a787027370c95cb5dbde417d5bcf8c60eda9c59ebbba8229a9b4db94c5d20ba93caea827d50c786fefd9a2e10fb8a2bb6d4d51a986e545d3866e203"
+        }
+      },
+      "id": "verification-time-mismatch"
+    }
+  ],
+  "positive": {
+    "at": "2026-07-22T12:00:00Z",
+    "certificate": {
+      "aithos-session-core": "1.0.0-draft.1",
+      "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+      "mandate_id": "mandate_01J00000000000000000000062",
+      "not_after": "2026-07-22T20:00:00Z",
+      "not_before": "2026-07-22T11:30:00Z",
+      "signature": {
+        "alg": "ed25519",
+        "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+        "value": "c03904157304d6038d1803a20ad58254ab94b54eaa0e68816c0a699f50b2d40e04200b0c780019d9277b7c0859c2f1d808f33e8ef3341c33859bdb95af30f50f"
+      },
+      "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+    },
+    "chain": [
+      {
+        "aithos-mandate-core": "1.0.0-draft.2",
+        "constraints": {
+          "max_sessions": 3
+        },
+        "grantee": {
+          "id": "urn:aithos:agent:delegate",
+          "kex_pubkey": "z6LSratwa8MWeKfwnrNwaWyukoUuTt1j7VZgxvAhjnL9XjTw",
+          "label": "delegate",
+          "pubkey": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ"
+        },
+        "id": "mandate_01J00000000000000000000061",
+        "issued_at": "2026-07-22T09:59:00Z",
+        "issued_by": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt#root",
+        "nonce": "61616161616161616161616161616161",
+        "not_after": "2026-07-23T00:00:00Z",
+        "not_before": "2026-07-22T10:00:00Z",
+        "parent": null,
+        "perimeter": [
+          "act.x.github.*",
+          "issue#depth=1"
+        ],
+        "signature": {
+          "alg": "ed25519",
+          "key": "#root",
+          "value": "7d419f4fd7f76eddd4a2b6ac1f143029512d68b88380a03c0c6d93d9bed84c0696be0d397293f87266e2882273160e6967fbaf86bc85b622791d4fb4d3f7f70c"
+        },
+        "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+      },
+      {
+        "aithos-mandate-core": "1.0.0-draft.2",
+        "constraints": {
+          "max_sessions": 3,
+          "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+        },
+        "grantee": {
+          "id": "urn:aithos:agent:gateway-session",
+          "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+          "label": "gateway session",
+          "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+        },
+        "id": "mandate_01J00000000000000000000062",
+        "issued_at": "2026-07-22T11:29:00Z",
+        "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+        "nonce": "62626262626262626262626262626262",
+        "not_after": "2026-07-22T20:00:00Z",
+        "not_before": "2026-07-22T11:30:00Z",
+        "parent": "mandate_01J00000000000000000000061",
+        "perimeter": [
+          "act.x.github.get_issue"
+        ],
+        "signature": {
+          "alg": "ed25519",
+          "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+          "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+        },
+        "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+      }
+    ],
+    "did": {
+      "aithos-did-core": "1.0.0-draft.1",
+      "bundle": [
+        "file://cb14-independent-vector"
+      ],
+      "id": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+      "keys": {
+        "content": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+        "kex": "z6LSdXXCBVAywAec1jANx7UUpxq3x5DRi4rs9QjsckuR7tvD",
+        "root": "z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt",
+        "succession": "z6MktsLs7ByDkjGWBmDQMgZin2gPpd2H4i8PWmz1qVua7dmq"
+      },
+      "revocations": "gamma/gamma.jsonl",
+      "signature": {
+        "alg": "ed25519",
+        "key": "#root",
+        "value": "36a3181fc29f7fc7459862efff938ee59f48cfecf48eb579ccfc434cf668faca016800902c1a132908276086525c4353b318366b16fead90eb7fd0e9df2ac50b"
+      }
+    },
+    "mandate": {
+      "aithos-mandate-core": "1.0.0-draft.2",
+      "constraints": {
+        "max_sessions": 3,
+        "session_bind": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+      },
+      "grantee": {
+        "id": "urn:aithos:agent:gateway-session",
+        "kex_pubkey": "z6LShYhC5gstRFsChYmFCJSYaiYkpuuSBGiqwcurdXLsmNzn",
+        "label": "gateway session",
+        "pubkey": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr"
+      },
+      "id": "mandate_01J00000000000000000000062",
+      "issued_at": "2026-07-22T11:29:00Z",
+      "issued_by": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+      "nonce": "62626262626262626262626262626262",
+      "not_after": "2026-07-22T20:00:00Z",
+      "not_before": "2026-07-22T11:30:00Z",
+      "parent": "mandate_01J00000000000000000000061",
+      "perimeter": [
+        "act.x.github.get_issue"
+      ],
+      "signature": {
+        "alg": "ed25519",
+        "key": "z6MkhYasewQspBQwiSFpYgMZV9W8UdZGavchGz2Uz1fAZneZ",
+        "value": "4dc02d247191a7de6ba10e95d6158d7cedbdab4a049885d7280951c02d3db00108d48d94498d38cd69cd356086f22824c6400a7ebae086a63e8e3fb670e28400"
+      },
+      "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+    },
+    "native_leaf_proof": {
+      "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+      "sig": "71c63d260ea0b8eb4f7da3b5759ff7cb4b1c2900306eb8ea5c6c75ba80bebb0d1e4a21ea0b9f34565904a0dd0e662aa64acc0a799aeaad5ee6668c27052be805"
+    },
+    "operation_projection": {
+      "aithos-operation-core": "1.0.0-draft.1",
+      "at": "2026-07-22T12:00:00Z",
+      "authority": {
+        "actor": "grantee",
+        "authorized_by": "mandate_01J00000000000000000000062",
+        "authorized_via": [
+          {
+            "certificate_digest": "sha256:909c1b4c1ce569d93e3dc1a2f8a1ed1a5e35698fcc8ca203aa213d0993a9e148",
+            "id": "mandate_01J00000000000000000000062"
+          }
+        ],
+        "key": "z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+        "session": {
+          "certificate_digest": "sha256:951c105e6b0fff69172cca47535b01cc50fc79f278441e35be795593ed8bbf80",
+          "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe"
+        }
+      },
+      "history_heads": [
+        "sha256:6161616161616161616161616161616161616161616161616161616161616161"
+      ],
+      "occurrence": "op_01K00000000000000000000061",
+      "operation": {
+        "facts_ref": {
+          "aithos-operation-facts-core": "1.0.0-draft.1",
+          "digest": "sha256:6262626262626262626262626262626262626262626262626262626262626262"
+        },
+        "kind": "action"
+      },
+      "subject": "did:aithos:z6MkrEVGLPYHhLGBQ25Bh5DXSakRiDpdoj7fdsNZSqYPcUGt"
+    },
+    "operation_ref": {
+      "aithos-operation-core": "1.0.0-draft.1",
+      "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+      "occurrence": "op_01K00000000000000000000061"
+    },
+    "revocations": [],
+    "session_proof": {
+      "aithos-session-proof-core": "1.0.0-draft.1",
+      "key": "z6MkhQ5bNX63z6ch6rtPbHRTzxQYa5jnsASZPCMqdNawfkEe",
+      "operation_ref": {
+        "aithos-operation-core": "1.0.0-draft.1",
+        "commitment": "sha256:b22c995bd8638493c74346c618e1a775bac487f36acd3911db02b80ebd99675a",
+        "occurrence": "op_01K00000000000000000000061"
+      },
+      "sig": "bf9dcd732a787027370c95cb5dbde417d5bcf8c60eda9c59ebbba8229a9b4db94c5d20ba93caea827d50c786fefd9a2e10fb8a2bb6d4d51a986e545d3866e203"
+    }
+  },
+  "vector": "CB14-DELEGATED-NON-ROOT-SESSION-1",
+  "wire_change": false
+}
