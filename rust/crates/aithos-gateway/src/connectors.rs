@@ -154,7 +154,7 @@ pub enum ConnectorCredentialAuth {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-enum ConnectorAuthKind {
+pub enum ConnectorAuthKind {
     #[default]
     Oauth,
     Bearer,
@@ -218,9 +218,12 @@ pub struct ConnectorView {
     pub context: String,
     pub endpoint: String,
     pub transport: ConnectorTransport,
+    pub auth: ConnectorAuthKind,
     pub state: ConnectorState,
     pub active: bool,
     pub cleanup: ConnectorCleanupState,
+    /// Presence only: a credential was written to the vault broker. Never the secret.
+    pub secret_stored: bool,
     pub approved_manifest: ApprovedManifestRef,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<ConnectorProfileRef>,
@@ -331,9 +334,11 @@ impl PersistedConnector {
             context: self.context.clone(),
             endpoint: self.endpoint.clone(),
             transport: self.transport,
+            auth: self.auth,
             state: self.state,
             active: self.active,
             cleanup: self.cleanup,
+            secret_stored: self.secret_stored,
             approved_manifest: self.approved_manifest.clone(),
             profile: self.profile.clone(),
             account_id: self.profile.as_ref().map(|_| self.account.clone()),
@@ -2695,6 +2700,24 @@ mod tests {
             br#"{"v":1,"id":"notes","context":"travail","endpoint":"http://evil.example/mcp","transport":"streamable-http","auth":"bearer"}"#
         )
         .is_ok());
+    }
+
+    #[test]
+    fn connector_view_exposes_secret_presence_not_value() {
+        let mut connector = registry("github").connectors.into_iter().next().unwrap();
+        connector.auth = ConnectorAuthKind::Bearer;
+        connector.oauth = None;
+        connector.secret_stored = true;
+        connector.state = ConnectorState::Disconnected;
+        let view = connector.view();
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(json["auth"], "bearer");
+        assert_eq!(json["secret_stored"], true);
+        assert!(json.get("bearer_token").is_none());
+        assert!(json.get("client_secret").is_none());
+        let encoded = json.to_string();
+        assert!(!encoded.contains("aithos/connectors"));
+        assert!(!encoded.contains("/bearer"));
     }
 
     #[test]
