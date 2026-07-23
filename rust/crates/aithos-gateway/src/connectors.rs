@@ -48,8 +48,10 @@ const MAX_SCOPE_BYTES: usize = 256;
 const MAX_CLIENT_SECRET_BYTES: usize = 4_096;
 const VAULT_RECORD_FIELD: &str = "value";
 const VAULT_RECORD_PREFIX: &str = "aithos/connectors";
+const VAULT_BEARER_RECORD: &str = "bearer";
 const SIDECAR_DIRECTORY: &str = ".aithos-sidecar";
 const REGISTRY_RELATIVE_PATH: &str = "gateway/connectors.json";
+const DEFAULT_CREDENTIAL_BROKER: &str = "enterprise";
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(1);
 
@@ -132,12 +134,45 @@ pub struct ConnectorProfileStageRequest {
     pub profile: ConnectorProfileRef,
 }
 
+/// Dynamic bearer / credential-only MCP staging (no OAuth template).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorCredentialStageRequest {
+    pub v: u8,
+    pub id: String,
+    pub context: String,
+    pub endpoint: String,
+    pub transport: ConnectorTransport,
+    pub auth: ConnectorCredentialAuth,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectorCredentialAuth {
+    Bearer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum ConnectorAuthKind {
+    #[default]
+    Oauth,
+    Bearer,
+}
+
 /// Parsed separately from every other DTO so no derive can ever print or
 /// clone the secret. The string zeroizes even when validation refuses it.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientSecretBody {
     client_secret: String,
+}
+
+/// Bearer token body for credential-stage connectors. Zeroized on drop.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BearerSecretBody {
+    bearer_token: String,
 }
 
 impl ClientSecretBody {
@@ -155,6 +190,24 @@ impl ClientSecretBody {
 impl Drop for ClientSecretBody {
     fn drop(&mut self) {
         self.client_secret.zeroize();
+    }
+}
+
+impl BearerSecretBody {
+    fn take(&mut self) -> String {
+        std::mem::take(&mut self.bearer_token)
+    }
+
+    fn valid(&self) -> bool {
+        !self.bearer_token.is_empty()
+            && self.bearer_token.len() <= MAX_CLIENT_SECRET_BYTES
+            && !self.bearer_token.contains('\0')
+    }
+}
+
+impl Drop for BearerSecretBody {
+    fn drop(&mut self) {
+        self.bearer_token.zeroize();
     }
 }
 
@@ -244,7 +297,10 @@ struct PersistedConnector {
     context: String,
     endpoint: String,
     transport: ConnectorTransport,
-    oauth: ConnectorOAuthDescriptor,
+    #[serde(default)]
+    auth: ConnectorAuthKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    oauth: Option<ConnectorOAuthDescriptor>,
     approved_manifest: ApprovedManifestRef,
     #[serde(default)]
     profile: Option<ConnectorProfileRef>,
@@ -264,6 +320,10 @@ struct PersistedConnector {
 }
 
 impl PersistedConnector {
+    fn is_bearer(&self) -> bool {
+        self.auth == ConnectorAuthKind::Bearer
+    }
+
     fn view(&self) -> ConnectorView {
         ConnectorView {
             v: REGISTRY_VERSION,
@@ -686,6 +746,9 @@ impl ConnectorControl {
             .connectors
             .clone();
         for connector in connectors {
+            if connector.is_bearer() {
+                continue;
+            }
             let config = if connector.profile.is_some() {
                 match self.profile_oauth_config(&connector) {
                     Ok(config) => config,
@@ -724,8 +787,24 @@ impl ConnectorControl {
         serde_json::from_slice(bytes).map_err(|_| ConnectorFailure::NotApproved)
     }
 
+    pub fn parse_credential_stage(
+        bytes: &[u8],
+    ) -> ConnectorResult<ConnectorCredentialStageRequest> {
+        serde_json::from_slice(bytes).map_err(|_| ConnectorFailure::NotApproved)
+    }
+
     pub fn parse_client_secret(bytes: &[u8]) -> ConnectorResult<ClientSecretBody> {
         let value: ClientSecretBody =
+            serde_json::from_slice(bytes).map_err(|_| ConnectorFailure::SecretUnavailable)?;
+        if value.valid() {
+            Ok(value)
+        } else {
+            Err(ConnectorFailure::SecretUnavailable)
+        }
+    }
+
+    pub fn parse_bearer_secret(bytes: &[u8]) -> ConnectorResult<BearerSecretBody> {
+        let value: BearerSecretBody =
             serde_json::from_slice(bytes).map_err(|_| ConnectorFailure::SecretUnavailable)?;
         if value.valid() {
             Ok(value)
@@ -796,7 +875,8 @@ impl ConnectorControl {
             context: request.context,
             endpoint: request.endpoint,
             transport: request.transport,
-            oauth: request.oauth,
+            auth: ConnectorAuthKind::Oauth,
+            oauth: Some(request.oauth),
             approved_manifest: request.approved_manifest,
             profile: None,
             profile_pin: None,
@@ -901,7 +981,8 @@ impl ConnectorControl {
             context: request.context,
             endpoint,
             transport: ConnectorTransport::StreamableHttp,
-            oauth: ConnectorOAuthDescriptor {
+            auth: ConnectorAuthKind::Oauth,
+            oauth: Some(ConnectorOAuthDescriptor {
                 authorization_endpoint: profile.oauth.auth_url.clone(),
                 token_endpoint: profile.oauth.token_url.clone(),
                 client_id: profile.oauth.client_id.clone(),
@@ -910,7 +991,7 @@ impl ConnectorControl {
                 client_secret_record: "client-secret".into(),
                 pending_record: "pending".into(),
                 token_record: "token".into(),
-            },
+            }),
             approved_manifest: ApprovedManifestRef {
                 id: manifest_id,
                 pin: manifest_pin,
@@ -942,6 +1023,74 @@ impl ConnectorControl {
         Ok(connector.view())
     }
 
+    pub async fn stage_credential(
+        &self,
+        principal_context: &str,
+        path_id: &str,
+        request: ConnectorCredentialStageRequest,
+    ) -> ConnectorResult<ConnectorView> {
+        let _operation = self.operation.lock().await;
+        self.validate_credential_stage(principal_context, path_id, &request)?;
+        // OAuth-template ids stay on the governed OAuth stage path.
+        if self.templates.contains_key(path_id) {
+            return Err(ConnectorFailure::NotApproved);
+        }
+        let mut next = self.registry_snapshot()?;
+        if let Some(current) = next
+            .connectors
+            .iter()
+            .find(|connector| connector.id == path_id)
+        {
+            if current.context != principal_context || !current.is_bearer() {
+                return Err(ConnectorFailure::NotApproved);
+            }
+            if current.active {
+                return Err(ConnectorFailure::ActivationFailed);
+            }
+        }
+        let broker = credential_broker_name(&self.brokers)?;
+        // Touch the broker map early so a misconfigured gateway fails before
+        // the durable draft is written.
+        if !self.brokers.contains_key(&broker) {
+            return Err(ConnectorFailure::SecretUnavailable);
+        }
+        let connector = PersistedConnector {
+            id: request.id,
+            context: request.context,
+            endpoint: request.endpoint,
+            transport: request.transport,
+            auth: ConnectorAuthKind::Bearer,
+            oauth: None,
+            approved_manifest: ApprovedManifestRef {
+                id: path_id.to_owned(),
+                // Filled on first successful activate (owner TOFU digest).
+                pin: String::new(),
+            },
+            profile: None,
+            profile_pin: None,
+            principal: legacy_principal(),
+            account: legacy_account(),
+            state: ConnectorState::Draft,
+            active: false,
+            cleanup: ConnectorCleanupState::Clean,
+            secret_stored: false,
+            live_digest: None,
+        };
+        self.runner
+            .lock()
+            .await
+            .record_connector_config(
+                principal_context,
+                path_id,
+                "credential-stage",
+                &(self.clock)(),
+            )
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        next.replace(connector.clone());
+        self.commit_registry(next)?;
+        Ok(connector.view())
+    }
+
     pub async fn set_client_secret(
         &self,
         context: &str,
@@ -953,6 +1102,9 @@ impl ConnectorControl {
         let mut next = self.registry_snapshot()?;
         let mut connector = next.get(context, id)?.clone();
         ensure_principal_access(&connector, principal_id)?;
+        if connector.is_bearer() {
+            return Err(ConnectorFailure::NotApproved);
+        }
         if connector.active {
             return Err(ConnectorFailure::ActivationFailed);
         }
@@ -987,6 +1139,45 @@ impl ConnectorControl {
         Ok(connector.oauth_status())
     }
 
+    pub async fn set_bearer_secret(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+        mut body: BearerSecretBody,
+    ) -> ConnectorResult<ConnectorOAuthStatus> {
+        let _operation = self.operation.lock().await;
+        let mut next = self.registry_snapshot()?;
+        let mut connector = next.get(context, id)?.clone();
+        ensure_principal_access(&connector, principal_id)?;
+        if !connector.is_bearer() {
+            return Err(ConnectorFailure::NotApproved);
+        }
+        if connector.active {
+            return Err(ConnectorFailure::ActivationFailed);
+        }
+        self.runner
+            .lock()
+            .await
+            .record_connector_config(context, id, "bearer_secret", &(self.clock)())
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        let reference = self.bearer_credential_ref(id)?;
+        let broker = self
+            .brokers
+            .get(&reference.broker)
+            .ok_or(ConnectorFailure::SecretUnavailable)?;
+        broker
+            .store(&reference, SecretValue::new(body.take()))
+            .await
+            .map_err(|_| ConnectorFailure::SecretUnavailable)?;
+        connector.secret_stored = true;
+        connector.state = ConnectorState::Disconnected;
+        connector.active = false;
+        next.replace(connector.clone());
+        self.commit_registry(next)?;
+        Ok(connector.oauth_status())
+    }
+
     pub async fn start_oauth(
         &self,
         context: &str,
@@ -997,6 +1188,9 @@ impl ConnectorControl {
         let mut next = self.registry_snapshot()?;
         let mut connector = next.get(context, id)?.clone();
         ensure_principal_access(&connector, principal_id)?;
+        if connector.is_bearer() {
+            return Err(ConnectorFailure::NotApproved);
+        }
         if !connector.secret_stored || connector.active {
             return Err(ConnectorFailure::SecretUnavailable);
         }
@@ -1051,6 +1245,9 @@ impl ConnectorControl {
         let mut next = self.registry_snapshot()?;
         let mut connector = next.get(context, id)?.clone();
         ensure_principal_access(&connector, principal_id)?;
+        if connector.is_bearer() {
+            return Ok(connector.oauth_status());
+        }
         let observed = if !connector.secret_stored {
             ConnectorState::SecretMissing
         } else {
@@ -1097,6 +1294,11 @@ impl ConnectorControl {
         ensure_principal_access(&connector, principal_id)?;
         if !connector.secret_stored {
             return Err(ConnectorFailure::SecretUnavailable);
+        }
+        if connector.is_bearer() {
+            return self
+                .activate_bearer(context, id, next, connector)
+                .await;
         }
         connector.state = match self.oauth.public_state(id).await {
             UpstreamOAuthState::Pending { .. } => ConnectorState::Pending,
@@ -1359,6 +1561,23 @@ impl ConnectorControl {
         if connector.active {
             return Err(ConnectorFailure::ActivationFailed);
         }
+        if connector.is_bearer() {
+            self.runner
+                .lock()
+                .await
+                .record_connector_config(context, id, "delete_draft", &(self.clock)())
+                .map_err(|_| ConnectorFailure::ActivationFailed)?;
+            self.disable_runtime(id).await;
+            let vault_clean = self.delete_bearer_secret(id).await;
+            next.connectors
+                .retain(|candidate| !(candidate.id == id && candidate.context == context));
+            self.commit_registry(next)?;
+            return Ok(if vault_clean {
+                ConnectorCleanupState::Clean
+            } else {
+                ConnectorCleanupState::VaultResidue
+            });
+        }
         let config = self
             .runtime_oauth_config(&connector)
             .map_err(|_| ConnectorFailure::OauthUnavailable)?;
@@ -1432,6 +1651,21 @@ impl ConnectorControl {
         let mut next = self.registry_snapshot()?;
         let mut connector = next.get(context, id)?.clone();
         ensure_principal_access(&connector, principal_id)?;
+        if connector.is_bearer() {
+            self.runner
+                .lock()
+                .await
+                .record_connector_config(context, id, "disconnect", &(self.clock)())
+                .map_err(|_| ConnectorFailure::ActivationFailed)?;
+            self.disable_runtime(id).await;
+            connector.active = false;
+            connector.state = ConnectorState::Disconnected;
+            connector.live_digest = None;
+            connector.cleanup = ConnectorCleanupState::Clean;
+            next.replace(connector.clone());
+            self.commit_registry(next)?;
+            return Ok(connector.view());
+        }
         if self.oauth.get(id).is_none() {
             let config = self
                 .runtime_oauth_config(&connector)
@@ -1641,6 +1875,9 @@ impl ConnectorControl {
     }
 
     async fn restore_one(&self, connector: &PersistedConnector) -> ConnectorResult<()> {
+        if connector.is_bearer() {
+            return self.restore_bearer(connector).await;
+        }
         if let Some(profile) = &connector.profile {
             let current_pin = self
                 .profiles
@@ -1704,6 +1941,194 @@ impl ConnectorControl {
                 .write()
                 .map_err(|_| ConnectorFailure::ActivationFailed)?
                 .insert(connector.id.clone(), gmail);
+        }
+        Ok(())
+    }
+
+    async fn activate_bearer(
+        &self,
+        context: &str,
+        id: &str,
+        mut next: RegistryFile,
+        mut connector: PersistedConnector,
+    ) -> ConnectorResult<ConnectorActivation> {
+        let upstream = self.bearer_upstream(&connector)?;
+        let observed = match discover_server(id, &upstream).await {
+            Ok(observed) => observed,
+            Err(GatewayError::CredentialUnavailable(_)) => {
+                connector.state = ConnectorState::Unavailable;
+                connector.active = false;
+                connector.live_digest = None;
+                next.replace(connector);
+                self.disable_runtime(id).await;
+                let _ = self.commit_registry(next);
+                return Err(ConnectorFailure::SecretUnavailable);
+            }
+            Err(_) => {
+                connector.state = ConnectorState::Unavailable;
+                connector.active = false;
+                connector.live_digest = None;
+                next.replace(connector);
+                self.disable_runtime(id).await;
+                let _ = self.commit_registry(next);
+                return Err(ConnectorFailure::UpstreamDenied);
+            }
+        };
+        let live_digest = match proposed_manifest_catalog_digest(&observed) {
+            Ok(digest) => digest,
+            Err(_) => {
+                connector.state = ConnectorState::Drifted;
+                connector.active = false;
+                connector.live_digest = None;
+                next.replace(connector);
+                self.disable_runtime(id).await;
+                let _ = self.commit_registry(next);
+                return Err(ConnectorFailure::ManifestDrift);
+            }
+        };
+        // First activation seals the live catalogue (owner TOFU). Later
+        // activations and restores refuse drift against that pin.
+        if !connector.approved_manifest.pin.is_empty()
+            && connector.approved_manifest.pin != live_digest
+        {
+            connector.state = ConnectorState::Drifted;
+            connector.active = false;
+            connector.live_digest = Some(live_digest);
+            next.replace(connector);
+            self.disable_runtime(id).await;
+            let _ = self.commit_registry(next);
+            return Err(ConnectorFailure::ManifestDrift);
+        }
+        let approved = approve_discovered_bearer(&observed)
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        let approved_digest = live_digest.clone();
+        let mut runner = self.runner.lock().await;
+        runner
+            .validate_hot_connector(context, id, &approved)
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        runner
+            .record_connector_config(context, id, "activate", &(self.clock)())
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        connector.approved_manifest.pin = approved_digest.clone();
+        connector.state = ConnectorState::Connected;
+        connector.active = true;
+        connector.live_digest = Some(live_digest.clone());
+        next.replace(connector.clone());
+        self.commit_registry(next)?;
+        let installed_upstream = match self.dynamic_upstreams.write() {
+            Ok(mut upstreams) => {
+                upstreams.insert(id.to_owned(), DynamicUpstream::new(upstream));
+                true
+            }
+            Err(_) => false,
+        };
+        let installed_tools = installed_upstream
+            && runner
+                .install_hot_connector(context, id, &approved)
+                .is_ok();
+        if !installed_tools {
+            runner.remove_hot_connector(id);
+            if let Ok(mut upstreams) = self.dynamic_upstreams.write() {
+                upstreams.remove(id);
+            }
+            connector.state = ConnectorState::Unavailable;
+            connector.active = false;
+            connector.live_digest = None;
+            let mut closed = self.registry_snapshot()?;
+            closed.replace(connector);
+            let _ = self.store.persist(&closed);
+            *self
+                .registry
+                .lock()
+                .map_err(|_| ConnectorFailure::ActivationFailed)? = closed;
+            return Err(ConnectorFailure::ActivationFailed);
+        }
+        Ok(ConnectorActivation {
+            v: REGISTRY_VERSION,
+            connector: connector.view(),
+            approved_digest,
+            live_digest,
+        })
+    }
+
+    async fn restore_bearer(&self, connector: &PersistedConnector) -> ConnectorResult<()> {
+        if connector.approved_manifest.pin.is_empty() || !connector.secret_stored {
+            return Err(ConnectorFailure::NotApproved);
+        }
+        let upstream = self.bearer_upstream(connector)?;
+        let observed = discover_server(&connector.id, &upstream)
+            .await
+            .map_err(|_| ConnectorFailure::SecretUnavailable)?;
+        let live_digest = proposed_manifest_catalog_digest(&observed)
+            .map_err(|_| ConnectorFailure::ManifestDrift)?;
+        if live_digest != connector.approved_manifest.pin {
+            return Err(ConnectorFailure::ManifestDrift);
+        }
+        let approved = approve_discovered_bearer(&observed)
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        self.dynamic_upstreams
+            .write()
+            .map_err(|_| ConnectorFailure::ActivationFailed)?
+            .insert(connector.id.clone(), DynamicUpstream::new(upstream));
+        self.runner
+            .lock()
+            .await
+            .install_hot_connector(&connector.context, &connector.id, &approved)
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        Ok(())
+    }
+
+    fn bearer_upstream(&self, connector: &PersistedConnector) -> ConnectorResult<HttpUpstream> {
+        let reference = self.bearer_credential_ref(&connector.id)?;
+        let broker = self
+            .brokers
+            .get(&reference.broker)
+            .cloned()
+            .ok_or(ConnectorFailure::SecretUnavailable)?;
+        Ok(HttpUpstream::with_credential(
+            connector.endpoint.clone(),
+            broker,
+            reference,
+        ))
+    }
+
+    fn bearer_credential_ref(&self, connector_id: &str) -> ConnectorResult<CredentialRef> {
+        let broker = credential_broker_name(&self.brokers)?;
+        Ok(derived_reference(
+            &broker,
+            connector_id,
+            VAULT_BEARER_RECORD,
+        ))
+    }
+
+    async fn delete_bearer_secret(&self, connector_id: &str) -> bool {
+        let Ok(reference) = self.bearer_credential_ref(connector_id) else {
+            return false;
+        };
+        let Some(broker) = self.brokers.get(&reference.broker) else {
+            return false;
+        };
+        matches!(
+            broker.delete(&reference).await,
+            Ok(crate::credentials::CredentialDeleteOutcome::Deleted)
+        )
+    }
+
+    fn validate_credential_stage(
+        &self,
+        principal_context: &str,
+        path_id: &str,
+        request: &ConnectorCredentialStageRequest,
+    ) -> ConnectorResult<()> {
+        if request.v != REGISTRY_VERSION
+            || request.id != path_id
+            || request.context != principal_context
+            || !matches!(request.auth, ConnectorCredentialAuth::Bearer)
+            || !valid_id(path_id)
+            || !valid_id(&request.context)
+            || !valid_public_endpoint(&request.endpoint)
+        {
+            return Err(ConnectorFailure::NotApproved);
         }
         Ok(())
     }
@@ -1821,30 +2246,34 @@ impl ConnectorControl {
         connector: &PersistedConnector,
         template: &ConnectorTemplate,
     ) -> UpstreamOAuthConfig {
+        let oauth = connector
+            .oauth
+            .as_ref()
+            .expect("OAuth connectors persist an oauth descriptor");
         let client_secret = template.oauth.client_secret.as_ref().map(|reference| {
             derived_reference(
                 &reference.broker,
                 &connector.id,
-                &connector.oauth.client_secret_record,
+                &oauth.client_secret_record,
             )
         });
         let pending = derived_reference(
             &template.oauth.token_vault.broker,
             &connector.id,
-            &connector.oauth.pending_record,
+            &oauth.pending_record,
         );
         let token = derived_reference(
             &template.oauth.token_vault.broker,
             &connector.id,
-            &connector.oauth.token_record,
+            &oauth.token_record,
         );
         UpstreamOAuthConfig {
-            auth_url: connector.oauth.authorization_endpoint.clone(),
-            token_url: connector.oauth.token_endpoint.clone(),
-            client_id: connector.oauth.client_id.clone(),
+            auth_url: oauth.authorization_endpoint.clone(),
+            token_url: oauth.token_endpoint.clone(),
+            client_id: oauth.client_id.clone(),
             client_secret,
-            scopes: connector.oauth.scopes.clone(),
-            redirect_uri: connector.oauth.redirect_uri.clone(),
+            scopes: oauth.scopes.clone(),
+            redirect_uri: oauth.redirect_uri.clone(),
             endpoints: template.oauth.endpoints.clone(),
             client_authentication: template.oauth.client_authentication,
             registration: template.oauth.registration.clone(),
@@ -1984,11 +2413,73 @@ fn valid_oauth_descriptor(oauth: &ConnectorOAuthDescriptor) -> bool {
 }
 
 fn valid_public_descriptor(connector: &PersistedConnector) -> bool {
-    connector.endpoint.len() <= MAX_URL_BYTES
-        && !connector.endpoint.is_empty()
-        && valid_oauth_descriptor(&connector.oauth)
+    if connector.endpoint.len() > MAX_URL_BYTES || connector.endpoint.is_empty() {
+        return false;
+    }
+    if connector.is_bearer() {
+        return connector.oauth.is_none()
+            && connector.profile.is_none()
+            && valid_public_endpoint(&connector.endpoint)
+            && connector.approved_manifest.pin.len() <= 128
+            && (connector.approved_manifest.pin.is_empty()
+                || connector.approved_manifest.pin.starts_with("sha256:"));
+    }
+    connector
+        .oauth
+        .as_ref()
+        .is_some_and(valid_oauth_descriptor)
         && connector.approved_manifest.pin.len() <= 128
         && connector.approved_manifest.pin.starts_with("sha256:")
+}
+
+fn credential_broker_name(
+    brokers: &BTreeMap<String, Arc<dyn CredentialBroker>>,
+) -> ConnectorResult<String> {
+    if brokers.contains_key(DEFAULT_CREDENTIAL_BROKER) {
+        return Ok(DEFAULT_CREDENTIAL_BROKER.to_owned());
+    }
+    if brokers.len() == 1 {
+        return Ok(brokers.keys().next().expect("len checked").clone());
+    }
+    Err(ConnectorFailure::SecretUnavailable)
+}
+
+fn valid_public_endpoint(endpoint: &str) -> bool {
+    if endpoint.is_empty() || endpoint.len() > MAX_URL_BYTES || endpoint.contains('\0') {
+        return false;
+    }
+    if let Some(rest) = endpoint.strip_prefix("https://") {
+        return rest.split(['/', '?']).next().is_some_and(|host| !host.is_empty());
+    }
+    endpoint
+        .strip_prefix("http://")
+        .and_then(|rest| rest.split(['/', ':', '?']).next())
+        .is_some_and(|host| {
+            host == "localhost"
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        })
+}
+
+fn approve_discovered_bearer(observed: &ProposedManifest) -> Result<ApprovedManifest> {
+    use crate::config::ToolAccess;
+    use crate::hub::{approve_manifest, ToolApproval};
+
+    let approvals = observed
+        .tools
+        .iter()
+        .map(|tool| {
+            (
+                tool.name.clone(),
+                // Owner pasted the bearer for this exact endpoint: grant the
+                // live catalogue on first activate (TOFU). Risk class is write
+                // so mandate checks stay explicit for powerful tools.
+                ToolApproval::granted(ToolAccess::Write),
+            )
+        })
+        .collect();
+    approve_manifest(observed, &approvals)
 }
 
 fn ensure_principal_access(
@@ -2141,7 +2632,8 @@ mod tests {
                 context: "operations".into(),
                 endpoint: "https://mcp.example.test/mcp".into(),
                 transport: ConnectorTransport::StreamableHttp,
-                oauth: ConnectorOAuthDescriptor {
+                auth: ConnectorAuthKind::Oauth,
+                oauth: Some(ConnectorOAuthDescriptor {
                     authorization_endpoint: "https://as.example.test/authorize".into(),
                     token_endpoint: "https://as.example.test/token".into(),
                     client_id: "aithos-enterprise".into(),
@@ -2150,7 +2642,7 @@ mod tests {
                     client_secret_record: "calendar-client".into(),
                     pending_record: "calendar-pending".into(),
                     token_record: "calendar-token".into(),
-                },
+                }),
                 approved_manifest: ApprovedManifestRef {
                     id: id.to_owned(),
                     pin: "sha256:approved".into(),
@@ -2190,6 +2682,29 @@ mod tests {
             br#"{"client_secret":"ok","path":"vault/root"}"#
         )
         .is_err());
+        assert!(ConnectorControl::parse_bearer_secret(br#"{"bearer_token":"ok"}"#).is_ok());
+        assert!(ConnectorControl::parse_bearer_secret(
+            br#"{"bearer_token":"ok","path":"vault/root"}"#
+        )
+        .is_err());
+        assert!(ConnectorControl::parse_credential_stage(
+            br#"{"v":1,"id":"notes","context":"travail","endpoint":"https://mcp.example/mcp","transport":"streamable-http","auth":"bearer"}"#
+        )
+        .is_ok());
+        assert!(ConnectorControl::parse_credential_stage(
+            br#"{"v":1,"id":"notes","context":"travail","endpoint":"http://evil.example/mcp","transport":"streamable-http","auth":"bearer"}"#
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn bearer_endpoints_accept_https_and_loopback_only() {
+        assert!(valid_public_endpoint("https://mcp.example/mcp"));
+        assert!(valid_public_endpoint("http://127.0.0.1:9/mcp"));
+        assert!(valid_public_endpoint("http://localhost/mcp"));
+        assert!(!valid_public_endpoint("http://mcp.evil.example/mcp"));
+        assert!(!valid_public_endpoint("ftp://127.0.0.1/mcp"));
+        assert!(!valid_public_endpoint(""));
     }
 
     #[test]

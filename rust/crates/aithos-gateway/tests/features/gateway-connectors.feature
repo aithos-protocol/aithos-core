@@ -289,3 +289,21 @@ Feature: Pre-approved connector attachment and hot activation
       Then its runtime tools and credential reference are removed first
       And public status reports a redacted revocation residue
       And no later call retries the effect or reaches the protected resource
+
+  @wip @g7b @credential-stage
+  Rule: Credential-stage attaches bearer MCP without an OAuth template
+
+    Scenario: A bearer MCP stages, secrets and activates into a durable registry
+      Given a credential-only MCP upstream and durable connector registry
+      When the owner credential-stages a new connector with a loopback endpoint
+      And the owner writes the bearer token into Vault
+      And a valid config authority activates it
+      Then discovery runs once with the Vault bearer
+      And a complete registry record is atomically persisted in "gateway/connectors.json"
+      And the approved tools become visible without restarting the gateway
+
+    Scenario: Restart restores an active bearer connector from the durable registry
+      Given an active bearer connector persisted in "gateway/connectors.json"
+      When the gateway restarts
+      Then the healthy connector returns active
+      And discovery receives only the Vault bearer

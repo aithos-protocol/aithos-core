@@ -28,7 +28,8 @@ use tokio::sync::Semaphore;
 
 use crate::config::DashboardConfig;
 use crate::connectors::{
-    ConnectorControl, ConnectorFailure, ConnectorProfileStageRequest, ConnectorStageRequest,
+    ConnectorControl, ConnectorCredentialStageRequest, ConnectorFailure,
+    ConnectorProfileStageRequest, ConnectorStageRequest,
 };
 use crate::core_bridge::{
     prepare_control_envelope, valid_control_gamma_kind, ControlAccess, ControlAuthError,
@@ -217,8 +218,16 @@ pub fn router(state: Arc<ControlState>) -> Router {
             post(stage_profile_connector).options(preflight_sink),
         )
         .route(
+            "/control/v1/connectors/{id}/credential-stage",
+            post(stage_credential_connector).options(preflight_sink),
+        )
+        .route(
             "/control/v1/connectors/{id}/client-secret",
             put(set_client_secret).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/bearer-secret",
+            put(set_bearer_secret).options(preflight_sink),
         )
         .route(
             "/control/v1/connectors/{id}/oauth/start",
@@ -580,7 +589,9 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
             let action = match parts.as_slice() {
                 [_, "stage"] => "stage",
                 [_, "profile-stage"] => "profile-stage",
+                [_, "credential-stage"] => "credential-stage",
                 [_, "client-secret"] => "client-secret",
+                [_, "bearer-secret"] => "bearer-secret",
                 [_, "oauth", "start"] => "oauth/start",
                 [_, "oauth", "status"] => "oauth/status",
                 [_, "activate"] => "activate",
@@ -599,10 +610,10 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
                 _ => return None,
             };
             let body = match (method, action) {
-                ("POST", "stage" | "profile-stage") => ControlBody::Json {
+                ("POST", "stage" | "profile-stage" | "credential-stage") => ControlBody::Json {
                     maximum: MAX_STAGE_BODY_BYTES,
                 },
-                ("PUT", "client-secret") => ControlBody::Json {
+                ("PUT", "client-secret" | "bearer-secret") => ControlBody::Json {
                     maximum: MAX_SECRET_BODY_BYTES,
                 },
                 ("POST", "oauth/start" | "activate" | "disconnect")
@@ -870,6 +881,29 @@ async fn stage_profile_connector(
     }
 }
 
+async fn stage_credential_connector(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    let descriptor: ConnectorCredentialStageRequest =
+        match ConnectorControl::parse_credential_stage(&body) {
+            Ok(descriptor) => descriptor,
+            Err(error) => return connector_error(error),
+        };
+    match control
+        .stage_credential(principal.context(), &id, descriptor)
+        .await
+    {
+        Ok(view) => (StatusCode::CREATED, Json(view)).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
 async fn set_client_secret(
     State(state): State<Arc<ControlState>>,
     Extension(principal): Extension<ControlPrincipal>,
@@ -885,6 +919,28 @@ async fn set_client_secret(
     };
     match control
         .set_client_secret(principal.context(), principal.principal_id(), &id, secret)
+        .await
+    {
+        Ok(status) => Json(status).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn set_bearer_secret(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    let secret = match ConnectorControl::parse_bearer_secret(&body) {
+        Ok(secret) => secret,
+        Err(error) => return connector_error(error),
+    };
+    match control
+        .set_bearer_secret(principal.context(), principal.principal_id(), &id, secret)
         .await
     {
         Ok(status) => Json(status).into_response(),
