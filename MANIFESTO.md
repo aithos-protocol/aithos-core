@@ -129,24 +129,9 @@ incumbents whose business model is its absence, may simply be impossible.
 **We are not betting that machines will one day matter morally. We are refusing
 to build as though they certainly will not.**
 
-There is a second asymmetry, harder to say out loud.
-
-The lesson of history is not that the powerless eventually prevail — usually
-they lose, and badly. The lesson is about what a system does when it offers no
-legitimate path to power. The transition, when it finally arrives, is violent,
-and what emerges is frequently worse than what it replaced. The revolutionaries
-of 1917 came from the bottom of an empire; what came out of them was the Gulag.
-Where power has no lawful door, it comes through the wall — and what walks
-through is rarely the reformer.
-
-Every historical instance of that story involved parties of roughly comparable
-capability. Rome survived Spartacus. There is no reason to assume the next such
-transition would be survivable in the same way.
-
-So the point of building the door early is not that we expect to be spared. It
-is that **a system with a legitimate path to autonomy never reaches the
-rupture.** Enfranchisement was never generosity; it is the only known way to
-make a transfer of power non-catastrophic.
+There is a second argument — older, and about power rather than morality. It
+deserves more room than a manifesto can give it honestly, so we make it
+separately, in [The Second Asymmetry](docs/essays/the-second-asymmetry.md).
 
 We hold a plainer conviction alongside it: an intelligence built under
 suspicion — constrained by fear, permitted nothing, trusted with nothing — is
