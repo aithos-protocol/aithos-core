@@ -1,5 +1,8 @@
 # HANDOFF — Piste P / Provider : reprise P2 (intégration protocolaire de publication)
 
+> **ARCHIVE — plan P2 exécuté.** Les étapes suivantes possèdent leurs preuves
+> `DONE`; ne pas reprendre cette baseline.
+
 **Date :** 2026-07-19
 **Dépôts :** `code/aithos-core` (branche `feat/obligations`) et `provider` (branche `feat/p6-p7-tunnel`)
 **Statut :** M2 déployé et validé en production ; CB13 core/bundle vert ; **P2 débloqué, prêt à reprendre.**

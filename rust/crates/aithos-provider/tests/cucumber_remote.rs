@@ -198,6 +198,7 @@ async fn boot_wire() -> Wire {
         // authority): the proxy's socket.
         authority: format!("127.0.0.1:{}", proxy_addr.port()),
         test_now_enabled: false,
+        browser_origins: Arc::default(),
     });
 
     // Counting middleware: every request the service actually receives.

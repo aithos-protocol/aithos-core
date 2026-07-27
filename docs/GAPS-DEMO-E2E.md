@@ -1,5 +1,9 @@
 # GAPS — Analyse bout-en-bout : ce qui manque pour la démo et le produit
 
+> **ARCHIVE D'ANALYSE — 16 juillet 2026.** Plusieurs écarts ont depuis été
+> fermés par G4, le SDK v2, OAuth SaaS et le Provider. Pour la démo courante,
+> utiliser `HANDOFF-GATEWAY-COMPAGNON-DEMO-INTEGREE-2026-07-22.md`.
+
 > **Statut : ANALYSE VALIDABLE — 2026-07-16.** Passe en revue `aithos-core`, la
 > gateway et les deux plans d'action ([P](HANDOFF-PROVIDER-AWS.md),
 > [G](HANDOFF-GATEWAY-HUB.md)) contre le scénario de démo cible, puis contre le

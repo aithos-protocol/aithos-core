@@ -1075,6 +1075,206 @@ pub fn verify_operation_constraints(
     })
 }
 
+/// Closed operation families used by the normative constraint-applicability
+/// matrix.  Keeping this decision in Core prevents append-time and cold-time
+/// callers from inventing different interpretations of the same constraint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstraintOperation {
+    ReadPresentation,
+    EthosMutation,
+    ConnectorAction,
+    Inference,
+    VaultConfigRead,
+    VaultConfigMutation,
+    Grant,
+    Revoke,
+    Publication,
+}
+
+/// Constraint families whose applicability is fixed by the current protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstraintFamily {
+    ValidityWindow,
+    FreshnessHeartbeat,
+    SessionBinding,
+    FirstPartyPurpose,
+    Obligation,
+    MaxActions,
+    MaxMutations,
+    MaxConsumptions,
+    MaxChildren,
+    Budgets,
+    ActionParamsSpendCap,
+    DiscloseAgency,
+    Notify,
+    LogReads,
+}
+
+/// How a constraint participates in a grantee consumption.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstraintApplicability {
+    Applicable,
+    NonApplicable,
+    ExecutorFact,
+    BestEffortOnly,
+}
+
+/// Public evidence required to reproduce the decision during cold replay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstraintEvidence {
+    None,
+    SignedTimeFacts,
+    RevocationStateAndBeacon,
+    SignedSessionCertificate,
+    MandateAndOperationBinding,
+    PublicSignedReceipt,
+    GammaActionCount,
+    DelegatedMutationCount,
+    DelegatedConsumptionCount,
+    DelegatedConsumptionProof,
+    SignedReadConsumptionEvidence,
+    DirectChildGrantCount,
+    ProfileAndRequiredAttestation,
+    ApprovedPublicAttestation,
+    NeverValidityProof,
+    SignedGammaReadEntry,
+    SignedReadEvidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConstraintRequirement {
+    pub applicability: ConstraintApplicability,
+    pub evidence: ConstraintEvidence,
+}
+
+/// Return the normative D7 applicability cell for a grantee consumption.
+/// Conditional action families are reported as executor facts: the executor
+/// decides whether their declared predicate applies and cold replay requires an
+/// approved public attestation whenever validity depends on that private fact.
+#[must_use]
+pub const fn constraint_requirement(
+    family: ConstraintFamily,
+    operation: ConstraintOperation,
+) -> ConstraintRequirement {
+    use ConstraintApplicability::{Applicable, BestEffortOnly, ExecutorFact, NonApplicable};
+    use ConstraintEvidence::{
+        ApprovedPublicAttestation, DelegatedConsumptionCount, DelegatedConsumptionProof,
+        DelegatedMutationCount, DirectChildGrantCount, GammaActionCount,
+        MandateAndOperationBinding, NeverValidityProof, None, ProfileAndRequiredAttestation,
+        PublicSignedReceipt, RevocationStateAndBeacon, SignedGammaReadEntry,
+        SignedReadConsumptionEvidence, SignedReadEvidence, SignedSessionCertificate,
+        SignedTimeFacts,
+    };
+    use ConstraintFamily::{
+        ActionParamsSpendCap, Budgets, DiscloseAgency, FirstPartyPurpose, FreshnessHeartbeat,
+        LogReads, MaxActions, MaxChildren, MaxConsumptions, MaxMutations, Notify, Obligation,
+        SessionBinding, ValidityWindow,
+    };
+    use ConstraintOperation::{
+        ConnectorAction, EthosMutation, Grant, Inference, ReadPresentation, VaultConfigMutation,
+        VaultConfigRead,
+    };
+
+    match (family, operation) {
+        (ValidityWindow, _) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: SignedTimeFacts,
+        },
+        (FreshnessHeartbeat, _) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: RevocationStateAndBeacon,
+        },
+        (SessionBinding, _) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: SignedSessionCertificate,
+        },
+        (FirstPartyPurpose, _) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: MandateAndOperationBinding,
+        },
+        (Obligation, _) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: PublicSignedReceipt,
+        },
+        (MaxActions, ConnectorAction) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: GammaActionCount,
+        },
+        (MaxActions, _) => ConstraintRequirement {
+            applicability: NonApplicable,
+            evidence: None,
+        },
+        (MaxMutations, EthosMutation) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: DelegatedMutationCount,
+        },
+        (MaxMutations, _) => ConstraintRequirement {
+            applicability: NonApplicable,
+            evidence: None,
+        },
+        (MaxConsumptions, ReadPresentation | VaultConfigRead) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: SignedReadConsumptionEvidence,
+        },
+        (MaxConsumptions, VaultConfigMutation) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: DelegatedConsumptionProof,
+        },
+        (MaxConsumptions, _) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: DelegatedConsumptionCount,
+        },
+        (MaxChildren, Grant) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: DirectChildGrantCount,
+        },
+        (MaxChildren, _) => ConstraintRequirement {
+            applicability: NonApplicable,
+            evidence: None,
+        },
+        (Budgets, ConnectorAction | Inference) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: ProfileAndRequiredAttestation,
+        },
+        (Budgets, _) => ConstraintRequirement {
+            applicability: NonApplicable,
+            evidence: None,
+        },
+        (ActionParamsSpendCap, ConnectorAction) => ConstraintRequirement {
+            applicability: ExecutorFact,
+            evidence: ApprovedPublicAttestation,
+        },
+        (ActionParamsSpendCap, _) => ConstraintRequirement {
+            applicability: NonApplicable,
+            evidence: None,
+        },
+        (DiscloseAgency, ConnectorAction) => ConstraintRequirement {
+            applicability: ExecutorFact,
+            evidence: ApprovedPublicAttestation,
+        },
+        (DiscloseAgency, _) => ConstraintRequirement {
+            applicability: NonApplicable,
+            evidence: None,
+        },
+        (Notify, _) => ConstraintRequirement {
+            applicability: BestEffortOnly,
+            evidence: NeverValidityProof,
+        },
+        (LogReads, ReadPresentation) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: SignedGammaReadEntry,
+        },
+        (LogReads, VaultConfigRead) => ConstraintRequirement {
+            applicability: Applicable,
+            evidence: SignedReadEvidence,
+        },
+        (LogReads, _) => ConstraintRequirement {
+            applicability: NonApplicable,
+            evidence: None,
+        },
+    }
+}
+
 /// Opaque proof of the injected active-session lifecycle tally.
 #[derive(Debug)]
 pub struct VerifiedSessionTally {

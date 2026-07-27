@@ -432,6 +432,19 @@ pub fn mandated_covers(
             _ => false,
         })
     };
+    // An index has no target SID in its storage path. Therefore an exact-id
+    // mandate on the same zone must reach the index needed to resolve and
+    // commit that one node; Core still validates that the index delta affects
+    // only the authorized SID before the manifest can be accepted.
+    let zone_index_covered = |zone: &str, want_write: bool| {
+        perimeter.iter().any(|entry| match entry {
+            PerimeterEntry::Ethos { verb, zone: z, .. }
+            | PerimeterEntry::EthosId { verb, zone: z, .. } => {
+                z.as_str() == zone && (!want_write || !matches!(verb, Verb::Read))
+            }
+            _ => false,
+        })
+    };
     let any_write_verb = || {
         perimeter.iter().any(|entry| {
             matches!(entry,
@@ -489,7 +502,7 @@ pub fn mandated_covers(
                 }) || any_write_verb()
                     || any_act()
             }
-            ObjectPath::ZoneIndex(zone) => zone_covered(zone, None, false),
+            ObjectPath::ZoneIndex(zone) => zone_index_covered(zone, false),
             ObjectPath::Blob(zone, sid) => zone_covered(zone, Some(sid), false),
             // The K1-C blob alias follows its zone's row (the frozen p8
             // read plan: read.circle covers circle/blobs/<sid>.json).
@@ -500,7 +513,14 @@ pub fn mandated_covers(
             ObjectPath::Hdr(zone, node) => hdr_covered(zone, node, false),
             // The connector carriers follow the vault subtree's row
             // (micro-redline A.1 extension, DEMO-LEA gate).
-            ObjectPath::ConnectorHeader(id) | ObjectPath::ConnectorConfig(id) => act_connector(id),
+            ObjectPath::ConnectorHeader(id) | ObjectPath::ConnectorConfig(id) => {
+                // Connector carriers are sealed to the gateway recipient.
+                // Its stable governance mandate may fetch a newly
+                // owner-published binding before the agent has any business
+                // capability for that connector. Core still verifies the
+                // owner header, recipient wrapping, AEAD and manifest.
+                act_connector(id) || act_connector("gateway")
+            }
             ObjectPath::X(id, _) => act_connector(id),
         },
         (TargetKind::Object(object), "PUT") => match object {
@@ -521,7 +541,7 @@ pub fn mandated_covers(
             // server on an accepted publish only (redline gate 5).
             ObjectPath::ManifestSlot(_) => false,
             // Pass L — write verbs on the zone (canonical and alias).
-            ObjectPath::ZoneIndex(zone) => zone_covered(zone, None, true),
+            ObjectPath::ZoneIndex(zone) => zone_index_covered(zone, true),
             ObjectPath::Blob(zone, sid) => zone_covered(zone, Some(sid), true),
             ObjectPath::CircleBlobAlias(sid) => zone_covered("circle", Some(sid), true),
             // The public write line arrives via its K1-C alias (redline
@@ -815,5 +835,54 @@ mod tests {
         ] {
             assert!(!anonymous_covers(&denied), "must not cover: {denied:?}");
         }
+    }
+
+    #[test]
+    fn an_exact_id_write_reaches_its_zone_index_but_not_another_zone() {
+        use aithos_core::mandate::{PerimeterEntry, Verb};
+        use aithos_core::path::Zone;
+
+        let perimeter = vec![PerimeterEntry::EthosId {
+            verb: Verb::Edit,
+            zone: Zone::Circle,
+            id: Sid::parse("01000000000000000000000000").unwrap(),
+        }];
+        assert!(mandated_covers(
+            &perimeter,
+            &TargetKind::Object(ObjectPath::ZoneIndex("circle".into())),
+            "PUT",
+        ));
+        assert!(!mandated_covers(
+            &perimeter,
+            &TargetKind::Object(ObjectPath::ZoneIndex("self".into())),
+            "PUT",
+        ));
+    }
+
+    #[test]
+    fn gateway_governance_can_fetch_but_not_publish_new_connector_carriers() {
+        use aithos_core::mandate::PerimeterEntry;
+
+        let perimeter = vec![PerimeterEntry::parse("act.x.gateway.*").unwrap()];
+        for object in [
+            ObjectPath::ConnectorHeader("notes-live".into()),
+            ObjectPath::ConnectorConfig("notes-live".into()),
+        ] {
+            assert!(mandated_covers(
+                &perimeter,
+                &TargetKind::Object(object.clone()),
+                "GET",
+            ));
+            assert!(!mandated_covers(
+                &perimeter,
+                &TargetKind::Object(object),
+                "PUT",
+            ));
+        }
+        assert!(!mandated_covers(
+            &perimeter,
+            &TargetKind::Object(ObjectPath::X("notes-live".into(), vec![])),
+            "GET",
+        ));
     }
 }

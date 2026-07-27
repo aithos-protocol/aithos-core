@@ -1,5 +1,7 @@
 # Prompt de reprise — Core + Bundle, gate de commit CB1
 
+> **ARCHIVE — ne pas exécuter.** Le gate CB1 et les lots suivants sont clos.
+
 Copier le bloc ci-dessous dans une nouvelle tâche Codex.
 
 ```text

@@ -1,5 +1,9 @@
 # HANDOFF — Piste P : le provider Aithos sur AWS
 
+> **ARCHIVE — journal de construction Provider.** Les lots M2/P2/P3/P4/P5/P7
+> ont depuis leurs gates `DONE`. Pour l'architecture encore opposable, utiliser
+> `INFRA-PROVIDER.md` ; pour l'état, utiliser `README.md` et les tests actuels.
+
 ## État express — 2026-07-18 — M2 finalisé « prod stable » : /acme/txt (B.5) + cert relais OUT-OF-BAND + keepalive TCP — vert-local, STOP gate plan
 
 **Session (reprise M2, les 3 dérives du 07-17 tranchées par Mathieu et

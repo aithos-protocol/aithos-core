@@ -1,5 +1,7 @@
 # HANDOFF — Lot B (P3/P4), partie 1 : client RemoteStore JALON VERT LOCAL + micro-redline A.1 (2026-07-21)
 
+> **ARCHIVE — jalon intermédiaire.** P3/P4 sont ensuite passés au gate déployé.
+
 Date : 2026-07-21. Dépôts : code/aithos-core + provider/. État DISQUE = vérité.
 Statut : **le client P3 existe et parle le vrai wire — 16 scénarios de contrat
 RED→GREEN contre le VRAI service sur socket, spike e2e mode B ET mode A 2/2

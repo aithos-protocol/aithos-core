@@ -1,5 +1,8 @@
 # Handoff — finalisation intégrale du protocole Aithos Core
 
+> **ARCHIVE — plan de finalisation exécuté.** Les surfaces annoncées manquantes
+> ont été traitées dans CB1–CB13 ; consulter le code, `spec/` et le gate `522dfcd`.
+
 **Date de préparation :** 2026-07-18  
 **Destinataire :** nouvelle session/agent chargé de terminer `aithos-core` avant
 l'extension fonctionnelle d'`aithos-client` et la création du SDK réseau.  

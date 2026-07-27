@@ -1,5 +1,8 @@
 # Handoff — Piste G, reprise : lot G3 (l'AS OAuth `gateway_as`)
 
+> **ARCHIVE — lot exécuté.** L'Authorization Server a depuis été étendu par G4 ;
+> ne pas reprendre ce plan.
+
 **Date :** 2026-07-16 (préparé en 12ᵉ session gw, G2+G6 clos)
 **Branche :** `feat/obligations` (jamais switcher)
 **HEAD d'entrée :** `22a67c4` (docs: G2+G6 session close). Une session piste P

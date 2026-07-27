@@ -1,6 +1,12 @@
 # Extension Aithos Gmail Send — architecture cible
 
-**Statut :** design actif d'une extension REST optionnelle, préparé le 2026-07-21.
+**Statut réévalué le 2026-07-22 : architecture implémentée localement, gate live
+Gmail non qualifié.** Le registre d'extensions compilées, l'outil
+`gmail_send_guarded`, son chemin durable, l'outbox et le lifecycle OAuth existent
+dans la Gateway et sont couverts par les contrats locaux. Ce document reste la
+référence de design ; l'exploitation courante est décrite dans
+`RUNBOOK-CONNECTOR-PROFILES-OAUTH-SAAS.md`. La présence du code ne vaut pas preuve
+d'envoi réel ni validation des choix owner de destinataires/rétention.
 
 **Frontière :** ce document ne demande aucune logique spécifique dans le client
 MCP générique. Gmail sert ici une API REST derrière une extension compilée et

@@ -76,6 +76,7 @@ fn context(vector: &Value) -> K1cVerificationContext {
             .as_array()
             .expect("predecessors")
             .clone(),
+        sparse_parent_manifest: None,
         parent_store: string_map(&context["store_before"]),
         candidate_store: string_map(&context["store_after"]),
         change_causes: value_map(&context["change_causes"]),
@@ -250,6 +251,7 @@ fn owner_cold_fixture() -> (
         },
         height: 2,
         predecessors: vec![Value::String(predecessor.clone())],
+        sparse_parent_manifest: None,
         parent_store,
         candidate_store,
         change_causes: BTreeMap::from([(body_path, mutation_ref.clone())]),
@@ -582,6 +584,29 @@ fn cb12_owner_package_survives_fresh_mem_and_fs_cold_verification() {
 }
 
 #[test]
+fn cb12_export_deduplicates_identical_content_addressed_sidecars() {
+    let (owner, mut context, evidence, extra) = owner_cold_fixture();
+    let session = LocalSession::owner(context.subject.clone(), &owner);
+    let candidate = session
+        .assemble_draft2(&session.manifest_capability(), &context, evidence)
+        .expect("owner draft2 candidate");
+
+    // A later edition can legitimately retain a carrier whose digest and
+    // bytes are identical to its newly selected carrier (notably empty
+    // evidence). The Store is a content-addressed set, so this is one object.
+    for (path, bytes) in &candidate.sidecars {
+        context.parent_store.insert(path.clone(), bytes.clone());
+        context.candidate_store.insert(path.clone(), bytes.clone());
+    }
+
+    let package = export_keyless(candidate, context, extra)
+        .expect("identical content-addressed sidecars are deduplicated");
+    package
+        .verify_for_cas()
+        .expect("deduplicated package remains producer-verifiable");
+}
+
+#[test]
 fn cb12_private_reads_resume_only_after_capabilities_are_reintroduced() {
     let seed = [0xa1; 32];
     let grantee_seed = [0xa3; 32];
@@ -635,7 +660,9 @@ fn cb12_private_reads_resume_only_after_capabilities_are_reintroduced() {
     let authority_chain = vec![grant.mandate];
 
     let producer = LocalSession::owner(bundle.did.clone(), &owner);
-    let producer_body = producer.body_capability().expect("producer body cap");
+    let producer_body = producer
+        .body_capability(Zone::Circle, "cold/note")
+        .expect("producer body cap");
     assert_eq!(
         producer
             .read_owner_section(&producer_body, &bundle, Zone::Circle, "cold/note")
@@ -653,7 +680,9 @@ fn cb12_private_reads_resume_only_after_capabilities_are_reintroduced() {
 
     let restored_owner = OwnerKeys::genesis(&MasterSeed::from_slice(&seed).expect("restored seed"));
     let restored = LocalSession::owner(bundle.did.clone(), &restored_owner);
-    let restored_body = restored.body_capability().expect("restored body cap");
+    let restored_body = restored
+        .body_capability(Zone::Circle, "cold/note")
+        .expect("restored body cap");
     assert_eq!(
         restored
             .read_owner_section(&restored_body, &bundle, Zone::Circle, "cold/note")
@@ -669,7 +698,7 @@ fn cb12_private_reads_resume_only_after_capabilities_are_reintroduced() {
     )
     .expect("restore grantee session");
     let grantee_body = grantee_session
-        .body_capability()
+        .body_capability(Zone::Circle, "cold/note")
         .expect("restored grantee body cap");
     assert_eq!(
         grantee_session

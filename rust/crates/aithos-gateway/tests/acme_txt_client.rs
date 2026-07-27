@@ -51,6 +51,7 @@ async fn signed_put_and_delete_apply_only_to_the_bound_gateway_hostname() {
         acme: AcmeState::new(),
         authority: addr.to_string(),
         test_now_enabled: false,
+        browser_origins: Default::default(),
     });
     let server = tokio::spawn(async move {
         axum::serve(listener, build_router(state)).await.unwrap();

@@ -25,6 +25,7 @@
 //! | `AITHOS_STORE_DNS_BACKEND`  | `route53` (the deployed B.5 surface), `memory` (dev/tests), or `off` (default: /acme effects refuse 503, the data plane serves) |
 //! | `AITHOS_STORE_ACME_ZONE_ID` | REQUIRED when the DNS backend is route53 — the delegated mcp zone |
 //! | `AITHOS_STORE_TEST_NOW`     | `1` enables the `X-Aithos-Test-Now` override — replay harness ONLY, never set in a deployment |
+//! | `AITHOS_STORE_ALLOWED_ORIGINS` | optional comma-separated exact browser origins allowed to publish signed objects |
 //!
 //! No secret ever enters this process: the bootstrap carries public keys
 //! and public documents; DynamoDB and Route 53 access ride the task role
@@ -35,11 +36,16 @@ use std::sync::Arc;
 use aithos_provider::acme::AcmeState;
 use aithos_provider::control::{CachedControl, ControlPlane, ControlStore, DynamoDbControl};
 use aithos_provider::dns::{DnsTxt, MemDnsTxt, NoDnsTxt, Route53DnsTxt};
+use aithos_provider::fs_backend::{FsHeads, FsNonces, FsObjects};
 use aithos_provider::heads::{DynamoDbHeads, HeadsTable, MemHeads};
 use aithos_provider::nonces::{DynamoDbNonces, MemNonces, NonceStore, MIN_WINDOW_SECS};
 use aithos_provider::objects::{MemObjects, ObjectStore, S3Objects};
-use aithos_provider::service::{build_router, AppState};
+use aithos_provider::service::{build_router, parse_browser_origins, AppState};
 use aithos_provider::STORE_WIRE_VERSION;
+
+fn filesystem_root() -> String {
+    required("AITHOS_STORE_FS_ROOT")
+}
 
 fn required(name: &str) -> String {
     match std::env::var(name) {
@@ -63,6 +69,17 @@ async fn main() {
 
     let listen = std::env::var("AITHOS_STORE_LISTEN").unwrap_or_else(|_| "0.0.0.0:8080".into());
     let authority = required("AITHOS_STORE_AUTHORITY").to_ascii_lowercase();
+    let browser_origins = match parse_browser_origins(
+        std::env::var("AITHOS_STORE_ALLOWED_ORIGINS")
+            .ok()
+            .as_deref(),
+    ) {
+        Ok(origins) => Arc::new(origins),
+        Err(error) => {
+            eprintln!("fatal: invalid AITHOS_STORE_ALLOWED_ORIGINS: {error}");
+            std::process::exit(2);
+        }
+    };
 
     // P7 — the control-plane seam. Default memory: the bootstrap file
     // rules, exactly the P1/P6 shape (an old task definition boots the
@@ -122,8 +139,11 @@ async fn main() {
     // Décision ② du gate P2/étape 6 (2026-07-20, gravée INFRA-PROVIDER
     // §8) : embedded replay material never persists — a durable backend
     // refuses to boot with bootstrap preloads or head seeds.
-    let durable = objects_backend != "memory" || heads_backend != "memory";
-    if durable && (!preloads.is_empty() || !head_seeds.is_empty()) {
+    let cloud_durable = objects_backend == "s3" || heads_backend == "dynamodb";
+    let filesystem_with_head_seeds = heads_backend == "filesystem" && !head_seeds.is_empty();
+    if (cloud_durable && (!preloads.is_empty() || !head_seeds.is_empty()))
+        || filesystem_with_head_seeds
+    {
         eprintln!(
             "fatal: the bootstrap carries preloads/head seeds but a durable backend is \
              configured — replay material never persists (fail-closed startup, \
@@ -143,6 +163,21 @@ async fn main() {
                 }
             }
             Arc::new(mem)
+        }
+        "filesystem" => {
+            tracing::warn!("objects backend = filesystem: local E2E durability only");
+            let filesystem = FsObjects::new(filesystem_root());
+            for (tenant, did, key, bytes) in preloads {
+                match filesystem.put_once(&tenant, &did, &key, bytes).await {
+                    Ok(aithos_provider::objects::PutOnce::Stored)
+                    | Ok(aithos_provider::objects::PutOnce::Identical) => {}
+                    _ => {
+                        eprintln!("fatal: filesystem preload rejected (fail-closed startup)");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            Arc::new(filesystem)
         }
         "s3" => {
             let bucket = required("AITHOS_STORE_OBJECTS_BUCKET");
@@ -165,6 +200,10 @@ async fn main() {
                 mem_heads.seed(&tenant, &did, record);
             }
             Arc::new(mem_heads)
+        }
+        "filesystem" => {
+            tracing::warn!("heads backend = filesystem: local E2E durability only");
+            Arc::new(FsHeads::new(filesystem_root()))
         }
         "dynamodb" => {
             let table = required("AITHOS_STORE_HEADS_TABLE");
@@ -190,6 +229,10 @@ async fn main() {
         "memory" => {
             tracing::warn!("nonce backend = memory: single-instance anti-rejeu (dev/tests only)");
             Arc::new(MemNonces::new(window_secs))
+        }
+        "filesystem" => {
+            tracing::warn!("nonce backend = filesystem: local E2E durability only");
+            Arc::new(FsNonces::new(filesystem_root(), window_secs))
         }
         "dynamodb" => {
             let table = required("AITHOS_STORE_NONCE_TABLE");
@@ -271,6 +314,7 @@ async fn main() {
         acme: AcmeState::new(),
         authority: authority.clone(),
         test_now_enabled,
+        browser_origins,
     });
 
     // B.5 hygiene: sweep challenge records older than 10 minutes, on the

@@ -1,5 +1,8 @@
 # Handoff — surface mandats, reprise : Lot M3 (émission/révocation multi)
 
+> **ARCHIVE — snapshot M3.** La surface owner et le moteur d'atténuation ont
+> évolué ; les scénarios `gateway-mandates.feature` restent la vérité du reliquat.
+
 **Date :** 2026-07-16 (préparé en 10ᵉ session gw, M0+M1+M2 clos)
 **Branche :** `feat/obligations` (jamais switcher)
 **HEAD d'entrée :** `67a6c34` (docs: mandates surface session close)

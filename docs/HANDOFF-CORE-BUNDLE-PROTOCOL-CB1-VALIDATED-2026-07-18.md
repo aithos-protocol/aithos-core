@@ -1,5 +1,8 @@
 # Handoff — protocole Core + Bundle, CB1 validé et non commité
 
+> **ARCHIVE — étape CB1 dépassée.** Conservé comme preuve de validation ; l'état
+> courant est post-CB13.
+
 **Date :** 2026-07-18
 
 **Dépôt :** `/Volumes/Math17/aithos/v2/code/aithos-core`

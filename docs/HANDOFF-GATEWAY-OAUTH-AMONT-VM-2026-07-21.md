@@ -1,5 +1,8 @@
 # HANDOFF + PROMPT DE REPRISE — Lot « OAuth amont » de la gateway (sur VM)
 
+> **ARCHIVE — remplacé.** Conservé pour la chronologie ; ne pas exécuter ses
+> instructions de reprise.
+
 > **REMPLACÉ.** Le socle décrit ici est livré et documenté dans
 > `HANDOFF-GATEWAY-UPSTREAM-OAUTH-DONE-2026-07-21.md`. La suite générique
 > discovery/DCR/connecteurs SaaS est désormais pilotée par

@@ -167,13 +167,13 @@ Feature: Obligations — the general gate (spec 04.12)
 
     Scenario Outline: R2 has two exact closed tables for optional WYSIWYS evidence
       Given an effective pinned obligation for one W1 operation
-      When its R2 receipt has "<presentation state>"
+      When its R2 receipt has "<presentation_state>"
       Then its exact members are "<members>"
       And family is "obligation" and v is the JSON number 2
       And sig verifies over RFC8785-JCS with sig omitted
 
       Examples:
-        | presentation state        | members                                                                  |
+        | presentation_state        | members                                                                  |
         | no presented digest       | v,family,operation_ref,obligation,verdict,at,sig                          |
         | a strict presented digest | v,family,operation_ref,obligation,verdict,presented_digest,at,sig         |
 
@@ -215,12 +215,12 @@ Feature: Obligations — the general gate (spec 04.12)
 
     Scenario Outline: A delegated operation commits only with its bound receipt
       Given a mandate with an obligation explicitly targeting "<operation>"
-      When the grantee presents "<receipt state>" for that canonical operation
+      When the grantee presents "<receipt_state>" for that canonical operation
       Then the operation is "<verdict>"
       And any accepted receipt is bound to the leaf mandate, operation arguments and time
 
       Examples:
-        | operation             | receipt state                    | verdict  |
+        | operation             | receipt_state                    | verdict  |
         | public content edit   | valid pinned-attestor receipt    | accepted |
         | public content edit   | no receipt                       | refused  |
         | structural move       | receipt for different arguments | refused  |
@@ -238,12 +238,12 @@ Feature: Obligations — the general gate (spec 04.12)
   Rule: Executor facts need public evidence for keyless acceptance
 
     Scenario Outline: A required tier-X truth cannot be asserted by the grantee
-      Given a delegated publication whose operation requires "<executor fact>"
-      When the public edition carries "<public evidence>"
+      Given a delegated publication whose operation requires "<executor_fact>"
+      When the public edition carries "<public_evidence>"
       Then keyless cold verification is "<verdict>"
 
       Examples:
-        | executor fact       | public evidence                      | verdict  |
+        | executor_fact       | public_evidence                      | verdict  |
         | action_params       | approved bound attestation           | accepted |
         | action_params       | grantee assertion only               | refused  |
         | spend_cap           | no acceptable public attestation     | refused  |

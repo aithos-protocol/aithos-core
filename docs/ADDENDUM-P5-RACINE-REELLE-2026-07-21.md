@@ -1,5 +1,8 @@
 # ADDENDUM au HANDOFF P5 DONE — la première racine quotidienne RÉELLE (2026-07-21, 06:50 Paris)
 
+> **ARCHIVE DE PREUVE.** Observation live datée, conservée pour audit ; elle ne
+> constitue pas un état de santé actuel.
+
 À lire comme le post-scriptum de HANDOFF-PROVIDER-P5-WITNESS-DONE-2026-07-20.md §3
 (« ce que le gate n'a PAS prouvé : rollover/racine réels en prod ») : ce point est CLOS.
 

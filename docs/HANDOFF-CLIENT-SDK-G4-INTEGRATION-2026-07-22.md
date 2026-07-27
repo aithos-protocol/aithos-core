@@ -1,5 +1,9 @@
 # HANDOFF — Client, SDK et dashboard : intégration G4 sans régression
 
+> **ARCHIVE — supplanté.** Les écarts CSD-1 à CSD-6 décrits ici ont été traités
+> dans les lots Client/SDK/dashboard suivants. Le reliquat Gateway est suivi par
+> `HANDOFF-GATEWAY-COMPAGNON-DEMO-INTEGREE-2026-07-22.md`.
+
 **Date :** 2026-07-22
 
 **Dépôts concernés :**

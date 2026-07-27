@@ -1,5 +1,8 @@
 # [OBSOLÈTE le jour même] Clôture P7b — tout est joué
 
+> **ARCHIVE — déjà obsolète à sa création.** Conservé uniquement pour la
+> chronologie ; aucune instruction ne doit être reprise.
+
 Ce prompt, écrit en milieu de session pendant une absence de Mathieu, est
 caduc : la suite déployée `relay-control-p7b` a été rejouée à son retour
 (4/4 — suspension 28,9 s, réactivation 29,5 s, désenrôlement 31,3 s), la

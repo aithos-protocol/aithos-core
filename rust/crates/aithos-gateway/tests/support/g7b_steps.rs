@@ -18,6 +18,7 @@ use aithos_gateway::proxy_mcp::{DynamicUpstreams, McpRouter};
 
 const CONNECTOR: &str = "calendar-safe";
 const CONNECTOR_B: &str = "crm-safe";
+const BEARER_CONNECTOR: &str = "notes-live";
 const CONTEXT: &str = "operations";
 const NEIGHBOR_CONTEXT: &str = "finance";
 const CLIENT_SECRET: &str = "g7b-client-secret-sentinel";
@@ -27,6 +28,7 @@ const REFRESH_ONE: &str = "g7b-refresh-token-sentinel-one";
 const REFRESH_TWO: &str = "g7b-refresh-token-sentinel-two";
 const CALLBACK_CODE: &str = "g7b-approved-code-sentinel";
 const INTERNAL_SENTINEL: &str = "g7b-internal-failure-sentinel";
+const BEARER_SENTINEL: &str = "g7b-bearer-sentinel";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ApprovalPlacement {
@@ -395,6 +397,10 @@ pub(super) struct G7bHarness {
     client: reqwest::Client,
     owner: SigningKey,
     config_authority: G7bControlAuthority,
+    master: [u8; 32],
+    agent_pub: String,
+    gateway_pub: String,
+    entropy: SeqEntropy,
     descriptors: BTreeMap<String, ConnectorStageRequest>,
     context_store: GatewayStore,
     journal_store: GatewayStore,
@@ -680,10 +686,12 @@ impl G7bHarness {
         let router = Arc::new(McpRouter::<HttpUpstream> {
             runner: Arc::clone(&runner),
             upstreams: BTreeMap::new(),
+            ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
             dynamic_upstreams: Arc::clone(&dynamic),
             clock: Arc::new(|| CONTROL_NOW.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
             oauth: None,
+            browser_origins: Default::default(),
         });
         *wire.gamma_store.lock().unwrap() = Some(context_store.clone());
         let descriptors = ids
@@ -737,6 +745,10 @@ impl G7bHarness {
                 key: config_key,
                 mandate: config_grant.mandate,
             },
+            master,
+            agent_pub,
+            gateway_pub,
+            entropy,
             descriptors,
             context_store,
             journal_store,
@@ -1011,6 +1023,100 @@ impl G7bHarness {
         .await
     }
 
+    async fn stage_bearer(&mut self) -> HttpCapture {
+        self.send(
+            "POST",
+            &format!("/control/v1/connectors/{BEARER_CONNECTOR}/credential-stage"),
+            serde_json::to_vec(&json!({
+                "v": 1,
+                "id": BEARER_CONNECTOR,
+                "context": CONTEXT,
+                "endpoint": format!("{}/mcp", self.base_for_upstream()),
+                "transport": "streamable-http",
+                "auth": "bearer",
+            }))
+            .unwrap(),
+            true,
+        )
+        .await
+    }
+
+    async fn stage_dynamic_gmail(&mut self) -> HttpCapture {
+        let id = "gmail-dynamic";
+        self.send(
+            "POST",
+            &format!("/control/v1/connectors/{id}/oauth-stage"),
+            serde_json::to_vec(&json!({
+                "v": 1,
+                "id": id,
+                "context": CONTEXT,
+                "endpoint": "https://gmailmcp.googleapis.com/mcp/v1",
+                "transport": "streamable-http",
+                "oauth": {
+                    "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+                    "token_endpoint": "https://oauth2.googleapis.com/token",
+                    "client_id": "gherkin.apps.googleusercontent.com",
+                    "scopes": [
+                        "https://www.googleapis.com/auth/gmail.readonly",
+                        "https://www.googleapis.com/auth/gmail.compose"
+                    ],
+                    "redirect_uri": "https://demo.mcp.aithos.fr/oauth/callback",
+                    "client_secret_record": "gmail-client-secret",
+                    "pending_record": "gmail-oauth-pending",
+                    "token_record": "gmail-oauth-token"
+                }
+            }))
+            .unwrap(),
+            true,
+        )
+        .await
+    }
+
+    async fn set_bearer(&mut self) -> HttpCapture {
+        self.send(
+            "PUT",
+            &format!("/control/v1/connectors/{BEARER_CONNECTOR}/bearer-secret"),
+            serde_json::to_vec(&json!({ "bearer_token": BEARER_SENTINEL })).unwrap(),
+            true,
+        )
+        .await
+    }
+
+    async fn prepare_bearer_binding(&mut self) -> HttpCapture {
+        self.send(
+            "POST",
+            &format!("/control/v1/connectors/{BEARER_CONNECTOR}/binding-prepare"),
+            Vec::new(),
+            true,
+        )
+        .await
+    }
+
+    fn base_for_upstream(&self) -> String {
+        self.descriptor(CONNECTOR)
+            .endpoint
+            .trim_end_matches("/mcp")
+            .to_owned()
+    }
+
+    fn publish_prepared_bearer_binding(&mut self) {
+        let manifest: ApprovedManifest =
+            serde_json::from_value(self.facts["bearer_preparation"]["approved_manifest"].clone())
+                .unwrap();
+        owner_enroll_server(
+            &self.master,
+            CONTEXT,
+            &self.agent_pub,
+            &self.gateway_pub,
+            &manifest,
+            self.context_store.clone(),
+            &GatewayWorld::window(),
+            CONTROL_NOW,
+            &mut self.entropy,
+        )
+        .expect("Owner publishes prepared bearer binding");
+    }
+
     fn pending_path(id: &str) -> String {
         format!("aithos/connectors/{id}/{id}-pending")
     }
@@ -1249,6 +1355,86 @@ async fn g7b_inactive_draft(w: &mut GatewayWorld) {
     w.g7b = Some(h);
 }
 
+#[given("a new official Gmail MCP OAuth descriptor")]
+async fn g7b_dynamic_gmail_descriptor(w: &mut GatewayWorld) {
+    w.g7b = Some(G7bHarness::exact().await);
+}
+
+#[when("the owner stages the dynamic Gmail connector twice")]
+async fn g7b_stage_dynamic_gmail(w: &mut GatewayWorld) {
+    for _ in 0..2 {
+        let response = harness_mut(w).stage_dynamic_gmail().await;
+        assert_eq!(response.status, 201, "{}", response.text());
+    }
+}
+
+#[when("the owner stages the dynamic Gmail connector and stores its client secret")]
+async fn g7b_stage_dynamic_gmail_with_secret(w: &mut GatewayWorld) {
+    let h = harness_mut(w);
+    let staged = h.stage_dynamic_gmail().await;
+    assert_eq!(staged.status, 201, "{}", staged.text());
+    let stored = h
+        .send(
+            "PUT",
+            "/control/v1/connectors/gmail-dynamic/client-secret",
+            serde_json::to_vec(&json!({ "client_secret": CLIENT_SECRET })).unwrap(),
+            true,
+        )
+        .await;
+    assert_eq!(stored.status, 200, "{}", stored.text());
+}
+
+#[when("the browser starts the dynamic Gmail OAuth flow")]
+async fn g7b_start_dynamic_gmail_oauth(w: &mut GatewayWorld) {
+    let response = harness_mut(w)
+        .send(
+            "POST",
+            "/control/v1/connectors/gmail-dynamic/oauth/start",
+            Vec::new(),
+            true,
+        )
+        .await;
+    assert_eq!(response.status, 200, "{}", response.text());
+}
+
+#[then("the consent URL uses only the approved Google authorization endpoint")]
+fn g7b_dynamic_gmail_uses_pinned_consent_url(w: &mut GatewayWorld) {
+    let response = harness(w).last.as_ref().unwrap();
+    let consent =
+        reqwest::Url::parse(response.json()["authorization_url"].as_str().unwrap()).unwrap();
+    assert_eq!(consent.scheme(), "https");
+    assert_eq!(consent.host_str(), Some("accounts.google.com"));
+    assert_eq!(consent.path(), "/o/oauth2/v2/auth");
+    assert_eq!(
+        consent
+            .query_pairs()
+            .find(|(name, _)| name == "client_id")
+            .map(|(_, value)| value.into_owned())
+            .as_deref(),
+        Some("gherkin.apps.googleusercontent.com")
+    );
+}
+
+#[then("an inactive Gmail OAuth draft is persisted without client secret material")]
+fn g7b_dynamic_gmail_is_secretless_draft(w: &mut GatewayWorld) {
+    let h = harness(w);
+    let registry: Value = serde_json::from_str(&h.registry_text()).unwrap();
+    let draft = registry["connectors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|connector| connector["id"] == "gmail-dynamic")
+        .unwrap();
+    assert_eq!(draft["active"], false);
+    assert_eq!(draft["state"], "secret_missing");
+    assert_eq!(draft["auth"], "oauth");
+    assert!(!h.registry_text().contains(CLIENT_SECRET));
+    assert!(h
+        .vault
+        .value("aithos/connectors/gmail-dynamic/gmail-client-secret")
+        .is_none());
+}
+
 #[when("the browser sends a bounded client secret over gateway public TLS")]
 async fn g7b_browser_sets_secret(w: &mut GatewayWorld) {
     let response = harness_mut(w).secret(CONNECTOR).await;
@@ -1382,6 +1568,106 @@ fn g7b_delete_reports_cleanup_limitation(w: &mut GatewayWorld) {
         Some(CLIENT_SECRET)
     );
     assert!(!response.text().contains(CLIENT_SECRET));
+}
+
+#[given("a new bearer MCP connector with two live tools and no Ethos binding")]
+async fn g7b_new_unbound_bearer(w: &mut GatewayWorld) {
+    let h = G7bHarness::exact().await;
+    assert!(h
+        .context_store
+        .get(&format!("e/x/{BEARER_CONNECTOR}/header.json"))
+        .unwrap()
+        .is_none());
+    w.g7b = Some(h);
+}
+
+#[when("the owner stages the bearer connector and stores its credential")]
+async fn g7b_stage_and_credential_bearer(w: &mut GatewayWorld) {
+    let h = harness_mut(w);
+    let staged = h.stage_bearer().await;
+    assert_eq!(staged.status, 201, "{}", staged.text());
+    let stored = h.set_bearer().await;
+    assert_eq!(stored.status, 200, "{}", stored.text());
+    h.wire.clear_mcp();
+}
+
+#[when("the gateway prepares the complete TOFU binding")]
+async fn g7b_prepare_bearer_binding(w: &mut GatewayWorld) {
+    let h = harness_mut(w);
+    let prepared = h.prepare_bearer_binding().await;
+    assert_eq!(prepared.status, 200, "{}", prepared.text());
+    h.facts.insert("bearer_preparation".into(), prepared.json());
+}
+
+#[then("preparation returns both live tools without exposing either in runtime")]
+async fn g7b_preparation_is_inactive_and_complete(w: &mut GatewayWorld) {
+    let h = harness(w);
+    let tools = h.facts["bearer_preparation"]["approved_manifest"]["tools"]
+        .as_array()
+        .unwrap();
+    assert_eq!(tools.len(), 2);
+    assert!(tools.iter().all(|tool| tool["granted"] == true));
+    let list = h.tools_list().await;
+    assert!(!list["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|tool| {
+            tool["name"]
+                .as_str()
+                .is_some_and(|name| name.starts_with("notes_live__"))
+        }));
+}
+
+#[then("activation before Owner publication is refused closed")]
+async fn g7b_unpublished_bearer_refuses_activation(w: &mut GatewayWorld) {
+    let response = harness_mut(w).activate_as_owner(BEARER_CONNECTOR).await;
+    assert_eq!(response.status, 403, "{}", response.text());
+    assert_eq!(response.json()["error"], "connector_not_approved");
+    assert!(!harness(w)
+        .dynamic
+        .read()
+        .unwrap()
+        .contains_key(BEARER_CONNECTOR));
+}
+
+#[when("the owner publishes the prepared binding into the current Ethos")]
+fn g7b_owner_publishes_bearer_binding(w: &mut GatewayWorld) {
+    harness_mut(w).publish_prepared_bearer_binding();
+}
+
+#[when("the same running gateway activates the bearer connector")]
+async fn g7b_same_gateway_activates_bearer(w: &mut GatewayWorld) {
+    let response = harness_mut(w).activate_as_owner(BEARER_CONNECTOR).await;
+    assert_eq!(response.status, 200, "{}", response.text());
+}
+
+#[then("the complete TOFU catalogue becomes visible without restarting")]
+async fn g7b_bearer_catalogue_hot_visible(w: &mut GatewayWorld) {
+    let h = harness(w);
+    let list = h.tools_list().await;
+    let names: BTreeSet<_> = list["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    assert!(names.contains(hub_exposed_name(BEARER_CONNECTOR, "events.list").as_str()));
+    assert!(names.contains(hub_exposed_name(BEARER_CONNECTOR, "events.delete").as_str()));
+    assert!(h.dynamic.read().unwrap().contains_key(BEARER_CONNECTOR));
+}
+
+#[then("no bearer credential appears in the binding, registry or public responses")]
+fn g7b_bearer_remains_vault_only(w: &mut GatewayWorld) {
+    let h = harness(w);
+    assert!(!h.public_surface().contains(BEARER_SENTINEL));
+    assert!(h
+        .vault
+        .values
+        .lock()
+        .unwrap()
+        .values()
+        .any(|value| value == BEARER_SENTINEL));
 }
 
 #[given("an approved draft with its client secret in Vault")]

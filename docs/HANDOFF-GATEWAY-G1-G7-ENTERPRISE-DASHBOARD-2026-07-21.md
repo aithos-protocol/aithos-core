@@ -1,5 +1,9 @@
 # HANDOFF — G1 + G7 : dashboard entreprise, relay sortant et OAuth MCP amont
 
+> **ARCHIVE — plan partiellement absorbé.** Le relay/OAuth amont et les profils
+> SaaS ont depuis leur implémentation et leur runbook dédiés. Les sujets UI encore
+> ouverts ne doivent pas être repris depuis cette baseline.
+
 Date : 2026-07-21
 
 Statut : **plan historique partiellement livré**. Les contrats gateway G1/G7 ont

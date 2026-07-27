@@ -1,8 +1,13 @@
 # HANDOFF — Finaliser Client, SDK et dashboard pour la démo intégrée
 
+> **ARCHIVE — phases Client/SDK/dashboard livrées.** Ce plan a été exécuté puis
+> remplacé, pour son reliquat Core/Gateway, par
+> `HANDOFF-GATEWAY-COMPAGNON-DEMO-INTEGREE-2026-07-22.md`. Le gate navigateur
+> live reste nécessaire avant de qualifier la démo intégrée.
+
 Date : 2026-07-22
 
-Statut : **READY pour reprise et implémentation**.
+Statut historique : **exécuté pour Client/SDK/dashboard ; reliquat transféré**.
 
 ## 0. Décision produit opposable
 

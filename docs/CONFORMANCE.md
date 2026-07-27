@@ -1,5 +1,11 @@
 # Conformance — levels claimed, vectors, performance (spec §09)
 
+> **ARCHIVE DE CONFORMANCE — mesure du 11 juillet 2026.** Les chiffres, claims et
+> limites de packaging ci-dessous décrivent le jalon K, antérieur aux lots CB1–CB13,
+> Provider et Gateway. Ils restent utiles comme preuve datée, mais ne décrivent pas
+> la conformance actuelle — notamment la surface WASM, désormais bien plus large.
+> Voir `README.md`, `spec/` et les suites de tests actuelles avant toute claim.
+
 > Status of this document: written at step K (2026-07-11). It records what
 > THIS repository claims against spec §09.2–§09.4, and the measured §09.3
 > numbers. Everything here is bounded to aithos-core: no external service,

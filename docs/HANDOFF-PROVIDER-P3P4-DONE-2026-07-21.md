@@ -1,5 +1,8 @@
 # HANDOFF — Lot B (P3/P4), partie 2 : GATES P3 + P4 DÉPLOYÉS — FAIT (2026-07-21)
 
+> **ARCHIVE DE PREUVE.** Gates P3/P4 clos ; ne pas reprendre les baselines de ce
+> document comme état courant.
+
 Date : 2026-07-21. Dépôts : code/aithos-core + provider/. État DISQUE = vérité.
 Statut : **le lot B est CLOS — les deux gates sont déployés et passés au
 témoin.** Gate P3 : DEMO-LEA rejouée À L'IDENTIQUE avec journal remote

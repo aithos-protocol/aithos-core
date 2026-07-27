@@ -278,6 +278,7 @@ fn fixture(mode: &str) -> Fixture {
         },
         height: 3,
         predecessors: predecessors.clone(),
+        sparse_parent_manifest: None,
         parent_store: std::mem::take(&mut parent_store),
         candidate_store,
         change_causes,

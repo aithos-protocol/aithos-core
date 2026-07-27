@@ -1,5 +1,8 @@
 # Prompt de reprise — CB2 à CB13, finalisation Core + Bundle
 
+> **ARCHIVE — ne pas exécuter.** CB2–CB13 sont terminés et le gate final est
+> enregistré par `522dfcd`.
+
 Copier-coller intégralement le bloc ci-dessous dans une nouvelle tâche Codex.
 
 ````text

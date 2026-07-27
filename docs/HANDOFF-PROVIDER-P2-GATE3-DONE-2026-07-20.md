@@ -1,5 +1,8 @@
 # HANDOFF — Piste P / Provider P2 : gate contrat CLOS + gate 3 (autorisation mandatée) LIVRÉ
 
+> **ARCHIVE DE PREUVE.** Gate 3 clos ; les étapes restantes citées ont depuis
+> été exécutées.
+
 **Date :** 2026-07-20
 **Dépôts :** `code/aithos-core` (branche `feat/obligations`) et `provider` (branche `feat/p6-p7-tunnel`, intouché cette session)
 **Statut :** gate contrat (features + vecteurs rouges) **clos par Mathieu** (committé 2026-07-20). Gate 3 (étape 3 — A.2 #7–#10) **implémenté, vert dans le sandbox, posé dans l'arbre** — commit + passe locale de Mathieu = clôture formelle. Étapes 4–8 restantes.

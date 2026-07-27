@@ -1,5 +1,8 @@
 # Note à la piste provider — gate temporaire core/bundle
 
+> **ARCHIVE — gate temporaire levé.** CB13 est clos ; cette note reste une trace
+> de coordination entre les pistes Provider et protocole.
+
 **Date :** 2026-07-18
 
 **Destinataire :** agent en cours de construction du provider cloud Aithos

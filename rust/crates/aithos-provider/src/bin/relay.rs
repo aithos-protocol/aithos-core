@@ -302,6 +302,6 @@ mod ttl_tests {
             "zero would disable the cache floor"
         );
         // The invariant the clamp protects: TTL + TTL/2 < 60.
-        assert!(CONTROL_TTL_MAX_SECS + CONTROL_TTL_MAX_SECS / 2 < 60);
+        const { assert!(CONTROL_TTL_MAX_SECS + CONTROL_TTL_MAX_SECS / 2 < 60) };
     }
 }

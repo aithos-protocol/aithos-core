@@ -1,5 +1,7 @@
 # PROMPT DE REPRISE — Piste P / P7 : bascule control-plane (tenants réels)
 
+> **ARCHIVE — ne pas exécuter.** La bascule P7 est close.
+
 Colle ce prompt tel quel dans une nouvelle session. Dépôts :
 `code/aithos-core` (+ `provider/` pour le Terraform). **État DISQUE =
 vérité.** Rituel opposable : `provider/.claude/skills/rituel-tests/SKILL.md`.

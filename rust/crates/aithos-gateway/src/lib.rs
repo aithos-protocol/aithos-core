@@ -20,6 +20,8 @@ pub mod control;
 pub mod core_bridge;
 pub mod credentials;
 pub mod demo_lea;
+pub mod ethos_backend;
+pub mod ethos_catalog;
 pub mod hub;
 pub mod keyholder;
 pub mod oauth;

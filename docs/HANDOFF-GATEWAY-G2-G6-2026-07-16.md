@@ -1,5 +1,8 @@
 # Handoff — Piste G, reprise : lots G2 + G6 (tolérance MCP réels, lecture d'Ethos)
 
+> **ARCHIVE — lot exécuté.** Ne pas reprendre ce plan ; son document `DONE` et
+> les suites actuelles en conservent la preuve.
+
 **Date :** 2026-07-16 (préparé en 11ᵉ session gw, G8.b clos)
 **Branche :** `feat/obligations` (jamais switcher)
 **HEAD d'entrée :** `6fdfe3c` (test: detag the 26 attenuation-matrix scenarios)

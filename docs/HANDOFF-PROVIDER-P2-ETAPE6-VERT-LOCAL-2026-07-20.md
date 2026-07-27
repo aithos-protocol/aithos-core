@@ -1,5 +1,8 @@
 # HANDOFF — Piste P / Provider P2 : étape 6 (backend durable S3+DynamoDB, cache A.6, write-once ⑧b) — VERT LOCAL, STOP au gate déployé
 
+> **ARCHIVE — STOP levé par le gate déployé suivant.** Conservé comme preuve du
+> passage local avant déploiement.
+
 Date : 2026-07-20. Dépôt : code/aithos-core (+ provider/ pour le Terraform). État DISQUE = vérité.
 Statut : code étape 6 implémenté et vert en sandbox — **STOP au gate déployé** (creds, build image, apply, preuve AWS réelle : rien de tout ça n'a été touché). Le commit reste le geste de Mathieu.
 Se lit avec HANDOFF-PROVIDER-P2-GATE5-DONE-2026-07-20.md, DECISION-COMPUTE-STORE-PROPOSITION-GATE6-2026-07-20.md (ACTÉE) et INFRA-PROVIDER.md (2 notes gravées le même jour).

@@ -20,6 +20,7 @@
 //! path, a body excerpt or an envelope. One log line per data request,
 //! through [`crate::redact`] only.
 
+use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -27,6 +28,7 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{header, HeaderValue, Method, Request, Response, StatusCode};
 use axum::middleware::Next;
+use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 
@@ -94,6 +96,9 @@ pub struct AppState {
     /// deployment manifest; exists for the byte-exact vector replay, whose
     /// instants are frozen inputs (`server_now`), never wall-clock.
     pub test_now_enabled: bool,
+    /// Exact browser origins allowed to publish signed objects. Empty keeps
+    /// the historical server-to-server behaviour and emits no signed CORS.
+    pub browser_origins: Arc<BTreeSet<String>>,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -101,29 +106,173 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/healthz", get(|| async { "ok" }))
         .fallback(handle)
         .layer(axum::middleware::map_response(stamp_wire_version))
-        .layer(axum::middleware::from_fn(public_read_cors))
+        .layer(axum::middleware::from_fn_with_state(
+            Arc::clone(&state),
+            provider_cors,
+        ))
         .with_state(state)
 }
 
-/// Public Ethos carriers are intentionally readable from any browser origin.
-/// The middleware is narrowly derived from the same closed path grammar as
-/// authorization; authenticated and non-public responses receive no CORS
-/// relaxation.
-async fn public_read_cors(request: Request<Body>, next: Next) -> Response<Body> {
-    let expose = request.method() == Method::GET
+fn one_header(headers: &axum::http::HeaderMap, name: header::HeaderName) -> Option<&str> {
+    let mut values = headers.get_all(name).iter();
+    let value = values.next()?.to_str().ok()?;
+    values.next().is_none().then_some(value)
+}
+
+fn preflight_headers(headers: &axum::http::HeaderMap) -> Option<BTreeSet<String>> {
+    let Some(raw) = one_header(headers, header::ACCESS_CONTROL_REQUEST_HEADERS) else {
+        return Some(BTreeSet::new());
+    };
+    let mut parsed = BTreeSet::new();
+    for item in raw.split(',') {
+        let item = item.trim();
+        if item.is_empty()
+            || item.len() > 64
+            || !item
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            || !parsed.insert(item.to_ascii_lowercase())
+        {
+            return None;
+        }
+    }
+    Some(parsed)
+}
+
+fn public_object_target(request: &Request<Body>) -> bool {
+    request
+        .uri()
+        .path_and_query()
+        .and_then(|target| pathmap::parse_target(target.as_str()))
+        .is_some_and(|target| {
+            matches!(
+                target.kind,
+                TargetKind::Object(ref object) if pathmap::anonymous_covers(object)
+            )
+        })
+}
+
+fn signed_object_target(request: &Request<Body>) -> bool {
+    request
+        .uri()
+        .path_and_query()
+        .and_then(|target| pathmap::parse_target(target.as_str()))
+        .is_some_and(|target| matches!(target.kind, TargetKind::Object(_)))
+}
+
+fn add_provider_cors(mut response: Response<Body>, origin: &str) -> Response<Body> {
+    if let Ok(origin) = HeaderValue::from_str(origin) {
+        response
+            .headers_mut()
+            .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    }
+    response
+        .headers_mut()
+        .append(header::VARY, HeaderValue::from_static("Origin"));
+    response.headers_mut().insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static("ETag, X-Aithos-Store"),
+    );
+    response
+}
+
+fn denied_preflight() -> Response<Body> {
+    let mut response = StatusCode::FORBIDDEN.into_response();
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static("Origin"));
+    response
+}
+
+/// Browser transport for the two deliberately exposed surfaces only:
+/// anonymous public objects (`GET`, wildcard) and signed publication objects
+/// (`PUT`, exact configured origin). Preflight returns before envelope,
+/// nonce, storage, CAS or logging code can run.
+async fn provider_cors(
+    State(state): State<Arc<AppState>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response<Body> {
+    let anonymous_public = request.method() == Method::GET
         && request.headers().get("x-aithos-auth").is_none()
-        && request
-            .uri()
-            .path_and_query()
-            .and_then(|target| pathmap::parse_target(target.as_str()))
-            .is_some_and(|target| {
+        && public_object_target(&request);
+    if request.method() == Method::OPTIONS {
+        let Some(origin) = one_header(request.headers(), header::ORIGIN) else {
+            return denied_preflight();
+        };
+        let Some(method) = one_header(request.headers(), header::ACCESS_CONTROL_REQUEST_METHOD)
+        else {
+            return denied_preflight();
+        };
+        let Some(headers) = preflight_headers(request.headers()) else {
+            return denied_preflight();
+        };
+        let public = method == "GET"
+            && public_object_target(&request)
+            && headers.iter().all(|name| name == "x-aithos-store");
+        let signed = method == "PUT"
+            && signed_object_target(&request)
+            && !state.browser_origins.is_empty()
+            && state.browser_origins.contains(origin)
+            && headers.contains("content-type")
+            && headers.contains("if-head")
+            && headers.contains("x-aithos-auth")
+            && headers.contains("x-aithos-store")
+            && headers.iter().all(|name| {
                 matches!(
-                    target.kind,
-                    TargetKind::Object(ref object) if pathmap::anonymous_covers(object)
+                    name.as_str(),
+                    "content-type" | "if-head" | "x-aithos-auth" | "x-aithos-store"
                 )
             });
+        if !public && !signed {
+            return denied_preflight();
+        }
+        let mut response = StatusCode::NO_CONTENT.into_response();
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_METHODS,
+            HeaderValue::from_str(method).expect("validated method"),
+        );
+        if !headers.is_empty() {
+            response.headers_mut().insert(
+                header::ACCESS_CONTROL_ALLOW_HEADERS,
+                HeaderValue::from_str(&headers.into_iter().collect::<Vec<_>>().join(", "))
+                    .expect("validated header names"),
+            );
+        }
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_MAX_AGE,
+            HeaderValue::from_static("600"),
+        );
+        if public {
+            response.headers_mut().insert(
+                header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                HeaderValue::from_static("*"),
+            );
+            return response;
+        }
+        return add_provider_cors(response, origin);
+    }
+    if !anonymous_public
+        && request.method() == Method::PUT
+        && request.headers().get("x-aithos-auth").is_some()
+        && signed_object_target(&request)
+    {
+        if !request.headers().contains_key(header::ORIGIN) {
+            return next.run(request).await;
+        }
+        let Some(origin) = one_header(request.headers(), header::ORIGIN).map(str::to_owned) else {
+            return denied_preflight();
+        };
+        if state.browser_origins.is_empty() {
+            return next.run(request).await;
+        }
+        if !state.browser_origins.contains(&origin) {
+            return denied_preflight();
+        }
+        return add_provider_cors(next.run(request).await, &origin);
+    }
     let mut response = next.run(request).await;
-    if expose {
+    if anonymous_public {
         response.headers_mut().insert(
             header::ACCESS_CONTROL_ALLOW_ORIGIN,
             HeaderValue::from_static("*"),
@@ -134,6 +283,39 @@ async fn public_read_cors(request: Request<Body>, next: Next) -> Response<Body> 
         );
     }
     response
+}
+
+pub fn parse_browser_origins(raw: Option<&str>) -> Result<BTreeSet<String>, String> {
+    let Some(raw) = raw.filter(|raw| !raw.trim().is_empty()) else {
+        return Ok(BTreeSet::new());
+    };
+    let values = raw.split(',').map(str::trim).collect::<Vec<_>>();
+    if values.is_empty() || values.len() > 16 || values.iter().any(|value| value.is_empty()) {
+        return Err("expected between 1 and 16 comma-separated exact origins".into());
+    }
+    let mut origins = BTreeSet::new();
+    for value in values {
+        let parsed = url::Url::parse(value).map_err(|_| format!("invalid origin `{value}`"))?;
+        let loopback = match parsed.host() {
+            Some(url::Host::Domain(host)) => host == "localhost",
+            Some(url::Host::Ipv4(address)) => address.is_loopback(),
+            Some(url::Host::Ipv6(address)) => address.is_loopback(),
+            None => false,
+        };
+        if !matches!(parsed.scheme(), "http" | "https")
+            || (parsed.scheme() == "http" && !loopback)
+            || parsed.username() != ""
+            || parsed.password().is_some()
+            || parsed.path() != "/"
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+            || parsed.origin().ascii_serialization() != value
+            || !origins.insert(value.to_owned())
+        {
+            return Err(format!("non-canonical or duplicate origin `{value}`"));
+        }
+    }
+    Ok(origins)
 }
 
 async fn stamp_wire_version(mut response: axum::response::Response) -> axum::response::Response {

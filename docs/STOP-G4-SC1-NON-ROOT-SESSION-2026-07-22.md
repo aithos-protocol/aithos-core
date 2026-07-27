@@ -1,8 +1,14 @@
 # STOP G4 — SC1 ne consomme pas une feuille de sous-mandat
 
+> **RÉSOLU — archive de diagnostic.** Le front door Core
+> `verify_delegated_session(DelegatedSessionEvidence)` a été ajouté vectors-first,
+> puis branché par la Gateway dans le commit `e90fc41`. Le blocage décrit ci-dessous
+> n'existe plus ; le texte est conservé pour expliquer pourquoi l'extension était
+> nécessaire.
+
 Date : 2026-07-22
 
-Statut : STOP avant P7, conformément au §15 du handoff G4.
+Statut historique : STOP observé avant P7, levé le 22 juillet 2026.
 
 ## Constat reproductible
 

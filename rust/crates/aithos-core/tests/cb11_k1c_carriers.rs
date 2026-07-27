@@ -92,6 +92,7 @@ fn context(vector: &Value) -> K1cVerificationContext {
             .as_array()
             .expect("predecessors")
             .clone(),
+        sparse_parent_manifest: None,
         parent_store: string_map(&context["store_before"]),
         candidate_store: string_map(&context["store_after"]),
         change_causes: value_map(&context["change_causes"]),

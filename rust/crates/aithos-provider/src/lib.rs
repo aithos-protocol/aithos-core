@@ -36,6 +36,7 @@ pub mod artifacts;
 pub mod control;
 pub mod dns;
 pub mod envelope;
+pub mod fs_backend;
 pub mod heads;
 pub mod keepalive;
 pub mod nonces;

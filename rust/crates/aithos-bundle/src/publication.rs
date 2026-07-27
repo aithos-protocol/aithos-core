@@ -175,15 +175,134 @@ fn expected_files(
     context: &K1cVerificationContext,
     sidecars: &BTreeMap<String, Vec<u8>>,
 ) -> Result<BTreeMap<String, String>> {
-    let mut files = BTreeMap::new();
+    let sparse_parent = verify_sparse_parent(context)?;
+    let mut files = sparse_parent
+        .as_ref()
+        .map(|manifest| manifest.files.clone())
+        .unwrap_or_default();
+
+    if sparse_parent.is_some() {
+        let changed_paths = context
+            .parent_store
+            .keys()
+            .chain(context.candidate_store.keys())
+            .filter(|path| context.parent_store.get(*path) != context.candidate_store.get(*path))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for path in changed_paths {
+            match context.candidate_store.get(&path) {
+                Some(bytes) => {
+                    files.insert(path, sha256_hex(bytes));
+                }
+                None => {
+                    files.remove(&path);
+                }
+            }
+        }
+    }
+
     for (path, bytes) in context.candidate_store.iter().chain(sidecars) {
         validate_store_key(path)
             .map_err(|error| invalid(format!("candidate Store key {path}: {error}")))?;
-        if files.insert(path.clone(), sha256_hex(bytes)).is_some() {
-            return Err(invalid(format!("duplicate candidate Store key: {path}")));
+        let digest = sha256_hex(bytes);
+        if let Some(existing) = files.insert(path.clone(), digest.clone()) {
+            if existing != digest {
+                return Err(invalid(format!("conflicting candidate Store key: {path}")));
+            }
         }
     }
     Ok(files)
+}
+
+/// Validate the signed parent that makes a sparse working set meaningful.
+///
+/// Every loaded parent byte must either match a file commitment in that
+/// manifest or be the byte-identical history copy of the manifest itself.
+/// Any candidate change to an existing retained object must therefore load
+/// its before-state explicitly; omission can only mean “unchanged”.
+fn verify_sparse_parent(context: &K1cVerificationContext) -> Result<Option<Manifest>> {
+    let Some(value) = &context.sparse_parent_manifest else {
+        return Ok(None);
+    };
+    let parent: Manifest = serde_json::from_value(value.clone())
+        .map_err(|error| manifest_error(format!("sparse parent is invalid: {error}")))?;
+    parent.verify_form()?;
+    if context.height != parent.edition.height + 1
+        || context.predecessors.as_slice()
+            != [Value::String(format!("sha256:{}", parent.chain_hash()?))]
+    {
+        return Err(invalid(
+            "sparse parent does not match the publication predecessor",
+        ));
+    }
+
+    let did_bytes = context
+        .parent_store
+        .get("did.json")
+        .ok_or_else(|| invalid("sparse parent DID document is missing"))?;
+    let did: DidDocument = serde_json::from_slice(did_bytes)
+        .map_err(|error| invalid(format!("sparse parent DID is invalid: {error}")))?;
+    did.verify()?;
+    if parent.authorized_via.is_empty() {
+        parent.verify_signature(&did)?;
+    } else {
+        let chain = parent
+            .authorized_via
+            .iter()
+            .map(|id| {
+                let bytes = context
+                    .parent_store
+                    .get(&format!("certs/{id}.json"))
+                    .ok_or_else(|| {
+                        invalid(format!(
+                            "sparse parent authority certificate is missing: {id}"
+                        ))
+                    })?;
+                serde_json::from_slice::<Mandate>(bytes).map_err(|error| {
+                    invalid(format!(
+                        "sparse parent authority certificate is invalid: {error}"
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        verify_chain(&chain, &did, &parent.edition.created_at)?;
+        parent.verify_delegate_signature(
+            chain
+                .last()
+                .ok_or_else(|| invalid("sparse parent authority chain is empty"))?,
+        )?;
+    }
+
+    let history_path = format!("manifests/{}.json", parent.edition.height);
+    let parent_bytes = jcs::canonical_bytes(&parent)?;
+    for (path, bytes) in &context.parent_store {
+        if path == &history_path {
+            if bytes != &parent_bytes {
+                return Err(invalid(
+                    "sparse parent history copy differs from the signed manifest",
+                ));
+            }
+            continue;
+        }
+        let expected = parent
+            .files
+            .get(path)
+            .ok_or_else(|| invalid(format!("sparse parent contains an unpinned object: {path}")))?;
+        if sha256_hex(bytes) != *expected {
+            return Err(invalid(format!(
+                "sparse parent object was substituted: {path}"
+            )));
+        }
+    }
+
+    for path in context.candidate_store.keys() {
+        if parent.files.contains_key(path) && !context.parent_store.contains_key(path) {
+            return Err(invalid(format!(
+                "sparse candidate changes retained object without its before-state: {path}"
+            )));
+        }
+    }
+    Ok(Some(parent))
 }
 
 /// Typed in-memory form of one signed draft.2 candidate.
@@ -540,8 +659,10 @@ pub fn export_keyless(
     verify_draft2_candidate(&candidate, &context)?;
     let mut objects = context.candidate_store.clone();
     for (path, bytes) in &candidate.sidecars {
-        if objects.insert(path.clone(), bytes.clone()).is_some() {
-            return Err(invalid(format!("duplicate exported object: {path}")));
+        if let Some(existing) = objects.insert(path.clone(), bytes.clone()) {
+            if existing != *bytes {
+                return Err(invalid(format!("conflicting exported object: {path}")));
+            }
         }
     }
     let manifest_bytes = canonical(
@@ -557,8 +678,10 @@ pub fn export_keyless(
     for (path, bytes) in extra_public_objects {
         validate_store_key(&path)
             .map_err(|error| invalid(format!("extra package object {path}: {error}")))?;
-        if objects.insert(path.clone(), bytes).is_some() {
-            return Err(invalid(format!("duplicate exported object: {path}")));
+        if let Some(existing) = objects.insert(path.clone(), bytes.clone()) {
+            if existing != bytes {
+                return Err(invalid(format!("conflicting exported object: {path}")));
+            }
         }
     }
     for path in objects.keys() {

@@ -1,5 +1,8 @@
 # Handoff — coffre de credentials MCP : tranche V0→V3 CLOSE
 
+> **ARCHIVE DE PREUVE.** V0–V3 restent clos ; V4 et les prochaines étapes de ce
+> document ne constituent plus le backlog courant.
+
 **Date :** 2026-07-15 (7ᵉ session gw, profil cloud+janitor)
 **Branche :** `feat/obligations` (jamais switchée)
 **HEAD d'arrivée :** `e9d2a8d` — **HEAD de sortie :** le commit de ce handoff,

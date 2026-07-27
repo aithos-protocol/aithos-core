@@ -1,5 +1,7 @@
 # PROMPT DE REPRISE — Piste P / Provider — P2 (intégration protocolaire de publication)
 
+> **ARCHIVE — ne pas exécuter.** P2 possède désormais ses gates `DONE`.
+
 > À coller dans un contexte frais. Reprend la piste P au point exact du
 > 2026-07-19 : **M2 est déployé et validé en production, CB13 (core +
 > bundle) est vert, et P2 est débloqué.** Se lit avec

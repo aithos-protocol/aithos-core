@@ -23,7 +23,9 @@ use crate::compiled_extensions::{
 };
 use crate::config::{
     CompiledConnectorAdapter, CompiledConnectorSettings, ConnectorExecutionProfile, GatewayConfig,
-    OAuthClientAuthentication, ServerConfig, StoreConfig, UpstreamOAuthConfig,
+    OAuthAccessType, OAuthAuthorizationParameters, OAuthClientAuthentication,
+    OAuthEndpointStrategy, OAuthRegistrationStrategy, ServerConfig, StoreConfig,
+    UpstreamOAuthConfig,
 };
 use crate::connector_profiles::{
     ConnectorInstanceKey, ConnectorProfileCatalog, ConnectorProfileRef, OAuthVaultLayout,
@@ -52,6 +54,15 @@ const VAULT_BEARER_RECORD: &str = "bearer";
 const SIDECAR_DIRECTORY: &str = ".aithos-sidecar";
 const REGISTRY_RELATIVE_PATH: &str = "gateway/connectors.json";
 const DEFAULT_CREDENTIAL_BROKER: &str = "enterprise";
+const GOOGLE_GMAIL_MCP_ENDPOINT: &str = "https://gmailmcp.googleapis.com/mcp/v1";
+const GOOGLE_SHEETS_MCP_ENDPOINT: &str = "https://sheetsmcp.googleapis.com/mcp/v1";
+const GOOGLE_AUTHORIZATION_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
+const GOOGLE_REVOCATION_ENDPOINT: &str = "https://oauth2.googleapis.com/revoke";
+const GOOGLE_GMAIL_READ_SCOPE: &str = "https://www.googleapis.com/auth/gmail.readonly";
+const GOOGLE_GMAIL_COMPOSE_SCOPE: &str = "https://www.googleapis.com/auth/gmail.compose";
+const GOOGLE_DRIVE_READ_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
+const GOOGLE_SHEETS_SCOPE: &str = "https://www.googleapis.com/auth/spreadsheets";
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(1);
 
@@ -146,6 +157,21 @@ pub struct ConnectorCredentialStageRequest {
     pub auth: ConnectorCredentialAuth,
 }
 
+/// Dynamic OAuth staging for the official Google Gmail MCP.
+///
+/// Unlike legacy template staging, the manifest is discovered only after the
+/// owner completes OAuth, then sealed into the Ethos before activation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorOAuthStageRequest {
+    pub v: u8,
+    pub id: String,
+    pub context: String,
+    pub endpoint: String,
+    pub transport: ConnectorTransport,
+    pub oauth: ConnectorOAuthDescriptor,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectorCredentialAuth {
@@ -225,6 +251,9 @@ pub struct ConnectorView {
     /// Presence only: a credential was written to the vault broker. Never the secret.
     pub secret_stored: bool,
     pub approved_manifest: ApprovedManifestRef,
+    /// True when activation/restoration must resolve this approval from the
+    /// current Ethos snapshot rather than trusting the registry pin alone.
+    pub ethos_binding_required: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<ConnectorProfileRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -262,6 +291,16 @@ pub struct ConnectorActivation {
     pub connector: ConnectorView,
     pub approved_digest: String,
     pub live_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ConnectorPreparation {
+    pub v: u8,
+    pub connector: ConnectorView,
+    pub approved_manifest: crate::hub::ApprovedManifest,
+    pub approved_digest: String,
+    pub live_digest: String,
+    pub gateway_signing_key: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -306,6 +345,8 @@ struct PersistedConnector {
     oauth: Option<ConnectorOAuthDescriptor>,
     approved_manifest: ApprovedManifestRef,
     #[serde(default)]
+    ethos_binding_required: bool,
+    #[serde(default)]
     profile: Option<ConnectorProfileRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     profile_pin: Option<String>,
@@ -340,6 +381,7 @@ impl PersistedConnector {
             cleanup: self.cleanup,
             secret_stored: self.secret_stored,
             approved_manifest: self.approved_manifest.clone(),
+            ethos_binding_required: self.ethos_binding_required,
             profile: self.profile.clone(),
             account_id: self.profile.as_ref().map(|_| self.account.clone()),
             live_digest: self.live_digest.clone(),
@@ -754,30 +796,20 @@ impl ConnectorControl {
             if connector.is_bearer() {
                 continue;
             }
-            let config = if connector.profile.is_some() {
-                match self.profile_oauth_config(&connector) {
-                    Ok(config) => config,
-                    Err(_) => {
-                        let mut registry = self.registry.lock().map_err(|_| {
-                            GatewayError::ConfigRejected("connector registry lock failed".into())
-                        })?;
-                        let mut closed = connector.clone();
-                        closed.active = false;
-                        closed.state = ConnectorState::Drifted;
-                        closed.live_digest = None;
-                        registry.replace(closed);
-                        let _ = self.store.persist(&registry);
-                        continue;
-                    }
+            let config = match self.runtime_oauth_config(&connector) {
+                Ok(config) => config,
+                Err(_) => {
+                    let mut registry = self.registry.lock().map_err(|_| {
+                        GatewayError::ConfigRejected("connector registry lock failed".into())
+                    })?;
+                    let mut closed = connector.clone();
+                    closed.active = false;
+                    closed.state = ConnectorState::Drifted;
+                    closed.live_digest = None;
+                    registry.replace(closed);
+                    let _ = self.store.persist(&registry);
+                    continue;
                 }
-            } else {
-                let template = self.templates.get(&connector.id).ok_or_else(|| {
-                    GatewayError::ConfigRejected(format!(
-                        "connector `{}` no longer has an approved server template",
-                        connector.id
-                    ))
-                })?;
-                self.oauth_config(&connector, template)
             };
             self.oauth.upsert(&connector.id, config, &self.brokers)?;
         }
@@ -795,6 +827,10 @@ impl ConnectorControl {
     pub fn parse_credential_stage(
         bytes: &[u8],
     ) -> ConnectorResult<ConnectorCredentialStageRequest> {
+        serde_json::from_slice(bytes).map_err(|_| ConnectorFailure::NotApproved)
+    }
+
+    pub fn parse_oauth_stage(bytes: &[u8]) -> ConnectorResult<ConnectorOAuthStageRequest> {
         serde_json::from_slice(bytes).map_err(|_| ConnectorFailure::NotApproved)
     }
 
@@ -883,6 +919,7 @@ impl ConnectorControl {
             auth: ConnectorAuthKind::Oauth,
             oauth: Some(request.oauth),
             approved_manifest: request.approved_manifest,
+            ethos_binding_required: true,
             profile: None,
             profile_pin: None,
             principal: legacy_principal(),
@@ -1001,6 +1038,7 @@ impl ConnectorControl {
                 id: manifest_id,
                 pin: manifest_pin,
             },
+            ethos_binding_required: true,
             profile: Some(request.profile),
             profile_pin: Some(profile_pin),
             principal: principal_id.to_owned(),
@@ -1068,9 +1106,10 @@ impl ConnectorControl {
             oauth: None,
             approved_manifest: ApprovedManifestRef {
                 id: path_id.to_owned(),
-                // Filled on first successful activate (owner TOFU digest).
+                // Filled by inactive TOFU preparation before Owner publication.
                 pin: String::new(),
             },
+            ethos_binding_required: true,
             profile: None,
             profile_pin: None,
             principal: legacy_principal(),
@@ -1094,6 +1133,151 @@ impl ConnectorControl {
         next.replace(connector.clone());
         self.commit_registry(next)?;
         Ok(connector.view())
+    }
+
+    pub async fn stage_oauth(
+        &self,
+        principal_context: &str,
+        principal_id: &str,
+        path_id: &str,
+        request: ConnectorOAuthStageRequest,
+    ) -> ConnectorResult<ConnectorView> {
+        let _operation = self.operation.lock().await;
+        self.validate_oauth_stage(principal_context, path_id, &request)?;
+        let mut next = self.registry_snapshot()?;
+        if let Some(current) = next
+            .connectors
+            .iter()
+            .find(|connector| connector.id == path_id)
+        {
+            ensure_principal_access(current, principal_id)?;
+            if current.active
+                || current.context != request.context
+                || current.endpoint != request.endpoint
+                || current.transport != request.transport
+                || current.oauth.as_ref() != Some(&request.oauth)
+                || current.profile.is_some()
+            {
+                return Err(ConnectorFailure::NotApproved);
+            }
+            // Exact replay after a later Vault/OAuth failure is a successful
+            // recovery boundary. Preserve the issued account and draft state.
+            return Ok(current.view());
+        }
+        let connector = PersistedConnector {
+            id: request.id,
+            context: request.context,
+            endpoint: request.endpoint,
+            transport: request.transport,
+            auth: ConnectorAuthKind::Oauth,
+            oauth: Some(request.oauth),
+            approved_manifest: ApprovedManifestRef {
+                id: path_id.to_owned(),
+                pin: String::new(),
+            },
+            ethos_binding_required: true,
+            profile: None,
+            profile_pin: None,
+            principal: principal_id.to_owned(),
+            account: ConnectorInstanceKey::issue_account_id(),
+            state: ConnectorState::SecretMissing,
+            active: false,
+            cleanup: ConnectorCleanupState::Clean,
+            secret_stored: false,
+            live_digest: None,
+        };
+        let oauth_config = self.dynamic_google_oauth_config(&connector)?;
+        ensure_oauth_brokers(&oauth_config, &self.brokers)?;
+        self.runner
+            .lock()
+            .await
+            .record_connector_config(principal_context, path_id, "oauth_stage", &(self.clock)())
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        self.oauth
+            .upsert(path_id, oauth_config, &self.brokers)
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        next.replace(connector.clone());
+        self.commit_registry(next)?;
+        Ok(connector.view())
+    }
+
+    /// Discover and pin the first authenticated catalogue without exposing tools.
+    ///
+    /// This keeps the MVP TOFU decision while moving its trust point before
+    /// activation: the returned manifest must first be sealed into the Ethos.
+    pub async fn prepare_credential_binding(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+    ) -> ConnectorResult<ConnectorPreparation> {
+        let _operation = self.operation.lock().await;
+        let mut next = self.registry_snapshot()?;
+        let mut connector = next.get(context, id)?.clone();
+        ensure_principal_access(&connector, principal_id)?;
+        if !connector.secret_stored {
+            return Err(ConnectorFailure::SecretUnavailable);
+        }
+        let upstream = if connector.is_bearer() {
+            self.bearer_upstream(&connector)?
+        } else {
+            if !matches!(
+                self.oauth.public_state(id).await,
+                UpstreamOAuthState::Connected | UpstreamOAuthState::Expired
+            ) {
+                return Err(ConnectorFailure::OauthUnavailable);
+            }
+            let client = self
+                .oauth
+                .get(id)
+                .ok_or(ConnectorFailure::OauthUnavailable)?;
+            HttpUpstream::with_oauth_client(connector.endpoint.clone(), client)
+        };
+        let observed = discover_server(id, &upstream)
+            .await
+            .map_err(|error| match error {
+                GatewayError::CredentialUnavailable(_) => ConnectorFailure::SecretUnavailable,
+                _ => ConnectorFailure::UpstreamDenied,
+            })?;
+        let live_digest = proposed_manifest_catalog_digest(&observed)
+            .map_err(|_| ConnectorFailure::ManifestDrift)?;
+        if !connector.approved_manifest.pin.is_empty()
+            && connector.approved_manifest.pin != live_digest
+        {
+            connector.state = ConnectorState::Drifted;
+            connector.live_digest = Some(live_digest);
+            next.replace(connector);
+            let _ = self.commit_registry(next);
+            return Err(ConnectorFailure::ManifestDrift);
+        }
+        let approved =
+            approve_discovered_tofu(&observed).map_err(|_| ConnectorFailure::ActivationFailed)?;
+        let mut runner = self.runner.lock().await;
+        runner
+            .validate_hot_connector(context, id, &approved)
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        runner
+            .record_connector_config(context, id, "credential_prepare", &(self.clock)())
+            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        let gateway_signing_key = runner.gateway_public_key();
+        drop(runner);
+
+        connector.approved_manifest.pin = live_digest.clone();
+        connector.ethos_binding_required = true;
+        if !connector.active {
+            connector.state = ConnectorState::Disconnected;
+        }
+        connector.live_digest = Some(live_digest.clone());
+        next.replace(connector.clone());
+        self.commit_registry(next)?;
+        Ok(ConnectorPreparation {
+            v: REGISTRY_VERSION,
+            connector: connector.view(),
+            approved_manifest: approved,
+            approved_digest: live_digest.clone(),
+            live_digest,
+            gateway_signing_key,
+        })
     }
 
     pub async fn set_client_secret(
@@ -1301,9 +1485,7 @@ impl ConnectorControl {
             return Err(ConnectorFailure::SecretUnavailable);
         }
         if connector.is_bearer() {
-            return self
-                .activate_bearer(context, id, next, connector)
-                .await;
+            return self.activate_bearer(context, id, next, connector).await;
         }
         connector.state = match self.oauth.public_state(id).await {
             UpstreamOAuthState::Pending { .. } => ConnectorState::Pending,
@@ -1326,17 +1508,22 @@ impl ConnectorControl {
             if connector.profile_pin.as_deref() != Some(current_pin.as_str()) {
                 return Err(ConnectorFailure::ManifestDrift);
             }
-        } else {
+        } else if !is_dynamic_google_mcp_endpoint(&connector.endpoint) {
             self.templates
                 .get(id)
                 .ok_or(ConnectorFailure::NotApproved)?;
         }
-        let (manifest, approved_digest) = self
-            .runner
-            .lock()
-            .await
-            .approved_connector(context, &connector.approved_manifest.id)
-            .map_err(|_| ConnectorFailure::NotApproved)?;
+        let (manifest, approved_digest) = {
+            let runner = self.runner.lock().await;
+            if connector.ethos_binding_required {
+                runner
+                    .refresh_approved_connector(context, &connector.approved_manifest.id)
+                    .map_err(|_| ConnectorFailure::NotApproved)?;
+            }
+            runner
+                .approved_connector(context, &connector.approved_manifest.id)
+                .map_err(|_| ConnectorFailure::NotApproved)?
+        };
         if connector.approved_manifest.id != manifest.server
             || connector.approved_manifest.pin != approved_digest
         {
@@ -1733,6 +1920,18 @@ impl ConnectorControl {
             .map_err(|_| ConnectorFailure::OauthDenied)
     }
 
+    pub async fn gmail_approvals(
+        &self,
+        context: &str,
+        principal_id: &str,
+        id: &str,
+    ) -> ConnectorResult<Vec<ApprovalView>> {
+        self.gmail_extension(context, principal_id, id)?
+            .owner_list()
+            .await
+            .map_err(|_| ConnectorFailure::OauthDenied)
+    }
+
     pub async fn gmail_approve(
         &self,
         context: &str,
@@ -1991,8 +2190,10 @@ impl ConnectorControl {
                 return Err(ConnectorFailure::ManifestDrift);
             }
         };
-        // First activation seals the live catalogue (owner TOFU). Later
-        // activations and restores refuse drift against that pin.
+        // Legacy first activation pins the live catalogue locally. The new
+        // MVP path sets `ethos_binding_required` during inactive preparation
+        // and must resolve the same pin from the current Ethos before tools
+        // can be installed.
         if !connector.approved_manifest.pin.is_empty()
             && connector.approved_manifest.pin != live_digest
         {
@@ -2004,10 +2205,29 @@ impl ConnectorControl {
             let _ = self.commit_registry(next);
             return Err(ConnectorFailure::ManifestDrift);
         }
-        let approved = approve_discovered_bearer(&observed)
-            .map_err(|_| ConnectorFailure::ActivationFailed)?;
-        let approved_digest = live_digest.clone();
         let mut runner = self.runner.lock().await;
+        let (approved, approved_digest) = if connector.ethos_binding_required {
+            runner
+                .refresh_approved_connector(context, id)
+                .map_err(|_| ConnectorFailure::NotApproved)?;
+            let (approved, digest) = runner
+                .approved_connector(context, id)
+                .map_err(|_| ConnectorFailure::NotApproved)?;
+            if digest != live_digest
+                || connector.approved_manifest.id != approved.server
+                || (!connector.approved_manifest.pin.is_empty()
+                    && connector.approved_manifest.pin != digest)
+            {
+                return Err(ConnectorFailure::ManifestDrift);
+            }
+            (approved, digest)
+        } else {
+            (
+                approve_discovered_tofu(&observed)
+                    .map_err(|_| ConnectorFailure::ActivationFailed)?,
+                live_digest.clone(),
+            )
+        };
         runner
             .validate_hot_connector(context, id, &approved)
             .map_err(|_| ConnectorFailure::ActivationFailed)?;
@@ -2029,7 +2249,7 @@ impl ConnectorControl {
         };
         let installed_tools = installed_upstream
             && runner
-                .install_hot_connector(context, id, &approved)
+                .reconcile_bound_hot_connector(context, id, &approved, &approved_digest)
                 .is_ok();
         if !installed_tools {
             runner.remove_hot_connector(id);
@@ -2069,8 +2289,21 @@ impl ConnectorControl {
         if live_digest != connector.approved_manifest.pin {
             return Err(ConnectorFailure::ManifestDrift);
         }
-        let approved = approve_discovered_bearer(&observed)
-            .map_err(|_| ConnectorFailure::ActivationFailed)?;
+        let approved = if connector.ethos_binding_required {
+            let runner = self.runner.lock().await;
+            runner
+                .refresh_approved_connector(&connector.context, &connector.id)
+                .map_err(|_| ConnectorFailure::NotApproved)?;
+            let (approved, digest) = runner
+                .approved_connector(&connector.context, &connector.id)
+                .map_err(|_| ConnectorFailure::NotApproved)?;
+            if digest != live_digest {
+                return Err(ConnectorFailure::ManifestDrift);
+            }
+            approved
+        } else {
+            approve_discovered_tofu(&observed).map_err(|_| ConnectorFailure::ActivationFailed)?
+        };
         self.dynamic_upstreams
             .write()
             .map_err(|_| ConnectorFailure::ActivationFailed)?
@@ -2078,7 +2311,12 @@ impl ConnectorControl {
         self.runner
             .lock()
             .await
-            .install_hot_connector(&connector.context, &connector.id, &approved)
+            .reconcile_bound_hot_connector(
+                &connector.context,
+                &connector.id,
+                &approved,
+                &live_digest,
+            )
             .map_err(|_| ConnectorFailure::ActivationFailed)?;
         Ok(())
     }
@@ -2132,6 +2370,24 @@ impl ConnectorControl {
             || !valid_id(path_id)
             || !valid_id(&request.context)
             || !valid_public_endpoint(&request.endpoint)
+        {
+            return Err(ConnectorFailure::NotApproved);
+        }
+        Ok(())
+    }
+
+    fn validate_oauth_stage(
+        &self,
+        principal_context: &str,
+        path_id: &str,
+        request: &ConnectorOAuthStageRequest,
+    ) -> ConnectorResult<()> {
+        if request.v != REGISTRY_VERSION
+            || request.id != path_id
+            || request.context != principal_context
+            || !valid_id(path_id)
+            || !valid_id(&request.context)
+            || !valid_google_workspace_oauth(&request.endpoint, &request.oauth)
         {
             return Err(ConnectorFailure::NotApproved);
         }
@@ -2293,6 +2549,60 @@ impl ConnectorControl {
         }
     }
 
+    fn dynamic_google_oauth_config(
+        &self,
+        connector: &PersistedConnector,
+    ) -> ConnectorResult<UpstreamOAuthConfig> {
+        let oauth = connector
+            .oauth
+            .as_ref()
+            .filter(|oauth| valid_google_workspace_oauth(&connector.endpoint, oauth))
+            .ok_or(ConnectorFailure::NotApproved)?;
+        let broker = credential_broker_name(&self.brokers)?;
+        Ok(UpstreamOAuthConfig {
+            auth_url: oauth.authorization_endpoint.clone(),
+            token_url: oauth.token_endpoint.clone(),
+            client_id: oauth.client_id.clone(),
+            client_secret: Some(derived_reference(
+                &broker,
+                &connector.id,
+                &oauth.client_secret_record,
+            )),
+            scopes: oauth.scopes.clone(),
+            redirect_uri: oauth.redirect_uri.clone(),
+            // Google publishes a protected-resource authorization server with
+            // a trailing slash while its issuer omits it, and hosts token and
+            // revocation endpoints on a distinct origin. The descriptor is
+            // already constrained by `valid_google_workspace_oauth`, so use those
+            // exact approved endpoints instead of applying the generic
+            // single-origin discovery policy.
+            endpoints: OAuthEndpointStrategy::Static,
+            client_authentication: OAuthClientAuthentication::ClientSecretPost,
+            registration: OAuthRegistrationStrategy::Static,
+            authorization_parameters: OAuthAuthorizationParameters {
+                access_type: Some(OAuthAccessType::Offline),
+                // Connector tokens remain authority-isolated even when the
+                // owner reuses one Google OAuth client across Gmail/Sheets.
+                include_granted_scopes: false,
+                // Google only guarantees a refresh token on the first grant
+                // unless consent is explicitly requested again.
+                prompt_consent: true,
+                prompt_consent_on_repair: true,
+            },
+            resource: Some(connector.endpoint.clone()),
+            audience: None,
+            revocation_url: Some(GOOGLE_REVOCATION_ENDPOINT.to_owned()),
+            account_binding: None,
+            pending_vault: Some(derived_reference(
+                &broker,
+                &connector.id,
+                &oauth.pending_record,
+            )),
+            revocation_vault: None,
+            token_vault: derived_reference(&broker, &connector.id, &oauth.token_record),
+        })
+    }
+
     fn profile_oauth_config(&self, connector: &PersistedConnector) -> Result<UpstreamOAuthConfig> {
         let profile = connector.profile.as_ref().ok_or_else(|| {
             GatewayError::ConfigRejected("connector has no profile reference".into())
@@ -2321,6 +2631,8 @@ impl ConnectorControl {
         if connector.profile.is_some() {
             self.profile_oauth_config(connector)
                 .map_err(|_| ConnectorFailure::NotApproved)
+        } else if is_dynamic_google_mcp_endpoint(&connector.endpoint) {
+            self.dynamic_google_oauth_config(connector)
         } else {
             let template = self
                 .templates
@@ -2417,6 +2729,39 @@ fn valid_oauth_descriptor(oauth: &ConnectorOAuthDescriptor) -> bool {
             == 3
 }
 
+fn valid_google_workspace_oauth(endpoint: &str, oauth: &ConnectorOAuthDescriptor) -> bool {
+    let valid_scopes = match endpoint {
+        GOOGLE_GMAIL_MCP_ENDPOINT => {
+            oauth.scopes
+                == [
+                    GOOGLE_GMAIL_READ_SCOPE.to_owned(),
+                    GOOGLE_GMAIL_COMPOSE_SCOPE.to_owned(),
+                ]
+        }
+        GOOGLE_SHEETS_MCP_ENDPOINT => {
+            oauth.scopes
+                == [
+                    GOOGLE_DRIVE_READ_SCOPE.to_owned(),
+                    GOOGLE_SHEETS_SCOPE.to_owned(),
+                ]
+        }
+        _ => false,
+    };
+    valid_oauth_descriptor(oauth)
+        && oauth.authorization_endpoint == GOOGLE_AUTHORIZATION_ENDPOINT
+        && oauth.token_endpoint == GOOGLE_TOKEN_ENDPOINT
+        && valid_scopes
+        && oauth.redirect_uri.starts_with("https://")
+        && oauth.redirect_uri.ends_with("/oauth/callback")
+}
+
+fn is_dynamic_google_mcp_endpoint(endpoint: &str) -> bool {
+    matches!(
+        endpoint,
+        GOOGLE_GMAIL_MCP_ENDPOINT | GOOGLE_SHEETS_MCP_ENDPOINT
+    )
+}
+
 fn valid_public_descriptor(connector: &PersistedConnector) -> bool {
     if connector.endpoint.len() > MAX_URL_BYTES || connector.endpoint.is_empty() {
         return false;
@@ -2429,12 +2774,15 @@ fn valid_public_descriptor(connector: &PersistedConnector) -> bool {
             && (connector.approved_manifest.pin.is_empty()
                 || connector.approved_manifest.pin.starts_with("sha256:"));
     }
-    connector
-        .oauth
-        .as_ref()
-        .is_some_and(valid_oauth_descriptor)
+    connector.oauth.as_ref().is_some_and(valid_oauth_descriptor)
         && connector.approved_manifest.pin.len() <= 128
-        && connector.approved_manifest.pin.starts_with("sha256:")
+        && (connector.approved_manifest.pin.starts_with("sha256:")
+            || (connector.approved_manifest.pin.is_empty()
+                && is_dynamic_google_mcp_endpoint(&connector.endpoint)
+                && connector
+                    .oauth
+                    .as_ref()
+                    .is_some_and(|oauth| valid_google_workspace_oauth(&connector.endpoint, oauth))))
 }
 
 fn credential_broker_name(
@@ -2454,7 +2802,10 @@ fn valid_public_endpoint(endpoint: &str) -> bool {
         return false;
     }
     if let Some(rest) = endpoint.strip_prefix("https://") {
-        return rest.split(['/', '?']).next().is_some_and(|host| !host.is_empty());
+        return rest
+            .split(['/', '?'])
+            .next()
+            .is_some_and(|host| !host.is_empty());
     }
     endpoint
         .strip_prefix("http://")
@@ -2467,7 +2818,7 @@ fn valid_public_endpoint(endpoint: &str) -> bool {
         })
 }
 
-fn approve_discovered_bearer(observed: &ProposedManifest) -> Result<ApprovedManifest> {
+fn approve_discovered_tofu(observed: &ProposedManifest) -> Result<ApprovedManifest> {
     use crate::config::ToolAccess;
     use crate::hub::{approve_manifest, ToolApproval};
 
@@ -2491,7 +2842,7 @@ fn ensure_principal_access(
     connector: &PersistedConnector,
     principal_id: &str,
 ) -> ConnectorResult<()> {
-    if connector.profile.is_some() && connector.principal != principal_id {
+    if connector.principal != legacy_principal() && connector.principal != principal_id {
         Err(ConnectorFailure::NotApproved)
     } else {
         Ok(())
@@ -2652,6 +3003,7 @@ mod tests {
                     id: id.to_owned(),
                     pin: "sha256:approved".into(),
                 },
+                ethos_binding_required: true,
                 profile: None,
                 profile_pin: None,
                 principal: legacy_principal(),
@@ -2700,6 +3052,26 @@ mod tests {
             br#"{"v":1,"id":"notes","context":"travail","endpoint":"http://evil.example/mcp","transport":"streamable-http","auth":"bearer"}"#
         )
         .is_ok());
+        assert!(ConnectorControl::parse_oauth_stage(
+            br#"{"v":1,"id":"gmail","context":"travail","endpoint":"https://gmailmcp.googleapis.com/mcp/v1","transport":"streamable-http","oauth":{"authorization_endpoint":"https://accounts.google.com/o/oauth2/v2/auth","token_endpoint":"https://oauth2.googleapis.com/token","client_id":"client.apps.googleusercontent.com","scopes":["https://www.googleapis.com/auth/gmail.readonly","https://www.googleapis.com/auth/gmail.compose"],"redirect_uri":"https://demo.mcp.aithos.fr/oauth/callback","client_secret_record":"client-secret","pending_record":"pending","token_record":"token"}}"#
+        )
+        .is_ok());
+        assert!(valid_google_workspace_oauth(
+            GOOGLE_GMAIL_MCP_ENDPOINT,
+            &ConnectorOAuthDescriptor {
+                authorization_endpoint: GOOGLE_AUTHORIZATION_ENDPOINT.into(),
+                token_endpoint: GOOGLE_TOKEN_ENDPOINT.into(),
+                client_id: "client.apps.googleusercontent.com".into(),
+                scopes: vec![
+                    GOOGLE_GMAIL_READ_SCOPE.into(),
+                    GOOGLE_GMAIL_COMPOSE_SCOPE.into(),
+                ],
+                redirect_uri: "https://demo.mcp.aithos.fr/oauth/callback".into(),
+                client_secret_record: "client-secret".into(),
+                pending_record: "pending".into(),
+                token_record: "token".into(),
+            },
+        ));
     }
 
     #[test]
@@ -2728,6 +3100,40 @@ mod tests {
         assert!(!valid_public_endpoint("http://mcp.evil.example/mcp"));
         assert!(!valid_public_endpoint("ftp://127.0.0.1/mcp"));
         assert!(!valid_public_endpoint(""));
+    }
+
+    #[test]
+    fn bearer_tofu_grants_the_complete_catalogue_for_mandate_narrowing() {
+        let schema = serde_json::json!({"type": "object"});
+        let observed = ProposedManifest {
+            version: crate::hub::MANIFEST_VERSION.into(),
+            server: "notes".into(),
+            tools: vec![
+                crate::hub::ProposedTool {
+                    name: "notes.list".into(),
+                    description: None,
+                    input_schema: schema.clone(),
+                    pin_sha256: crate::core_bridge::manifest_tool_pin("notes.list", None, &schema)
+                        .unwrap(),
+                },
+                crate::hub::ProposedTool {
+                    name: "notes.delete".into(),
+                    description: None,
+                    input_schema: schema.clone(),
+                    pin_sha256: crate::core_bridge::manifest_tool_pin(
+                        "notes.delete",
+                        None,
+                        &schema,
+                    )
+                    .unwrap(),
+                },
+            ],
+        };
+        let approved = approve_discovered_tofu(&observed).unwrap();
+        assert_eq!(approved.tools.len(), observed.tools.len());
+        assert!(approved.tools.iter().all(|tool| {
+            tool.risk_class == crate::config::ToolAccess::Write && tool.is_granted()
+        }));
     }
 
     #[test]

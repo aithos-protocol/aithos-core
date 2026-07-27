@@ -1359,6 +1359,18 @@ impl<S: Store> Bundle<S> {
         Err(Error::InvalidPath(format!("no self section {name}")))
     }
 
+    /// Resolve an owner-visible self display path to its opaque stable SID and
+    /// folder SID chain. The returned values contain no display metadata and
+    /// are suitable for constructing commitment-only publication facts.
+    pub fn resolve_self_section(
+        &self,
+        display_path: &str,
+        owner: &OwnerKeys,
+    ) -> Result<(Sid, Vec<Sid>)> {
+        self.self_resolve(display_path, &owner.owner_kex)
+            .map(|(folders, sid)| (sid, folders))
+    }
+
     /// Reconstruct the display tree of a zone (owner-side).
     pub fn zone_tree(&self, zone: Zone, owner: &OwnerKeys) -> Result<Vec<String>> {
         self.zone_tree_with_owner_kex(zone, &owner.owner_kex)

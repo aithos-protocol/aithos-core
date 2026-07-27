@@ -1,5 +1,7 @@
 # HANDOFF — Piste P / P7 bascule control-plane : VERT LOCAL (2026-07-20)
 
+> **ARCHIVE — jalon intermédiaire.** Le gate P7 déployé suivant clôt ce STOP.
+
 Date : 2026-07-20 (après-midi). Dépôts : `code/aithos-core` + `provider/`.
 État DISQUE = vérité. Statut : **le lot P7 est VERT LOCAL** — gate contrat
 joué (scénarios observés RED puis GREEN), 4 arbitrages tranchés par

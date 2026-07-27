@@ -1,5 +1,10 @@
 # Aithos Gateway — Handoff (reprise en contexte neuf)
 
+> **ARCHIVE — snapshot de construction.** Les compteurs, lots et prochaines
+> étapes datent d'avant G4, OAuth SaaS et le compagnon de démo intégré. Pour le
+> design, utiliser `GATEWAY-BOOTSTRAP.md` et `HUB-MCP.md` ; pour l'état courant,
+> utiliser `README.md`.
+
 **But.** Reprendre le chantier du gateway (runner conteneurisé) sans rien reperdre.
 Complète `GATEWAY-BOOTSTRAP.md` (le pourquoi/quoi) avec l'état exact du code et
 les leçons d'environnement. Session initiale : 2026-07-10.
@@ -759,4 +764,3 @@ jamais stagés. Trois scripts du test navigateur déposés dans
 sur le disque (décision Mathieu) : `HANDOFF-GATEWAY-HUB.md` (état express
 13ᵉ) et `HANDOFF-GATEWAY-G3-DONE-2026-07-17.md` (le handoff de cette
 session).
-

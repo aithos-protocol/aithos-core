@@ -372,15 +372,18 @@ fn validate_record(id: &str, value: &Value) -> Result<()> {
 }
 
 fn validate_id(id: &str) -> Result<()> {
-    if id.is_empty()
-        || id.len() > 160
-        || !id
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-    {
+    if !is_valid_state_id(id) {
         return Err(state_unavailable("OAuth state identifier is invalid"));
     }
     Ok(())
+}
+
+pub(crate) fn is_valid_state_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 160
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
 fn validate_segment(value: &str, label: &str) -> Result<()> {

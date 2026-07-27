@@ -1,5 +1,7 @@
 # HANDOFF — Piste P / P7b bascule relay : GATE DÉPLOYÉ — FAIT (2026-07-20)
 
+> **ARCHIVE DE PREUVE.** Bascule relay P7b close.
+
 Date : 2026-07-20 (soirée). Dépôts : code/aithos-core + provider/. État DISQUE = vérité.
 Statut : le gate P7b est JOUÉ et VERT — **le relay lit ses mappings B.2 dans la table
 control** (task def relay `:8`, plus aucun bootstrap nulle part en prod), le join

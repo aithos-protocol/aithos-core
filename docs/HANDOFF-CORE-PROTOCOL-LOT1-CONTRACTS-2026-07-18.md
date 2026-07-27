@@ -1,5 +1,8 @@
 # Handoff — Aithos Core, Lot 1 : contrats de complétude
 
+> **ARCHIVE — contrats de lot exécutés.** Ce snapshot précède l'implémentation
+> CB1–CB13 et ne constitue plus un backlog.
+
 **Date :** 2026-07-18
 
 **Statut :** gate produit Lot 0 validé ; D1–D9 actées ; relation

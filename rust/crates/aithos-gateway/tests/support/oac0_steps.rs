@@ -1393,6 +1393,7 @@ async fn google_authorization_profile(w: &mut GatewayWorld) {
     config.authorization_parameters = OAuthAuthorizationParameters {
         access_type: Some(OAuthAccessType::Offline),
         include_granted_scopes: true,
+        prompt_consent: false,
         prompt_consent_on_repair: false,
     };
     harness(w).config = Some(config);

@@ -3,7 +3,7 @@
 //! The library stays pure (T and entropy injected); this surface supplies
 //! the system clock and OS randomness, exactly like the aithos-core CLI.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -172,6 +172,9 @@ enum Command {
         label: String,
         #[arg(long)]
         delegate_pub: String,
+        /// Exact OAuth protected resource this parent may authorize.
+        #[arg(long)]
+        gateway_audience: String,
         /// Exact agent-facing MCP tool granted to the future session.
         #[arg(long = "tool", required = true)]
         tools: Vec<String>,
@@ -202,6 +205,18 @@ enum Command {
         #[arg(long)]
         url: Option<String>,
         /// JSON proposal to review before enrollment.
+        #[arg(long)]
+        output: String,
+    },
+    /// OWNER SIDE: emit the immutable proposal for one compiled REST
+    /// connector profile without contacting an upstream provider.
+    OwnerProposeCompiled {
+        #[arg(long)]
+        server: String,
+        /// One of: google_sheets_read, google_sheets_write_guarded,
+        /// gmail_send_guarded.
+        #[arg(long)]
+        adapter: String,
         #[arg(long)]
         output: String,
     },
@@ -592,6 +607,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::OwnerGrantSessionDelegate {
             label,
             delegate_pub,
+            gateway_audience,
             tools,
             store_root,
             ttl_days,
@@ -602,6 +618,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 &master,
                 label,
                 delegate_pub,
+                gateway_audience,
                 tools,
                 GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
                     root: store_root.into(),
@@ -763,6 +780,33 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("tools: {}", proposed.tools.len());
             return Ok(());
         }
+        Command::OwnerProposeCompiled {
+            server,
+            adapter,
+            output,
+        } => {
+            let adapter = match adapter.as_str() {
+                "google_sheets_read" => {
+                    aithos_gateway::config::CompiledConnectorAdapter::GoogleSheetsRead
+                }
+                "google_sheets_write_guarded" => {
+                    aithos_gateway::config::CompiledConnectorAdapter::GoogleSheetsWriteGuarded
+                }
+                "gmail_send_guarded" => {
+                    aithos_gateway::config::CompiledConnectorAdapter::GmailSendGuarded
+                }
+                _ => {
+                    return Err(format!("unsupported compiled adapter `{adapter}`").into());
+                }
+            };
+            let proposed =
+                aithos_gateway::compiled_extensions::compiled_manifest(server.clone(), adapter)?;
+            std::fs::write(output, serde_json::to_vec_pretty(&proposed)?)?;
+            println!("proposal: {output}");
+            println!("server: {server}");
+            println!("tools: {}", proposed.tools.len());
+            return Ok(());
+        }
         Command::OwnerDiscoverServer { url: None, .. } => {}
         Command::OwnerEnrollServer {
             master_seed_hex,
@@ -862,6 +906,10 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("context_did: {}", outcome.ethos_did);
             for approved in &approved_manifests {
                 println!("server: {}", approved.server);
+                println!(
+                    "manifest_pin: {}",
+                    aithos_gateway::core_bridge::approved_manifest_catalog_digest(approved)?
+                );
             }
             println!("agent_mandate: {}", outcome.agent_mandate);
             println!("gateway_mandate: {}", outcome.gateway_mandate);
@@ -931,6 +979,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         | Command::OwnerGrantEthosRead { .. }
         | Command::OwnerAddSection { .. }
         | Command::OwnerSetBriefing { .. }
+        | Command::OwnerProposeCompiled { .. }
         | Command::OwnerEnrollServer { .. }
         | Command::OwnerPreviewMandate { .. } => unreachable!("handled above"),
         Command::OwnerDiscoverServer {
@@ -1046,13 +1095,31 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             // one bridge per context + the journal, one upstream per
             // context, the same single agent-facing endpoint.
             let app = if let Some(contexts) = &cfg.contexts {
-                let opened_runner =
+                let mut opened_runner =
                     Runner::open_shared(&cfg, Arc::clone(&keyholder), || Box::new(OsEntropy))?;
+                let catalog_bootstrap =
+                    aithos_gateway::ethos_catalog::EthosCatalogBootstrap::restore(
+                        &cfg,
+                        Arc::clone(&keyholder),
+                        &mut opened_runner,
+                        (now_secs() as i64).saturating_mul(1_000),
+                    )?;
                 let control_reader = cfg
                     .dashboard
                     .as_ref()
                     .map(|_| ControlProofReader::from_runner(&opened_runner));
                 let runner = Arc::new(tokio::sync::Mutex::new(opened_runner));
+                let enrollment_control = match catalog_bootstrap {
+                    Some(bootstrap) => {
+                        let reader = control_reader.clone().ok_or_else(|| {
+                            aithos_gateway::GatewayError::ConfigRejected(
+                                "ethos catalogue requires dashboard control".into(),
+                            )
+                        })?;
+                        Some(Arc::new(bootstrap.activate(Arc::clone(&runner), reader)))
+                    }
+                    None => None,
+                };
                 let upstream_oauth = Arc::new(UpstreamOAuthRegistry::from_config(&cfg, &brokers)?);
                 let upstreams = if let Some(servers) = &cfg.servers {
                     // Brokered credentials: build every configured
@@ -1140,10 +1207,17 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 let routing = Arc::new(McpRouter {
                     runner: Arc::clone(&runner),
                     upstreams,
+                    ethos_backend: aithos_gateway::ethos_backend::ethos_backend_from_env()?,
                     dynamic_upstreams: empty_dynamic_upstreams(),
                     clock: Arc::new(|| ts(now_secs())),
                     session_entropy: std::sync::Mutex::new(Box::new(OsEntropy)),
                     oauth: oauth.clone(),
+                    // Dashboard origins alone are not enough: the hosted
+                    // ceremony page is served from `as.issuer`, and its
+                    // same-origin `/ceremony/*` fetches send that Origin.
+                    // Without it, Cowork OAuth dies with HTTP 403 before
+                    // prepare can return eligible parents.
+                    browser_origins: Arc::new(browser_origins_for_mcp(&cfg)),
                 });
                 if cfg.is_hub() {
                     let deferred = rt.block_on(upstream_oauth.disconnected_server_names());
@@ -1203,6 +1277,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     )?;
                     if let Some(connectors) = connector_control {
                         control = control.with_connectors(connectors);
+                    }
+                    if let Some(enrollment) = enrollment_control {
+                        control = control.with_ethos_enrollment(enrollment);
                     }
                     app = app.merge(aithos_gateway::control::router(Arc::new(control)));
                 }
@@ -1647,6 +1724,35 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// Exact browser origins allowed on MCP + OAuth/ceremony CORS.
+///
+/// Starts from `dashboard.allowed_origins`, then always adds the AS
+/// issuer origin when `as:` is configured — that is where the ceremony
+/// HTML lives, and browsers send it as `Origin` on prepare/complete.
+fn browser_origins_for_mcp(cfg: &GatewayConfig) -> BTreeSet<String> {
+    let mut origins = cfg
+        .dashboard
+        .as_ref()
+        .map(|dashboard| dashboard.allowed_origins.iter().cloned().collect())
+        .unwrap_or_else(BTreeSet::new);
+    if let Some(as_cfg) = &cfg.oauth_as {
+        if let Some(origin) = issuer_origin(&as_cfg.issuer) {
+            origins.insert(origin);
+        }
+    }
+    origins
+}
+
+fn issuer_origin(issuer: &str) -> Option<String> {
+    let trimmed = issuer.trim().trim_end_matches('/');
+    let (scheme, rest) = trimmed.split_once("://")?;
+    if scheme != "http" && scheme != "https" {
+        return None;
+    }
+    let authority = rest.split('/').next().filter(|part| !part.is_empty())?;
+    Some(format!("{scheme}://{authority}"))
+}
+
 /// UTC RFC 3339 (`YYYY-MM-DDTHH:MM:SSZ`), same construction as the
 /// aithos-core CLI (civil_from_days per Hinnant): lexicographic order ==
 /// chronological order, and the gamma layer parses it strictly.
@@ -1668,7 +1774,7 @@ fn ts(secs: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Command};
+    use super::{issuer_origin, Cli, Command};
     use clap::Parser as _;
 
     #[test]
@@ -1709,5 +1815,22 @@ mod tests {
                 ..
             } if server == "notion"
         ));
+    }
+
+    #[test]
+    fn issuer_origin_extracts_exact_origin() {
+        assert_eq!(
+            issuer_origin("https://demo.mcp.aithos.fr"),
+            Some("https://demo.mcp.aithos.fr".into())
+        );
+        assert_eq!(
+            issuer_origin("https://demo.mcp.aithos.fr/"),
+            Some("https://demo.mcp.aithos.fr".into())
+        );
+        assert_eq!(
+            issuer_origin("http://127.0.0.1:4870/authorize"),
+            Some("http://127.0.0.1:4870".into())
+        );
+        assert_eq!(issuer_origin("ftp://x"), None);
     }
 }

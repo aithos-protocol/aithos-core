@@ -47,12 +47,21 @@ pub enum GatewayStore {
     /// never leave the pod; everything protocolar rides the wire).
     Remote {
         remote: SharedRemoteStore,
+        /// Gateway-governance reader for sealed connector bindings.
+        /// Present when the required local sidecar carries the persisted
+        /// gateway mandate.
+        binding_remote: Option<SharedRemoteStore>,
         sidecar: Sidecar,
     },
     /// P3 mode A — fs primary + asynchronous post-publish replication.
     Replicated {
         root: PathBuf,
         remote: SharedRemoteStore,
+        /// Stable gateway-governance reader for owner-published `e/x`
+        /// bindings. The agent mandate can legitimately predate a newly
+        /// attached connector, whereas the gateway mandate and recipient
+        /// key are provisioned once for the lifetime of the runner.
+        binding_remote: SharedRemoteStore,
         replication: Arc<ReplicationState>,
     },
 }
@@ -62,17 +71,24 @@ impl Clone for GatewayStore {
         match self {
             GatewayStore::Fs(root) => GatewayStore::Fs(root.clone()),
             GatewayStore::Mem(m) => GatewayStore::Mem(Arc::clone(m)),
-            GatewayStore::Remote { remote, sidecar } => GatewayStore::Remote {
+            GatewayStore::Remote {
+                remote,
+                binding_remote,
+                sidecar,
+            } => GatewayStore::Remote {
                 remote: remote.clone(),
+                binding_remote: binding_remote.clone(),
                 sidecar: sidecar.clone(),
             },
             GatewayStore::Replicated {
                 root,
                 remote,
+                binding_remote,
                 replication,
             } => GatewayStore::Replicated {
                 root: root.clone(),
                 remote: remote.clone(),
+                binding_remote: binding_remote.clone(),
                 replication: Arc::clone(replication),
             },
         }
@@ -134,6 +150,56 @@ pub struct ReplicationState {
 }
 
 impl GatewayStore {
+    /// Provider coordinates for the operation-scoped `aithos-client`
+    /// transport. Only provider-primary contexts qualify; local and
+    /// replicated stores retain their historical mutation path.
+    pub(crate) fn provider_coordinates(&self) -> Option<(String, String, String)> {
+        let GatewayStore::Remote { remote, .. } = self else {
+            return None;
+        };
+        let remote = remote.0.lock().expect("remote store lock");
+        let (base, tenant, did) = remote.provider_coordinates();
+        Some((base.to_owned(), tenant.to_owned(), did.to_owned()))
+    }
+
+    /// Derive the store view used by ONE already-verified delegated mutation.
+    ///
+    /// Provider-primary writes must carry the session chain whose leaf names
+    /// the gateway key. The long-lived remote client intentionally keeps its
+    /// narrow agent mandate for ordinary reads; this method creates a distinct
+    /// signer without mutating that permanent authority. Local-primary stores
+    /// retain their existing behavior.
+    pub fn for_delegated_write(
+        &self,
+        keyholder: &Keyholder,
+        mandate: Vec<String>,
+        entropy: Box<dyn EntropySource + Send>,
+    ) -> Result<Self> {
+        if mandate.is_empty() {
+            return Err(GatewayError::ConfigRejected(
+                "delegated remote write requires a non-empty session chain".into(),
+            ));
+        }
+        match self {
+            GatewayStore::Remote {
+                remote,
+                binding_remote,
+                sidecar,
+            } => {
+                let gateway_sk = ed25519_dalek::SigningKey::from_bytes(keyholder.gateway_seed());
+                let signer = Arc::new(KeySigner::mandated(gateway_sk, mandate));
+                Ok(GatewayStore::Remote {
+                    remote: remote.with_signer(signer, entropy),
+                    binding_remote: binding_remote.clone(),
+                    sidecar: sidecar.clone(),
+                })
+            }
+            GatewayStore::Fs(_) | GatewayStore::Mem(_) | GatewayStore::Replicated { .. } => {
+                Ok(self.clone())
+            }
+        }
+    }
+
     /// Build the store the config asks for; refuse what v1 cannot honour.
     /// The remote kinds need the runner identity — this constructor
     /// refuses them fail-closed (owner CLI paths are fs-only by design).
@@ -157,7 +223,7 @@ impl GatewayStore {
     pub fn from_config_with_identity(
         cfg: &StoreConfig,
         keyholder: &Keyholder,
-        entropy: impl FnOnce() -> Box<dyn EntropySource + Send>,
+        mut entropy: impl FnMut() -> Box<dyn EntropySource + Send>,
     ) -> Result<Self> {
         match cfg {
             StoreConfig::Fs { .. } | StoreConfig::S3 { .. } => Self::from_config(cfg),
@@ -176,6 +242,12 @@ impl GatewayStore {
                     keyholder,
                     entropy(),
                 )?,
+                binding_remote: local
+                    .as_deref()
+                    .map(|root| {
+                        Self::binding_remote_client(root, url, tenant, did, keyholder, entropy())
+                    })
+                    .transpose()?,
                 sidecar: match local {
                     Some(root) => Sidecar::Fs(root.clone()),
                     None => Sidecar::Mem(Arc::new(Mutex::new(MemStore::default()))),
@@ -194,6 +266,14 @@ impl GatewayStore {
                     tenant,
                     did,
                     mandate.clone(),
+                    keyholder,
+                    entropy(),
+                )?,
+                binding_remote: Self::binding_remote_client(
+                    root,
+                    url,
+                    tenant,
+                    did,
                     keyholder,
                     entropy(),
                 )?,
@@ -221,6 +301,46 @@ impl GatewayStore {
             entropy,
         )
         .map_err(|e| GatewayError::ConfigRejected(format!("remote store: {e}")))?;
+        Ok(SharedRemoteStore::new(store))
+    }
+
+    fn binding_remote_client(
+        root: &std::path::Path,
+        url: &str,
+        tenant: &str,
+        did: &str,
+        keyholder: &Keyholder,
+        entropy: Box<dyn EntropySource + Send>,
+    ) -> Result<SharedRemoteStore> {
+        #[derive(serde::Deserialize)]
+        struct StoredGatewayState {
+            gateway_mandate: String,
+        }
+
+        let state = Self::fs(root)
+            .get("gateway/state.json")
+            .map_err(|error| GatewayError::ConfigRejected(format!("gateway state: {error}")))?
+            .ok_or_else(|| {
+                GatewayError::ConfigRejected(
+                    "replicated context has no gateway/state.json for binding refresh".into(),
+                )
+            })?;
+        let state: StoredGatewayState = serde_json::from_slice(&state).map_err(|error| {
+            GatewayError::ConfigRejected(format!("gateway state is invalid: {error}"))
+        })?;
+        let gateway_sk = ed25519_dalek::SigningKey::from_bytes(keyholder.gateway_seed());
+        let signer = Arc::new(KeySigner::mandated(gateway_sk, vec![state.gateway_mandate]));
+        let store = RemoteStore::new(
+            url,
+            tenant,
+            did,
+            signer,
+            Arc::new(system_now_rfc3339),
+            entropy,
+        )
+        .map_err(|error| {
+            GatewayError::ConfigRejected(format!("binding refresh remote store: {error}"))
+        })?;
         Ok(SharedRemoteStore::new(store))
     }
 
@@ -257,6 +377,87 @@ impl GatewayStore {
                 let _ = handle.join();
             }
         }
+    }
+
+    /// Refresh one owner-published connector binding into a replicated
+    /// context without changing the gateway's local-primary mode.
+    ///
+    /// The two sealed `e/x` artifacts are fetched before either local file
+    /// is replaced. Their owner signature, recipient wrapping and AEAD are
+    /// still verified by `Bridge::read_hub_manifest`; this method only makes
+    /// the provider-published bytes visible to that existing verifier.
+    pub fn refresh_connector_binding(&self, connector: &str) -> std::io::Result<()> {
+        let header_path = format!("e/x/{connector}/header.json");
+        let manifest_path = format!("e/x/{connector}/manifest.enc");
+        let required = |value: Option<Vec<u8>>| {
+            value.ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("provider has no current connector binding `{connector}`"),
+                )
+            })
+        };
+        match self {
+            GatewayStore::Remote {
+                remote,
+                binding_remote,
+                ..
+            } => {
+                required(get_connector_binding(
+                    remote,
+                    binding_remote.as_ref(),
+                    &header_path,
+                )?)?;
+                required(get_connector_binding(
+                    remote,
+                    binding_remote.as_ref(),
+                    &manifest_path,
+                )?)?;
+                Ok(())
+            }
+            GatewayStore::Replicated {
+                root,
+                binding_remote,
+                ..
+            } => {
+                let header = required(binding_remote.get(&header_path)?)?;
+                let manifest = required(binding_remote.get(&manifest_path)?)?;
+                let mut primary = Self::fs(root);
+                primary.put(&header_path, &header)?;
+                primary.put(&manifest_path, &manifest)?;
+                Ok(())
+            }
+            GatewayStore::Fs(_) | GatewayStore::Mem(_) => Ok(()),
+        }
+    }
+
+    /// Pull the public certificate and Gamma surfaces needed by G4 parent
+    /// discovery into a replicated context. Fetches complete remote values
+    /// before changing the local primary; the normal mandate/Gamma verifiers
+    /// remain the authority after this synchronization step.
+    pub fn refresh_session_publications(&self) -> std::io::Result<()> {
+        let GatewayStore::Replicated { root, remote, .. } = self else {
+            return Ok(());
+        };
+        let mut paths = remote.list("certs/")?;
+        paths.extend(remote.list("gamma/")?);
+        paths.sort();
+        paths.dedup();
+        let mut fetched = Vec::with_capacity(paths.len());
+        for path in paths {
+            let bytes = remote.get(&path)?.ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("provider omitted listed protocol artifact `{path}`"),
+                )
+            })?;
+            fetched.push((path, bytes));
+        }
+        let mut primary = Self::fs(root);
+        for (path, bytes) in fetched {
+            primary.put(&path, &bytes)?;
+        }
+        Ok(())
     }
 }
 
@@ -540,16 +741,95 @@ fn system_now_rfc3339() -> String {
     )
 }
 
+/// Read an owner-published connector carrier through the stable gateway
+/// governance identity, with a narrow compatibility fallback for providers
+/// deployed before connector carriers accepted `act.x.gateway.*`.
+///
+/// The fallback is still fail-closed: the Provider must independently accept
+/// the configured agent mandate for this exact connector path. It is never a
+/// local or unauthenticated read.
+fn get_connector_binding(
+    remote: &SharedRemoteStore,
+    binding_remote: Option<&SharedRemoteStore>,
+    path: &str,
+) -> std::io::Result<Option<Vec<u8>>> {
+    match binding_remote {
+        Some(reader) => match reader.get(path) {
+            Err(error) if retry_binding_with_agent(&error) => remote.get(path),
+            result => result,
+        },
+        None => remote.get(path),
+    }
+}
+
+fn get_connector_binding_bounded(
+    remote: &SharedRemoteStore,
+    binding_remote: Option<&SharedRemoteStore>,
+    path: &str,
+    maximum: usize,
+) -> std::io::Result<Option<Vec<u8>>> {
+    match binding_remote {
+        Some(reader) => match reader.get_bounded(path, maximum) {
+            Err(error) if retry_binding_with_agent(&error) => remote.get_bounded(path, maximum),
+            result => result,
+        },
+        None => remote.get_bounded(path, maximum),
+    }
+}
+
+fn retry_binding_with_agent(error: &std::io::Error) -> bool {
+    let detail = error.to_string();
+    detail.contains("403 not_covered") || detail.contains("403 chain_invalid")
+}
+
+fn immutable_mandate_path(path: &str) -> bool {
+    path.starts_with("certs/mandate_") && path.ends_with(".json")
+}
+
+/// Some provider-primary demo histories were seeded before every referenced
+/// immutable certificate was copied to the Provider. A certificate is
+/// owner-signed and Gamma still carries its issuance/revocation semantics, so
+/// the verified local sidecar is a safe compatibility source when (and only
+/// when) the Provider reports the object absent.
+fn get_remote_with_mandate_sidecar_fallback(
+    remote: &SharedRemoteStore,
+    sidecar: &Sidecar,
+    path: &str,
+) -> std::io::Result<Option<Vec<u8>>> {
+    match remote.get(path)? {
+        None if immutable_mandate_path(path) => sidecar.get(path),
+        result => Ok(result),
+    }
+}
+
+fn get_remote_with_mandate_sidecar_fallback_bounded(
+    remote: &SharedRemoteStore,
+    sidecar: &Sidecar,
+    path: &str,
+    maximum: usize,
+) -> std::io::Result<Option<Vec<u8>>> {
+    match remote.get_bounded(path, maximum)? {
+        None if immutable_mandate_path(path) => sidecar.get_bounded(path, maximum),
+        result => Ok(result),
+    }
+}
+
 impl Store for GatewayStore {
     fn get(&self, path: &str) -> std::io::Result<Option<Vec<u8>>> {
         match self {
             GatewayStore::Fs(root) => Self::fs(root).get(path),
             GatewayStore::Mem(s) => s.lock().expect("store lock").get(path),
-            GatewayStore::Remote { remote, sidecar } => {
+            GatewayStore::Remote {
+                remote,
+                binding_remote,
+                sidecar,
+            } => {
                 if sidecar_key(path) {
                     sidecar.get(path)
+                } else if path.starts_with("e/x/") {
+                    get_connector_binding(remote, binding_remote.as_ref(), path)
                 } else {
-                    remote.get(path)
+                    get_remote_with_mandate_sidecar_fallback(remote, sidecar, path)
                 }
             }
             // Mode A: the PRIMARY answers reads — that is the point.
@@ -563,11 +843,17 @@ impl Store for GatewayStore {
             GatewayStore::Mem(store) => {
                 store.lock().expect("store lock").get_bounded(path, maximum)
             }
-            GatewayStore::Remote { remote, sidecar } => {
+            GatewayStore::Remote {
+                remote,
+                binding_remote,
+                sidecar,
+            } => {
                 if sidecar_key(path) {
                     sidecar.get_bounded(path, maximum)
+                } else if path.starts_with("e/x/") {
+                    get_connector_binding_bounded(remote, binding_remote.as_ref(), path, maximum)
                 } else {
-                    remote.get_bounded(path, maximum)
+                    get_remote_with_mandate_sidecar_fallback_bounded(remote, sidecar, path, maximum)
                 }
             }
             GatewayStore::Replicated { root, .. } => Self::fs(root).get_bounded(path, maximum),
@@ -578,7 +864,11 @@ impl Store for GatewayStore {
         match self {
             GatewayStore::Fs(root) => Self::fs(root).put(path, bytes),
             GatewayStore::Mem(s) => s.lock().expect("store lock").put(path, bytes),
-            GatewayStore::Remote { remote, sidecar } => {
+            GatewayStore::Remote {
+                remote,
+                binding_remote: _,
+                sidecar,
+            } => {
                 if sidecar_key(path) {
                     sidecar.put(path, bytes)
                 } else {
@@ -588,6 +878,7 @@ impl Store for GatewayStore {
             GatewayStore::Replicated {
                 root,
                 remote,
+                binding_remote: _,
                 replication,
             } => {
                 // Primary first — mode A never blocks on the provider.
@@ -636,7 +927,11 @@ impl Store for GatewayStore {
         match self {
             GatewayStore::Fs(root) => Self::fs(root).list(prefix),
             GatewayStore::Mem(s) => s.lock().expect("store lock").list(prefix),
-            GatewayStore::Remote { remote, sidecar } => {
+            GatewayStore::Remote {
+                remote,
+                binding_remote: _,
+                sidecar,
+            } => {
                 // Both worlds under one prefix: the wire's listing plus
                 // the pod's own keys, deduplicated, lexicographic.
                 let mut all = remote.list(prefix)?;
@@ -698,5 +993,23 @@ mod tests {
         assert_eq!(now.len(), 20, "{now}");
         assert!(now.ends_with('Z') && now.contains('T'));
         assert!(now.starts_with("20"), "{now}");
+    }
+
+    #[test]
+    fn connector_binding_retries_only_legacy_provider_authority_refusals() {
+        for detail in [
+            "remote store 403 not_covered",
+            "remote store 403 chain_invalid",
+        ] {
+            assert!(retry_binding_with_agent(&std::io::Error::other(detail)));
+        }
+        for detail in [
+            "remote store 401 unauthorized",
+            "remote store 403 signature_invalid",
+            "remote store 404 missing",
+            "transport unavailable",
+        ] {
+            assert!(!retry_binding_with_agent(&std::io::Error::other(detail)));
+        }
     }
 }

@@ -14,3 +14,6 @@ rust/cargo-linux/
 
 # wasm-pack output (regenerated; the npm tarball is a local artifact)
 rust/crates/aithos-wasm/pkg/
+
+# Claude Code local settings
+**/.claude/settings.local.json

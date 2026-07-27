@@ -360,6 +360,7 @@ async fn boot_service(dids: &[&str]) -> String {
         acme: AcmeState::new(),
         authority: format!("127.0.0.1:{port}"),
         test_now_enabled: false,
+        browser_origins: Default::default(),
     });
     let router = build_router(state);
     tokio::spawn(async move {
@@ -422,6 +423,7 @@ async fn remote_gamma(
 ) -> Vec<EntryView> {
     let store = GatewayStore::Remote {
         remote: SharedRemoteStore::new(owner_client(url, did, &owner, "#content")),
+        binding_remote: None,
         sidecar: Sidecar::Fs(sidecar.to_path_buf()),
     };
     tokio::task::spawn_blocking(move || gamma_view(store).expect("gamma readable over the wire"))

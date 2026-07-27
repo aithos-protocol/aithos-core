@@ -574,7 +574,9 @@ pub async fn deposit_cert(
     let text = utf8_canonical(body)?;
     let mandate: Mandate =
         serde_json::from_str(text).map_err(|_| DepositRefusal::Artifact(ArtifactReason::Form))?;
-    if serde_jcs::to_string(&mandate)
+    let canonical_value: serde_json::Value =
+        serde_json::from_str(text).map_err(|_| DepositRefusal::Artifact(ArtifactReason::Form))?;
+    if serde_jcs::to_string(&canonical_value)
         .map(|canonical| canonical != text)
         .unwrap_or(true)
     {
@@ -679,6 +681,7 @@ pub async fn deposit_did(
             .verify()
             .map_err(|_| DepositRefusal::Artifact(ArtifactReason::Signature))?,
         // Replacement: only the stored succession key authorizes it.
+        Some(stored_bytes) if stored_bytes == body => return Ok(()),
         Some(stored_bytes) => {
             let stored: DidDocument = serde_json::from_slice(&stored_bytes)
                 .map_err(|_| DepositRefusal::Artifact(ArtifactReason::Form))?;

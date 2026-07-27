@@ -1,5 +1,8 @@
 # Handoff — surface produit des mandats : plan d'action intégral (P0 → P1)
 
+> **ARCHIVE — plan initial.** Les écarts ont évolué ; utiliser
+> `MANDATES-PRODUCT-GAPS.md`, désormais réévalué contre le code actuel.
+
 **Date :** 2026-07-15 (préparé en 9ᵉ session gw, après clôture K+D)
 **Branche :** `feat/obligations` (jamais switcher)
 **HEAD d'entrée :** `fc86ed1` (docs: Lea demo K+D session close)

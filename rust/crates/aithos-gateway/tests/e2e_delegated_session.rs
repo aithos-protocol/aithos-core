@@ -2,7 +2,7 @@
 //! its non-root mandate chain, external Gamma grant and SC1 double proof
 //! authorize every MCP operation before the upstream is touched.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
@@ -26,13 +26,18 @@ use aithos_gateway::oauth::{
 };
 use aithos_gateway::oauth_state::MemoryAsStateStore;
 use aithos_gateway::policy::op_for_tool;
-use aithos_gateway::proxy_mcp::{empty_dynamic_upstreams, router_multi, McpRouter, Upstream};
+use aithos_gateway::proxy_mcp::{
+    empty_dynamic_upstreams, router_multi, router_oauth, McpRouter, Upstream,
+};
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_gateway::Result;
 
 const NOW: &str = "2026-07-22T12:00:00Z";
 const SESSION_END: &str = "2026-07-22T20:00:00Z";
 const CALLBACK: &str = "http://127.0.0.1:19410/callback";
+const AS_ISSUER: &str = "http://127.0.0.1:4870";
+const RESOURCE: &str = "http://127.0.0.1:4870/mcp";
+const DASHBOARD_ORIGIN: &str = "https://app.aithos.fr";
 const MASTER: [u8; 32] = [0x31; 32];
 
 #[derive(Clone, Default)]
@@ -93,7 +98,7 @@ async fn issue_session(
     let parent_view = runner
         .lock()
         .await
-        .eligible_session_parents(&delegate_pub, NOW)
+        .eligible_session_parents(&delegate_pub, RESOURCE, NOW)
         .into_iter()
         .find(|parent| parent.context == "finance")
         .expect("delegate has one issuing parent");
@@ -133,6 +138,7 @@ async fn issue_session(
             &preparation.gateway_pub,
             &preparation.gateway_kex_pub,
             &preparation.session_pub,
+            &preparation.resource,
             &leaf_value,
             NOW,
         )
@@ -176,6 +182,7 @@ async fn issue_session(
             &preparation.gateway_pub,
             &preparation.gateway_kex_pub,
             &preparation.session_pub,
+            &preparation.resource,
             &leaf_value,
             &grant_value,
             NOW,
@@ -277,6 +284,7 @@ async fn delegated_sessions_isolate_surface_log_full_chain_and_cut_on_revocation
         &MASTER,
         "finance",
         &delegate_pub,
+        RESOURCE,
         &[
             "issues.list".to_owned(),
             "issues.create".to_owned(),
@@ -310,6 +318,19 @@ async fn delegated_sessions_isolate_surface_log_full_chain_and_cut_on_revocation
     let runner = Arc::new(Mutex::new(
         Runner::open(&config, keyholder, || Box::new(SeqEntropy::default())).unwrap(),
     ));
+    assert_eq!(
+        runner
+            .lock()
+            .await
+            .eligible_session_parents(&delegate_pub, RESOURCE, NOW)
+            .len(),
+        1
+    );
+    assert!(runner
+        .lock()
+        .await
+        .eligible_session_parents(&delegate_pub, "https://gateway-b.example/mcp", NOW)
+        .is_empty());
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -318,7 +339,7 @@ async fn delegated_sessions_isolate_surface_log_full_chain_and_cut_on_revocation
     let issuer = format!("http://{address}");
     let auth = Arc::new(AuthServer::new_production_with_state(
         AdapterKey::from_seed([0x43; 32]),
-        &issuer,
+        AS_ISSUER,
         15 * 60,
         8 * 60 * 60,
         vec![CALLBACK.to_owned()],
@@ -342,13 +363,94 @@ async fn delegated_sessions_isolate_surface_log_full_chain_and_cut_on_revocation
     let routing = Arc::new(McpRouter {
         runner,
         upstreams: BTreeMap::from([("finance".to_owned(), upstream.clone())]),
+        // Run the generic connector regression under the opt-in Ethos
+        // backend: exact-name routing must leave every non-Ethos byte on the
+        // historical path.
+        ethos_backend: aithos_gateway::ethos_backend::client_provider_ethos_backend(),
         dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| NOW.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: Some(auth),
+        browser_origins: Arc::new(BTreeSet::from([DASHBOARD_ORIGIN.to_owned()])),
     });
-    let app = router_multi(routing);
+    let app = router_multi(Arc::clone(&routing)).merge(router_oauth(routing));
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let http = reqwest::Client::new();
+    for (path, method, headers) in [
+        ("/ceremony/prepare", "POST", "Accept, Content-Type"),
+        (
+            "/mcp",
+            "POST",
+            "Accept, Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id",
+        ),
+    ] {
+        let response = http
+            .request(reqwest::Method::OPTIONS, format!("{issuer}{path}"))
+            .header("Origin", DASHBOARD_ORIGIN)
+            .header("Access-Control-Request-Method", method)
+            .header("Access-Control-Request-Headers", headers)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 204, "preflight {path}");
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .and_then(|value| value.to_str().ok()),
+            Some(DASHBOARD_ORIGIN)
+        );
+        assert!(response
+            .headers()
+            .get("access-control-allow-credentials")
+            .is_none());
+    }
+    for (origin, headers) in [
+        (
+            "https://neighbor.aithos.fr",
+            "Accept, Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id",
+        ),
+        (
+            DASHBOARD_ORIGIN,
+            "Accept, Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id, X-Extra",
+        ),
+    ] {
+        let response = http
+            .request(reqwest::Method::OPTIONS, format!("{issuer}/mcp"))
+            .header("Origin", origin)
+            .header("Access-Control-Request-Method", "POST")
+            .header("Access-Control-Request-Headers", headers)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 403);
+        assert!(response
+            .headers()
+            .get("access-control-allow-origin")
+            .is_none());
+    }
+    assert_eq!(upstream.calls.load(Ordering::SeqCst), 0);
+    let oauth_refusal = http
+        .post(format!("{issuer}/mcp"))
+        .header("Origin", DASHBOARD_ORIGIN)
+        .json(&json!({"jsonrpc":"2.0","id":0,"method":"initialize"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(oauth_refusal.status(), 401);
+    assert_eq!(
+        oauth_refusal
+            .headers()
+            .get("access-control-allow-origin")
+            .and_then(|value| value.to_str().ok()),
+        Some(DASHBOARD_ORIGIN)
+    );
+    assert!(oauth_refusal
+        .headers()
+        .get("access-control-expose-headers")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.contains("WWW-Authenticate")));
 
     for (session, expected, absent) in [
         (&list_session, "issues.list", "issues.create"),

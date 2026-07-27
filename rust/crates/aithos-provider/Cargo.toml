@@ -24,6 +24,7 @@ sha2 = { workspace = true }
 blake3 = { workspace = true }
 ed25519-dalek = { workspace = true }
 base64 = { workspace = true }
+url = { workspace = true }
 
 # service runtime (INFRA-PROVIDER §7: axum always hot on Fargate);
 # `signal` powers the graceful drain behind the ALB; `io-util` powers the

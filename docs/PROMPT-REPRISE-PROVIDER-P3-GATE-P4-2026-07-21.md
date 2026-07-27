@@ -1,5 +1,7 @@
 # PROMPT DE REPRISE — Lot B, partie 2 : GATE P3 (DEMO-LEA remote) puis P4 (sync/batch + cdn-public + perf §3.6)
 
+> **ARCHIVE — ne pas exécuter.** Les deux gates ont été joués.
+
 À coller en début de session (Cowork cloud, dossier /Volumes/Math17/aithos/v2
 connecté). État DISQUE = vérité — ne fais confiance à AUCUN résumé, y compris
 celui-ci, sans vérification disque.

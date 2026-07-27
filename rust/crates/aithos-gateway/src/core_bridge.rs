@@ -34,12 +34,13 @@ use aithos_bundle::remote::{KeySigner, RemoteStore};
 use aithos_bundle::Store;
 use aithos_core::constraints::verify_max_sessions;
 use aithos_core::did::DidDocument;
+use aithos_core::gamma::grant_logged;
 use aithos_core::header::{Header, Recipient};
 use aithos_core::ids::Sid;
 use aithos_core::keys::{ed2x, grantee_kex_secret, succession_from_entropy, MasterSeed, OwnerKeys};
 use aithos_core::mandate::{
-    covers_act, verify_chain, verify_chain_revocable, verify_op, ActOp, GammaQuery, Mandate,
-    MandateSpec, Op, PerimeterEntry, Verb,
+    covers_act, covers_op, covers_section_op, verify_chain, verify_chain_revocable, verify_op,
+    ActOp, GammaQuery, Mandate, MandateSpec, Op, PerimeterEntry, SectionOp, Verb,
 };
 use aithos_core::operation::{
     verify_delegated_session as verify_delegated_session_core, verify_session,
@@ -71,6 +72,7 @@ pub use aithos_bundle::entropy::{EntropySource, OsEntropy, SeqEntropy};
 pub use aithos_bundle::Store as RawStore;
 
 mod control;
+pub(crate) use control::render_rfc3339z;
 pub use control::{
     prepare_control_envelope, valid_control_gamma_kind, ControlAccess, ControlAuthError,
     ControlContextProof, ControlHeadsProof, ControlPage, ControlPrincipal, ControlProofReader,
@@ -191,6 +193,12 @@ fn cert_path(id: &str) -> String {
 pub fn agent_pub_multibase(kh: &Keyholder) -> String {
     let vk = SigningKey::from_bytes(kh.agent_seed()).verifying_key();
     aithos_core::wire::ed25519_pub_to_multibase(&vk.to_bytes())
+}
+
+pub fn agent_kex_pub_multibase(kh: &Keyholder) -> String {
+    let signing = SigningKey::from_bytes(kh.agent_seed());
+    let public = ed2x(&signing.verifying_key());
+    aithos_core::wire::x25519_pub_to_multibase(public.as_bytes())
 }
 
 /// Wire encoding of the gateway's own public key.
@@ -619,6 +627,24 @@ impl Bridge {
     pub fn verified_hub_manifest(&self, server: &str) -> Result<ApprovedManifest> {
         self.bundle.gamma_verify().map_err(bridge_err)?;
         self.read_hub_manifest(server)
+    }
+
+    /// Pull an owner-published sealed connector binding into a replicated
+    /// context. Remote contexts already read through the Provider and local
+    /// contexts have no remote source, so their store adapters make this a
+    /// no-op.
+    pub fn refresh_hub_manifest(&self, server: &str) -> Result<()> {
+        self.bundle
+            .store
+            .refresh_connector_binding(server)
+            .map_err(bridge_err)
+    }
+
+    pub fn refresh_session_publications(&self) -> Result<()> {
+        self.bundle
+            .store
+            .refresh_session_publications()
+            .map_err(bridge_err)
     }
 
     // ------------------------------------------------------------ policy
@@ -1317,9 +1343,27 @@ impl Bridge {
     }
 
     fn walk_cert_chains(&self, grantee_pub: &str) -> Vec<Vec<Mandate>> {
+        self.walk_cert_chains_censused(grantee_pub).0
+    }
+
+    /// The same walk, plus a census of what this view held and what the
+    /// walk dropped in silence. Diagnostic material only: no verdict, no
+    /// public response and no ordering reads the census, and
+    /// `walk_cert_chains` discards it outright.
+    ///
+    /// Added 2026-07-25: an empty result was indistinguishable between
+    /// "no certificate in this view", "certificate present but its chain
+    /// is unresolvable here" and "certificate published for another key"
+    /// — three different defective stages behind one silent zero.
+    fn walk_cert_chains_censused(
+        &self,
+        grantee_pub: &str,
+    ) -> (Vec<Vec<Mandate>>, CertWalkCensus) {
+        let mut census = CertWalkCensus::default();
         let Ok(paths) = self.bundle.store.list("certs/") else {
-            return Vec::new();
+            return (Vec::new(), census);
         };
+        census.listed = paths.len();
         let mut by_id: BTreeMap<String, Mandate> = BTreeMap::new();
         for path in paths {
             let Ok(Some(bytes)) = self.bundle.store.get(&path) else {
@@ -1330,11 +1374,15 @@ impl Bridge {
             };
             by_id.insert(mandate.id.clone(), mandate);
         }
+        census.parsed = by_id.len();
         let mut chains: Vec<Vec<Mandate>> = Vec::new();
+        let mut grantees: BTreeSet<String> = BTreeSet::new();
         for leaf in by_id.values() {
+            grantees.insert(leaf.grantee.pubkey.clone());
             if leaf.grantee.pubkey != grantee_pub {
                 continue;
             }
+            census.leaves_for_grantee += 1;
             let mut chain = vec![leaf.clone()];
             let mut cursor = leaf;
             let mut resolvable = true;
@@ -1346,15 +1394,26 @@ impl Bridge {
                     }
                     None => {
                         resolvable = false;
+                        if census.unresolvable_samples.len() < CERT_WALK_CENSUS_SAMPLES {
+                            census
+                                .unresolvable_samples
+                                .push(format!("{}->{}", leaf.id, parent_id));
+                        }
                         break;
                     }
                 }
             }
             if resolvable {
                 chains.push(chain);
+            } else {
+                census.unresolvable += 1;
             }
         }
-        chains
+        census.grantee_samples = grantees
+            .into_iter()
+            .take(CERT_WALK_CENSUS_SAMPLES)
+            .collect();
+        (chains, census)
     }
 
     /// The pedagogical revocation probe (cold path, refusals only): a
@@ -1583,6 +1642,697 @@ impl Bridge {
         }))
     }
 
+    // ---------------------------------------- delegated ethos reads (lot 1)
+    //
+    // The delegated surface IS the mandate (§3 target table of the
+    // 2026-07-24 handoff): a session chain serves a zone only when its
+    // leaf covers a `read` op on at least one existing row — public
+    // included. The owner-agent frontier default ("any connected
+    // session is informed") does NOT apply to a delegated session:
+    // no covering entry, no surface, fail closed.
+
+    /// The zones this (already chain-verified) delegated session serves
+    /// right now. Certificate half only — the physics half (lines) is
+    /// tested by the read itself, like the agent surface does.
+    pub fn ethos_surface_for_chain(&self, chain: &[Mandate], now: &str) -> Vec<String> {
+        let Ok(doc) = self.did_doc() else {
+            return Vec::new();
+        };
+        let mut zones = Vec::new();
+        for zone in [Zone::Public, Zone::Circle] {
+            let covered = zone_all_rows(&self.bundle, zone)
+                .into_iter()
+                .any(|row| ethos_row_is_covered(chain, &doc, now, zone, &row));
+            if covered {
+                zones.push(zone.as_str().to_owned());
+            }
+        }
+        zones
+    }
+
+    /// The covered skeleton for one delegated session (ethos.list):
+    /// public and circle rows the session leaf covers — paths, titles
+    /// and tags, never a body, never a gamma entry. `self` never
+    /// appears (sealed structure — its delegated resolution is its own
+    /// core lot).
+    pub fn ethos_list_for_chain(&self, chain: &[Mandate], now: &str) -> Vec<serde_json::Value> {
+        let Ok(doc) = self.did_doc() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for zone in [Zone::Public, Zone::Circle] {
+            for row in zone_all_rows(&self.bundle, zone) {
+                if ethos_row_is_covered(chain, &doc, now, zone, &row) {
+                    out.push(serde_json::json!({
+                        "zone": zone.as_str(), "path": row.path,
+                        "title": row.title, "tags": row.tags,
+                    }));
+                }
+            }
+        }
+        out
+    }
+
+    /// One section body under the SESSION chain (delegated ethos.read).
+    /// public: covered-by-certificate first (no frontier default in a
+    /// delegated session), then the clear read. circle: the whole §04.5
+    /// walk under the session chain with the gateway key (the session
+    /// leaf grantee); every open is ONE journalized `ethos.read` under
+    /// the chain that read, and an unjournalizable read fails the whole
+    /// call (the C2 precedent). self: refused.
+    pub fn ethos_read_section_for_chain(
+        &mut self,
+        chain: &[Mandate],
+        zone: &str,
+        path: &str,
+        now: &str,
+    ) -> Result<String> {
+        match zone {
+            "public" => {
+                let doc = self.did_doc()?;
+                let row = zone_all_rows(&self.bundle, Zone::Public)
+                    .into_iter()
+                    .find(|row| row.path == path)
+                    .ok_or_else(|| {
+                        GatewayError::RequestRejected(format!(
+                            "ethos.read: no public section at `{path}`"
+                        ))
+                    })?;
+                if !ethos_row_is_covered(chain, &doc, now, Zone::Public, &row) {
+                    return Err(GatewayError::MandateDenied {
+                        op: "ethos.read".to_owned(),
+                        reason: "the delegated session does not cover `read.public` on this path"
+                            .to_owned(),
+                    });
+                }
+                public_read_current(&self.bundle, path).map_err(|_| {
+                    GatewayError::RequestRejected(format!(
+                        "ethos.read: no public section at `{path}`"
+                    ))
+                })
+            }
+            "circle" => {
+                let gateway_sk = SigningKey::from_bytes(self.keyholder.gateway_seed());
+                let agent_sk = SigningKey::from_bytes(self.keyholder.agent_seed());
+                // Physics candidates, in preference order: a line
+                // delivered to the session leaf grantee (the gateway
+                // key), else the custodian agent's own line — the
+                // gateway holds both keys, and the authority cited is
+                // the session chain either way.
+                let physics = [
+                    (
+                        gateway_pub_multibase(&self.keyholder),
+                        grantee_kex_secret(&gateway_sk),
+                    ),
+                    (
+                        agent_pub_multibase(&self.keyholder),
+                        grantee_kex_secret(&agent_sk),
+                    ),
+                ];
+                let text = self
+                    .bundle
+                    .read_section_as_delegated_session(
+                        chain,
+                        &gateway_sk,
+                        &physics,
+                        Zone::Circle,
+                        path,
+                        now,
+                    )
+                    .map_err(read_denied_op("ethos.read"))?;
+                self.bundle
+                    .log_read_as_agent(
+                        chain,
+                        &gateway_sk,
+                        Zone::Circle,
+                        path,
+                        now,
+                        self.entropy.as_mut(),
+                    )
+                    .map_err(|e| GatewayError::LogAppendRefused(e.to_string()))?;
+                Ok(text)
+            }
+            "self" => Err(GatewayError::MandateDenied {
+                op: "ethos.read".to_owned(),
+                reason: "the `read.self` perimeter is never served by default — an explicit self grant awaits the delegated self-resolution core lot"
+                    .to_owned(),
+            }),
+            other => Err(GatewayError::RequestRejected(format!(
+                "ethos.read: zone must be public, circle or self, not `{other}`"
+            ))),
+        }
+    }
+
+    /// The starting pack for one delegated session (ethos.context): the
+    /// covered public bodies and the covered sealed index. NO
+    /// directives here — the briefing keeps its own explicitly-mandated
+    /// tool (`briefing.read`, lot K), never folded into a zone grant.
+    pub fn ethos_context_pack_for_chain(
+        &mut self,
+        chain: &[Mandate],
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let doc = self.did_doc()?;
+        let mut public = Vec::new();
+        for row in zone_all_rows(&self.bundle, Zone::Public) {
+            if ethos_row_is_covered(chain, &doc, now, Zone::Public, &row) {
+                let text = public_read_current(&self.bundle, &row.path)
+                    .map_err(read_denied_op("ethos.context"))?;
+                public.push(serde_json::json!({
+                    "path": row.path, "title": row.title, "text": text,
+                }));
+            }
+        }
+        let mut index = Vec::new();
+        for row in zone_all_rows(&self.bundle, Zone::Circle) {
+            if ethos_row_is_covered(chain, &doc, now, Zone::Circle, &row) {
+                index.push(serde_json::json!({
+                    "zone": "circle", "path": row.path, "title": row.title, "tags": row.tags,
+                }));
+            }
+        }
+        Ok(serde_json::json!({
+            "directives": serde_json::Value::Null,
+            "public": public,
+            "index": index,
+        }))
+    }
+
+    // ------------------------------------- delegated ethos writes (lot 4)
+    //
+    // Explicit tools, one Core verb each (D6, plan 2026-07-24):
+    // `ethos.create` needs `append`, `ethos.edit` needs `edit` (append
+    // covers it — §04.2), `ethos.delete` needs `delete` (write covers
+    // it). Circle only: the bundle's delegated-write pass is circle
+    // scoped, and this wrapper refuses the rest instead of widening.
+    // Every mutation is a log citizen signed by the session leaf key —
+    // the primitives refuse an unjournalizable mutation outright.
+
+    /// The clear digest of one section row (no body, no gamma entry) —
+    /// the D8 concurrency precondition (`expected_digest`) compares
+    /// against THIS before any delegated edit or delete.
+    pub fn ethos_section_digest(&self, zone: Zone, path: &str) -> Result<String> {
+        Self::ethos_section_digest_in(&self.bundle, zone, path)
+    }
+
+    fn ethos_section_digest_in(
+        bundle: &Bundle<GatewayStore>,
+        zone: Zone,
+        path: &str,
+    ) -> Result<String> {
+        let (row, _) = bundle
+            .resolve_clear(zone, path)
+            .map_err(|_| GatewayError::RequestRejected(format!("no section at `{path}`")))?;
+        Ok(row.blob_sha)
+    }
+
+    /// Open a mutation-scoped bundle. Provider-primary contexts use the
+    /// already-verified session chain and gateway leaf key for every wire
+    /// request; the permanent agent reader remains unchanged.
+    fn delegated_write_bundle(&self, chain: &[Mandate], op: &str) -> Result<Bundle<GatewayStore>> {
+        let leaf = chain.last().ok_or_else(|| GatewayError::MandateDenied {
+            op: op.to_owned(),
+            reason: "the delegated session chain is empty".to_owned(),
+        })?;
+        let gateway_pub = gateway_pub_multibase(&self.keyholder);
+        if leaf.grantee.pubkey != gateway_pub {
+            return Err(GatewayError::MandateDenied {
+                op: op.to_owned(),
+                reason: "the delegated session leaf is not bound to this gateway key".to_owned(),
+            });
+        }
+        let mandate = chain.iter().map(|item| item.id.clone()).collect();
+        let store =
+            self.bundle
+                .store
+                .for_delegated_write(&self.keyholder, mandate, Box::new(OsEntropy))?;
+        Bundle::open(store).map_err(bridge_err)
+    }
+
+    /// Build the independently cold-verified snapshot consumed by
+    /// `aithos-client`. The request-scoped store carries the exact delegated
+    /// chain, while the Gateway sidecar contributes only its local artifacts.
+    fn ethos_client_snapshot_for_chain(
+        &self,
+        chain: &[Mandate],
+    ) -> Result<aithos_client::VerifiedSnapshot> {
+        let bundle = self.delegated_write_bundle(chain, "ethos.client.snapshot")?;
+        let paths = bundle.store.list("").map_err(bridge_err)?;
+        let mut artifacts = Vec::with_capacity(paths.len());
+        for path in paths {
+            if let Some(bytes) = bundle.store.get(&path).map_err(bridge_err)? {
+                artifacts.push((path, bytes));
+            }
+        }
+        aithos_client::ArtifactSnapshot::try_from_iter(artifacts)
+            .and_then(aithos_client::ArtifactSnapshot::cold_verify)
+            .map_err(|error| {
+                GatewayError::BridgeFailed(format!("aithos-client snapshot refused: {error}"))
+            })
+    }
+
+    /// Download only the proofs, circle skeleton and optional target blob
+    /// required by one delegated mutation. Provider list results are path
+    /// metadata; unrelated blob bodies are never fetched.
+    fn ethos_client_working_set_for_chain(
+        &self,
+        chain: &[Mandate],
+        intent: &aithos_client::MutationIntent,
+        _now: &str,
+    ) -> Result<aithos_client::VerifiedWorkingSet> {
+        let bundle = self.delegated_write_bundle(chain, "ethos.client.working_set")?;
+        let mut selected = bundle
+            .store
+            .list("")
+            .map_err(bridge_err)?
+            .into_iter()
+            .filter(|path| {
+                path == "manifest.json"
+                    || path == "did.json"
+                    || path.starts_with("certs/")
+                    || path.starts_with("gamma/")
+                    || (path.starts_with("e/circle/") && !path.starts_with("e/circle/blobs/"))
+            })
+            .collect::<BTreeSet<_>>();
+        match intent {
+            aithos_client::MutationIntent::Edit {
+                zone: Zone::Circle,
+                path,
+                ..
+            }
+            | aithos_client::MutationIntent::Delete {
+                zone: Zone::Circle,
+                path,
+                ..
+            } => {
+                let (row, _) = bundle
+                    .resolve_clear(Zone::Circle, path)
+                    .map_err(write_denied_op("ethos.client.working_set"))?;
+                selected.insert(format!("e/circle/blobs/{}.enc", row.sid));
+            }
+            aithos_client::MutationIntent::Create {
+                zone: Zone::Circle, ..
+            } => {}
+            _ => {
+                return Err(GatewayError::MandateDenied {
+                    op: "ethos.client.working_set".to_owned(),
+                    reason: "the Client working-set canary is limited to circle".to_owned(),
+                });
+            }
+        }
+        let mut artifacts = Vec::with_capacity(selected.len());
+        for path in selected {
+            let bytes = bundle
+                .store
+                .get(&path)
+                .map_err(bridge_err)?
+                .ok_or_else(|| {
+                    GatewayError::BridgeFailed(format!(
+                        "aithos-client working-set artifact disappeared: {path}"
+                    ))
+                })?;
+            artifacts.push((path, bytes));
+        }
+        let manifest: aithos_bundle::manifest::Manifest = serde_json::from_slice(
+            artifacts
+                .iter()
+                .find_map(|(path, bytes)| (path == "manifest.json").then_some(bytes))
+                .ok_or_else(|| {
+                    GatewayError::BridgeFailed(
+                        "aithos-client working-set manifest is unavailable".into(),
+                    )
+                })?,
+        )
+        .map_err(bridge_err)?;
+        let head = format!("sha256:{}", manifest.chain_hash().map_err(bridge_err)?);
+        aithos_client::ArtifactSnapshot::try_from_iter(artifacts)
+            .and_then(|snapshot| snapshot.verify_circle_mutation_working_set(&head, chain, intent))
+            .map_err(|error| {
+                GatewayError::BridgeFailed(format!("aithos-client working-set refused: {error}"))
+            })
+    }
+
+    fn prepare_ethos_client_mutation_for_chain(
+        &mut self,
+        chain: &[Mandate],
+        intent: aithos_client::MutationIntent,
+        response_context: &str,
+        response_zone: &str,
+        response_path: &str,
+        now: &str,
+    ) -> Result<crate::ethos_backend::PreparedEthosMutation> {
+        let (provider_url, tenant, did) =
+            self.bundle.store.provider_coordinates().ok_or_else(|| {
+                GatewayError::RequestRejected(
+                    "aithos-client Provider mutations require a provider-primary Ethos".into(),
+                )
+            })?;
+        let working_set = self.ethos_client_working_set_for_chain(chain, &intent, now)?;
+        let publication_entropy =
+            aithos_client::PublicationEntropy::new(self.entropy.e16(), self.entropy.e16());
+        let transport = crate::ethos_backend::ProviderTransport::new(&provider_url)?;
+        let host = transport.envelope_host().to_owned();
+        let keyholder = Arc::clone(&self.keyholder);
+        let deleting = matches!(intent, aithos_client::MutationIntent::Delete { .. });
+        let plan = keyholder
+            .with_ethos_client_grantee(|client| {
+                aithos_client::PublicationPlan::build_grantee_from_working_set(
+                    client,
+                    chain,
+                    working_set,
+                    intent,
+                    publication_entropy,
+                )
+            })
+            .map_err(|error| {
+                if std::env::var("AITHOS_ETHOS_DIAGNOSTICS").as_deref() == Ok("protocol") {
+                    eprintln!(
+                        "aithos_gateway_ethos_protocol_diagnostic: mutation planning: {error:?}"
+                    );
+                }
+                GatewayError::BridgeFailed(format!(
+                    "aithos-client mutation planning refused: {error}"
+                ))
+            })?;
+        if plan.did() != did {
+            return Err(GatewayError::BridgeFailed(
+                "aithos-client mutation subject drifted".into(),
+            ));
+        }
+        let digest = (!deleting)
+            .then(|| plan.circle_section_digest(response_path))
+            .transpose()
+            .map_err(|error| {
+                GatewayError::BridgeFailed(format!(
+                    "aithos-client mutation result refused: {error}"
+                ))
+            })?;
+        let nonces = (0..plan.upload_order().len())
+            .map(|_| self.entropy.e16())
+            .collect::<Vec<_>>();
+        let envelopes = keyholder
+            .with_ethos_client_grantee(|client| {
+                plan.upload_order()
+                    .iter()
+                    .enumerate()
+                    .map(|(index, artifact)| {
+                        aithos_client::ProviderEnvelopePlan::for_grantee_working_set_publication(
+                            client,
+                            &plan,
+                            aithos_client::ProviderUploadIntent::new(
+                                &host,
+                                &tenant,
+                                artifact,
+                                now,
+                                nonces[index],
+                            ),
+                        )
+                    })
+                    .collect::<std::result::Result<Vec<_>, _>>()
+            })
+            .map_err(|error| {
+                GatewayError::BridgeFailed(format!(
+                    "aithos-client Provider envelopes refused: {error}"
+                ))
+            })?;
+        let commit_nonce = self.entropy.e16();
+        let commit_probe = keyholder
+            .with_ethos_client_grantee(|client| {
+                aithos_client::ProviderReadEnvelopePlan::for_grantee(
+                    client,
+                    chain,
+                    aithos_client::ProviderReadIntent::new(
+                        &host,
+                        &tenant,
+                        plan.did(),
+                        aithos_client::ProviderReadTarget::Heads,
+                        now,
+                        commit_nonce,
+                    ),
+                )
+            })
+            .map_err(|error| {
+                GatewayError::BridgeFailed(format!("aithos-client commit probe refused: {error}"))
+            })?;
+        let expected_new_head = plan.new_head().to_owned();
+        let context = response_context.to_owned();
+        let zone = response_zone.to_owned();
+        let path = response_path.to_owned();
+        let response = if deleting {
+            serde_json::json!({
+                "context": context,
+                "zone": zone,
+                "path": path,
+                "deleted": true,
+            })
+        } else {
+            serde_json::json!({
+                "context": context,
+                "zone": zone,
+                "path": path,
+                "digest": digest,
+            })
+        };
+        crate::ethos_backend::PreparedEthosMutation::new(
+            transport,
+            envelopes,
+            commit_probe,
+            expected_new_head,
+            response,
+        )
+    }
+
+    /// Fail on the certificate half before opening a Provider client under
+    /// the delegated signer. A read-only session cannot necessarily read the
+    /// remote gamma/index under its own chain, but it must still receive the
+    /// stable mandate denial produced by Core rather than a transport 403.
+    ///
+    /// Folder SIDs and tags are resolved through the long-lived read client,
+    /// so the preflight checks the exact same target as the bundle mutation.
+    /// The mutation rechecks this authorization inside the scoped bundle.
+    fn verify_delegated_write_target(
+        &self,
+        chain: &[Mandate],
+        verb: Verb,
+        zone: Zone,
+        folders: &[Sid],
+        tags: &[String],
+        now: &str,
+        op: &'static str,
+    ) -> Result<()> {
+        let doc = self.did_doc()?;
+        let revocations = self
+            .bundle
+            .active_revocations()
+            .map_err(write_denied_op(op))?;
+        verify_chain_revocable(chain, &doc, now, &revocations).map_err(write_denied_op(op))?;
+        let leaf = chain.last().ok_or_else(|| GatewayError::MandateDenied {
+            op: op.to_owned(),
+            reason: "empty chain".to_owned(),
+        })?;
+        let target = Op {
+            verb,
+            zone,
+            folders,
+            tags,
+        };
+        if !covers_op(
+            &leaf.parsed_perimeter().map_err(write_denied_op(op))?,
+            &target,
+        ) {
+            return Err(GatewayError::MandateDenied {
+                op: op.to_owned(),
+                reason: format!("{}: write not covered by the leaf perimeter", leaf.id),
+            });
+        }
+        Ok(())
+    }
+
+    /// The delegated write surface of one session chain: which mutation
+    /// verbs the leaf covers on the circle zone root. `(create/edit,
+    /// delete)` — public and self serve no mutation surface in this
+    /// pass, fail closed.
+    pub fn ethos_write_surface_for_chain(&self, chain: &[Mandate], now: &str) -> (bool, bool) {
+        let Ok(doc) = self.did_doc() else {
+            return (false, false);
+        };
+        let covered = |verb: Verb| {
+            let op = Op {
+                verb,
+                zone: Zone::Circle,
+                folders: &[],
+                tags: &[],
+            };
+            verify_op(chain, &doc, now, &op).is_ok()
+        };
+        (covered(Verb::Append), covered(Verb::Delete))
+    }
+
+    fn delegated_write_zone(zone: &str, op: &str) -> Result<Zone> {
+        match zone {
+            "circle" => Ok(Zone::Circle),
+            "public" => Err(GatewayError::MandateDenied {
+                op: op.to_owned(),
+                reason:
+                    "delegated public mutations await their own core lot — circle only this pass"
+                        .to_owned(),
+            }),
+            "self" => Err(GatewayError::MandateDenied {
+                op: op.to_owned(),
+                reason: "the `self` zone is never mutable by delegation".to_owned(),
+            }),
+            other => Err(GatewayError::RequestRejected(format!(
+                "{op}: zone must be public, circle or self, not `{other}`"
+            ))),
+        }
+    }
+
+    /// Delegated section creation under the session chain (ethos.create).
+    pub fn ethos_create_for_chain(
+        &mut self,
+        chain: &[Mandate],
+        zone: &str,
+        folder: &str,
+        name: &str,
+        title: &str,
+        tags: &[String],
+        body: &str,
+        now: &str,
+    ) -> Result<String> {
+        let zone = Self::delegated_write_zone(zone, "ethos.create")?;
+        let folders = self
+            .bundle
+            .resolve_folder(zone, folder)
+            .map_err(write_denied_op("ethos.create"))?;
+        self.verify_delegated_write_target(
+            chain,
+            Verb::Append,
+            zone,
+            &folders,
+            tags,
+            now,
+            "ethos.create",
+        )?;
+        let gateway_sk = SigningKey::from_bytes(self.keyholder.gateway_seed());
+        let mut bundle = self.delegated_write_bundle(chain, "ethos.create")?;
+        bundle
+            .section_add_as_agent(
+                chain,
+                &gateway_sk,
+                &aithos_bundle::bundle::SectionSpec {
+                    zone,
+                    folder_path: folder,
+                    name,
+                    title,
+                    tags,
+                    body,
+                    now,
+                },
+                self.entropy.as_mut(),
+            )
+            .map_err(write_denied_op("ethos.create"))?;
+        let path = if folder.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{folder}/{name}")
+        };
+        Self::ethos_section_digest_in(&bundle, zone, &path)
+    }
+
+    /// Delegated rewrite under the session chain (ethos.edit). The D8
+    /// precondition is REQUIRED: a rewrite whose `expected_digest` does
+    /// not match the current row refuses before anything is sealed —
+    /// no silent overwrite of a concurrent change.
+    pub fn ethos_edit_for_chain(
+        &mut self,
+        chain: &[Mandate],
+        zone: &str,
+        path: &str,
+        body: &str,
+        expected_digest: &str,
+        now: &str,
+    ) -> Result<String> {
+        let zone = Self::delegated_write_zone(zone, "ethos.edit")?;
+        let (row, folders) = self
+            .bundle
+            .resolve_clear(zone, path)
+            .map_err(|_| GatewayError::RequestRejected(format!("no section at `{path}`")))?;
+        self.verify_delegated_write_target(
+            chain,
+            Verb::Edit,
+            zone,
+            &folders,
+            &row.tags,
+            now,
+            "ethos.edit",
+        )?;
+        let current = row.blob_sha;
+        if current != expected_digest {
+            return Err(GatewayError::MandateDenied {
+                op: "ethos.edit".to_owned(),
+                reason: format!(
+                    "stale precondition: the section changed since it was read (current digest `{current}`)"
+                ),
+            });
+        }
+        let mut bundle = self.delegated_write_bundle(chain, "ethos.edit")?;
+        let gateway_sk = SigningKey::from_bytes(self.keyholder.gateway_seed());
+        bundle
+            .section_rewrite_as_agent(
+                chain,
+                &gateway_sk,
+                zone,
+                path,
+                body,
+                now,
+                self.entropy.as_mut(),
+            )
+            .map_err(write_denied_op("ethos.edit"))?;
+        Self::ethos_section_digest_in(&bundle, zone, path)
+    }
+
+    /// Delegated deletion under the session chain (ethos.delete). The
+    /// D8 precondition is optional here, enforced when present.
+    pub fn ethos_delete_for_chain(
+        &mut self,
+        chain: &[Mandate],
+        zone: &str,
+        path: &str,
+        expected_digest: Option<&str>,
+        now: &str,
+    ) -> Result<()> {
+        let zone = Self::delegated_write_zone(zone, "ethos.delete")?;
+        let (row, folders) = self
+            .bundle
+            .resolve_clear(zone, path)
+            .map_err(write_denied_op("ethos.delete"))?;
+        self.verify_delegated_write_target(
+            chain,
+            Verb::Delete,
+            zone,
+            &folders,
+            &row.tags,
+            now,
+            "ethos.delete",
+        )?;
+        if let Some(expected) = expected_digest {
+            let current = row.blob_sha;
+            if current != expected {
+                return Err(GatewayError::MandateDenied {
+                    op: "ethos.delete".to_owned(),
+                    reason: format!(
+                        "stale precondition: the section changed since it was read (current digest `{current}`)"
+                    ),
+                });
+            }
+        }
+        let mut bundle = self.delegated_write_bundle(chain, "ethos.delete")?;
+        let gateway_sk = SigningKey::from_bytes(self.keyholder.gateway_seed());
+        bundle
+            .section_delete_as_agent(chain, &gateway_sk, zone, path, now, self.entropy.as_mut())
+            .map_err(write_denied_op("ethos.delete"))
+    }
+
     // ------------------------------------------------------------- audit
 
     /// Run the auditor's scoped query with the auditor's own key and
@@ -1646,6 +2396,148 @@ impl Bridge {
         &self.bundle.did
     }
 
+    /// Validate one remotely published Ethos before it can enter the hot
+    /// runner catalogue. This is deliberately a Core-side verdict: the HTTP
+    /// request contributes identifiers only, never trust or provider
+    /// coordinates.
+    pub(crate) fn validate_hot_enrollment(
+        &self,
+        expected_did: &str,
+        agent_mandate: &str,
+        gateway_mandate: &str,
+        agent_signing: &str,
+        agent_kex: &str,
+        gateway_signing: &str,
+        gateway_kex: &str,
+        audience: &str,
+        required_agent_actions: &[String],
+        required_gateway_actions: &[String],
+        now: &str,
+    ) -> Result<()> {
+        let rejected = |reason: &str| GatewayError::MandateDenied {
+            op: "ethos.enroll".to_owned(),
+            reason: reason.to_owned(),
+        };
+        if self.bundle.did != expected_did
+            || self.agent_mandate_id() != agent_mandate
+            || self.gateway_mandate_id() != gateway_mandate
+            || agent_mandate == gateway_mandate
+        {
+            return Err(rejected("published identity or mandate selection differs"));
+        }
+        self.bundle
+            .gamma_verify()
+            .map_err(|_| rejected("published Gamma history is invalid"))?;
+        let doc = self
+            .did_doc()
+            .map_err(|_| rejected("published DID document is invalid"))?;
+        if doc.id != expected_did || doc.verify().is_err() {
+            return Err(rejected("published DID document is invalid"));
+        }
+        let entries = self
+            .bundle
+            .gamma_entries()
+            .map_err(|_| rejected("published Gamma history is invalid"))?;
+        let revs = revocations(&entries);
+        for chain in [&self.agent_chain, &self.gateway_chain] {
+            if !enrollment_chain_is_direct_owner(chain) {
+                return Err(rejected("enrollment requires a direct Owner root mandate"));
+            }
+            verify_chain_revocable(chain, &doc, now, &revs)
+                .map_err(|_| rejected("published mandate is inactive or revoked"))?;
+            if chain.iter().any(|mandate| {
+                mandate.subject != expected_did || !grant_logged(&entries, &mandate.id)
+            }) {
+                return Err(rejected("published mandate is not logged under this Ethos"));
+            }
+            let leaf = chain
+                .last()
+                .ok_or_else(|| rejected("published mandate chain is empty"))?;
+            if leaf
+                .parsed_perimeter()
+                .map_err(|_| rejected("published mandate perimeter is invalid"))?
+                .iter()
+                .any(|entry| matches!(entry, PerimeterEntry::Issue { .. }))
+            {
+                return Err(rejected(
+                    "enrollment mandates may not carry issue authority",
+                ));
+            }
+            let constraints_are_bound = leaf.constraints.as_object().is_some_and(|constraints| {
+                constraints.is_empty()
+                    || (constraints.len() == 1
+                        && constraints
+                            .get("purpose")
+                            .and_then(serde_json::Value::as_str)
+                            == Some(audience))
+            });
+            if !constraints_are_bound {
+                return Err(rejected(
+                    "enrollment mandate constraints are not empty or audience-bound",
+                ));
+            }
+        }
+        let agent = self
+            .agent_chain
+            .last()
+            .ok_or_else(|| rejected("published agent mandate chain is empty"))?;
+        if agent.perimeter != required_agent_actions {
+            return Err(rejected(
+                "agent mandate perimeter differs from the exact enrollment rights",
+            ));
+        }
+        if agent.grantee.pubkey != agent_signing || agent.grantee.kex_pubkey != agent_kex {
+            return Err(rejected(
+                "agent mandate is equipped to another gateway identity",
+            ));
+        }
+        let gateway = self
+            .gateway_chain
+            .last()
+            .ok_or_else(|| rejected("published gateway mandate chain is empty"))?;
+        if gateway.perimeter != required_gateway_actions {
+            return Err(rejected(
+                "governance mandate perimeter differs from the exact enrollment rights",
+            ));
+        }
+        if gateway.grantee.pubkey != gateway_signing || gateway.grantee.kex_pubkey != gateway_kex {
+            return Err(rejected(
+                "governance mandate is equipped to another gateway identity",
+            ));
+        }
+        for required in required_agent_actions {
+            let action = required
+                .strip_prefix("act.x.gateway.")
+                .ok_or_else(|| rejected("gateway required-action configuration is invalid"))?;
+            if !self
+                .bundle
+                .action_covered(&self.agent_chain, "gateway", action)
+                .map_err(|_| rejected("agent mandate perimeter is invalid"))?
+            {
+                return Err(rejected("agent mandate misses a required gateway action"));
+            }
+        }
+        for required in required_gateway_actions {
+            let action = required
+                .strip_prefix("act.x.gateway.")
+                .ok_or_else(|| rejected("gateway required-action configuration is invalid"))?;
+            if !self
+                .bundle
+                .action_covered(&self.gateway_chain, "gateway", action)
+                .map_err(|_| rejected("governance mandate perimeter is invalid"))?
+            {
+                return Err(rejected(
+                    "governance mandate misses a required gateway action",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn store_clone(&self) -> GatewayStore {
+        self.bundle.store.clone()
+    }
+
     /// The mandate id the agent acts under (test assertions).
     pub fn agent_mandate_id(&self) -> &str {
         &self.agent_chain[0].id
@@ -1671,6 +2563,10 @@ impl Bridge {
     fn did_doc(&self) -> Result<DidDocument> {
         read_json(&self.bundle, "did.json")
     }
+}
+
+fn enrollment_chain_is_direct_owner(chain: &[Mandate]) -> bool {
+    chain.len() == 1 && chain[0].parent.is_none()
 }
 
 // ------------------------------------------------------ multi-Ethos runner
@@ -1740,6 +2636,30 @@ struct HubRuntimeTool {
     bounds: Vec<crate::hub::ArgumentBound>,
 }
 
+/// How many samples a census keeps. Diagnostic lines stay bounded: a
+/// context holding thousands of certificates must not turn one opt-in
+/// eligibility probe into an unbounded terminal dump.
+const CERT_WALK_CENSUS_SAMPLES: usize = 8;
+
+/// What a certificate walk saw, for the opt-in G4 diagnostic only.
+/// Public keys and mandate ids are already public surface; no payload,
+/// no secret and no private key ever enters this structure.
+#[derive(Debug, Default, Clone)]
+struct CertWalkCensus {
+    /// Paths the store listed under `certs/` (the view's raw size).
+    listed: usize,
+    /// Of those, how many parsed as a mandate.
+    parsed: usize,
+    /// Leaves whose `grantee.pubkey` is exactly the probed signer.
+    leaves_for_grantee: usize,
+    /// Leaves for that signer whose parent link left this view.
+    unresolvable: usize,
+    /// Bounded `leaf->missing_parent` samples for the dropped chains.
+    unresolvable_samples: Vec<String>,
+    /// Bounded sample of the distinct grantee keys actually present.
+    grantee_samples: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HubRelayTarget {
     pub server: String,
@@ -1762,6 +2682,10 @@ pub struct Runner {
     hub_server_pins: BTreeMap<String, BTreeMap<String, String>>,
     hub_drift: BTreeMap<String, String>,
     hot_tools: BTreeMap<String, HubRuntimeTool>,
+    /// One hot descriptor can be referenced by several Ethos contexts.
+    /// The descriptor/pin stays global while availability remains scoped by
+    /// the owner-published binding present in each context.
+    hot_tool_contexts: BTreeMap<String, BTreeSet<String>>,
     hot_server_pins: BTreeMap<String, BTreeMap<String, String>>,
 }
 
@@ -1775,8 +2699,39 @@ impl Runner {
             hub_server_pins: BTreeMap::new(),
             hub_drift: BTreeMap::new(),
             hot_tools: BTreeMap::new(),
+            hot_tool_contexts: BTreeMap::new(),
             hot_server_pins: BTreeMap::new(),
         }
+    }
+
+    pub(crate) fn hot_context_conflicts(&self, name: &str, did: &str) -> bool {
+        self.contexts.contains_key(name)
+            || self
+                .contexts
+                .values()
+                .any(|runtime| runtime.bridge.ethos_did() == did)
+    }
+
+    /// Insert a context whose remote proofs have already passed
+    /// `Bridge::validate_hot_enrollment`. Runtime policy starts empty:
+    /// connector equipment is a later owner-governed hot operation.
+    pub(crate) fn insert_hot_context(
+        &mut self,
+        name: String,
+        bridge: Bridge,
+    ) -> Result<GatewayStore> {
+        if self.hot_context_conflicts(&name, bridge.ethos_did()) {
+            return Err(GatewayError::RequestRejected("context_conflict".into()));
+        }
+        let store = bridge.store_clone();
+        self.contexts.insert(
+            name,
+            ContextRuntime {
+                policy: Policy::new(BTreeMap::new()),
+                bridge,
+            },
+        );
+        Ok(store)
     }
 
     pub fn gateway_public_key(&self) -> String {
@@ -1787,16 +2742,33 @@ impl Runner {
         gateway_kex_pub_multibase(&self.journal.keyholder)
     }
 
+    pub(crate) fn context_is_provider_primary(&self, context: &str) -> bool {
+        self.context(context)
+            .ok()
+            .and_then(|runtime| runtime.bridge.bundle.store.provider_coordinates())
+            .is_some()
+    }
+
     /// Discover only fresh, revocation-checked chains whose current leaf is
     /// held by `delegate_pub` and carries an issue right. The OAuth request
     /// contributes no context or mandate selector.
     pub fn eligible_session_parents(
-        &self,
+        &mut self,
         delegate_pub: &str,
+        resource: &str,
         now: &str,
     ) -> Vec<EligibleSessionParent> {
+        let diagnostics = std::env::var("AITHOS_ETHOS_DIAGNOSTICS").as_deref() == Ok("protocol");
         let mut eligible = Vec::new();
-        for (context, runtime) in &self.contexts {
+        for (context, runtime) in &mut self.contexts {
+            if let Err(refresh_error) = runtime.bridge.refresh_session_publications() {
+                // TEMPORARY DIAGNOSTIC (2026-07-24): surface why a context is
+                // skipped during ceremony eligibility — remove after debugging.
+                eprintln!(
+                    "[eligible] context `{context}` refresh_session_publications FAILED: {refresh_error:?}"
+                );
+                continue;
+            }
             let Ok(doc) = runtime.bridge.did_doc() else {
                 continue;
             };
@@ -1812,20 +2784,69 @@ impl Runner {
                 .filter(|entry| entry.kind == "revoke")
                 .filter_map(|entry| serde_json::to_value(entry).ok())
                 .collect::<Vec<_>>();
-            for chain in runtime.bridge.walk_cert_chains(delegate_pub) {
-                if verify_chain_revocable(&chain, &doc, now, &revs).is_err() {
+            let (chains, census) = runtime.bridge.walk_cert_chains_censused(delegate_pub);
+            if diagnostics {
+                eprintln!(
+                    "aithos_gateway_g4_diagnostic: context={context} signer={delegate_pub} certs_listed={} certs_parsed={} leaves_for_signer={} unresolvable_chains={} reconstructed_chains={}",
+                    census.listed,
+                    census.parsed,
+                    census.leaves_for_grantee,
+                    census.unresolvable,
+                    chains.len()
+                );
+                for sample in &census.unresolvable_samples {
+                    eprintln!(
+                        "aithos_gateway_g4_diagnostic: context={context} rejected=unresolvable_parent chain={sample}"
+                    );
+                }
+                if census.leaves_for_grantee == 0 {
+                    eprintln!(
+                        "aithos_gateway_g4_diagnostic: context={context} rejected=no_leaf_for_signer grantees=[{}]",
+                        census.grantee_samples.join(" ")
+                    );
+                }
+            }
+            for chain in chains {
+                let parent_id = chain
+                    .last()
+                    .map(|parent| parent.id.as_str())
+                    .unwrap_or("<empty>");
+                if let Err(error) = verify_chain_revocable(&chain, &doc, now, &revs) {
+                    if diagnostics {
+                        eprintln!(
+                            "aithos_gateway_g4_diagnostic: context={context} parent={parent_id} rejected=chain error={error}"
+                        );
+                    }
                     continue;
                 }
                 let Some(parent) = chain.last() else {
                     continue;
                 };
+                if !constraints_bind_resource(&parent.constraints, resource) {
+                    if diagnostics {
+                        eprintln!(
+                            "aithos_gateway_g4_diagnostic: context={context} parent={parent_id} rejected=resource expected={resource}"
+                        );
+                    }
+                    continue;
+                }
                 let Ok(parent_perimeter) = parent.parsed_perimeter() else {
+                    if diagnostics {
+                        eprintln!(
+                            "aithos_gateway_g4_diagnostic: context={context} parent={parent_id} rejected=perimeter"
+                        );
+                    }
                     continue;
                 };
                 let can_issue = parent_perimeter
                     .iter()
                     .any(|entry| matches!(entry, PerimeterEntry::Issue { depth } if *depth > 0));
                 if !can_issue {
+                    if diagnostics {
+                        eprintln!(
+                            "aithos_gateway_g4_diagnostic: context={context} parent={parent_id} rejected=issue"
+                        );
+                    }
                     continue;
                 }
                 let session_perimeter = parent_perimeter
@@ -1855,6 +2876,11 @@ impl Runner {
                 });
             }
         }
+        if diagnostics && eligible.is_empty() {
+            eprintln!(
+                "aithos_gateway_g4_diagnostic: signer={delegate_pub} resource={resource} eligible=0"
+            );
+        }
         eligible.sort_by(|left, right| {
             (&left.context, &left.parent_id).cmp(&(&right.context, &right.parent_id))
         });
@@ -1874,15 +2900,44 @@ impl Runner {
         let entries = runtime.bridge.bundle.gamma_entries().map_err(bridge_err)?;
         let revocations = revocations(&entries);
         let gateway_pub = gateway_pub_multibase(&runtime.bridge.keyholder);
-        let chain = runtime
-            .bridge
-            .walk_cert_chains(&gateway_pub)
-            .into_iter()
-            .find(|chain| chain.last().is_some_and(|leaf| leaf.id == leaf_id))
-            .ok_or_else(|| GatewayError::MandateDenied {
+        // The OAuth session already pins the exact leaf id. Resolve that
+        // immutable certificate and follow its parent links directly instead
+        // of listing and downloading every certificate in the Ethos on every
+        // MCP call. Live revocations are still read and checked below.
+        const MAX_SESSION_CHAIN_DEPTH: usize = 64;
+        let unavailable = || GatewayError::MandateDenied {
+            op: "delegated_session".into(),
+            reason: "the delegated session leaf is unavailable".into(),
+        };
+        let mut reversed = Vec::new();
+        let mut seen = BTreeSet::new();
+        let mut cursor = Some(leaf_id.to_owned());
+        while let Some(id) = cursor {
+            if reversed.len() >= MAX_SESSION_CHAIN_DEPTH || !seen.insert(id.clone()) {
+                return Err(GatewayError::MandateDenied {
+                    op: "delegated_session".into(),
+                    reason: "the delegated session certificate chain is cyclic or too deep".into(),
+                });
+            }
+            let mandate: Mandate =
+                read_json(&runtime.bridge.bundle, &cert_path(&id)).map_err(|_| unavailable())?;
+            if mandate.id != id {
+                return Err(unavailable());
+            }
+            cursor = mandate.parent.clone();
+            reversed.push(mandate);
+        }
+        reversed.reverse();
+        let chain = reversed;
+        if chain
+            .last()
+            .is_none_or(|leaf| leaf.id != leaf_id || leaf.grantee.pubkey != gateway_pub)
+        {
+            return Err(GatewayError::MandateDenied {
                 op: "delegated_session".into(),
-                reason: "the delegated session leaf is unavailable".into(),
-            })?;
+                reason: "the delegated session leaf authority is unavailable".into(),
+            });
+        }
         verify_chain_revocable(&chain, &did, now, &revocations).map_err(|error| {
             GatewayError::MandateDenied {
                 op: "delegated_session".into(),
@@ -1952,7 +3007,7 @@ impl Runner {
                 let Some(tool) = descriptor.get("name").and_then(serde_json::Value::as_str) else {
                     return false;
                 };
-                if self.resolve(tool) != Some(context) {
+                if !self.tool_available_in_context(context, tool) {
                     return false;
                 }
                 let (connector, action) = self.session_tool_parts(tool);
@@ -2104,6 +3159,7 @@ impl Runner {
         gateway_pub: &str,
         gateway_kex_pub: &str,
         session_pub: &str,
+        resource: &str,
         leaf_value: &serde_json::Value,
         now: &str,
     ) -> Result<(Vec<Mandate>, Mandate)> {
@@ -2127,6 +3183,12 @@ impl Runner {
             }
         })?;
         let parent = parent_chain.last().expect("non-empty chain");
+        if !constraints_bind_resource(&parent.constraints, resource) {
+            return Err(GatewayError::MandateDenied {
+                op: "session.issue".into(),
+                reason: "selected parent is bound to another gateway audience".into(),
+            });
+        }
         let parent_can_issue = parent.parsed_perimeter().is_ok_and(|entries| {
             entries
                 .iter()
@@ -2205,6 +3267,7 @@ impl Runner {
         gateway_pub: &str,
         gateway_kex_pub: &str,
         session_pub: &str,
+        resource: &str,
         leaf_value: &serde_json::Value,
         now: &str,
     ) -> Result<serde_json::Value> {
@@ -2215,6 +3278,7 @@ impl Runner {
             gateway_pub,
             gateway_kex_pub,
             session_pub,
+            resource,
             leaf_value,
             now,
         )?;
@@ -2236,6 +3300,7 @@ impl Runner {
         gateway_pub: &str,
         gateway_kex_pub: &str,
         session_pub: &str,
+        resource: &str,
         leaf_value: &serde_json::Value,
         grant_value: &serde_json::Value,
         now: &str,
@@ -2247,6 +3312,7 @@ impl Runner {
             gateway_pub,
             gateway_kex_pub,
             session_pub,
+            resource,
             leaf_value,
             now,
         )?;
@@ -2412,6 +3478,7 @@ impl Runner {
             hub_server_pins,
             hub_drift: BTreeMap::new(),
             hot_tools: BTreeMap::new(),
+            hot_tool_contexts: BTreeMap::new(),
             hot_server_pins: BTreeMap::new(),
         })
     }
@@ -2435,6 +3502,14 @@ impl Runner {
             .verified_hub_manifest(connector)?;
         let digest = approved_manifest_catalog_digest(&manifest)?;
         Ok((manifest, digest))
+    }
+
+    /// Make the latest Provider-published binding visible in a replicated
+    /// context before the normal sealed-manifest verifier is consulted.
+    pub fn refresh_approved_connector(&self, context: &str, connector: &str) -> Result<()> {
+        self.context(context)?
+            .bridge
+            .refresh_hub_manifest(connector)
     }
 
     /// Validate a complete hot runtime view without mutating it. The
@@ -2485,12 +3560,21 @@ impl Runner {
         connector: &str,
         manifest: &ApprovedManifest,
     ) -> Result<()> {
+        self.clear_hot_connector_routes(connector);
+        self.install_hot_connector_context(context, connector, manifest)
+    }
+
+    fn install_hot_connector_context(
+        &mut self,
+        context: &str,
+        connector: &str,
+        manifest: &ApprovedManifest,
+    ) -> Result<()> {
         self.validate_hot_connector(context, connector, manifest)?;
-        self.hot_tools.retain(|_, tool| tool.server != connector);
         for approved in &manifest.tools {
-            self.hot_tools.insert(
-                approved.exposed_name.clone(),
-                HubRuntimeTool {
+            self.hot_tools
+                .entry(approved.exposed_name.clone())
+                .or_insert_with(|| HubRuntimeTool {
                     context: context.to_owned(),
                     server: connector.to_owned(),
                     raw_tool: approved.name.clone(),
@@ -2500,8 +3584,11 @@ impl Runner {
                     access: approved.risk_class,
                     granted: approved.is_granted(),
                     bounds: approved.bounds.clone(),
-                },
-            );
+                });
+            self.hot_tool_contexts
+                .entry(approved.exposed_name.clone())
+                .or_default()
+                .insert(context.to_owned());
         }
         self.hot_server_pins.insert(
             connector.to_owned(),
@@ -2515,9 +3602,61 @@ impl Runner {
         Ok(())
     }
 
-    pub fn remove_hot_connector(&mut self, connector: &str) {
-        self.hot_tools.retain(|_, tool| tool.server != connector);
+    /// Rebuild one hot connector's context projection from the canonical
+    /// bindings currently present in every loaded Ethos. The control
+    /// context that activated the connector is required; other contexts are
+    /// added only when their independently verified binding has the exact
+    /// same catalogue digest.
+    pub fn reconcile_bound_hot_connector(
+        &mut self,
+        required_context: &str,
+        connector: &str,
+        required_manifest: &ApprovedManifest,
+        expected_digest: &str,
+    ) -> Result<usize> {
+        self.validate_hot_connector(required_context, connector, required_manifest)?;
+        self.clear_hot_connector_routes(connector);
+        self.install_hot_connector_context(required_context, connector, required_manifest)?;
+        let mut installed = 1usize;
+        let contexts = self.contexts.keys().cloned().collect::<Vec<_>>();
+        for context in contexts {
+            if context == required_context {
+                continue;
+            }
+            if self
+                .refresh_approved_connector(&context, connector)
+                .is_err()
+            {
+                continue;
+            }
+            let Ok((manifest, digest)) = self.approved_connector(&context, connector) else {
+                continue;
+            };
+            if digest != expected_digest {
+                continue;
+            }
+            self.install_hot_connector_context(&context, connector, &manifest)?;
+            installed += 1;
+        }
+        Ok(installed)
+    }
+
+    fn clear_hot_connector_routes(&mut self, connector: &str) {
+        let names = self
+            .hot_tools
+            .iter()
+            .filter(|(_, tool)| tool.server == connector)
+            .map(|(name, _)| name.clone())
+            .collect::<Vec<_>>();
+        for name in names {
+            self.hot_tools.remove(&name);
+            self.hot_tool_contexts.remove(&name);
+        }
         self.hot_server_pins.remove(connector);
+    }
+
+    pub fn remove_hot_connector(&mut self, connector: &str) {
+        self.clear_hot_connector_routes(connector);
         self.hub_drift.remove(connector);
     }
 
@@ -2572,6 +3711,29 @@ impl Runner {
             .map(|(name, _)| name.as_str())
     }
 
+    /// Whether a tool is actually mapped inside one specific Ethos context.
+    /// This is the delegated-session resolver: unlike the legacy aggregate
+    /// resolver it can represent the same hot connector in several Ethos.
+    pub fn tool_available_in_context(&self, context: &str, tool: &str) -> bool {
+        if self
+            .hot_tool_contexts
+            .get(tool)
+            .is_some_and(|contexts| contexts.contains(context))
+        {
+            return true;
+        }
+        if self
+            .hub_tools
+            .get(tool)
+            .is_some_and(|hub| hub.context == context)
+        {
+            return true;
+        }
+        self.contexts
+            .get(context)
+            .is_some_and(|runtime| runtime.policy.is_mapped(tool))
+    }
+
     /// Every mapped tool name across all contexts (deterministic order) —
     /// what the router's aggregated `tools/list` advertises.
     pub fn mapped_tools(&self) -> Vec<String> {
@@ -2616,10 +3778,13 @@ impl Runner {
 
     pub fn relay_target(&self, ctx: &str, tool: &str) -> Result<HubRelayTarget> {
         if let Some(hub) = self.hot_tools.get(tool) {
-            if hub.context != ctx {
+            if !self
+                .hot_tool_contexts
+                .get(tool)
+                .is_some_and(|contexts| contexts.contains(ctx))
+            {
                 return Err(GatewayError::ConfigRejected(format!(
-                    "hub route `{tool}` resolved to `{ctx}`, pin belongs to `{}`",
-                    hub.context
+                    "hot route `{tool}` has no owner binding in context `{ctx}`"
                 )));
             }
             return Ok(HubRelayTarget {
@@ -3009,6 +4174,458 @@ impl Runner {
         Ok(serde_json::json!({ "contexts": served }))
     }
 
+    // ------------------------------------ delegated ethos surface (lot 1)
+
+    /// The zones one delegated session serves in ITS context — never
+    /// another context, never a frontier default. Chain re-verified
+    /// fresh (revocations included): a revocation drops the surface on
+    /// the very next call, no restart.
+    pub fn ethos_surface_for_session(
+        &self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        now: &str,
+    ) -> Result<Vec<String>> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        Ok(self
+            .context(context)?
+            .bridge
+            .ethos_surface_for_chain(&chain, now))
+    }
+
+    /// The covered skeleton for one delegated session — same response
+    /// shape as [`Runner::ethos_list`], restricted to the session's own
+    /// context and chain.
+    pub fn ethos_list_for_session(
+        &self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let entries = self
+            .context(context)?
+            .bridge
+            .ethos_list_for_chain(&chain, now);
+        let mut served = Vec::new();
+        if !entries.is_empty() {
+            served.push(serde_json::json!({ "context": context, "entries": entries }));
+        }
+        Ok(serde_json::json!({ "contexts": served }))
+    }
+
+    /// One section body under the session chain — same response shape
+    /// as [`Runner::ethos_read`], the session's own context imposed.
+    pub fn ethos_read_for_session(
+        &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        zone: &str,
+        path: &str,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let bridge = &mut self.context_mut(context)?.bridge;
+        let text = bridge.ethos_read_section_for_chain(&chain, zone, path, now)?;
+        // The row digest rides along (D8): an `ethos.edit` cites it as
+        // its `expected_digest` so concurrent changes refuse cleanly.
+        let digest = match zone {
+            "public" => bridge.ethos_section_digest(Zone::Public, path).ok(),
+            "circle" => bridge.ethos_section_digest(Zone::Circle, path).ok(),
+            _ => None,
+        };
+        Ok(serde_json::json!({
+            "context": context, "zone": zone, "path": path, "text": text,
+            "digest": digest,
+        }))
+    }
+
+    /// Side-effect-free `aithos-client` observation used by the shadow gate.
+    /// It performs its own cold verification, session proof, chain
+    /// verification, authorization and content opening, but writes no Gamma
+    /// entry and therefore cannot replace the serving path yet.
+    pub fn ethos_client_read_probe_for_session(
+        &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        zone: &str,
+        path: &str,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let zone = Zone::parse(zone).map_err(bridge_err)?;
+        let runtime = self.context_mut(context)?;
+        let snapshot = runtime.bridge.ethos_client_snapshot_for_chain(&chain)?;
+        let nonce = runtime.bridge.entropy.e32();
+        let keyholder = Arc::clone(&runtime.bridge.keyholder);
+        let read = keyholder
+            .with_ethos_client_session(snapshot, chain, now, nonce, |session| {
+                session.read_content(
+                    zone,
+                    path,
+                    aithos_client::AuthorizationContext::new(now),
+                    aithos_client::ReadLimits::default(),
+                )
+            })
+            .map_err(|error| {
+                GatewayError::BridgeFailed(format!("aithos-client read refused: {error}"))
+            })?;
+        Ok(serde_json::json!({
+            "context": context,
+            "zone": zone.as_str(),
+            "path": read.item().path(),
+            "text": read.body(),
+            "edition_height": read.edition_height(),
+            "edition_chain_hash": read.edition_chain_hash(),
+        }))
+    }
+
+    /// Side-effect-free `aithos-client` list observation for the same shadow
+    /// comparison as [`Runner::ethos_client_read_probe_for_session`].
+    pub fn ethos_client_list_probe_for_session(
+        &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let runtime = self.context_mut(context)?;
+        let zones = runtime.bridge.ethos_surface_for_chain(&chain, now);
+        let snapshot = runtime.bridge.ethos_client_snapshot_for_chain(&chain)?;
+        let nonce = runtime.bridge.entropy.e32();
+        let keyholder = Arc::clone(&runtime.bridge.keyholder);
+        let entries = keyholder
+            .with_ethos_client_session(snapshot, chain, now, nonce, |session| {
+                let mut entries = Vec::new();
+                for zone in &zones {
+                    let zone = Zone::parse(zone)
+                        .map_err(|_| aithos_client::ClientError::ZoneNotAllowed)?;
+                    for item in session.list_content(
+                        zone,
+                        aithos_client::AuthorizationContext::new(now),
+                        aithos_client::ReadLimits::default(),
+                    )? {
+                        entries.push(serde_json::json!({
+                            "zone": zone.as_str(),
+                            "path": item.path(),
+                            "kind": match item.kind() {
+                                aithos_client::ContentKind::Folder => "folder",
+                                aithos_client::ContentKind::Section => "section",
+                            },
+                            "title": item.title(),
+                            "tags": item.tags(),
+                        }));
+                    }
+                }
+                Ok(entries)
+            })
+            .map_err(|error| {
+                GatewayError::BridgeFailed(format!("aithos-client list refused: {error}"))
+            })?;
+        Ok(serde_json::json!({ "context": context, "entries": entries }))
+    }
+
+    /// The starting pack for one delegated session — same response
+    /// shape as [`Runner::ethos_context_pack`], restricted to the
+    /// session's own context and chain, directives excluded (the
+    /// briefing keeps its own explicitly-mandated tool).
+    pub fn ethos_context_pack_for_session(
+        &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let pack = self
+            .context_mut(context)?
+            .bridge
+            .ethos_context_pack_for_chain(&chain, now)?;
+        Ok(serde_json::json!({
+            "contexts": [ { "context": context, "pack": pack } ],
+        }))
+    }
+
+    /// The delegated write surface of one session: `(create/edit,
+    /// delete)` on the session's own context, chain re-verified fresh.
+    pub fn ethos_write_surface_for_session(
+        &self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        now: &str,
+    ) -> Result<(bool, bool)> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        Ok(self
+            .context(context)?
+            .bridge
+            .ethos_write_surface_for_chain(&chain, now))
+    }
+
+    /// Delegated `ethos.create` — returns the created section's digest.
+    #[allow(clippy::too_many_arguments)]
+    pub fn ethos_create_for_session(
+        &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        zone: &str,
+        folder: &str,
+        name: &str,
+        title: &str,
+        tags: &[String],
+        body: &str,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let digest = self
+            .context_mut(context)?
+            .bridge
+            .ethos_create_for_chain(&chain, zone, folder, name, title, tags, body, now)?;
+        let path = if folder.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{folder}/{name}")
+        };
+        Ok(serde_json::json!({
+            "context": context, "zone": zone, "path": path, "digest": digest,
+        }))
+    }
+
+    /// Delegated `ethos.edit` — the required `expected_digest` is the D8
+    /// concurrency precondition; returns the new digest.
+    #[allow(clippy::too_many_arguments)]
+    pub fn ethos_edit_for_session(
+        &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        zone: &str,
+        path: &str,
+        body: &str,
+        expected_digest: &str,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let digest = self.context_mut(context)?.bridge.ethos_edit_for_chain(
+            &chain,
+            zone,
+            path,
+            body,
+            expected_digest,
+            now,
+        )?;
+        Ok(serde_json::json!({
+            "context": context, "zone": zone, "path": path, "digest": digest,
+        }))
+    }
+
+    /// Delegated `ethos.delete` — `expected_digest` enforced when given.
+    #[allow(clippy::too_many_arguments)]
+    pub fn ethos_delete_for_session(
+        &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        zone: &str,
+        path: &str,
+        expected_digest: Option<&str>,
+        now: &str,
+    ) -> Result<serde_json::Value> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        self.context_mut(context)?.bridge.ethos_delete_for_chain(
+            &chain,
+            zone,
+            path,
+            expected_digest,
+            now,
+        )?;
+        Ok(serde_json::json!({
+            "context": context, "zone": zone, "path": path, "deleted": true,
+        }))
+    }
+
+    /// Prepare one operation-scoped `aithos-client` create without performing
+    /// any Provider I/O. The caller may therefore release the Runner lock
+    /// before executing the closed signed envelopes.
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_ethos_client_create_for_session(
+        &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        zone: &str,
+        folder: &str,
+        name: &str,
+        body: &str,
+        now: &str,
+    ) -> Result<crate::ethos_backend::PreparedEthosMutation> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let zone = Bridge::delegated_write_zone(zone, "ethos.create")?;
+        if zone != Zone::Circle {
+            return Err(GatewayError::MandateDenied {
+                op: "ethos.create".to_owned(),
+                reason: "the Client working-set canary is limited to circle".to_owned(),
+            });
+        }
+        let path = if folder.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{folder}/{name}")
+        };
+        let intent = aithos_client::MutationIntent::Create {
+            zone,
+            path: path.clone(),
+            body: body.to_owned(),
+            at: now.to_owned(),
+        };
+        self.context_mut(context)?
+            .bridge
+            .prepare_ethos_client_mutation_for_chain(
+                &chain,
+                intent,
+                context,
+                zone.as_str(),
+                &path,
+                now,
+            )
+    }
+
+    /// Prepare one operation-scoped edit. D8 is checked against the current
+    /// clear row before planning; Provider CAS remains the final race guard.
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_ethos_client_edit_for_session(
+        &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        zone: &str,
+        path: &str,
+        body: &str,
+        expected_digest: &str,
+        now: &str,
+    ) -> Result<crate::ethos_backend::PreparedEthosMutation> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let zone = Bridge::delegated_write_zone(zone, "ethos.edit")?;
+        if zone != Zone::Circle {
+            return Err(GatewayError::MandateDenied {
+                op: "ethos.edit".to_owned(),
+                reason: "the Client working-set canary is limited to circle".to_owned(),
+            });
+        }
+        let current = self
+            .context(context)?
+            .bridge
+            .ethos_section_digest(zone, path)?;
+        if current != expected_digest {
+            return Err(GatewayError::MandateDenied {
+                op: "ethos.edit".to_owned(),
+                reason: format!(
+                    "stale precondition: the section changed since it was read (current digest `{current}`)"
+                ),
+            });
+        }
+        let intent = aithos_client::MutationIntent::Edit {
+            zone,
+            path: path.to_owned(),
+            body: body.to_owned(),
+            at: now.to_owned(),
+        };
+        self.context_mut(context)?
+            .bridge
+            .prepare_ethos_client_mutation_for_chain(
+                &chain,
+                intent,
+                context,
+                zone.as_str(),
+                path,
+                now,
+            )
+    }
+
+    /// Prepare one operation-scoped delete. The optional D8 digest retains
+    /// the historical API; Provider CAS still refuses concurrent editions.
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_ethos_client_delete_for_session(
+        &mut self,
+        context: &str,
+        leaf_id: &str,
+        session_pub: &str,
+        expected_leaf: &serde_json::Value,
+        zone: &str,
+        path: &str,
+        expected_digest: Option<&str>,
+        now: &str,
+    ) -> Result<crate::ethos_backend::PreparedEthosMutation> {
+        let (chain, _, _) =
+            self.verified_session_chain(context, leaf_id, session_pub, expected_leaf, now)?;
+        let zone = Bridge::delegated_write_zone(zone, "ethos.delete")?;
+        if zone != Zone::Circle {
+            return Err(GatewayError::MandateDenied {
+                op: "ethos.delete".to_owned(),
+                reason: "the Client working-set canary is limited to circle".to_owned(),
+            });
+        }
+        if let Some(expected) = expected_digest {
+            let current = self
+                .context(context)?
+                .bridge
+                .ethos_section_digest(zone, path)?;
+            if current != expected {
+                return Err(GatewayError::MandateDenied {
+                    op: "ethos.delete".to_owned(),
+                    reason: format!(
+                        "stale precondition: the section changed since it was read (current digest `{current}`)"
+                    ),
+                });
+            }
+        }
+        let intent = aithos_client::MutationIntent::Delete {
+            zone,
+            path: path.to_owned(),
+            at: now.to_owned(),
+        };
+        self.context_mut(context)?
+            .bridge
+            .prepare_ethos_client_mutation_for_chain(
+                &chain,
+                intent,
+                context,
+                zone.as_str(),
+                path,
+                now,
+            )
+    }
+
     fn ethos_target_contexts(&self, context: Option<&str>) -> Result<Vec<String>> {
         match context {
             Some(name) => {
@@ -3359,6 +4976,7 @@ pub fn owner_grant_session_delegate(
     master: &[u8; 32],
     label: &str,
     delegate_pub_mb: &str,
+    gateway_audience: &str,
     tools: &[String],
     store: GatewayStore,
     window: &MandateWindow,
@@ -3368,17 +4986,37 @@ pub fn owner_grant_session_delegate(
     let owner = derived_owner(master, "context", label);
     let mut bundle = Bundle::open(store).map_err(bridge_err)?;
     let delegate_pub = decode_pub(delegate_pub_mb)?;
-    let mut perimeter = tools
-        .iter()
-        .map(|tool| {
-            let entry = if tool.starts_with("act.") {
-                tool.clone()
-            } else {
-                op_for_tool(tool)
-            };
-            PerimeterEntry::parse(&entry).map_err(bridge_err)
-        })
-        .collect::<Result<Vec<_>>>()?;
+    // Each granted line is either a raw perimeter entry (act.…, or an
+    // ethos entry like `read.public` — the zone rights a delegated
+    // session may carry, lot 1) or a bare tool name projected onto the
+    // gateway's own connector. `self` is refused at the gesture: never
+    // delegable until the delegated self-resolution core lot.
+    let mut perimeter = Vec::new();
+    for tool in tools {
+        let entry = if tool.starts_with("act.") {
+            PerimeterEntry::parse(tool).map_err(bridge_err)?
+        } else if let Ok(parsed) = PerimeterEntry::parse(tool) {
+            parsed
+        } else {
+            PerimeterEntry::parse(&op_for_tool(tool)).map_err(bridge_err)?
+        };
+        if matches!(
+            &entry,
+            PerimeterEntry::Ethos {
+                zone: Zone::Self_,
+                ..
+            } | PerimeterEntry::EthosId {
+                zone: Zone::Self_,
+                ..
+            }
+        ) {
+            return Err(GatewayError::ConfigRejected(
+                "zone `self` is refused in a session delegate: it is never delegable — the delegated self-resolution is its own core lot"
+                    .into(),
+            ));
+        }
+        perimeter.push(entry);
+    }
     perimeter.push(PerimeterEntry::Issue { depth: 1 });
     let mandate = mint_entries(
         &owner,
@@ -3387,7 +5025,10 @@ pub fn owner_grant_session_delegate(
         "session-delegate",
         &delegate_pub,
         perimeter,
-        serde_json::json!({ "max_sessions": 3 }),
+        serde_json::json!({
+            "max_sessions": 3,
+            "purpose": gateway_audience,
+        }),
         window,
         now,
     )?;
@@ -4279,6 +5920,30 @@ pub fn owner_grant_ethos_read(
     Ok(mandate.id)
 }
 
+/// Deliver the circle zone line to ONE recipient key (§04.3 — the line
+/// is the physics half of a pen). Generic on purpose: the briefing pen
+/// delivers to the agent key, a delegated session pen delivers to the
+/// GATEWAY key (the session leaf grantee), and the auditor gets its
+/// copy when present — issuance appends the needed lines, the
+/// certificate half travels separately.
+pub fn owner_deliver_circle_line(
+    master: &[u8; 32],
+    label: &str,
+    recipient_pub_mb: &str,
+    store: GatewayStore,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<()> {
+    let owner = derived_owner(master, "context", label);
+    let recipient_pub = decode_pub(recipient_pub_mb)?;
+    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+    let _ = now;
+    bundle
+        .deliver_zone_line(&owner, &recipient_pub, Zone::Circle, "", None, ent)
+        .map_err(bridge_err)?;
+    Ok(())
+}
+
 /// Owner revocation of one mandate on a context store (lot G6 scenario
 /// surface; the M3 product surface `owner-revoke-mandate` subsumes it
 /// later). One `revoke` entry — the runtime scan sees it on the very
@@ -4994,10 +6659,59 @@ fn zone_rows(
 /// title and tags, and the folder sid-path (what `covers()` walks).
 #[derive(Debug, Clone)]
 struct EthosRow {
+    sid: Sid,
     path: String,
     title: String,
     tags: Vec<String>,
     folders: Vec<Sid>,
+}
+
+/// Verify one concrete row with its SID. This preserves the historical
+/// folder/tag semantics and additionally supports exact `#id=` grants.
+/// K1-C's public carrier deliberately exposes no folder SIDs or tags, so
+/// those rows carry empty dimensions: zone-wide and exact-id grants work,
+/// while unverifiable folder/tag-restricted grants remain fail-closed.
+fn ethos_row_is_covered(
+    chain: &[Mandate],
+    doc: &DidDocument,
+    now: &str,
+    zone: Zone,
+    row: &EthosRow,
+) -> bool {
+    if verify_chain(chain, doc, now).is_err() {
+        return false;
+    }
+    let Some(leaf) = chain.last() else {
+        return false;
+    };
+    let Ok(perimeter) = leaf.parsed_perimeter() else {
+        return false;
+    };
+    covers_section_op(
+        &perimeter,
+        &SectionOp {
+            verb: Verb::Read,
+            zone,
+            sid: row.sid,
+            folders: &row.folders,
+            tags: &row.tags,
+        },
+    )
+}
+
+/// Read the active public carrier. A present K1-C index is authoritative:
+/// malformed modern state never falls back to a possibly stale legacy copy.
+fn public_read_current(
+    bundle: &Bundle<GatewayStore>,
+    path: &str,
+) -> std::result::Result<String, aithos_core::error::Error> {
+    match bundle.store.get("indices/public.json") {
+        Ok(Some(_)) => Bundle::public_read_k1c(&bundle.store, path),
+        Ok(None) => Bundle::public_read(&bundle.store, path),
+        Err(error) => Err(aithos_core::error::Error::SealRejected(format!(
+            "public index read: {error}"
+        ))),
+    }
 }
 
 /// The whole CLEAR index of one zone, display paths resolved — the
@@ -5009,6 +6723,45 @@ struct EthosRow {
 /// dedicated surface (`briefing.read`, lot K) — the data tools serve
 /// the rest of the Ethos, and the demo hot path stays byte-identical.
 fn zone_all_rows(bundle: &Bundle<GatewayStore>, zone: Zone) -> Vec<EthosRow> {
+    if zone == Zone::Public {
+        match bundle.store.get("indices/public.json") {
+            Ok(Some(bytes)) => {
+                let Ok(index) =
+                    serde_json::from_slice::<aithos_bundle::bundle::K1cPublicIndex>(&bytes)
+                else {
+                    return Vec::new();
+                };
+                if index.root_digest().is_err() {
+                    return Vec::new();
+                }
+                return index
+                    .sections
+                    .into_iter()
+                    .filter_map(|row| {
+                        if row.path.split('/').next() == Some(BRIEFING_FOLDER) {
+                            return None;
+                        }
+                        let sid = Sid::parse(&row.sid).ok()?;
+                        let title = row
+                            .path
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or(row.path.as_str())
+                            .to_owned();
+                        Some(EthosRow {
+                            sid,
+                            path: row.path,
+                            title,
+                            tags: Vec::new(),
+                            folders: Vec::new(),
+                        })
+                    })
+                    .collect();
+            }
+            Ok(None) => {}
+            Err(_) => return Vec::new(),
+        }
+    }
     let Ok(index) =
         read_json::<serde_json::Value>(bundle, &format!("e/{}/index.json", zone.as_str()))
     else {
@@ -5035,6 +6788,9 @@ fn zone_all_rows(bundle: &Bundle<GatewayStore>, zone: Zone) -> Vec<EthosRow> {
     };
     let mut rows = Vec::new();
     for row in index["sections"].as_array().into_iter().flatten() {
+        let Some(sid) = row["sid"].as_str().and_then(|sid| Sid::parse(sid).ok()) else {
+            continue;
+        };
         let name = row["name"].as_str().unwrap_or_default().to_owned();
         let Some((mut names, sids)) = resolve(row["folder_sid"].as_str()) else {
             continue;
@@ -5052,6 +6808,7 @@ fn zone_all_rows(bundle: &Bundle<GatewayStore>, zone: Zone) -> Vec<EthosRow> {
             })
             .unwrap_or_default();
         rows.push(EthosRow {
+            sid,
             path: names.join("/"),
             title: row["title"].as_str().unwrap_or_default().to_owned(),
             tags,
@@ -5074,6 +6831,20 @@ fn read_denied_op(op: &'static str) -> impl Fn(aithos_core::error::Error) -> Gat
     }
 }
 
+/// Like [`write_denied`], but naming the exact refused tool (lot 4):
+/// `ethos.create` / `ethos.edit` / `ethos.delete` refusals must cite
+/// themselves precisely.
+fn write_denied_op(op: &'static str) -> impl Fn(aithos_core::error::Error) -> GatewayError {
+    move |e| match e {
+        aithos_core::error::Error::InvalidMandate(reason)
+        | aithos_core::error::Error::InvalidPath(reason) => GatewayError::MandateDenied {
+            op: op.to_owned(),
+            reason,
+        },
+        other => GatewayError::LogAppendRefused(other.to_string()),
+    }
+}
+
 /// Map a refused delegated write to the caller-facing verdict: a mandate
 /// verdict (perimeter, window, revocation) is a denial; anything else is
 /// an append refusal.
@@ -5085,6 +6856,13 @@ fn write_denied(e: aithos_core::error::Error) -> GatewayError {
         },
         other => GatewayError::LogAppendRefused(other.to_string()),
     }
+}
+
+fn constraints_bind_resource(constraints: &serde_json::Value, resource: &str) -> bool {
+    constraints
+        .get("purpose")
+        .and_then(serde_json::Value::as_str)
+        == Some(resource)
 }
 
 #[cfg(test)]
@@ -5211,6 +6989,23 @@ mod delegated_session_tests {
     }
 
     #[test]
+    fn enrollment_rejects_a_submandate_chain_even_when_it_is_otherwise_valid() {
+        let vector = delegated_chain_vector();
+        let chain: Vec<Mandate> = serde_json::from_value(vector["positive"]["chain"].clone())
+            .expect("mandate chain parses");
+        assert!(chain.len() > 1);
+        assert!(!enrollment_chain_is_direct_owner(&chain));
+        assert!(!enrollment_chain_is_direct_owner(&[chain
+            .last()
+            .expect("leaf")
+            .clone()]));
+        assert!(enrollment_chain_is_direct_owner(&[chain
+            .first()
+            .expect("root")
+            .clone()]));
+    }
+
+    #[test]
     fn gateway_delegates_active_session_counting_to_core() {
         let keys: Vec<String> = (1u8..=4)
             .map(|byte| {
@@ -5223,5 +7018,23 @@ mod delegated_session_tests {
         let all_four: Vec<&str> = keys.iter().map(String::as_str).collect();
         assert!(enforce_max_sessions(3, &all_four).is_err());
         assert!(enforce_max_sessions(3, &[&keys[0], &keys[0]]).is_err());
+    }
+
+    #[test]
+    fn session_parent_resource_binding_is_exact_and_fail_closed() {
+        let resource = "https://demo.mcp.aithos.fr/mcp";
+        assert!(constraints_bind_resource(
+            &serde_json::json!({"purpose": resource}),
+            resource
+        ));
+        assert!(!constraints_bind_resource(&serde_json::json!({}), resource));
+        assert!(!constraints_bind_resource(
+            &serde_json::json!({"purpose": "https://gateway-b.example/mcp"}),
+            resource
+        ));
+        assert!(!constraints_bind_resource(
+            &serde_json::json!({"purpose": null}),
+            resource
+        ));
     }
 }

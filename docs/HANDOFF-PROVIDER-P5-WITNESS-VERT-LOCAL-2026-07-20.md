@@ -1,5 +1,7 @@
 # HANDOFF — Piste P / Lot A (P5 witness) : VERT LOCAL — gate déployé en attente de creds (2026-07-20)
 
+> **ARCHIVE — jalon intermédiaire.** Le gate witness déployé a ensuite été joué.
+
 Date : 2026-07-20 (soirée). Dépôts : code/aithos-core + provider/. État DISQUE = vérité.
 Statut : le gate CONTRAT du témoin (C3, le dernier contrat non servi) est JOUÉ et
 VERT — RED constaté d'abord (11 scénarios « Step doesn't match »), puis 11/11 GREEN

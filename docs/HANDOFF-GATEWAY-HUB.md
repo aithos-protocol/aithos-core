@@ -1,5 +1,8 @@
 # HANDOFF — Piste G : la gateway devient un hub public (OAuth, sessions, démo BYO)
 
+> **ARCHIVE — handoff de la piste G initiale.** Le hub reste un concept actif,
+> mais cet état express précède G4 et les profils OAuth SaaS. Voir `HUB-MCP.md`.
+
 > **ÉTAT EXPRESS (2026-07-17, 13ᵉ session gw — G3 CLOS, l'AS OAuth `gateway_as`, gate réel passé).**
 > Profil VM hybride confirmé (egress 000, unlink DENIED sur montage, pas de
 > toolchain VM), protocole cloud+janitor §5 à la lettre, HEAD d'entrée

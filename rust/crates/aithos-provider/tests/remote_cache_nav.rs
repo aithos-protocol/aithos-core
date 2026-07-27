@@ -103,6 +103,7 @@ async fn local_cache_navigation_p50_under_5ms() {
         acme: AcmeState::new(),
         authority: format!("127.0.0.1:{port}"),
         test_now_enabled: false,
+        browser_origins: Arc::default(),
     });
     tokio::spawn(async move {
         axum::serve(listener, build_router(state)).await.ok();

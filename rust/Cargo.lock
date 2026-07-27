@@ -67,6 +67,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "aithos-client"
+version = "0.1.0-alpha.2-dev"
+dependencies = [
+ "aithos-bundle",
+ "aithos-core",
+ "base64",
+ "blake3",
+ "ed25519-dalek",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "ulid",
+ "x25519-dalek",
+ "zeroize",
+]
+
+[[package]]
 name = "aithos-core"
 version = "0.1.0-alpha.1"
 dependencies = [
@@ -91,6 +110,7 @@ name = "aithos-gateway"
 version = "0.1.0-alpha.1"
 dependencies = [
  "aithos-bundle",
+ "aithos-client",
  "aithos-core",
  "aithos-provider",
  "assert_cmd",
@@ -118,6 +138,7 @@ dependencies = [
  "tokio",
  "tokio-rustls 0.26.4",
  "tokio-util",
+ "tracing",
  "ulid",
  "ureq",
  "yamux",
@@ -162,6 +183,7 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+ "url",
  "yamux",
 ]
 

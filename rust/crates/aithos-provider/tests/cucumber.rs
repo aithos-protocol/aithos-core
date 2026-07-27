@@ -528,6 +528,7 @@ impl StoreWorld {
             acme: AcmeState::new(),
             authority: authority.to_owned(),
             test_now_enabled: true,
+            browser_origins: Arc::default(),
         });
         (state, dns, heads, objects_up, heads_up)
     }
@@ -2274,6 +2275,7 @@ async fn binds_genesis_did(world: &mut StoreWorld) {
         acme: AcmeState::new(),
         authority: world.authority.clone(),
         test_now_enabled: true,
+        browser_origins: Arc::default(),
     });
 }
 
@@ -3433,6 +3435,7 @@ async fn control_backend_mutable(world: &mut StoreWorld) {
         acme: AcmeState::new(),
         authority: world.authority.clone(),
         test_now_enabled: true,
+        browser_origins: Arc::default(),
     });
     world.state = state.clone();
     world.dns = dns;

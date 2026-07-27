@@ -18,6 +18,7 @@
 //! The DEMO-LEA replay rides on these mechanics (the P3 gate); this
 //! test pins the wire seam itself.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -25,8 +26,11 @@ use aithos_bundle::entropy::EntropySource;
 use aithos_bundle::remote::{KeySigner, RemoteStore, SharedRemoteStore};
 use aithos_bundle::{FsStore, Store};
 use aithos_core::keys::{MasterSeed, OwnerKeys};
-use aithos_gateway::config::StoreConfig;
+use aithos_gateway::config::{StoreConfig, ToolAccess};
 use aithos_gateway::core_bridge::{self, Bridge, MandateWindow};
+use aithos_gateway::hub::{
+    approve_manifest, ProposedManifest, ProposedTool, ToolApproval, MANIFEST_VERSION,
+};
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::store_adapter::GatewayStore;
 use aithos_provider::acme::AcmeState;
@@ -104,6 +108,7 @@ async fn boot_service(did: &str) -> (String, u16) {
         acme: AcmeState::new(),
         authority: format!("127.0.0.1:{port}"),
         test_now_enabled: false,
+        browser_origins: Default::default(),
     });
     let router = build_router(state);
     tokio::spawn(async move {
@@ -129,67 +134,13 @@ fn owner_client(url: &str, did: &str, owner: &OwnerKeys, fragment: &str) -> Remo
     .expect("owner client")
 }
 
-/// The OWNER replicates a local store onto the provider: did.json
-/// genesis first (#root), everything else next, gamma segments (diff
-/// base primed), the manifest publish LAST.
+/// The OWNER replicates a local store onto the provider through the
+/// production history-replay seam. Calling it again must publish only
+/// editions newer than the provider head.
 fn owner_replicate(local_root: &std::path::Path, url: &str, did: &str, owner: &OwnerKeys) {
-    let primary = FsStore::new(local_root.to_path_buf());
-    let mut paths = primary.list("").expect("local list");
-    paths.sort();
-    paths.dedup();
-    let priority = |p: &str| -> u8 {
-        match p {
-            "did.json" => 0,
-            p if p.starts_with("gamma/") => 2,
-            "manifest.json" => 3,
-            _ => 1,
-        }
-    };
-    paths.sort_by_key(|p| priority(p));
-    // The edition history: each local `manifests/<h>.json` slot is one
-    // accepted publish — replay them in height order (the wire's A.5
-    // chain wants height 1, then 2, …; the plain manifest.json is the
-    // LAST slot's content and must not double-publish).
-    let mut heights: Vec<u64> = paths
-        .iter()
-        .filter_map(|p| {
-            p.strip_prefix("manifests/")?
-                .strip_suffix(".json")?
-                .parse()
-                .ok()
-        })
-        .collect();
-    heights.sort_unstable();
     let mut root_client = owner_client(url, did, owner, "#root");
-    for path in paths {
-        // The hybrid split (arbitrage 2026-07-21): runner state and
-        // derived caches never leave the pod — the owner replicates the
-        // PROTOCOL objects only.
-        if path.starts_with("gateway/") || path.starts_with("manifests/") {
-            continue;
-        }
-        let Some(bytes) = primary.get(&path).expect("local get") else {
-            continue;
-        };
-        if path.starts_with("gamma/") {
-            let _ = root_client.get(&path);
-        }
-        if path == "manifest.json" {
-            for h in &heights {
-                let slot = primary
-                    .get(&format!("manifests/{h}.json"))
-                    .expect("local get")
-                    .expect("edition slot");
-                root_client
-                    .put("manifest.json", &slot)
-                    .unwrap_or_else(|e| panic!("owner replicate edition {h}: {e}"));
-            }
-            continue;
-        }
-        root_client
-            .put(&path, &bytes)
-            .unwrap_or_else(|e| panic!("owner replicate {path}: {e}"));
-    }
+    aithos_gateway::store_adapter::replicate_owner_history(local_root, &mut root_client)
+        .expect("owner replication");
 }
 
 fn pubs(keyholder: &Keyholder) -> (String, String) {
@@ -269,6 +220,18 @@ fn owner_clone() -> OwnerKeys {
     )))
 }
 
+fn copy_store(source: &std::path::Path, destination: &std::path::Path) {
+    let source = FsStore::new(source.to_path_buf());
+    let mut destination = FsStore::new(destination.to_path_buf());
+    for path in source.list("").expect("source list") {
+        let bytes = source
+            .get(&path)
+            .expect("source get")
+            .expect("listed source object");
+        destination.put(&path, &bytes).expect("destination put");
+    }
+}
+
 /// Independent owner reader over the wire — the re-read proof.
 fn remote_reader(setup: &Setup) -> GatewayStore {
     GatewayStore::Remote {
@@ -278,6 +241,7 @@ fn remote_reader(setup: &Setup) -> GatewayStore {
             &setup.owner,
             "#content",
         )),
+        binding_remote: None,
         sidecar: aithos_gateway::store_adapter::Sidecar::Fs(setup.tmp.path().join("journal")),
     }
 }
@@ -394,6 +358,193 @@ async fn mode_a_replicates_the_appended_note_asynchronously() {
         "the mode A sweep pushed the note: {notes:?}"
     );
     drop(setup.tmp);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn provider_context_pulls_a_new_owner_binding_without_restart() {
+    let tmp = tempfile::tempdir().unwrap();
+    let owner_root = tmp.path().join("owner-context");
+    let gateway_root = tmp.path().join("gateway-context");
+    let keyholder = Keyholder::from_entropy([0x11; 32], [0x22; 32]);
+    let (agent_pub, gateway_pub) = pubs(&keyholder);
+    let now = real_now();
+    let start = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let window = MandateWindow {
+        not_before: render_rfc3339z((start - 60) * 1000),
+        not_after: render_rfc3339z((start + 30 * 86_400) * 1000),
+    };
+    let owner_store = || {
+        GatewayStore::from_config(&StoreConfig::Fs {
+            root: owner_root.clone(),
+        })
+        .unwrap()
+    };
+    let mut entropy = SaltedEntropy::fresh();
+    let did =
+        core_bridge::owner_init_context(&MASTER, "operations", owner_store(), &now, &mut entropy)
+            .expect("context genesis");
+    let equipped = core_bridge::owner_grant_context(
+        &MASTER,
+        "operations",
+        &agent_pub,
+        &gateway_pub,
+        &["github__get_me".to_owned()],
+        owner_store(),
+        &window,
+        &now,
+        &mut entropy,
+    )
+    .expect("gateway context grant");
+    copy_store(&owner_root, &gateway_root);
+    assert!(
+        FsStore::new(gateway_root.clone())
+            .get("e/x/notes-live/header.json")
+            .unwrap()
+            .is_none(),
+        "gateway starts before the Owner publishes the binding"
+    );
+
+    let (url, _) = boot_service(&did).await;
+    let owner = OwnerKeys::genesis(&MasterSeed::from_bytes(aithos_core::derive::derive_key(
+        "aithos-gw/v1/context/operations",
+        &MASTER,
+    )));
+    let owner_root_for_first_publish = owner_root.clone();
+    let url_for_first_publish = url.clone();
+    let did_for_first_publish = did.clone();
+    let owner_for_first_publish = OwnerKeys::genesis(&MasterSeed::from_bytes(
+        aithos_core::derive::derive_key("aithos-gw/v1/context/operations", &MASTER),
+    ));
+    tokio::task::spawn_blocking(move || {
+        owner_replicate(
+            &owner_root_for_first_publish,
+            &url_for_first_publish,
+            &did_for_first_publish,
+            &owner_for_first_publish,
+        )
+    })
+    .await
+    .unwrap();
+
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": { "query": { "type": "string" } },
+        "additionalProperties": false,
+    });
+    let pin =
+        core_bridge::manifest_tool_pin("search", Some("Search notes"), &schema).expect("tool pin");
+    let proposed = ProposedManifest {
+        version: MANIFEST_VERSION.to_owned(),
+        server: "notes-live".to_owned(),
+        tools: vec![ProposedTool {
+            name: "search".to_owned(),
+            description: Some("Search notes".to_owned()),
+            input_schema: schema,
+            pin_sha256: pin,
+        }],
+    };
+    let approved = approve_manifest(
+        &proposed,
+        &BTreeMap::from([(
+            "search".to_owned(),
+            ToolApproval::granted(ToolAccess::Write),
+        )]),
+    )
+    .expect("Owner TOFU approval");
+    core_bridge::owner_enroll_server(
+        &MASTER,
+        "operations",
+        &agent_pub,
+        &gateway_pub,
+        &approved,
+        owner_store(),
+        &window,
+        &real_now(),
+        &mut entropy,
+    )
+    .expect("Owner binding publication");
+
+    let owner_root_for_update = owner_root.clone();
+    let url_for_update = url.clone();
+    let did_for_update = did.clone();
+    tokio::task::spawn_blocking(move || {
+        owner_replicate(
+            &owner_root_for_update,
+            &url_for_update,
+            &did_for_update,
+            &owner,
+        )
+    })
+    .await
+    .unwrap();
+
+    let agent_mandate = equipped.agent_mandate;
+    let replicated = GatewayStore::from_config_with_identity(
+        &StoreConfig::Replicated {
+            root: gateway_root.clone(),
+            url: url.clone(),
+            tenant: TENANT.into(),
+            did: did.clone(),
+            mandate: vec![agent_mandate.clone()],
+        },
+        &keyholder,
+        || Box::new(SaltedEntropy::fresh()),
+    )
+    .expect("replicated context");
+    let refresh_store = replicated.clone();
+    tokio::task::spawn_blocking(move || {
+        refresh_store
+            .refresh_connector_binding("notes-live")
+            .expect("hot binding refresh")
+    })
+    .await
+    .unwrap();
+
+    let reopened = tokio::task::spawn_blocking(move || {
+        Bridge::open(
+            replicated,
+            Arc::new(Keyholder::from_entropy([0x11; 32], [0x22; 32])),
+            Box::new(SaltedEntropy::fresh()),
+        )
+        .expect("bridge remains openable after refresh")
+        .verified_hub_manifest("notes-live")
+        .expect("refreshed binding verifies")
+    })
+    .await
+    .unwrap();
+    assert_eq!(reopened, approved);
+
+    // The deployed demo currently uses provider-primary mode. Its normal
+    // store identity is still the pre-binding agent mandate; the targeted
+    // refresh and subsequent reads must therefore use the stable gateway
+    // governance identity from the local sidecar.
+    let remote = GatewayStore::from_config_with_identity(
+        &StoreConfig::Remote {
+            url,
+            tenant: TENANT.into(),
+            did,
+            mandate: vec![agent_mandate],
+            local: Some(gateway_root),
+        },
+        &keyholder,
+        || Box::new(SaltedEntropy::fresh()),
+    )
+    .expect("provider-primary context");
+    remote
+        .refresh_connector_binding("notes-live")
+        .expect("provider-primary hot binding refresh");
+    let remote_manifest = Bridge::open(
+        remote,
+        Arc::new(Keyholder::from_entropy([0x11; 32], [0x22; 32])),
+        Box::new(SaltedEntropy::fresh()),
+    )
+    .expect("provider-primary bridge remains openable")
+    .verified_hub_manifest("notes-live")
+    .expect("provider-primary binding verifies");
+    assert_eq!(remote_manifest, approved);
 }
 
 // The Mutex import anchors the shared-state pattern used above.

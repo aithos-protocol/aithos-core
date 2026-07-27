@@ -1,8 +1,15 @@
 # Mandats — écarts à fermer pour la surface produit
 
-> État au 2026-07-15. Cette note ne modifie pas la spécification : elle liste les
-> coutures manquantes entre `spec/04-mandates.md`, `spec/05-delegation.md`,
-> `spec/08-connectors.md` et l'interface de création de mandats.
+> **État réévalué le 2026-07-22 contre le code et les contrats.** Cette note ne
+> modifie pas la spécification. Deux écarts protocolaires décrits le 15 juillet
+> sont désormais fermés ; la surface produit générale reste en partie ouverte.
+
+| Écart initial | État vérifié | Reste réellement à faire |
+|---|---|---|
+| Sélecteur de section `id=` | **fermé dans le Core et le client** via `PerimeterEntry::EthosId`, parsing/couverture et cibles `Sid` | détaguer et compléter les parcours produit Gateway encore `@wip` |
+| Atténuation des contraintes | **fermée dans le Core** via `constraints_attenuate` et `constraints_attenuate_for_profile` | achever les contrats Gateway d'émission/preview encore `@wip` |
+| Plusieurs mandats restreints | **partiel** : émission de parent de session et preview owner existent | surface owner générale, lifecycle multi-mandats et UI stable |
+| Borne Ethos + restriction mandat | **partiel** : le preview et le verdict runtime partagent une logique testée | snapshot/supersession produit et couverture exhaustive des états/usages |
 
 ## Principe produit à préserver
 
@@ -22,37 +29,31 @@ des connecteurs restent dans le vault/gateway, sauf grant explicite de
 
 ## P0 — requis avant de brancher l'interface sur le core réel
 
-### 1. Implémenter le sélecteur de section `id=` pour les zones Ethos
+### 1. Sélecteur de section `id=` pour les zones Ethos — fermé au niveau protocole
 
-La spec autorise `read.self#id=<sid>` et les variantes avec verbes, mais
-`PerimeterEntry::Ethos`, son parseur et `Op` ne portent actuellement que `dir` et
-`tag`.
+La spec autorise `read.self#id=<sid>` et les variantes avec verbes. Le Core porte
+désormais une variante fermée `PerimeterEntry::EthosId`, son parsing, sa
+sérialisation et sa couverture d'opération. Le client transporte aussi une cible
+`Sid` dans les intentions de mandat.
 
-À faire :
+Reste côté produit :
 
-- ajouter `id: Option<Sid>` à la représentation Ethos et au wire canonique ;
-- parser, sérialiser et vérifier son containment (`id` ne se compose avec rien) ;
-- transmettre le sid de section à `covers_op` ;
-- livrer la header line de la section lors du grant ;
-- couvrir lecture et écriture par section, notamment `self`, en BDD + tests core,
-  bundle et CLI ;
-- ajouter un vecteur de conformance afin de figer les octets signés.
+- fermer les scénarios Gateway encore marqués `@wip`, dont le scénario historique
+  qui attendait ce sélecteur ;
+- qualifier la livraison des lignes de header et les parcours UI sur les zones
+  réellement exposées.
 
-### 2. Compléter l'atténuation de toutes les contraintes
+### 2. Atténuation des contraintes — fermée dans le vérifieur Core
 
-`verify_chain` vérifie aujourd'hui l'atténuation des fenêtres absolues et des
-obligations. La règle normative est plus large : un enfant doit aussi resserrer les
-caps numériques, budgets, domaines, paramètres d'action, heartbeat, freshness,
-`first_party_only`, `counter_sign` et `binding`.
+`verify_chain` appelle maintenant le moteur typé d'atténuation. Les caps,
+allow-lists, budgets, paramètres d'action, heartbeat/freshness et profils fermés
+sont traités fail-closed par le même Core.
 
-À faire :
+Reste côté intégration :
 
-- introduire une validation/normalisation typée des contraintes connues ;
-- implémenter `constraints_attenuate(parent, child)` fail-closed ;
-- définir explicitement le traitement des clés inconnues lors d'une sous-délégation ;
-- tester au minimum chaque famille : cap inférieur accepté, cap supérieur refusé,
-  allow-list incluse acceptée, suppression d'une contrainte héritée refusée ;
-- faire appeler le même contrôle par la vérification offline et la gateway.
+- détaguer les scénarios Gateway d'émission qui prouvent les mêmes refus ;
+- conserver le preview owner et le runtime sur cette fonction commune, sans
+  réimplémentation UI.
 
 ### 3. Émettre plusieurs mandats restreints depuis un Ethos déjà équipé
 

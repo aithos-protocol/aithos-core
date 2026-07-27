@@ -1,5 +1,8 @@
 # Prompt de reprise — commit contractuel CB1 Core + Bundle
 
+> **ARCHIVE — ne pas exécuter.** Les hypothèses de staging et de HEAD sont
+> historiques ; CB13 est désormais le jalon terminé.
+
 Copier-coller le bloc suivant dans un nouveau contexte.
 
 ---

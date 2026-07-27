@@ -10,7 +10,8 @@ use crate::publication::{assemble_draft2_candidate, Draft2Candidate};
 use crate::Store;
 use aithos_core::carriers::{K1cActor, K1cVerificationContext};
 use aithos_core::error::{Error, Result};
-use aithos_core::gamma::Entry;
+use aithos_core::gamma::{owner_entry, Entry, EntrySpec};
+use aithos_core::header::{Header, Recipient};
 use aithos_core::keys::OwnerKeys;
 use aithos_core::mandate::Mandate;
 use aithos_core::path::Zone;
@@ -45,7 +46,7 @@ pub struct ManifestSigningCapability<'a> {
 /// Narrow Gamma signer marker for the local orchestration layer.
 pub struct GammaSigningCapability<'a> {
     binding: SessionBinding,
-    _key: &'a SigningKey,
+    key: &'a SigningKey,
 }
 
 enum BodyOpeningSecret<'a> {
@@ -57,12 +58,14 @@ enum BodyOpeningSecret<'a> {
 pub struct BodyOpeningCapability<'a> {
     binding: SessionBinding,
     secret: BodyOpeningSecret<'a>,
+    zone: Zone,
+    display_path: String,
 }
 
 /// Narrow header-wrapper marker; it never exposes a DK or KEX secret.
 pub struct HeaderWrappingCapability<'a> {
     binding: SessionBinding,
-    _owner_kex: &'a StaticSecret,
+    owner_kex: &'a StaticSecret,
 }
 
 /// Narrow owner audit capability. It opens only sealed Gamma arguments
@@ -115,7 +118,7 @@ impl<'a> LocalSession<'a> {
                 ),
             },
             manifest_key: &owner.root_sign,
-            gamma_key: &owner.root_sign,
+            gamma_key: &owner.content_sign,
             owner_kex: Some(&owner.owner_kex),
         }
     }
@@ -176,11 +179,19 @@ impl<'a> LocalSession<'a> {
                 id: self.id,
                 class: CapabilityClass::Gamma,
             },
-            _key: self.gamma_key,
+            key: self.gamma_key,
         }
     }
 
-    pub fn body_capability(&self) -> Result<BodyOpeningCapability<'a>> {
+    pub fn body_capability(
+        &self,
+        zone: Zone,
+        display_path: impl Into<String>,
+    ) -> Result<BodyOpeningCapability<'a>> {
+        let display_path = display_path.into();
+        crate::validate_display_path(&display_path).map_err(|error| {
+            Error::InvalidSession(format!("body capability path is invalid: {error}"))
+        })?;
         Ok(BodyOpeningCapability {
             binding: SessionBinding {
                 id: self.id,
@@ -190,6 +201,8 @@ impl<'a> LocalSession<'a> {
                 Some(owner_kex) => BodyOpeningSecret::Owner(owner_kex),
                 None => BodyOpeningSecret::Grantee(self.manifest_key),
             },
+            zone,
+            display_path,
         })
     }
 
@@ -199,7 +212,7 @@ impl<'a> LocalSession<'a> {
                 id: self.id,
                 class: CapabilityClass::Header,
             },
-            _owner_kex: self.owner_kex.ok_or_else(|| {
+            owner_kex: self.owner_kex.ok_or_else(|| {
                 Error::InvalidSession("actor has no owner header capability".into())
             })?,
         })
@@ -259,9 +272,12 @@ impl<'a> LocalSession<'a> {
         display_path: &str,
     ) -> Result<String> {
         self.check(&capability.binding, CapabilityClass::Body)?;
-        if bundle.did != self.subject {
+        if bundle.did != self.subject
+            || capability.zone != zone
+            || capability.display_path != display_path
+        {
             return Err(Error::InvalidSession(
-                "body capability belongs to another Ethos".into(),
+                "body capability belongs to another Ethos, node or version scope".into(),
             ));
         }
         let BodyOpeningSecret::Owner(owner_kex) = &capability.secret else {
@@ -286,6 +302,8 @@ impl<'a> LocalSession<'a> {
     ) -> Result<String> {
         self.check(&capability.binding, CapabilityClass::Body)?;
         if bundle.did != self.subject
+            || capability.zone != zone
+            || capability.display_path != display_path
             || authority_references(authority_chain)? != self.actor.authority_references()
         {
             return Err(Error::InvalidSession(
@@ -305,12 +323,46 @@ impl<'a> LocalSession<'a> {
         self.check(&capability.binding, CapabilityClass::Gamma)
     }
 
+    /// Sign exactly one typed owner Gamma entry. The capability cannot sign
+    /// arbitrary bytes or a manifest, and the entry still passes Core form
+    /// validation before it is returned.
+    pub fn sign_owner_gamma_entry(
+        &self,
+        capability: &GammaSigningCapability<'_>,
+        spec: EntrySpec,
+    ) -> Result<Entry> {
+        self.check(&capability.binding, CapabilityClass::Gamma)?;
+        match &self.actor {
+            K1cActor::Owner { .. } => owner_entry(spec, capability.key),
+            K1cActor::Grantee { .. } => Err(Error::InvalidSession(
+                "grantee session cannot use an owner Gamma capability".into(),
+            )),
+        }
+    }
+
     /// Prove class/session binding without exposing a wrapping oracle.
     pub fn accepts_header_capability(
         &self,
         capability: &HeaderWrappingCapability<'_>,
     ) -> Result<()> {
         self.check(&capability.binding, CapabilityClass::Header)
+    }
+
+    /// Append one recipient line to the latest version of one typed Header.
+    /// The node, version and AAD come from the verified Header itself; the DK
+    /// and owner KEX secret never cross this API boundary.
+    pub fn append_header_recipient(
+        &self,
+        capability: &HeaderWrappingCapability<'_>,
+        header: &mut Header,
+        recipient: &Recipient,
+        ephemeral: [u8; 32],
+        nonce: [u8; 24],
+    ) -> Result<()> {
+        self.check(&capability.binding, CapabilityClass::Header)?;
+        header.validate()?;
+        let (version, dk) = header.open_latest(&self.subject, "owner-kex", capability.owner_kex)?;
+        header.append_line(&self.subject, version, &dk, recipient, ephemeral, nonce)
     }
 
     /// Prove audit class/session binding without opening an entry.

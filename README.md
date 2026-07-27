@@ -17,7 +17,7 @@ vectors/       Conformance vectors (JSON). The language-neutral contract:
                any implementation, in any language, must reproduce them.
                Expected values are generated independently of the Rust code
                (e.g. Python blake3 + PyNaCl) whenever possible.
-docs/          Working documents (execution plan, decisions).
+docs/          Indexed current references, decisions and historical handoffs.
 rust/          Reference implementation (Cargo workspace, 6 crates).
 docker/        Multi-stage build → static binary in a FROM scratch image.
 ```
@@ -63,8 +63,11 @@ unpublished until their public APIs are aligned. Provider and gateway crates
 are deployable service components and are intentionally not crates.io
 packages.
 
-Implementation follows [`docs/EXECUTION-PLAN.md`](docs/EXECUTION-PLAN.md):
-vectors first, TDD/BDD, a living end-to-end scenario, and explicit gates.
+The documentation map and active work are in
+[`docs/README.md`](docs/README.md). The archived
+[`docs/EXECUTION-PLAN.md`](docs/EXECUTION-PLAN.md) records the vectors-first,
+TDD/BDD method used for the initial 0→K construction; it is no longer the
+current backlog.
 
 ## Published packages
 

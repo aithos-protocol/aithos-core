@@ -1,5 +1,8 @@
 # Handoff — OAuth amont gateway, gate local vert
 
+> **ARCHIVE DE PREUVE.** Le socle OAuth amont a depuis été étendu et qualifié par
+> les profils SaaS ; utiliser `RUNBOOK-CONNECTOR-PROFILES-OAUTH-SAAS.md`.
+
 **Date :** 2026-07-21
 **Branche :** `codex/publish-aithos-core-busl`
 **État :** code et contrats locaux verts ; preuve live VM à faire par Mathieu.

@@ -1,5 +1,9 @@
 # Aithos SDK v0 — demo contract
 
+> **ARCHIVE — contrat v0 supplanté.** Le SDK v2 vit dans `code/aithos-sdk` et sa
+> surface courante est documentée dans son `README.md`. Ne pas implémenter de
+> compatibilité à partir de ce contrat sans décision explicite de migration.
+
 Status: implementation contract for the first SDK and dashboard demo.
 
 ## Layering

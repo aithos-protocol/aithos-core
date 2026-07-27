@@ -146,12 +146,12 @@ Feature: Bundle and editions
 
     Scenario Outline: An untrusted path or Store key can never escape its selected root
       Given a published "<store>" bundle snapshotted byte for byte
-      When a caller supplies "<invalid input>" as a "<input kind>" under "<filesystem condition>"
+      When a caller supplies "<invalid_input>" as a "<input_kind>" under "<filesystem_condition>"
       Then the operation is rejected before any out-of-root store access
       And the canonical bundle is byte-for-byte identical to the snapshot
 
       Examples:
-        | store    | input kind   | invalid input                  | filesystem condition                         |
+        | store    | input_kind   | invalid_input                  | filesystem_condition                         |
         | MemStore | display path | ../circle/secret               | no filesystem indirection                    |
         | MemStore | display path | /absolute/section              | no filesystem indirection                    |
         | MemStore | display path | folder/./section               | no filesystem indirection                    |

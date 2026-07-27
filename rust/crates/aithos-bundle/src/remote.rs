@@ -368,9 +368,9 @@ pub struct RemoteStore {
     sleep: Arc<dyn Fn(Duration) + Send + Sync>,
     agent: ureq::Agent,
     max_retries: u32,
-    tracked: Mutex<Tracked>,
-    cache: Mutex<HashMap<String, Cached>>,
-    taps: Mutex<Taps>,
+    tracked: Arc<Mutex<Tracked>>,
+    cache: Arc<Mutex<HashMap<String, Cached>>>,
+    taps: Arc<Mutex<Taps>>,
 }
 
 impl RemoteStore {
@@ -412,14 +412,48 @@ impl RemoteStore {
             sleep: Arc::new(std::thread::sleep),
             agent,
             max_retries: 3,
-            tracked: Mutex::new(Tracked {
+            tracked: Arc::new(Mutex::new(Tracked {
                 manifest_head: None,
                 gamma_head: None,
                 segments: HashMap::new(),
-            }),
-            cache: Mutex::new(HashMap::new()),
-            taps: Mutex::new(Taps::default()),
+            })),
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            taps: Arc::new(Mutex::new(Taps::default())),
         })
+    }
+
+    /// Non-secret Provider coordinates for transport-only clients that reuse
+    /// the same enrolled Ethos without reusing this store's signer.
+    pub fn provider_coordinates(&self) -> (&str, &str, &str) {
+        (&self.base, &self.tenant, &self.did)
+    }
+
+    /// Derive a request-scoped client for the same Provider coordinates.
+    ///
+    /// The signer and nonce entropy are isolated, while CAS heads, object
+    /// cache and diagnostic taps stay shared with the long-lived client.
+    /// This lets a verified delegated operation reach the Provider under its
+    /// own chain without mutating or widening the gateway's permanent signer.
+    pub fn with_signer(
+        &self,
+        signer: Arc<dyn EnvelopeSigner>,
+        entropy: Box<dyn EntropySource + Send>,
+    ) -> Self {
+        Self {
+            base: self.base.clone(),
+            host: self.host.clone(),
+            tenant: self.tenant.clone(),
+            did: self.did.clone(),
+            signer,
+            now: Arc::clone(&self.now),
+            entropy: Mutex::new(entropy),
+            sleep: Arc::clone(&self.sleep),
+            agent: self.agent.clone(),
+            max_retries: self.max_retries,
+            tracked: Arc::clone(&self.tracked),
+            cache: Arc::clone(&self.cache),
+            taps: Arc::clone(&self.taps),
+        }
     }
 
     /// Inject the backoff sleeper (tests record instead of sleeping).
@@ -1083,6 +1117,21 @@ pub struct SharedRemoteStore(pub Arc<Mutex<RemoteStore>>);
 impl SharedRemoteStore {
     pub fn new(store: RemoteStore) -> Self {
         Self(Arc::new(Mutex::new(store)))
+    }
+
+    /// A distinct locked client with a request-scoped signer, sharing only
+    /// transport/cache/CAS state with this long-lived client.
+    pub fn with_signer(
+        &self,
+        signer: Arc<dyn EnvelopeSigner>,
+        entropy: Box<dyn EntropySource + Send>,
+    ) -> Self {
+        let store = self
+            .0
+            .lock()
+            .expect("remote store lock")
+            .with_signer(signer, entropy);
+        Self::new(store)
     }
 }
 

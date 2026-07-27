@@ -1,5 +1,10 @@
 # Aithos Core — Handoff (reprise en contexte neuf)
 
+> **ARCHIVE — handoff du 11 juillet 2026.** Le plan 0→K qu'il clôt reste une
+> preuve historique ; les branches, compteurs de tests et prochaines étapes de
+> ce document sont dépassés par CB13 et les chantiers Provider/Gateway. Ne pas
+> l'utiliser comme prompt de reprise.
+
 **But.** Reprendre l'implémentation de référence d'aithos-core sans rien reperdre.
 Résume où on en est, comment on travaille, et la prochaine étape exacte.
 

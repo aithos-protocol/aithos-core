@@ -1,5 +1,8 @@
 # Écritures déléguées (circle) — verdict, preuve et correctif
 
+> **ARCHIVE DE DIAGNOSTIC.** Le correctif fait partie de l'historique du Core ;
+> les chemins et commandes de cette note ne décrivent plus le worktree courant.
+
 > 2026-07-12. Réponse à l'objection « on ne peut pas écrire une section avec
 > un mandat sur self ou circle » soulevée pendant le développement de la
 > gateway. Verdict : **faux au niveau du protocole, vrai au niveau de

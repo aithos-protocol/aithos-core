@@ -12,7 +12,7 @@
 //! Layering holds even here: everything core-shaped arrives through the
 //! bridge's re-exports, never from aithos-core/bundle directly.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1149,10 +1149,12 @@ journal:
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
+        ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
         dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
+        browser_origins: Arc::new(BTreeSet::new()),
     }));
     w.scratch = Some(dir);
 }
@@ -1290,10 +1292,12 @@ journal:
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([("github".to_owned(), upstream)]),
+        ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
         dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
+        browser_origins: Arc::new(BTreeSet::new()),
     }));
     w.scratch = Some(dir);
 }
@@ -1603,10 +1607,12 @@ journal:
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([("github".to_owned(), w.upstream.clone())]),
+        ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
         dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
+        browser_origins: Arc::new(BTreeSet::new()),
     }));
     w.reenroll = Some(result);
 }
@@ -2262,10 +2268,12 @@ async fn provision_runner(w: &mut GatewayWorld, a: String, b: String, strip_memo
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(Runner::from_parts(contexts, journal))),
         upstreams: w.multi_upstreams.clone(),
+        ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
         dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
+        browser_origins: Arc::new(BTreeSet::new()),
     }));
 }
 
@@ -3682,10 +3690,12 @@ async fn provision_vault_hub(w: &mut GatewayWorld, specs: Vec<VaultServerSpec>, 
         router: Arc::new(McpRouter {
             runner: Arc::new(Mutex::new(runner)),
             upstreams,
+            ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
             dynamic_upstreams: empty_dynamic_upstreams(),
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
             oauth: None,
+            browser_origins: Arc::new(BTreeSet::new()),
         }),
         vault: fake_vault,
         wires,
@@ -4282,10 +4292,12 @@ fn open_grants_runtime(
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(runner)),
         upstreams: BTreeMap::from([(GRANTS_SERVER.to_owned(), w.upstream.clone())]),
+        ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
         dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
+        browser_origins: Arc::new(BTreeSet::new()),
     }));
 }
 
@@ -4849,10 +4861,12 @@ async fn provision_briefing_world(w: &mut GatewayWorld) {
     w.router = Some(Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(Runner::from_parts(contexts, journal))),
         upstreams: w.multi_upstreams.clone(),
+        ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
         dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
+        browser_origins: Arc::new(BTreeSet::new()),
     }));
 }
 
@@ -5389,10 +5403,12 @@ async fn provision_bounds_world(w: &mut GatewayWorld, raw_tool: &str, bounds: Ve
         router: Arc::new(McpRouter {
             runner: Arc::new(Mutex::new(runner)),
             upstreams,
+            ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
             dynamic_upstreams: empty_dynamic_upstreams(),
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
             oauth: None,
+            browser_origins: Arc::new(BTreeSet::new()),
         }),
         vault: fake_vault,
         wires: BTreeMap::from([(server.to_owned(), wire)]),
@@ -5437,10 +5453,12 @@ fn reopen_bounds_runtime(w: &mut GatewayWorld) {
     harness.router = Arc::new(McpRouter {
         runner: Arc::new(Mutex::new(runner)),
         upstreams,
+        ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
         dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(|| T0.to_owned()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: None,
+        browser_origins: Arc::new(BTreeSet::new()),
     });
 }
 
@@ -6386,10 +6404,12 @@ async fn provision_demo_world(w: &mut GatewayWorld) {
         router: Arc::new(McpRouter {
             runner: Arc::new(Mutex::new(runner)),
             upstreams,
+            ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
             dynamic_upstreams: empty_dynamic_upstreams(),
             clock: Arc::new(|| T0.to_owned()),
             session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
             oauth: None,
+            browser_origins: Arc::new(BTreeSet::new()),
         }),
         vault: fake_vault,
         wires,
@@ -8000,10 +8020,12 @@ async fn serve_with_as(w: &mut GatewayWorld, extra_allow: Vec<String>, clock0: &
     let routing = Arc::new(McpRouter {
         runner,
         upstreams: w.multi_upstreams.clone(),
+        ethos_backend: aithos_gateway::ethos_backend::legacy_ethos_backend(),
         dynamic_upstreams: empty_dynamic_upstreams(),
         clock: Arc::new(move || cc.lock().unwrap().clone()),
         session_entropy: StdMutex::new(Box::new(SeqEntropy::default())),
         oauth: Some(Arc::clone(&auth)),
+        browser_origins: Arc::new(BTreeSet::new()),
     });
     let app = router_multi(Arc::clone(&routing)).merge(router_oauth(Arc::clone(&routing)));
     let listener = listener;
@@ -10825,8 +10847,10 @@ async fn main() {
     GatewayWorld::cucumber()
         .max_concurrent_scenarios(Some(1))
         .fail_on_skipped()
-        .filter_run_and_exit(features, |_, _, scenario| {
-            !scenario.tags.iter().any(|t| t == "wip")
+        .filter_run_and_exit(features, |feature, rule, scenario| {
+            !feature.tags.iter().any(|tag| tag == "wip")
+                && rule.is_none_or(|rule| !rule.tags.iter().any(|tag| tag == "wip"))
+                && !scenario.tags.iter().any(|tag| tag == "wip")
         })
         .await;
 }

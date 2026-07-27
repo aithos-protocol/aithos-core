@@ -64,7 +64,33 @@ Feature: Pre-approved connector attachment and hot activation
       Then every runtime reference is disabled
       And the residual Vault record is reported only as a non-secret cleanup limitation
 
+  Rule: Bearer TOFU is published into the Ethos before activation
+
+    Scenario: A new bearer connector activates on the running gateway only after its binding is published
+      Given a new bearer MCP connector with two live tools and no Ethos binding
+      When the owner stages the bearer connector and stores its credential
+      And the gateway prepares the complete TOFU binding
+      Then preparation returns both live tools without exposing either in runtime
+      And activation before Owner publication is refused closed
+      When the owner publishes the prepared binding into the current Ethos
+      And the same running gateway activates the bearer connector
+      Then the complete TOFU catalogue becomes visible without restarting
+      And no bearer credential appears in the binding, registry or public responses
+
   Rule: OAuth control delegates to the existing upstream OAuth registry
+
+    @gmail-dynamic
+    Scenario: The official Gmail MCP can be staged for OAuth without a static gateway template
+      Given a new official Gmail MCP OAuth descriptor
+      When the owner stages the dynamic Gmail connector twice
+      Then an inactive Gmail OAuth draft is persisted without client secret material
+
+    @gmail-dynamic
+    Scenario: The official Gmail MCP starts OAuth with its pinned Google endpoints
+      Given a new official Gmail MCP OAuth descriptor
+      When the owner stages the dynamic Gmail connector and stores its client secret
+      And the browser starts the dynamic Gmail OAuth flow
+      Then the consent URL uses only the approved Google authorization endpoint
 
     Scenario: OAuth start stores pending custody only in Vault
       Given an approved draft with its client secret in Vault
@@ -289,21 +315,3 @@ Feature: Pre-approved connector attachment and hot activation
       Then its runtime tools and credential reference are removed first
       And public status reports a redacted revocation residue
       And no later call retries the effect or reaches the protected resource
-
-  @wip @g7b @credential-stage
-  Rule: Credential-stage attaches bearer MCP without an OAuth template
-
-    Scenario: A bearer MCP stages, secrets and activates into a durable registry
-      Given a credential-only MCP upstream and durable connector registry
-      When the owner credential-stages a new connector with a loopback endpoint
-      And the owner writes the bearer token into Vault
-      And a valid config authority activates it
-      Then discovery runs once with the Vault bearer
-      And a complete registry record is atomically persisted in "gateway/connectors.json"
-      And the approved tools become visible without restarting the gateway
-
-    Scenario: Restart restores an active bearer connector from the durable registry
-      Given an active bearer connector persisted in "gateway/connectors.json"
-      When the gateway restarts
-      Then the healthy connector returns active
-      And discovery receives only the Vault bearer

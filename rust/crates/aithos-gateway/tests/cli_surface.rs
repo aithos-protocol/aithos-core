@@ -35,6 +35,7 @@ fn delegated_session_owner_grant_keeps_the_master_seed_off_argv() {
         .assert()
         .success()
         .stdout(predicate::str::contains("--delegate-pub"))
+        .stdout(predicate::str::contains("--gateway-audience"))
         .stdout(predicate::str::contains("--tool"))
         .stdout(predicate::str::contains("--store-root"))
         .stdout(predicate::str::contains("stdin"))
@@ -144,6 +145,32 @@ fn keygen_prints_only_public_keys() {
         let mode = std::fs::metadata(&id_path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600, "identity file must be 0600");
     }
+}
+
+#[test]
+fn owner_can_emit_the_closed_gmail_compiled_manifest_without_provider_io() {
+    let tmp = tempfile::tempdir().unwrap();
+    let proposal = tmp.path().join("aithos-gmail.json");
+
+    gateway()
+        .args([
+            "owner-propose-compiled",
+            "--server",
+            "aithos-gmail",
+            "--adapter",
+            "gmail_send_guarded",
+            "--output",
+            proposal.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("server: aithos-gmail"))
+        .stdout(predicate::str::contains("tools: 1"));
+
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(proposal).unwrap()).unwrap();
+    assert_eq!(manifest["server"], "aithos-gmail");
+    assert_eq!(manifest["tools"][0]["name"], "send_guarded");
 }
 
 #[test]

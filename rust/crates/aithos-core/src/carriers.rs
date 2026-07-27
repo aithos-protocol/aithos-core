@@ -304,6 +304,13 @@ pub struct K1cVerificationContext {
     pub actor: K1cActor,
     pub height: u64,
     pub predecessors: Vec<Value>,
+    /// Optional signed parent manifest for a sparse, operation-scoped
+    /// working set. Its file commitments stand in only for unchanged bytes
+    /// that the caller was not authorized or required to download.
+    ///
+    /// `None` preserves the historical complete-store verification path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse_parent_manifest: Option<Value>,
     pub parent_store: BTreeMap<String, Vec<u8>>,
     pub candidate_store: BTreeMap<String, Vec<u8>>,
     pub change_causes: BTreeMap<String, Value>,

@@ -1,7 +1,10 @@
 # Aithos Core — Design
 
-> **Status: DRAFT (greenfield).** This repository specifies the Aithos protocol core,
-> rebuilt from a blank page around one goal: **a perfectly executed trust layer for
+> **Status: design reference, implemented through the CB13 local gate.** This
+> document records the architectural model from which the protocol core was built;
+> it is no longer a greenfield status report. The normative source remains `spec/`,
+> while implementation and operational status are indexed in `docs/README.md`.
+> The repository was rebuilt around one goal: **a perfectly executed trust layer for
 > agents** — identity, scoped mandates, delegation, revocation, and a tamper-evident
 > action log — with cryptography that needs **no server** to be enforced. It
 > supersedes, when promoted, the `Aithos-protocol` spec series (v0.x and the v2 draft).

@@ -1,5 +1,7 @@
 # PROMPT DE REPRISE — Piste P / Provider P2 — étape 4 (A.4/A.5 : dépôts vérifiés + CAS des deux têtes)
 
+> **ARCHIVE — ne pas exécuter.** Gate 4 et les étapes suivantes sont clos.
+
 > À coller dans un contexte frais. Reprend la piste P au point exact du
 > 2026-07-20 : gate contrat P2 clos, gate 3 (autorisation mandatée) livré
 > et vert. Se lit avec `code/aithos-core/docs/HANDOFF-PROVIDER-P2-GATE3-DONE-2026-07-20.md`

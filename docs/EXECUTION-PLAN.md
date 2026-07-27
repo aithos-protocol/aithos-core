@@ -1,5 +1,10 @@
 # Plan d'exécution — implémentation de référence aithos-core
 
+> **ARCHIVE — plan 0→K achevé.** Ce document explique la construction initiale
+> du Core et ne suit pas les lots ultérieurs CB1–CB13, Provider, Gateway ou SDK.
+> Il ne doit plus servir de backlog courant. Voir `README.md` pour la navigation
+> et `spec/` pour la norme.
+
 > Document de travail (interne, FR). La spec `spec/` est la source de vérité ;
 > ce plan ordonne sa construction pour avancer **sans revenir en arrière**.
 

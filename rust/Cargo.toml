@@ -102,6 +102,10 @@ instant-acme = { version = "0.7", default-features = false, features = ["hyper-r
 aithos-core = { version = "0.1.0-alpha.1", path = "crates/aithos-core" }
 aithos-bundle = { version = "0.1.0-alpha.1", path = "crates/aithos-bundle" }
 aithos-wasm = { version = "0.1.0-alpha.1", path = "crates/aithos-wasm" }
+# Offline Ethos engine. The path resolves to the sibling development crate,
+# whose own core/bundle dependencies resolve back to the exact workspace
+# packages above; gate 3 pins this with `cargo tree` before any runtime use.
+aithos-client = { version = "0.1.0-alpha.2-dev", path = "../../aithos-client/crates/aithos-client" }
 
 [profile.release]
 lto = true

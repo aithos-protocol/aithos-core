@@ -1,5 +1,8 @@
 # PROMPT DE REPRISE — Finalisation COMPLÈTE du provider v1 (piste P)
 
+> **ARCHIVE — ne pas exécuter.** Les lots listés ont leurs handoffs de preuve ;
+> les contrats encore `@wip` doivent être lus directement dans les features.
+
 À coller en début de session (Cowork cloud, dossier `/Volumes/Math17/aithos/v2`
 connecté). Mission de bout en bout, multi-lots, conduite dans le rituel maison.
 État DISQUE = vérité — ne fais confiance à AUCUN résumé, y compris celui-ci,

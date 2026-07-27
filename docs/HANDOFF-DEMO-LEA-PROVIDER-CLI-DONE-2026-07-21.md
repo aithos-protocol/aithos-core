@@ -1,5 +1,8 @@
 # Handoff — démo Léa provider pilotable en CLI
 
+> **ARCHIVE DE PREUVE.** Cette répétition Provider/CLI précède la démo intégrée
+> G4 + Sheets et ne représente plus le chemin critique.
+
 **Date :** 2026-07-21
 
 **Statut :** prêt pour une répétition accompagnée en CLI ; dashboard

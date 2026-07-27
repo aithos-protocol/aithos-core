@@ -28,13 +28,15 @@
 //! routed scenarios need. Streaming/SSE and per-upstream capability
 //! merging land with Phase D.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, RwLock};
 
 use axum::body::{Body, Bytes};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, Method, Request, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::{extract::State, routing::post, Json, Router};
 use serde::Deserialize;
@@ -94,6 +96,9 @@ pub const BRIEFING_READ: &str = "briefing.read";
 pub const ETHOS_READ: &str = "ethos.read";
 pub const ETHOS_LIST: &str = "ethos.list";
 pub const ETHOS_CONTEXT: &str = "ethos.context";
+pub const ETHOS_CREATE: &str = "ethos.create";
+pub const ETHOS_EDIT: &str = "ethos.edit";
+pub const ETHOS_DELETE: &str = "ethos.delete";
 /// `journal.search` result cap: the default page, and the hard ceiling
 /// a caller-supplied `limit` may not exceed (each opened hit is one
 /// journalized read — the cap bounds the gamma cost of one recall).
@@ -102,6 +107,12 @@ const SEARCH_LIMIT_MAX: u64 = 100;
 
 /// The MCP protocol revision the router's own `initialize` speaks.
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
+
+/// Opt-in transport trace for diagnosing a remote MCP client without
+/// exposing bearer tokens, request arguments, Ethos content or response
+/// bodies. Disabled unless `AITHOS_MCP_TRACE` is present in the process
+/// environment.
+static MCP_TRACE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 /// Injected clock, RFC 3339 `Z` instants (the wire's instant format —
 /// never epoch numbers). The binary passes system time; tests pass a
@@ -592,6 +603,9 @@ fn error_response(id: Value, err: &GatewayError) -> Value {
 pub struct McpRouter<U> {
     pub runner: Arc<Mutex<Runner>>,
     pub upstreams: BTreeMap<String, U>,
+    /// Exact-name native Ethos execution seam. Generic connectors never use
+    /// it, even when their name contains the word `ethos`.
+    pub ethos_backend: Arc<crate::ethos_backend::EthosBackend>,
     /// Hot connector targets. The control plane swaps complete entries;
     /// readers clone one handle and release the lock before network I/O.
     pub dynamic_upstreams: DynamicUpstreams,
@@ -603,6 +617,9 @@ pub struct McpRouter<U> {
     /// `/mcp` requires a valid bearer (401 + `WWW-Authenticate` pointing
     /// the resource metadata otherwise) and the AS rides this listener.
     pub oauth: Option<Arc<crate::oauth::AuthServer>>,
+    /// Exact browser origins shared with the signed control plane. Empty
+    /// preserves the historical non-browser/loopback transport behaviour.
+    pub browser_origins: Arc<BTreeSet<String>>,
 }
 
 impl<U> McpRouter<U> {
@@ -618,8 +635,16 @@ impl<U> McpRouter<U> {
 /// Streamable HTTP endpoint as the mono proxy.
 pub fn router_multi<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
     Router::new()
-        .route("/mcp", post(handle_multi::<U>))
+        .route("/mcp", post(handle_multi::<U>).options(cors_preflight_sink))
+        .route_layer(middleware::from_fn_with_state(
+            Arc::clone(&rt),
+            browser_cors::<U>,
+        ))
         .with_state(rt)
+}
+
+async fn cors_preflight_sink() -> StatusCode {
+    StatusCode::NO_CONTENT
 }
 
 /// The Streamable HTTP shell around [`process_multi`] (lot G2): the
@@ -635,7 +660,24 @@ async fn handle_multi<U: Upstream>(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if !origin_is_local(&headers) {
+    let trace = std::env::var_os("AITHOS_MCP_TRACE").is_some();
+    let trace_sequence = trace.then(|| MCP_TRACE_SEQUENCE.fetch_add(1, Ordering::Relaxed));
+    let trace_started = std::time::Instant::now();
+    if let Some(sequence) = trace_sequence {
+        eprintln!(
+            "[mcp-trace] request={sequence} stage=received bytes={} authorization={} session_header={}",
+            body.len(),
+            headers.contains_key(header::AUTHORIZATION),
+            headers.contains_key(MCP_SESSION_HEADER)
+        );
+    }
+    if !origin_is_allowed(&headers, &rt.browser_origins) {
+        if let Some(sequence) = trace_sequence {
+            eprintln!(
+                "[mcp-trace] request={sequence} stage=rejected reason=origin elapsed_ms={}",
+                trace_started.elapsed().as_millis()
+            );
+        }
         return StatusCode::FORBIDDEN.into_response();
     }
     // The bearer gate (lot G3): only when the `as:` stanza is active.
@@ -647,6 +689,12 @@ async fn handle_multi<U: Upstream>(
         let now = (rt.clock)();
         let presented = bearer_token(&headers);
         let Some(token) = presented.as_deref() else {
+            if let Some(sequence) = trace_sequence {
+                eprintln!(
+                    "[mcp-trace] request={sequence} stage=rejected reason=missing_bearer elapsed_ms={}",
+                    trace_started.elapsed().as_millis()
+                );
+            }
             let mut resp = StatusCode::UNAUTHORIZED.into_response();
             if let Ok(v) = HeaderValue::from_str(&oauth.www_authenticate(false)) {
                 resp.headers_mut().insert(header::WWW_AUTHENTICATE, v);
@@ -677,6 +725,12 @@ async fn handle_multi<U: Upstream>(
                         &now,
                     );
                     drop(runner);
+                    if let Some(sequence) = trace_sequence {
+                        eprintln!(
+                            "[mcp-trace] request={sequence} stage=rejected reason=delegated_authority elapsed_ms={}",
+                            trace_started.elapsed().as_millis()
+                        );
+                    }
                     let mut resp = StatusCode::UNAUTHORIZED.into_response();
                     if let Ok(v) = HeaderValue::from_str(&oauth.www_authenticate(true)) {
                         resp.headers_mut().insert(header::WWW_AUTHENTICATE, v);
@@ -688,6 +742,12 @@ async fn handle_multi<U: Upstream>(
             }
             Ok(None) => None,
             Err(_) => {
+                if let Some(sequence) = trace_sequence {
+                    eprintln!(
+                        "[mcp-trace] request={sequence} stage=rejected reason=invalid_bearer elapsed_ms={}",
+                        trace_started.elapsed().as_millis()
+                    );
+                }
                 let mut resp = StatusCode::UNAUTHORIZED.into_response();
                 if let Ok(v) = HeaderValue::from_str(&oauth.www_authenticate(true)) {
                     resp.headers_mut().insert(header::WWW_AUTHENTICATE, v);
@@ -698,7 +758,20 @@ async fn handle_multi<U: Upstream>(
     } else {
         None
     };
+    if let Some(sequence) = trace_sequence {
+        eprintln!(
+            "[mcp-trace] request={sequence} stage=authorized delegated={} elapsed_ms={}",
+            delegated_session.is_some(),
+            trace_started.elapsed().as_millis()
+        );
+    }
     let Ok(msg) = serde_json::from_slice::<Value>(&body) else {
+        if let Some(sequence) = trace_sequence {
+            eprintln!(
+                "[mcp-trace] request={sequence} stage=rejected reason=parse elapsed_ms={}",
+                trace_started.elapsed().as_millis()
+            );
+        }
         return (
             StatusCode::BAD_REQUEST,
             Json(rpc_error_null_id(
@@ -709,6 +782,12 @@ async fn handle_multi<U: Upstream>(
             .into_response();
     };
     if msg.is_array() {
+        if let Some(sequence) = trace_sequence {
+            eprintln!(
+                "[mcp-trace] request={sequence} stage=rejected reason=batch elapsed_ms={}",
+                trace_started.elapsed().as_millis()
+            );
+        }
         return Json(rpc_error_null_id(
             INVALID_REQUEST_CODE,
             "aithos gateway: batching is not supported — one JSON-RPC message per POST",
@@ -721,7 +800,19 @@ async fn handle_multi<U: Upstream>(
             .and_then(Value::as_str)
             .unwrap_or_default();
         if method.starts_with("notifications/") {
+            if let Some(sequence) = trace_sequence {
+                eprintln!(
+                    "[mcp-trace] request={sequence} stage=complete kind=notification status=202 elapsed_ms={}",
+                    trace_started.elapsed().as_millis()
+                );
+            }
             return StatusCode::ACCEPTED.into_response();
+        }
+        if let Some(sequence) = trace_sequence {
+            eprintln!(
+                "[mcp-trace] request={sequence} stage=rejected reason=missing_id elapsed_ms={}",
+                trace_started.elapsed().as_millis()
+            );
         }
         return (
             StatusCode::BAD_REQUEST,
@@ -732,16 +823,62 @@ async fn handle_multi<U: Upstream>(
         )
             .into_response();
     }
-    let is_initialize = msg.get("method").and_then(Value::as_str) == Some("initialize");
+    let method = msg.get("method").and_then(Value::as_str);
+    let method_label = match method {
+        Some("initialize") => "initialize",
+        Some("ping") => "ping",
+        Some("tools/list") => "tools/list",
+        Some("tools/call") => "tools/call",
+        _ => "other",
+    };
+    let tool_label = match msg.pointer("/params/name").and_then(Value::as_str) {
+        Some(ETHOS_CONTEXT) => ETHOS_CONTEXT,
+        Some(ETHOS_LIST) => ETHOS_LIST,
+        Some(ETHOS_READ) => ETHOS_READ,
+        Some(ETHOS_CREATE) => ETHOS_CREATE,
+        Some(ETHOS_EDIT) => ETHOS_EDIT,
+        Some(ETHOS_DELETE) => ETHOS_DELETE,
+        Some(JOURNAL_WRITE) => JOURNAL_WRITE,
+        Some(JOURNAL_SEARCH) => JOURNAL_SEARCH,
+        Some(BRIEFING_READ) => BRIEFING_READ,
+        Some(_) => "other",
+        None => "none",
+    };
+    if let Some(sequence) = trace_sequence {
+        eprintln!(
+            "[mcp-trace] request={sequence} stage=dispatch method={method_label} tool={tool_label} elapsed_ms={}",
+            trace_started.elapsed().as_millis()
+        );
+    }
+    let is_initialize = method == Some("initialize");
     let presented = headers.get(MCP_SESSION_HEADER).cloned();
-    let mut resp =
-        Json(process_multi_as(&rt, msg, delegated_session.as_ref()).await).into_response();
+    let result = process_multi_as(&rt, msg, delegated_session.as_ref()).await;
+    if let Some(sequence) = trace_sequence {
+        let outcome = if result.get("error").is_some() {
+            "rpc_error"
+        } else {
+            "ok"
+        };
+        let response_bytes = serde_json::to_vec(&result).map_or(0, |encoded| encoded.len());
+        eprintln!(
+            "[mcp-trace] request={sequence} stage=processed outcome={outcome} response_bytes={response_bytes} elapsed_ms={}",
+            trace_started.elapsed().as_millis()
+        );
+    }
+    let mut resp = Json(result).into_response();
     if is_initialize {
         if let Ok(v) = HeaderValue::from_str(&rt.mint_session_id()) {
             resp.headers_mut().insert(MCP_SESSION_HEADER, v);
         }
     } else if let Some(v) = presented {
         resp.headers_mut().insert(MCP_SESSION_HEADER, v);
+    }
+    if let Some(sequence) = trace_sequence {
+        eprintln!(
+            "[mcp-trace] request={sequence} stage=response_ready status={} elapsed_ms={}",
+            resp.status().as_u16(),
+            trace_started.elapsed().as_millis()
+        );
     }
     resp
 }
@@ -760,13 +897,16 @@ fn rpc_error_null_id(code: i64, message: &str) -> Value {
 /// absent = a non-browser client, pass; present and loopback-hosted =
 /// pass; anything else = refused before any JSON-RPC processing. The
 /// error never carries the offending value anywhere near a log.
-fn origin_is_local(headers: &HeaderMap) -> bool {
-    let Some(origin) = headers.get(header::ORIGIN) else {
+fn origin_is_allowed(headers: &HeaderMap, configured: &BTreeSet<String>) -> bool {
+    if !headers.contains_key(header::ORIGIN) {
         return true;
-    };
-    let Ok(origin) = origin.to_str() else {
+    }
+    let Some(origin) = one_header(headers, header::ORIGIN) else {
         return false;
     };
+    if !configured.is_empty() {
+        return configured.contains(origin);
+    }
     let rest = origin
         .strip_prefix("http://")
         .or_else(|| origin.strip_prefix("https://"))
@@ -837,7 +977,172 @@ pub fn router_oauth<U: Upstream>(rt: Arc<McpRouter<U>>) -> Router {
         )
         .route("/ceremony/style.css", axum::routing::get(ceremony_style))
         .route("/token", post(oauth_token::<U>))
+        .route_layer(middleware::from_fn_with_state(
+            Arc::clone(&rt),
+            browser_cors::<U>,
+        ))
         .with_state(rt)
+}
+
+#[derive(Clone, Copy)]
+struct BrowserCorsRoute {
+    methods: &'static [&'static str],
+    headers: &'static [&'static str],
+    expose: Option<&'static str>,
+}
+
+fn browser_cors_route(path: &str) -> Option<BrowserCorsRoute> {
+    const JSON_HEADERS: &[&str] = &["accept", "content-type"];
+    const MCP_HEADERS: &[&str] = &[
+        "accept",
+        "authorization",
+        "content-type",
+        "mcp-protocol-version",
+        "mcp-session-id",
+    ];
+    match path {
+        "/mcp" => Some(BrowserCorsRoute {
+            methods: &["POST"],
+            headers: MCP_HEADERS,
+            expose: Some("MCP-Session-Id, WWW-Authenticate"),
+        }),
+        "/.well-known/oauth-protected-resource" | "/.well-known/oauth-authorization-server" => {
+            Some(BrowserCorsRoute {
+                methods: &["GET"],
+                headers: &["accept"],
+                expose: None,
+            })
+        }
+        "/register"
+        | "/ceremony/prepare"
+        | "/ceremony/prepare-grant"
+        | "/ceremony/complete"
+        | "/ceremony/cancel"
+        | "/token" => Some(BrowserCorsRoute {
+            methods: &["POST"],
+            headers: JSON_HEADERS,
+            expose: None,
+        }),
+        "/authorize" => Some(BrowserCorsRoute {
+            methods: &["GET", "POST"],
+            headers: JSON_HEADERS,
+            expose: None,
+        }),
+        _ => None,
+    }
+}
+
+fn one_header(headers: &HeaderMap, name: header::HeaderName) -> Option<&str> {
+    let mut values = headers.get_all(name).iter();
+    let value = values.next()?.to_str().ok()?;
+    values.next().is_none().then_some(value)
+}
+
+fn requested_headers(headers: &HeaderMap) -> Option<BTreeSet<String>> {
+    let Some(raw) = one_header(headers, header::ACCESS_CONTROL_REQUEST_HEADERS) else {
+        return Some(BTreeSet::new());
+    };
+    let mut parsed = BTreeSet::new();
+    for item in raw.split(',') {
+        let item = item.trim();
+        if item.is_empty()
+            || item.len() > 64
+            || !item
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            || !parsed.insert(item.to_ascii_lowercase())
+        {
+            return None;
+        }
+    }
+    Some(parsed)
+}
+
+fn add_browser_cors(
+    mut response: Response,
+    origin: &str,
+    expose: Option<&'static str>,
+) -> Response {
+    if let Ok(origin) = HeaderValue::from_str(origin) {
+        response
+            .headers_mut()
+            .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    }
+    response
+        .headers_mut()
+        .append(header::VARY, HeaderValue::from_static("Origin"));
+    if let Some(expose) = expose {
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_EXPOSE_HEADERS,
+            HeaderValue::from_static(expose),
+        );
+    }
+    response
+}
+
+async fn browser_cors<U: Upstream>(
+    State(rt): State<Arc<McpRouter<U>>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let Some(route) = browser_cors_route(request.uri().path()) else {
+        return next.run(request).await;
+    };
+    if !request.headers().contains_key(header::ORIGIN) {
+        return next.run(request).await;
+    }
+    let Some(origin) = one_header(request.headers(), header::ORIGIN).map(str::to_owned) else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    if rt.browser_origins.is_empty() {
+        return if request.method() == Method::OPTIONS {
+            StatusCode::METHOD_NOT_ALLOWED.into_response()
+        } else {
+            next.run(request).await
+        };
+    }
+    if !rt.browser_origins.contains(&origin) {
+        let mut response = StatusCode::FORBIDDEN.into_response();
+        response
+            .headers_mut()
+            .insert(header::VARY, HeaderValue::from_static("Origin"));
+        return response;
+    }
+    if request.method() == Method::OPTIONS {
+        let Some(method) = one_header(request.headers(), header::ACCESS_CONTROL_REQUEST_METHOD)
+        else {
+            return StatusCode::FORBIDDEN.into_response();
+        };
+        let Some(headers) = requested_headers(request.headers()) else {
+            return StatusCode::FORBIDDEN.into_response();
+        };
+        if !route.methods.contains(&method)
+            || headers
+                .iter()
+                .any(|requested| !route.headers.contains(&requested.as_str()))
+        {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+        let mut response = StatusCode::NO_CONTENT.into_response();
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_METHODS,
+            HeaderValue::from_str(method).expect("validated HTTP method"),
+        );
+        if !headers.is_empty() {
+            response.headers_mut().insert(
+                header::ACCESS_CONTROL_ALLOW_HEADERS,
+                HeaderValue::from_str(&headers.into_iter().collect::<Vec<_>>().join(", "))
+                    .expect("validated header names"),
+            );
+        }
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_MAX_AGE,
+            HeaderValue::from_static("600"),
+        );
+        return add_browser_cors(response, &origin, route.expose);
+    }
+    let response = next.run(request).await;
+    add_browser_cors(response, &origin, route.expose)
 }
 
 /// One OAuth error as an HTTP response: `{error, error_description}` with
@@ -1036,11 +1341,11 @@ async fn oauth_ceremony_prepare<U: Upstream>(
             Ok(preparation) => preparation,
             Err(error) => return oauth_error_response(&error),
         };
-    let eligible_parents = rt
-        .runner
-        .lock()
-        .await
-        .eligible_session_parents(&request.delegate_pub, &now);
+    let eligible_parents = rt.runner.lock().await.eligible_session_parents(
+        &request.delegate_pub,
+        &preparation.resource,
+        &now,
+    );
     Json(json!({
         "v": 1,
         "verified_at": now,
@@ -1080,6 +1385,7 @@ async fn oauth_ceremony_prepare_grant<U: Upstream>(
         &preparation.gateway_pub,
         &preparation.gateway_kex_pub,
         &preparation.session_pub,
+        &preparation.resource,
         &request.leaf,
         &now,
     );
@@ -1128,6 +1434,7 @@ async fn oauth_ceremony_complete<U: Upstream>(
         &reserved.gateway_pub,
         &reserved.gateway_kex_pub,
         &reserved.session_pub,
+        &reserved.resource,
         &request.leaf,
         &request.grant,
         &now,
@@ -1291,28 +1598,61 @@ async fn process_multi_as<U: Upstream>(
                 }
             });
             let mut instructions = String::new();
-            if session.is_none() {
-                let now = (rt.clock)();
-                let runner = rt.runner.lock().await;
-                let briefed = runner.briefing_available();
-                let surface = runner.ethos_surface(&now);
-                drop(runner);
-                if briefed {
-                    instructions.push_str(
-                        "The owner left directives for this agent: call `briefing.read` \
-                         FIRST, before any outbound action, and follow what it says.",
-                    );
+            let now = (rt.clock)();
+            let runner = rt.runner.lock().await;
+            let (briefed, surface) = match session {
+                // The delegated session's instructions mirror ITS OWN
+                // surface (lot 1): briefing only when the pen exists AND
+                // the session chain covers the tool; ethos zones only
+                // when the session chain covers them. A verification
+                // failure here is a mute surface, not an initialize
+                // error — the bearer gate already ran.
+                Some(session) => {
+                    let briefed = runner.briefing_available_for(&session.context)
+                        && runner
+                            .session_covers_tool(
+                                &session.context,
+                                &session.leaf_id,
+                                &session.session_pub,
+                                &session.leaf,
+                                BRIEFING_READ,
+                                &now,
+                            )
+                            .unwrap_or(false);
+                    let zones = runner
+                        .ethos_surface_for_session(
+                            &session.context,
+                            &session.leaf_id,
+                            &session.session_pub,
+                            &session.leaf,
+                            &now,
+                        )
+                        .unwrap_or_default();
+                    let surface = if zones.is_empty() {
+                        BTreeMap::new()
+                    } else {
+                        BTreeMap::from([(session.context.clone(), zones)])
+                    };
+                    (briefed, surface)
                 }
-                if !surface.is_empty() {
-                    if !instructions.is_empty() {
-                        instructions.push(' ');
-                    }
-                    instructions.push_str(&format!(
-                        "Governed Ethos data is readable here — call `ethos.context` for \
-                         the map (zones by context: {}).",
-                        ethos_coverage(&surface)
-                    ));
+                None => (runner.briefing_available(), runner.ethos_surface(&now)),
+            };
+            drop(runner);
+            if briefed {
+                instructions.push_str(
+                    "The owner left directives for this agent: call `briefing.read` \
+                     FIRST, before any outbound action, and follow what it says.",
+                );
+            }
+            if !surface.is_empty() {
+                if !instructions.is_empty() {
+                    instructions.push(' ');
                 }
+                instructions.push_str(&format!(
+                    "Governed Ethos data is readable here — call `ethos.context` for \
+                     the map (zones by context: {}).",
+                    ethos_coverage(&surface)
+                ));
             }
             if !instructions.is_empty() {
                 result["instructions"] = Value::String(instructions);
@@ -1358,6 +1698,39 @@ async fn process_multi_as<U: Upstream>(
                         Ok(false) => {}
                         Err(error) => return error_response(id, &error),
                     }
+                }
+                // The delegated ethos surface (lot 1): the native read
+                // tools join the list only when the SESSION chain covers
+                // at least one zone of ITS context — recomputed on every
+                // list, so a revocation drops them hot, no restart.
+                match runner.ethos_surface_for_session(
+                    &session.context,
+                    &session.leaf_id,
+                    &session.session_pub,
+                    &session.leaf,
+                    &now,
+                ) {
+                    Ok(zones) if !zones.is_empty() => {
+                        let surface = BTreeMap::from([(session.context.clone(), zones)]);
+                        tools.extend(ethos_tools(&surface));
+                    }
+                    Ok(_) => {}
+                    Err(error) => return error_response(id, &error),
+                }
+                // The delegated write tools (lot 4): each verb lights its
+                // own tool, exactly as covered — create/edit on `append`,
+                // delete on `delete`. Circle only this pass.
+                match runner.ethos_write_surface_for_session(
+                    &session.context,
+                    &session.leaf_id,
+                    &session.session_pub,
+                    &session.leaf,
+                    &now,
+                ) {
+                    Ok((append_covered, delete_covered)) => {
+                        tools.extend(ethos_write_tools(append_covered, delete_covered));
+                    }
+                    Err(error) => return error_response(id, &error),
                 }
                 tools
             } else {
@@ -1436,10 +1809,14 @@ async fn tool_call_delegated<U: Upstream>(
     // proofs. Nothing below this guard contacts an upstream or its credentials.
     let mut runner = rt.runner.lock().await;
     let native_briefing = tool == BRIEFING_READ;
-    if native_briefing {
+    let native_ethos = crate::ethos_backend::EthosBackend::handles(&tool);
+    // Every native tool naming a context is pinned to the session's own
+    // context BEFORE anything else: absent → injected, different →
+    // refused. Visibility is not authorization — the dispatchers below
+    // re-verify the chain and the coverage of every single call.
+    if native_briefing || native_ethos {
         let Some(arguments) = args.as_object_mut() else {
-            let deny =
-                GatewayError::RequestRejected("briefing.read arguments must be an object".into());
+            let deny = GatewayError::RequestRejected(format!("{tool} arguments must be an object"));
             runner.record_refusal(Some(&session.context), &tool, deny.refusal_code(), &now);
             return error_response(id, &deny);
         };
@@ -1448,7 +1825,7 @@ async fn tool_call_delegated<U: Upstream>(
                 let deny = GatewayError::MandateDenied {
                     op: "delegated_session".into(),
                     reason: format!(
-                        "briefing context `{context}` differs from delegated context `{}`",
+                        "context `{context}` differs from delegated context `{}`",
                         session.context
                     ),
                 };
@@ -1461,7 +1838,62 @@ async fn tool_call_delegated<U: Upstream>(
             }
         }
     }
+    if native_ethos {
+        let prepared = match rt.ethos_backend.prepare_delegated_mutation(
+            &mut runner,
+            session,
+            &tool,
+            &args,
+            &now,
+        ) {
+            Ok(prepared) => prepared,
+            Err(deny) => {
+                runner.record_refusal(Some(&session.context), &tool, deny.refusal_code(), &now);
+                return error_response(id, &deny);
+            }
+        };
+        if let Some(prepared) = prepared {
+            // The Runner guards keys, chains and mutable planning entropy. The
+            // resulting requests are already signed and closed, so network I/O
+            // must not serialize unrelated connectors behind this mutex.
+            drop(runner);
+            return match prepared.execute().await {
+                Ok(text) => json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{ "type": "text", "text": text }],
+                        "isError": false
+                    }
+                }),
+                Err(deny) => {
+                    let mut runner = rt.runner.lock().await;
+                    runner.record_refusal(Some(&session.context), &tool, deny.refusal_code(), &now);
+                    error_response(id, &deny)
+                }
+            };
+        }
+        return match rt
+            .ethos_backend
+            .dispatch_delegated(&mut runner, session, &tool, &args, &now)
+        {
+            Ok(text) => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "content": [{ "type": "text", "text": text }],
+                    "isError": false
+                }
+            }),
+            Err(deny) => {
+                runner.record_refusal(Some(&session.context), &tool, deny.refusal_code(), &now);
+                error_response(id, &deny)
+            }
+        };
+    }
     let ctx = if native_briefing {
+        session.context.clone()
+    } else if runner.tool_available_in_context(&session.context, &tool) {
         session.context.clone()
     } else if let Some(context) = runner.resolve(&tool).map(str::to_owned) {
         context
@@ -1721,8 +2153,11 @@ async fn tool_call_legacy<U: Upstream>(rt: &McpRouter<U>, mut msg: Value) -> Val
     // journal always, and the CONTEXT too when the call names one (an
     // ethos call is the one native surface whose target context is
     // identifiable).
-    if tool == ETHOS_READ || tool == ETHOS_LIST || tool == ETHOS_CONTEXT {
-        return match ethos_dispatch(&mut runner, &tool, &args, &now) {
+    if crate::ethos_backend::EthosBackend::handles_legacy(&tool) {
+        return match rt
+            .ethos_backend
+            .dispatch_legacy(&mut runner, &tool, &args, &now)
+        {
             Ok(text) => json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -2069,7 +2504,12 @@ fn ethos_tools(surface: &BTreeMap<String, Vec<String>>) -> Vec<Value> {
 /// Argument parsing is fail-closed — unknown fields and wrong types
 /// refuse naming the field; the bridge then derives the authority from
 /// the scanned chains and journalizes every sealed open.
-fn ethos_dispatch(runner: &mut Runner, tool: &str, args: &Value, now: &str) -> Result<String> {
+pub(crate) fn legacy_ethos_dispatch(
+    runner: &mut Runner,
+    tool: &str,
+    args: &Value,
+    now: &str,
+) -> Result<String> {
     let obj = args
         .as_object()
         .ok_or_else(|| bad_args(tool, "arguments must be an object"))?;
@@ -2097,6 +2537,217 @@ fn ethos_dispatch(runner: &mut Runner, tool: &str, args: &Value, now: &str) -> R
         }
         ETHOS_LIST => runner.ethos_list(context.as_deref(), now)?,
         ETHOS_CONTEXT => runner.ethos_context_pack(context.as_deref(), now)?,
+        other => return Err(bad_args(other, "not a native ethos tool")),
+    };
+    serde_json::to_string(&payload).map_err(|e| GatewayError::BridgeFailed(e.to_string()))
+}
+
+/// The delegated mutation tools' MCP descriptors (lot 4): REAL argument
+/// schemas, unknown fields pinned closed, one Core verb per tool. Only
+/// the covered verbs appear — visibility already IS the mandate, and
+/// every call still re-verifies before touching anything.
+fn ethos_write_tools(append_covered: bool, delete_covered: bool) -> Vec<Value> {
+    let mut tools = Vec::new();
+    if append_covered {
+        tools.push(json!({
+            "name": ETHOS_CREATE,
+            "description": "Create one new section in the governed Ethos (circle zone). \
+                            The folder must already exist. Every creation is a signed, \
+                            journalized delegated mutation.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context": { "type": "string" },
+                    "zone": { "type": "string" },
+                    "folder": { "type": "string" },
+                    "name": { "type": "string" },
+                    "title": { "type": "string" },
+                    "tags": { "type": "array", "items": { "type": "string" } },
+                    "body": { "type": "string" }
+                },
+                "required": ["zone", "name", "body"],
+                "additionalProperties": false
+            }
+        }));
+        tools.push(json!({
+            "name": ETHOS_EDIT,
+            "description": "Rewrite one existing section body (circle zone). Requires the \
+                            `expected_digest` from the last ethos.read — a concurrent \
+                            change refuses the call instead of being overwritten. Every \
+                            rewrite is a signed, journalized delegated mutation.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context": { "type": "string" },
+                    "zone": { "type": "string" },
+                    "path": { "type": "string" },
+                    "body": { "type": "string" },
+                    "expected_digest": { "type": "string" }
+                },
+                "required": ["zone", "path", "body", "expected_digest"],
+                "additionalProperties": false
+            }
+        }));
+    }
+    if delete_covered {
+        tools.push(json!({
+            "name": ETHOS_DELETE,
+            "description": "Delete one section row (circle zone) — erasure is \
+                            cryptographic, the act is signed and journalized. Pass \
+                            `expected_digest` to refuse if the section changed since \
+                            it was read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "context": { "type": "string" },
+                    "zone": { "type": "string" },
+                    "path": { "type": "string" },
+                    "expected_digest": { "type": "string" }
+                },
+                "required": ["zone", "path"],
+                "additionalProperties": false
+            }
+        }));
+    }
+    tools
+}
+
+/// Validate and run one native ethos call for a DELEGATED session
+/// (lot 1). Same fail-closed argument parsing as [`ethos_dispatch`];
+/// the runner then re-verifies the session chain fresh (revocations
+/// included) and derives the authority from THAT chain only — never
+/// from the agent's own chains, never from another context. No SC1
+/// session co-proof here on purpose: unlike `briefing.read` (whose
+/// reads are served under the AGENT chain and need the session-act
+/// xref as their only session-linked trace), every sealed ethos read
+/// is journalized under the session chain itself — the trace IS the
+/// session's.
+pub(crate) fn legacy_ethos_dispatch_delegated(
+    runner: &mut Runner,
+    session: &crate::oauth::BearerSession,
+    tool: &str,
+    args: &Value,
+    now: &str,
+) -> Result<String> {
+    let obj = args
+        .as_object()
+        .ok_or_else(|| bad_args(tool, "arguments must be an object"))?;
+    let allowed: &[&str] = match tool {
+        ETHOS_READ => &["context", "zone", "path"],
+        ETHOS_CREATE => &["context", "zone", "folder", "name", "title", "tags", "body"],
+        ETHOS_EDIT => &["context", "zone", "path", "body", "expected_digest"],
+        ETHOS_DELETE => &["context", "zone", "path", "expected_digest"],
+        _ => &["context"],
+    };
+    for key in obj.keys() {
+        if !allowed.contains(&key.as_str()) {
+            return Err(bad_args(tool, &format!("unknown field `{key}`")));
+        }
+    }
+    let text_field = |name: &str| match obj.get(name) {
+        None => Ok(None),
+        Some(Value::String(s)) if !s.trim().is_empty() => Ok(Some(s.clone())),
+        Some(Value::String(_)) => Err(bad_args(tool, &format!("`{name}` must not be empty"))),
+        Some(_) => Err(bad_args(tool, &format!("`{name}` must be a string"))),
+    };
+    let required = |name: &str| {
+        text_field(name)?.ok_or_else(|| bad_args(tool, &format!("`{name}` is required")))
+    };
+    // The context argument was pinned to the session's own context by
+    // the caller; parse it anyway so a malformed value refuses cleanly.
+    let _ = text_field("context")?;
+    let payload = match tool {
+        ETHOS_READ => {
+            let zone = required("zone")?;
+            let path = required("path")?;
+            runner.ethos_read_for_session(
+                &session.context,
+                &session.leaf_id,
+                &session.session_pub,
+                &session.leaf,
+                &zone,
+                &path,
+                now,
+            )?
+        }
+        ETHOS_LIST => runner.ethos_list_for_session(
+            &session.context,
+            &session.leaf_id,
+            &session.session_pub,
+            &session.leaf,
+            now,
+        )?,
+        ETHOS_CONTEXT => runner.ethos_context_pack_for_session(
+            &session.context,
+            &session.leaf_id,
+            &session.session_pub,
+            &session.leaf,
+            now,
+        )?,
+        ETHOS_CREATE => {
+            let zone = required("zone")?;
+            let name = required("name")?;
+            let body = required("body")?;
+            let folder = text_field("folder")?.unwrap_or_default();
+            let title = text_field("title")?.unwrap_or_else(|| name.clone());
+            let tags = match obj.get("tags") {
+                None => Vec::new(),
+                Some(Value::Array(items)) => items
+                    .iter()
+                    .map(|item| {
+                        item.as_str()
+                            .map(str::to_owned)
+                            .ok_or_else(|| bad_args(tool, "`tags` must be an array of strings"))
+                    })
+                    .collect::<Result<Vec<_>>>()?,
+                Some(_) => return Err(bad_args(tool, "`tags` must be an array of strings")),
+            };
+            runner.ethos_create_for_session(
+                &session.context,
+                &session.leaf_id,
+                &session.session_pub,
+                &session.leaf,
+                &zone,
+                &folder,
+                &name,
+                &title,
+                &tags,
+                &body,
+                now,
+            )?
+        }
+        ETHOS_EDIT => {
+            let zone = required("zone")?;
+            let path = required("path")?;
+            let body = required("body")?;
+            let expected = required("expected_digest")?;
+            runner.ethos_edit_for_session(
+                &session.context,
+                &session.leaf_id,
+                &session.session_pub,
+                &session.leaf,
+                &zone,
+                &path,
+                &body,
+                &expected,
+                now,
+            )?
+        }
+        ETHOS_DELETE => {
+            let zone = required("zone")?;
+            let path = required("path")?;
+            let expected = text_field("expected_digest")?;
+            runner.ethos_delete_for_session(
+                &session.context,
+                &session.leaf_id,
+                &session.session_pub,
+                &session.leaf,
+                &zone,
+                &path,
+                expected.as_deref(),
+                now,
+            )?
+        }
         other => return Err(bad_args(other, "not a native ethos tool")),
     };
     serde_json::to_string(&payload).map_err(|e| GatewayError::BridgeFailed(e.to_string()))
@@ -2277,6 +2928,25 @@ mod upstream_transport_tests {
 
         headers.insert(header::ACCEPT, HeaderValue::from_static("text/html, */*"));
         assert!(!accepts_json(&headers));
+    }
+
+    #[test]
+    fn browser_origin_is_single_and_exact_when_configured() {
+        let configured = BTreeSet::from(["https://app.aithos.fr".to_owned()]);
+        let mut headers = HeaderMap::new();
+        assert!(origin_is_allowed(&headers, &configured));
+
+        headers.insert(
+            header::ORIGIN,
+            HeaderValue::from_static("https://app.aithos.fr"),
+        );
+        assert!(origin_is_allowed(&headers, &configured));
+
+        headers.append(
+            header::ORIGIN,
+            HeaderValue::from_static("https://neighbor.aithos.fr"),
+        );
+        assert!(!origin_is_allowed(&headers, &configured));
     }
 
     #[test]

@@ -870,6 +870,13 @@ impl AuthServer {
     }
 
     fn authorize_inner(&self, req: &AuthorizeRequest, now: Option<&str>) -> AuthorizeOutcome {
+        if !crate::oauth_state::is_valid_state_id(&req.client_id) {
+            return AuthorizeOutcome::HardError {
+                detail: "unknown client_id — register dynamically first (RFC 7591); \
+                         self-asserted client_id URLs (CIMD) are not served yet"
+                    .into(),
+            };
+        }
         let client =
             match self.load_record::<ClientRecord>(StateNamespace::DcrClient, &req.client_id) {
                 Ok(Some((client, _))) => client,
@@ -1168,11 +1175,12 @@ impl AuthServer {
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| oauth_err("invalid_request", "session leaf subject is missing"))?
                 .to_owned();
+            const OPERATIONAL_SESSION_LIMIT: u64 = 64;
             let session_limit = leaf
                 .pointer("/constraints/max_sessions")
                 .and_then(Value::as_u64)
-                .unwrap_or(3)
-                .min(3);
+                .unwrap_or(OPERATIONAL_SESSION_LIMIT)
+                .min(OPERATIONAL_SESSION_LIMIT);
             if session_limit == 0 {
                 return Err(oauth_err(
                     "access_denied",
@@ -1974,7 +1982,8 @@ fn ceremony_page(pending: &PendingCeremonyView) -> String {
          <header><p class=\"eyebrow\">Aithos · secure authorization</p>\
          <h1>Authorize a delegated session</h1>\
          <p>Unlock your encrypted local keystore. Your private key stays in \
-         this page's WASM signer and is destroyed when you leave.</p></header>\
+         this page's WASM signer and is destroyed when you leave. This ceremony \
+         expires in about two minutes — unlock promptly.</p></header>\
          <section class=\"card\" id=\"unlock-panel\"><h2>1. Unlock your signer</h2>\
          <label>Encrypted Aithos keystore<input id=\"keystore\" type=\"file\" \
          accept=\"application/json,.json\" required></label>\

@@ -1,5 +1,7 @@
 # HANDOFF — Piste P / Provider P2 : gate 5 (A.3 surface de lecture + redline A.1 draft.2 + écritures restantes) LIVRÉ
 
+> **ARCHIVE DE PREUVE.** Gate 5 clos ; ne pas utiliser ce document comme reprise.
+
 Date : 2026-07-20. Dépôt : `code/aithos-core` (état DISQUE = vérité, même
 règle qu'au gate 4). Statut : **étape 5 implémentée et verte — STOP au
 gate** : preuves listées, arbitrages actés en session (GO Mathieu sur le

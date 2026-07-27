@@ -1,5 +1,9 @@
 # HANDOFF — G4/G5 et passage en production : authentification MCP par mandat délégué et session éphémère
 
+> **ARCHIVE DE PLAN.** G4 a livré la session déléguée et le front door Core SC1.
+> Les gates de production et la démo intégrée sont suivis dans les documents
+> courants indexés par `README.md`.
+
 Date : 2026-07-22
 
 Statut : **plan historique ayant conduit à G4**. La gateway, le Core, le WASM et

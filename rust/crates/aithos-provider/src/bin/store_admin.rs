@@ -639,7 +639,7 @@ mod tests {
         assert!(!hostname_ok(&format!("{l64}.fr")));
         let mut long = vec!["a"; 100].join(".");
         long.push_str(&"a".repeat(253 - long.len()));
-        assert!(hostname_ok(&long[..253].trim_end_matches('.').to_string()));
+        assert!(hostname_ok(long[..253].trim_end_matches('.')));
         assert!(!hostname_ok(&format!(
             "{}.{}",
             "a".repeat(63),

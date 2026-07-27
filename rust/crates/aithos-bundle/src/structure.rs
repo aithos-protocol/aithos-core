@@ -647,6 +647,11 @@ impl<S: Store> Bundle<S> {
                 now,
             )?;
         }
+        // Capture the actor's proven node key before the subtree's headers
+        // are removed. The same key seals the terminal Gamma evidence; trying
+        // to reacquire it after deletion would turn an authorized delete into
+        // a false refusal and rely on transaction rollback to hide the bug.
+        let key = self.structural_log_key(chain, agent_sk, &root)?;
         let public_paths = if zone == Zone::Public {
             sections
                 .iter()
@@ -667,7 +672,6 @@ impl<S: Store> Bundle<S> {
             .retain(|candidate| !section_ids.contains(&candidate.sid));
         self.put_json(&format!("e/{}/index.json", zone.as_str()), &index)?;
         self.delete_subtree_artifacts(zone, &root, &section_ids, &public_paths)?;
-        let key = self.structural_log_key(chain, agent_sk, &root)?;
         self.log_delegated_mutation_with_key(
             chain,
             agent_sk,

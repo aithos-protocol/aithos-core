@@ -1,5 +1,7 @@
 # PROMPT DE REPRISE — Piste P / provider Aithos — clôture M2 vers prod stable
 
+> **ARCHIVE — ne pas exécuter.** M2 et les lots Provider suivants sont clos.
+
 > À coller dans un nouveau contexte. Reprend la piste P (provider Aithos sur
 > AWS) au point exact du 2026-07-18 : le cœur M2 est écrit et vert en local,
 > trois arbitrages sont tranchés, et il reste à finir M2 « orienté prod

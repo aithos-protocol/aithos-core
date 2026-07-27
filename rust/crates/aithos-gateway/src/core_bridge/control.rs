@@ -5,7 +5,7 @@
 //! every cryptographic, mandate, revocation and Gamma authority verdict.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use aithos_bundle::Store;
 use aithos_core::did::DidDocument;
@@ -91,6 +91,8 @@ impl PreparedControlEnvelope {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlAccess {
     Status,
+    Identity,
+    ContextEnrollment,
     Contexts,
     Certificates {
         context: String,
@@ -128,6 +130,8 @@ impl ControlAccess {
     fn context(&self) -> Option<&str> {
         match self {
             Self::Status
+            | Self::Identity
+            | Self::ContextEnrollment
             | Self::Contexts
             | Self::Connectors
             | Self::ConnectorConfigAny { .. }
@@ -212,7 +216,7 @@ struct ControlContext {
 /// Fresh read-side view over every configured context store.
 #[derive(Clone)]
 pub struct ControlProofReader {
-    contexts: Arc<BTreeMap<String, ControlContext>>,
+    contexts: Arc<RwLock<BTreeMap<String, ControlContext>>>,
 }
 
 /// One exact stored artifact. Transport base64url-encodes these bytes without
@@ -319,7 +323,7 @@ impl ControlProofReader {
             })
             .collect();
         Self {
-            contexts: Arc::new(contexts),
+            contexts: Arc::new(RwLock::new(contexts)),
         }
     }
 
@@ -336,8 +340,34 @@ impl ControlProofReader {
             contexts.insert(name, ControlContext { did: doc.id, store });
         }
         Ok(Self {
-            contexts: Arc::new(contexts),
+            contexts: Arc::new(RwLock::new(contexts)),
         })
+    }
+
+    /// Publish one already-verified runtime context to subsequent A.2 proof
+    /// checks. The registry update is in-memory and atomic; the caller owns
+    /// durable catalogue ordering and only calls this after runner insertion.
+    pub(crate) fn insert_context(
+        &self,
+        name: String,
+        did: String,
+        store: GatewayStore,
+    ) -> Result<()> {
+        let mut contexts = self
+            .contexts
+            .write()
+            .map_err(|_| redacted_bridge_error("control context registry unavailable"))?;
+        if let Some(existing) = contexts.get(&name) {
+            if existing.did == did {
+                return Ok(());
+            }
+            return Err(redacted_bridge_error("control context collision"));
+        }
+        if contexts.values().any(|context| context.did == did) {
+            return Err(redacted_bridge_error("control context collision"));
+        }
+        contexts.insert(name, ControlContext { did, store });
+        Ok(())
     }
 
     /// A.2 #7–#10 after the caller has burned the nonce. DID, certificates,
@@ -348,17 +378,29 @@ impl ControlProofReader {
         access: &ControlAccess,
         now_ms: i64,
     ) -> std::result::Result<ControlPrincipal, ControlAuthError> {
-        let candidates: Vec<(&String, &ControlContext)> = match access.context() {
-            Some(name) => self.contexts.get_key_value(name).into_iter().collect(),
-            None => self.contexts.iter().collect(),
+        let contexts = self
+            .contexts
+            .read()
+            .map_err(|_| ControlAuthError::Unavailable)?;
+        let candidates: Vec<(String, ControlContext)> = match access.context() {
+            Some(name) => contexts
+                .get_key_value(name)
+                .map(|(name, context)| (name.clone(), context.clone()))
+                .into_iter()
+                .collect(),
+            None => contexts
+                .iter()
+                .map(|(name, context)| (name.clone(), context.clone()))
+                .collect(),
         };
+        drop(contexts);
         if candidates.is_empty() {
             return Err(ControlAuthError::NotCovered);
         }
         let mut unavailable = false;
         let mut strongest = ControlAuthError::SignatureInvalid;
         for (name, context) in candidates {
-            match verify_in_context(name, context, prepared, access, now_ms) {
+            match verify_in_context(&name, &context, prepared, access, now_ms) {
                 Ok(principal) => return Ok(principal),
                 Err(ControlAuthError::Unavailable) => unavailable = true,
                 Err(ControlAuthError::ChainRevoked) => strongest = ControlAuthError::ChainRevoked,
@@ -425,7 +467,7 @@ impl ControlProofReader {
         limit: usize,
     ) -> Result<ControlPage> {
         let context = self.checked_context(principal)?;
-        let snapshot = load_authority_snapshot(context)?;
+        let snapshot = load_authority_snapshot(&context)?;
         let visible: Vec<ControlRawArtifact> = snapshot
             .gamma
             .into_iter()
@@ -443,7 +485,7 @@ impl ControlProofReader {
 
     pub fn heads(&self, principal: &ControlPrincipal) -> Result<ControlHeadsProof> {
         let context = self.checked_context(principal)?;
-        let snapshot = load_authority_snapshot(context)?;
+        let snapshot = load_authority_snapshot(&context)?;
         let gamma_tail = snapshot
             .gamma
             .into_iter()
@@ -471,10 +513,13 @@ impl ControlProofReader {
         })
     }
 
-    fn checked_context(&self, principal: &ControlPrincipal) -> Result<&ControlContext> {
+    fn checked_context(&self, principal: &ControlPrincipal) -> Result<ControlContext> {
         let context = self
             .contexts
+            .read()
+            .map_err(|_| redacted_bridge_error("control context registry unavailable"))?
             .get(&principal.context)
+            .cloned()
             .ok_or_else(|| redacted_bridge_error("control context unavailable"))?;
         let did = get_required_bounded(&context.store, "did.json", MAX_DID_BYTES)?;
         if blake3::hash(&did).to_hex().as_str() != principal.did_b3 {
@@ -580,9 +625,10 @@ fn verify_in_context(
         .cloned()
         .collect();
     let role = match access {
-        ControlAccess::Status | ControlAccess::Connectors => {
-            return Err(ControlAuthError::NotCovered)
-        }
+        ControlAccess::Status
+        | ControlAccess::Identity
+        | ControlAccess::ContextEnrollment
+        | ControlAccess::Connectors => return Err(ControlAuthError::NotCovered),
         ControlAccess::Contexts
         | ControlAccess::Certificates { .. }
         | ControlAccess::Heads { .. }
@@ -899,7 +945,7 @@ fn parse_rfc3339z_ms(value: &str) -> Option<i64> {
     )
 }
 
-fn render_rfc3339z(milliseconds: i64) -> String {
+pub(crate) fn render_rfc3339z(milliseconds: i64) -> String {
     let seconds = milliseconds.div_euclid(1_000);
     let days = seconds.div_euclid(86_400);
     let remaining = seconds.rem_euclid(86_400);

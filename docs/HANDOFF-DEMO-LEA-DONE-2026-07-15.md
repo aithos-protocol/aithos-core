@@ -1,5 +1,8 @@
 # Handoff — démo Léa : lots K et D CLOS, gate répétition générale
 
+> **ARCHIVE DE PREUVE.** Gate clos ; ne pas utiliser les prochaines étapes comme
+> backlog courant.
+
 **Date :** 2026-07-15 nuit (9ᵉ session gw, fin — profil cloud+janitor)
 **Branche :** `feat/obligations` (jamais switcher)
 **HEAD de sortie :** le commit docs qui suit `0db670e`

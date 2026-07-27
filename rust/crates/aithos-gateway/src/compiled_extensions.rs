@@ -30,6 +30,7 @@ const MAX_SPREADSHEET_ID_BYTES: usize = 128;
 const MAX_A1_RANGE_BYTES: usize = 256;
 const MAX_APPROVER_BYTES: usize = 200;
 const MAX_OUTBOX_RECORDS: usize = 1_024;
+const MAX_APPROVAL_INBOX_ITEMS: usize = 100;
 
 pub const SHEETS_READ_TOOL: &str = "read_range";
 pub const SHEETS_WRITE_GUARDED_TOOL: &str = "values_update_guarded";
@@ -770,6 +771,29 @@ impl ApprovalOutbox {
         })
     }
 
+    /// Metadata-only rows for the owner inbox. Plaintext mail content remains
+    /// available exclusively through `owner_review`.
+    pub fn owner_list(&self) -> Result<Vec<ApprovalView>> {
+        let now = (self.now)();
+        let mut inner = self.lock()?;
+        let mut approvals = inner
+            .records
+            .values_mut()
+            .map(|record| {
+                expire_if_needed(record, now);
+                record.view()
+            })
+            .collect::<Vec<_>>();
+        approvals.sort_by(|left, right| {
+            right
+                .created_at
+                .cmp(&left.created_at)
+                .then_with(|| left.approval_id.cmp(&right.approval_id))
+        });
+        approvals.truncate(MAX_APPROVAL_INBOX_ITEMS);
+        Ok(approvals)
+    }
+
     pub fn owner_approve(&self, approval_id: &str, approver: &str) -> Result<ApprovalView> {
         let approver = validated_approver(approver)?;
         let now = (self.now)();
@@ -937,6 +961,12 @@ impl GmailSendGuardedUpstream {
         let review = self.outbox.owner_review(approval_id)?;
         self.outbox.persist().await?;
         Ok(review)
+    }
+
+    pub async fn owner_list(&self) -> Result<Vec<ApprovalView>> {
+        let approvals = self.outbox.owner_list()?;
+        self.outbox.persist().await?;
+        Ok(approvals)
     }
 
     pub async fn approval_status(&self, approval_id: &str) -> Result<ApprovalView> {
@@ -1659,6 +1689,8 @@ mod tests {
         let first = outbox.enqueue(payload.clone()).unwrap();
         let replay = outbox.enqueue(payload).unwrap();
         assert_eq!(first.approval_id, replay.approval_id);
+        let inbox = outbox.owner_list().unwrap();
+        assert_eq!(inbox, [first.clone()]);
         assert_eq!(
             outbox.owner_review(&first.approval_id).unwrap().text_body,
             "body"

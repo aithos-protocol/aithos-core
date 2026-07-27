@@ -37,6 +37,9 @@ use crate::core_bridge::{
     ControlRawArtifact,
 };
 use crate::credentials::{CredentialBroker, CredentialBrokerReadiness};
+use crate::ethos_catalog::{
+    EthosEnrollmentControl, EthosEnrollmentFailure, EthosEnrollmentRequest,
+};
 use crate::relay::{RelayHealth, RelayReadiness};
 use crate::{GatewayError, Result};
 
@@ -54,6 +57,8 @@ const MAX_CONTROL_WORKERS: usize = 32;
 const MAX_STAGE_BODY_BYTES: usize = 32 * 1024;
 const MAX_SECRET_BODY_BYTES: usize = 8 * 1024;
 const CONNECTOR_TIMEOUT: Duration = Duration::from_secs(20);
+const ENROLLMENT_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_ENROLLMENT_BODY_BYTES: usize = 8 * 1024;
 
 type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 
@@ -67,6 +72,7 @@ pub struct ControlState {
     relay: RelayHealth,
     brokers: Arc<BTreeMap<String, Arc<dyn CredentialBroker>>>,
     connectors: Option<Arc<ConnectorControl>>,
+    ethos_enrollment: Option<Arc<EthosEnrollmentControl>>,
     clock: Clock,
 }
 
@@ -102,6 +108,7 @@ impl ControlState {
             relay,
             brokers: Arc::new(brokers),
             connectors: None,
+            ethos_enrollment: None,
             clock: Arc::new(system_now_ms),
         })
     }
@@ -114,6 +121,11 @@ impl ControlState {
 
     pub fn with_connectors(mut self, connectors: Arc<ConnectorControl>) -> Self {
         self.connectors = Some(connectors);
+        self
+    }
+
+    pub fn with_ethos_enrollment(mut self, enrollment: Arc<EthosEnrollmentControl>) -> Self {
+        self.ethos_enrollment = Some(enrollment);
         self
     }
 
@@ -181,6 +193,9 @@ struct ControlRoute {
 }
 
 #[derive(Clone, Copy)]
+struct ControlRequestTime(i64);
+
+#[derive(Clone, Copy)]
 enum ControlBody {
     Empty,
     Json { maximum: usize },
@@ -190,8 +205,12 @@ pub fn router(state: Arc<ControlState>) -> Router {
     Router::new()
         .route("/control/v1/status", get(status).options(preflight_sink))
         .route(
+            "/control/v1/identity",
+            get(identity).options(preflight_sink),
+        )
+        .route(
             "/control/v1/contexts",
-            get(contexts).options(preflight_sink),
+            get(contexts).post(enroll_context).options(preflight_sink),
         )
         .route(
             "/control/v1/contexts/{name}/certs",
@@ -222,6 +241,14 @@ pub fn router(state: Arc<ControlState>) -> Router {
             post(stage_credential_connector).options(preflight_sink),
         )
         .route(
+            "/control/v1/connectors/{id}/oauth-stage",
+            post(stage_oauth_connector).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/binding-prepare",
+            post(prepare_connector_binding).options(preflight_sink),
+        )
+        .route(
             "/control/v1/connectors/{id}/client-secret",
             put(set_client_secret).options(preflight_sink),
         )
@@ -248,6 +275,10 @@ pub fn router(state: Arc<ControlState>) -> Router {
         .route(
             "/control/v1/connectors/{id}/disconnect",
             post(disconnect_connector).options(preflight_sink),
+        )
+        .route(
+            "/control/v1/connectors/{id}/approvals",
+            get(gmail_approvals).options(preflight_sink),
         )
         .route(
             "/control/v1/connectors/{id}/approvals/{approval}",
@@ -391,6 +422,26 @@ async fn control_guard(
             )
         }
     };
+    if matches!(route.access, ControlAccess::ContextEnrollment) {
+        if !principal.is_owner() {
+            return cors(
+                public_error(StatusCode::UNAUTHORIZED, "authority_denied"),
+                &origin,
+            );
+        }
+        let Some(enrollment) = &state.ethos_enrollment else {
+            return cors(
+                public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline"),
+                &origin,
+            );
+        };
+        if !enrollment.authority_context_allowed(principal.context()) {
+            return cors(
+                public_error(StatusCode::FORBIDDEN, "authority_denied"),
+                &origin,
+            );
+        }
+    }
     // A.2 binds the exact body before route semantics inspect its shape.
     // Thus a body changed after signing is an authority failure (above),
     // while an intentionally signed but route-invalid body is a 400 here.
@@ -402,6 +453,7 @@ async fn control_guard(
     }
     request = Request::from_parts(parts, Body::from(body));
     request.extensions_mut().insert(principal);
+    request.extensions_mut().insert(ControlRequestTime(now_ms));
     let route_timeout = route.timeout;
     request.extensions_mut().insert(route);
     let response = match tokio::time::timeout(route_timeout, next.run(request)).await {
@@ -561,6 +613,15 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
             timeout: CONTROL_TIMEOUT,
         });
     }
+    if method == "GET" && path == "/control/v1/identity" && query.is_none() {
+        return Some(ControlRoute {
+            access: ControlAccess::Identity,
+            offset: 0,
+            limit: DEFAULT_PAGE_LIMIT,
+            body: ControlBody::Empty,
+            timeout: CONTROL_TIMEOUT,
+        });
+    }
     if method == "GET" && path == "/control/v1/contexts" && query.is_none() {
         return Some(ControlRoute {
             access: ControlAccess::Contexts,
@@ -568,6 +629,17 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
             limit: DEFAULT_PAGE_LIMIT,
             body: ControlBody::Empty,
             timeout: CONTROL_TIMEOUT,
+        });
+    }
+    if method == "POST" && path == "/control/v1/contexts" && query.is_none() {
+        return Some(ControlRoute {
+            access: ControlAccess::ContextEnrollment,
+            offset: 0,
+            limit: DEFAULT_PAGE_LIMIT,
+            body: ControlBody::Json {
+                maximum: MAX_ENROLLMENT_BODY_BYTES,
+            },
+            timeout: ENROLLMENT_TIMEOUT,
         });
     }
     if method == "GET" && path == "/control/v1/connectors" && query.is_none() {
@@ -590,6 +662,8 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
                 [_, "stage"] => "stage",
                 [_, "profile-stage"] => "profile-stage",
                 [_, "credential-stage"] => "credential-stage",
+                [_, "oauth-stage"] => "oauth-stage",
+                [_, "binding-prepare"] => "binding-prepare",
                 [_, "client-secret"] => "client-secret",
                 [_, "bearer-secret"] => "bearer-secret",
                 [_, "oauth", "start"] => "oauth/start",
@@ -597,6 +671,7 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
                 [_, "activate"] => "activate",
                 [_, "draft"] => "draft",
                 [_, "disconnect"] => "disconnect",
+                [_, "approvals"] => "approval/list",
                 [_, "approvals", approval] if canonical_approval_id(approval) => "approval/review",
                 [_, "approvals", approval, "approve"] if canonical_approval_id(approval) => {
                     "approval/approve"
@@ -610,15 +685,18 @@ fn classify_route(method: &str, target: &str) -> Option<ControlRoute> {
                 _ => return None,
             };
             let body = match (method, action) {
-                ("POST", "stage" | "profile-stage" | "credential-stage") => ControlBody::Json {
-                    maximum: MAX_STAGE_BODY_BYTES,
-                },
+                ("POST", "stage" | "profile-stage" | "credential-stage" | "oauth-stage") => {
+                    ControlBody::Json {
+                        maximum: MAX_STAGE_BODY_BYTES,
+                    }
+                }
                 ("PUT", "client-secret" | "bearer-secret") => ControlBody::Json {
                     maximum: MAX_SECRET_BODY_BYTES,
                 },
-                ("POST", "oauth/start" | "activate" | "disconnect")
+                ("POST", "binding-prepare" | "oauth/start" | "activate" | "disconnect")
                 | ("GET", "oauth/status")
                 | ("DELETE", "draft")
+                | ("GET", "approval/list")
                 | ("GET", "approval/review")
                 | ("POST", "approval/approve" | "approval/deny" | "approval/dispatch") => {
                     ControlBody::Empty
@@ -767,6 +845,46 @@ async fn status(State(state): State<Arc<ControlState>>) -> Json<StatusResponse> 
     })
 }
 
+async fn identity(State(state): State<Arc<ControlState>>) -> Response {
+    let Some(enrollment) = &state.ethos_enrollment else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    Json(enrollment.identity()).into_response()
+}
+
+async fn enroll_context(
+    State(state): State<Arc<ControlState>>,
+    Extension(ControlRequestTime(now_ms)): Extension<ControlRequestTime>,
+    body: Bytes,
+) -> Response {
+    let Some(enrollment) = &state.ethos_enrollment else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    let request = match serde_json::from_slice::<EthosEnrollmentRequest>(&body) {
+        Ok(request) if request.validate_shape() => request,
+        _ => return public_error(StatusCode::BAD_REQUEST, "enrollment_rejected"),
+    };
+    match enrollment.enroll(request, now_ms).await {
+        Ok(response) => {
+            let status = if response.created {
+                StatusCode::CREATED
+            } else {
+                StatusCode::OK
+            };
+            (status, Json(response)).into_response()
+        }
+        Err(EthosEnrollmentFailure::Conflict) => {
+            public_error(StatusCode::CONFLICT, "context_conflict")
+        }
+        Err(EthosEnrollmentFailure::Rejected) => {
+            public_error(StatusCode::UNPROCESSABLE_ENTITY, "enrollment_rejected")
+        }
+        Err(EthosEnrollmentFailure::Unavailable) => {
+            public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline")
+        }
+    }
+}
+
 async fn contexts(
     State(state): State<Arc<ControlState>>,
     Extension(principal): Extension<ControlPrincipal>,
@@ -900,6 +1018,50 @@ async fn stage_credential_connector(
         .await
     {
         Ok(view) => (StatusCode::CREATED, Json(view)).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn stage_oauth_connector(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    let descriptor = match ConnectorControl::parse_oauth_stage(&body) {
+        Ok(descriptor) => descriptor,
+        Err(error) => return connector_error(error),
+    };
+    match control
+        .stage_oauth(
+            principal.context(),
+            principal.principal_id(),
+            &id,
+            descriptor,
+        )
+        .await
+    {
+        Ok(view) => (StatusCode::CREATED, Json(view)).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn prepare_connector_binding(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control
+        .prepare_credential_binding(principal.context(), principal.principal_id(), &id)
+        .await
+    {
+        Ok(preparation) => Json(preparation).into_response(),
         Err(error) => connector_error(error),
     }
 }
@@ -1038,6 +1200,26 @@ async fn disconnect_connector(
         .await
     {
         Ok(view) => Json(view).into_response(),
+        Err(error) => connector_error(error),
+    }
+}
+
+async fn gmail_approvals(
+    State(state): State<Arc<ControlState>>,
+    Extension(principal): Extension<ControlPrincipal>,
+    Path(id): Path<String>,
+) -> Response {
+    if !principal.is_owner() {
+        return public_error(StatusCode::FORBIDDEN, "authority_denied");
+    }
+    let Some(control) = &state.connectors else {
+        return public_error(StatusCode::SERVICE_UNAVAILABLE, "gateway_offline");
+    };
+    match control
+        .gmail_approvals(principal.context(), principal.principal_id(), &id)
+        .await
+    {
+        Ok(items) => Json(json!({ "v": 1, "items": items })).into_response(),
         Err(error) => connector_error(error),
     }
 }
@@ -1273,11 +1455,34 @@ mod tests {
     #[test]
     fn route_grammar_is_closed_and_pagination_is_bounded() {
         assert!(classify_route("GET", "/control/v1/status").is_some());
+        assert!(matches!(
+            classify_route("GET", "/control/v1/identity")
+                .unwrap()
+                .access,
+            ControlAccess::Identity
+        ));
+        let enrollment = classify_route("POST", "/control/v1/contexts").unwrap();
+        assert!(matches!(
+            enrollment.access,
+            ControlAccess::ContextEnrollment
+        ));
+        assert!(matches!(
+            enrollment.body,
+            ControlBody::Json {
+                maximum: MAX_ENROLLMENT_BODY_BYTES
+            }
+        ));
         assert!(classify_route(
             "GET",
             "/control/v1/contexts/company-brand/gamma?kind=action&cursor=v1.2&limit=10"
         )
         .is_some());
+        let approval_list =
+            classify_route("GET", "/control/v1/connectors/gmail/approvals").unwrap();
+        assert!(matches!(
+            approval_list.access,
+            ControlAccess::ConnectorOwnerAny { ref connector } if connector == "gmail"
+        ));
         let approval = format!("apr-{}", "a".repeat(64));
         let approval_route = classify_route(
             "GET",
@@ -1293,8 +1498,25 @@ mod tests {
             &format!("/control/v1/connectors/gmail/approvals/{approval}/dispatch")
         )
         .is_some());
+        let binding_prepare =
+            classify_route("POST", "/control/v1/connectors/notes/binding-prepare").unwrap();
+        assert!(matches!(binding_prepare.body, ControlBody::Empty));
+        assert!(matches!(
+            binding_prepare.access,
+            ControlAccess::ConnectorConfigAny { connector } if connector == "notes"
+        ));
+        let oauth_stage =
+            classify_route("POST", "/control/v1/connectors/gmail/oauth-stage").unwrap();
+        assert!(matches!(
+            oauth_stage.body,
+            ControlBody::Json {
+                maximum: MAX_STAGE_BODY_BYTES
+            }
+        ));
         for rejected in [
             ("POST", "/control/v1/status"),
+            ("POST", "/control/v1/identity"),
+            ("GET", "/control/v1/identity?x=1"),
             ("GET", "/control/v1/status?x=1"),
             ("GET", "/control/v1/contexts/../gamma"),
             ("GET", "/control/v1/contexts/company/gamma?limit=101"),
@@ -1307,6 +1529,11 @@ mod tests {
                 "/control/v1/contexts/company/gamma?kind=transport-local-kind",
             ),
             ("GET", "/control/v1/contexts/company/certs?kind=action"),
+            ("GET", "/control/v1/connectors/notes/binding-prepare"),
+            (
+                "POST",
+                "/control/v1/connectors/notes/binding-prepare?retry=1",
+            ),
         ] {
             assert!(classify_route(rejected.0, rejected.1).is_none());
         }

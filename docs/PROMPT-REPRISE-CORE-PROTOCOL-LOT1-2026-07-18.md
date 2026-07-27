@@ -1,5 +1,7 @@
 # Prompt de reprise — Aithos Core, Lot 1 contrats
 
+> **ARCHIVE — ne pas exécuter.** Ce prompt précède la séquence CB1–CB13 close.
+
 Copier le bloc ci-dessous dans une nouvelle tâche Codex.
 
 ```text

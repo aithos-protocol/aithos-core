@@ -1,5 +1,7 @@
 # HANDOFF — Piste P / Provider P2 : gate 4 (A.4/A.5 — dépôts vérifiés + CAS des deux têtes) LIVRÉ
 
+> **ARCHIVE DE PREUVE.** Gate 4 clos ; état et commandes conservés pour audit.
+
 **Date :** 2026-07-20
 **Dépôts :** `code/aithos-core` (branche de travail ; HEAD constaté sur
 `codex/publish-aithos-core-busl`, gate 3 non committé au démarrage de la

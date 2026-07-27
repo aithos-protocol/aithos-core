@@ -1,5 +1,8 @@
 # Handoff — finalisation gateway : coffre de credentials + hub MCP de démonstration
 
+> **ARCHIVE — plan exécuté.** Le coffre et le hub ont depuis des preuves `DONE`
+> et des extensions OAuth plus récentes.
+
 **Date :** 2026-07-15  
 **Branche constatée :** `feat/obligations`  
 **HEAD constaté :** `e9d2a8d` (`docs: finalize governed hub handoff`)  

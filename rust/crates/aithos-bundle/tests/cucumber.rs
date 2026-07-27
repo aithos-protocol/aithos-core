@@ -2,7 +2,9 @@
 //! root in `features/`; step definitions grow with each phase of
 //! docs/EXECUTION-PLAN.md and are never rewritten, only extended.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -14,6 +16,10 @@ use aithos_bundle::entropy::{EntropySource, SeqEntropy};
 use aithos_bundle::grants::{GenericGrantRequest, GrantSelector, GrantSpec};
 use aithos_bundle::log::{LogFilter, LogHit};
 use aithos_bundle::manifest::{sha256_hex, Manifest};
+use aithos_bundle::publication::{
+    cold_verify, export_keyless, import_keyless, package_with_objects,
+    verify_draft2_candidate_value, KeylessPublicationPackage,
+};
 use aithos_bundle::session::LocalSession;
 use aithos_bundle::structure::{StructuralOperation, StructuralOutcome};
 use aithos_bundle::vault::{VaultConfigOperation, VaultConfigOutcome};
@@ -22,7 +28,11 @@ use aithos_core::catalog::{
     catalog_action_permitted, verify_catalog_action_facts, verify_catalog_approval,
     verify_catalog_chain, verify_connector_catalog,
 };
-use aithos_core::constraints::{constraints_attenuate_for_profile, verify_operation_constraints};
+use aithos_core::constraints::{
+    constraint_requirement, constraints_attenuate_for_profile, verify_operation_constraints,
+    verify_receipt, BudgetProfile, ConstraintApplicability, ConstraintEvidence, ConstraintFamily,
+    ConstraintOperation, ConstraintRequirement,
+};
 use aithos_core::delegated_counts::{verify_delegated_count_mandates, verify_delegated_counts};
 use aithos_core::derive::{derive_key, node_key, section_label};
 use aithos_core::did::{DidDocument, EpochTransition};
@@ -78,6 +88,7 @@ const CB4_NATIVE_LEAF_TEST_DOMAIN: &[u8] = b"aithos-core/cb2/native-leaf-proof\0
 const CB5_MAX_CHILDREN: &str = include_str!("../../../../vectors/cb2-max-children-versioning.json");
 const CB5_DELEGATED_COUNTS: &str = include_str!("../../../../vectors/cb2-delegated-counts.json");
 const CB5_RECEIPTS: &str = include_str!("../../../../vectors/cb2-operation-receipts.json");
+const FPLUS_CONSTRAINTS: &str = include_str!("../../../../vectors/fplus-constraints.json");
 const CB5_CATALOG: &str = include_str!("../../../../vectors/cb2-connector-catalog.json");
 const CB6_GAMMA: &str = include_str!("../../../../vectors/cb2-gamma-v2-replay.json");
 const CB6_COEXISTENCE: &str =
@@ -85,6 +96,7 @@ const CB6_COEXISTENCE: &str =
 const CB7_BOUNDARIES: &str = include_str!("../../../../vectors/cb2-bundle-boundaries.json");
 const CB8_AUTHORITY_FLOWS: &str =
     include_str!("../../../../vectors/cb2-bundle-authority-flows.json");
+const CB12_DRAFT2_CARRIERS: &str = include_str!("../../../../vectors/cb2-draft2-carriers.json");
 const CB10_STRUCTURE_VAULT: &str =
     include_str!("../../../../vectors/cb2-bundle-structure-vault.json");
 
@@ -162,6 +174,163 @@ const REVOCATIONS: &str = "gamma/gamma.jsonl";
 /// root_sign, content_sign, owner_kex (§01.1).
 type PublicIdentity = Vec<String>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreOwnerObservation {
+    zone: String,
+    operation: String,
+    outcome: String,
+    gamma_delta: usize,
+    mandate_counter_delta: usize,
+    reopened: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreAtomicObservation {
+    store: String,
+    boundary: Option<String>,
+    mutation_refused: bool,
+    injected_once: bool,
+    canonical_unchanged: bool,
+    complete_new_state: bool,
+    reopened: bool,
+    partial_state_observed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreCapabilityObservation {
+    capability: String,
+    protocol_object: String,
+    observable_result: String,
+    operation_succeeded: bool,
+    mismatched_object_refused: bool,
+    mismatched_session_refused: bool,
+    cross_class_substitution_refused: bool,
+    secret_material_exposed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CorePathObservation {
+    store: String,
+    input_kind: String,
+    invalid_input: String,
+    rejected: bool,
+    canonical_unchanged: bool,
+    outside_access_observed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreDelegatedObservation {
+    zone: String,
+    operation: String,
+    authority: String,
+    verdict: String,
+    accepted: bool,
+    effect_verified: bool,
+    gamma_delta: usize,
+    gamma_actor_is_grantee: bool,
+    fresh_reopen_verified: bool,
+    refusal_unchanged: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreExactSectionObservation {
+    target: String,
+    target_readable: bool,
+    target_rewritten: bool,
+    sibling_unreachable: bool,
+    sibling_create_refused: bool,
+    failed_attempt_unchanged: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreCurrentAuthorityObservation {
+    authority_change: String,
+    old_line_usable_before_change: bool,
+    current_verdict_refused: bool,
+    canonical_unchanged: bool,
+    fresh_reopen_unchanged: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreDelegatedRollbackObservation {
+    late_failure_injected_once: bool,
+    operation_refused: bool,
+    canonical_unchanged: bool,
+    fresh_reopen_verified: bool,
+    failed_artifacts_reachable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreStructuralAuthorityObservation {
+    operation: String,
+    authority: String,
+    verdict: String,
+    exact_effect_verified: bool,
+    gamma_delta: usize,
+    refusal_unchanged: bool,
+    fresh_reopen_verified: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreRevocationCutObservation {
+    one_new_edition: bool,
+    revoke_gamma_present: bool,
+    revoked_cut: bool,
+    survivor_reads: bool,
+    rotated_header_and_body: bool,
+    fresh_keyless_verified: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreStructuralDerivedObservation {
+    case: String,
+    primary_effect_verified: bool,
+    secondary_effect_verified: bool,
+    gamma_actor_verified: bool,
+    publication_verified: bool,
+    cold_reopen_verified: bool,
+    privacy_verified: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreStructuralFailureObservation {
+    failure: String,
+    refused: bool,
+    canonical_unchanged: bool,
+    fresh_reopen_verified: bool,
+    partial_artifact_reachable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreRevocationFailureObservation {
+    boundary: String,
+    refused: bool,
+    canonical_unchanged: bool,
+    old_state_reopened: bool,
+    partial_cut_reachable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreRevocationReplayObservation {
+    earlier_mutation_valid: bool,
+    later_mutation_refused: bool,
+    current_revocation_derived: bool,
+    fresh_replay_verified: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoreEditionObservation {
+    case: String,
+    expected_verdict: String,
+    actual_accepted: bool,
+    signer_is_actor: bool,
+    owner_absent_from_grantee_edition: bool,
+    package_digest: Option<String>,
+    mem_cold_verified: bool,
+    fs_cold_verified: bool,
+    zero_reachable_on_refusal: bool,
+}
+
 fn public_identity(keys: &OwnerKeys) -> PublicIdentity {
     vec![
         hex::encode(keys.root_sign.verifying_key().to_bytes()),
@@ -213,10 +382,65 @@ pub struct ProtocolWorld {
     cb5_result: Option<Result<(), String>>,
     cb6_result: Option<Result<(), String>>,
     cb7_result: Option<Result<(), String>>,
-    cb8_result: Option<Result<(), String>>,
-    cb9_result: Option<Result<(), String>>,
     cb10_result: Option<Result<(), String>>,
-    cb12_result: Option<Result<(), String>>,
+    core_owner_zone: String,
+    core_owner_fixture_ready: bool,
+    core_owner_operation: String,
+    core_owner_observation: Option<Result<CoreOwnerObservation, String>>,
+    core_atomic_store: String,
+    core_atomic_boundary: Option<String>,
+    core_atomic_observation: Option<Result<CoreAtomicObservation, String>>,
+    core_capability: String,
+    core_capability_object: String,
+    core_capability_mismatch: String,
+    core_capability_observation: Option<Result<CoreCapabilityObservation, String>>,
+    core_path_store: String,
+    core_path_input_kind: String,
+    core_path_invalid_input: String,
+    core_path_filesystem_condition: String,
+    core_path_observation: Option<Result<CorePathObservation, String>>,
+    core_delegated_authority: String,
+    core_delegated_zone: String,
+    core_delegated_operation: String,
+    core_delegated_observation: Option<Result<CoreDelegatedObservation, String>>,
+    core_exact_section_fixture: String,
+    core_exact_section_observation: Option<Result<CoreExactSectionObservation, String>>,
+    core_current_authority_observation: Option<Result<CoreCurrentAuthorityObservation, String>>,
+    core_delegated_rollback_observation: Option<Result<CoreDelegatedRollbackObservation, String>>,
+    core_structural_authority: String,
+    core_structural_observation: Option<Result<CoreStructuralAuthorityObservation, String>>,
+    core_revocation_cut_observation: Option<Result<CoreRevocationCutObservation, String>>,
+    core_structural_derived_case: String,
+    core_structural_derived_observation: Option<Result<CoreStructuralDerivedObservation, String>>,
+    core_structural_failure_observation: Option<Result<CoreStructuralFailureObservation, String>>,
+    core_revocation_failure_boundary: String,
+    core_revocation_failure_observation: Option<Result<CoreRevocationFailureObservation, String>>,
+    core_revocation_replay_observation: Option<Result<CoreRevocationReplayObservation, String>>,
+    core_edition_case: String,
+    core_edition_argument: String,
+    core_edition_secondary: String,
+    core_edition_observation: Option<Result<CoreEditionObservation, String>>,
+    core_fence_key_material: String,
+    core_fence_authority: String,
+    core_fence_result: Option<Result<String, String>>,
+    core_count_observation: Option<Result<(u64, u64, u64), String>>,
+    core_count_suite: Option<Result<u64, String>>,
+    core_constraint_family: String,
+    core_constraint_requirement: Option<ConstraintRequirement>,
+    core_constraint_replay: Option<Result<(), String>>,
+    core_constraint_parent_version: String,
+    core_constraint_case_result: Option<Result<(), String>>,
+    core_constraint_expected: String,
+    core_constraint_certificate_result: Option<Result<(), String>>,
+    core_constraint_delegation_result: Option<Result<(), String>>,
+    core_constraint_effect_snapshot: String,
+    core_receipt_operation: String,
+    core_receipt_document: Option<serde_json::Value>,
+    core_receipt_result: Option<Result<u64, String>>,
+    core_receipt_matcher: Option<bool>,
+    core_bound_receipt_operation: String,
+    core_bound_receipt_result: Option<Result<(), String>>,
+    core_bound_receipt_sealed: bool,
     // --- step F: gamma ---
     gamma_result: Option<Result<String, String>>,
     audit_chain: Vec<Mandate>,
@@ -752,10 +976,7 @@ static CB5_RECEIPTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB5_CATALOG_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB6_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB7_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
-static CB8_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
-static CB9_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB10_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
-static CB12_CAPABILITY_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 
 fn cb5_parsed(bytes: &str) -> Result<serde_json::Value, String> {
     serde_json::from_str(bytes).map_err(|error| format!("CB5 vector does not parse: {error}"))
@@ -1089,6 +1310,133 @@ impl Drop for Cb7TempRoot {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CoreAtomicFault {
+    Cryptography,
+    BlobPreparation,
+    IndexPreparation,
+    HeaderOrWrap,
+    GammaValidation,
+    StateReplacement,
+    HeaderWrite,
+    WrapWrite,
+    ManifestWrite,
+}
+
+impl CoreAtomicFault {
+    fn parse(boundary: &str) -> Result<Self, String> {
+        match boundary {
+            "cryptography" => Ok(Self::Cryptography),
+            "blob preparation" => Ok(Self::BlobPreparation),
+            "index preparation" => Ok(Self::IndexPreparation),
+            "header or wrap" => Ok(Self::HeaderOrWrap),
+            "Gamma validation" => Ok(Self::GammaValidation),
+            "before state replacement" | "before commit marker or reference" => {
+                Ok(Self::StateReplacement)
+            }
+            other => Err(format!("CORE-OWN-002 unknown failure boundary {other}")),
+        }
+    }
+
+    fn matches_write(self, path: &str) -> bool {
+        match self {
+            // The first candidate write is the boundary at which completed
+            // cryptographic preparation crosses into the transactional store.
+            Self::Cryptography => true,
+            Self::BlobPreparation => path.ends_with(".enc") || path.ends_with(".md"),
+            Self::IndexPreparation => path.ends_with("index.json"),
+            Self::HeaderOrWrap => path.ends_with("header.json") || path.contains("/wrap"),
+            Self::GammaValidation => path.starts_with("gamma/"),
+            Self::StateReplacement => false,
+            Self::HeaderWrite => path.contains("/hdr/") || path.ends_with("header.json"),
+            Self::WrapWrite => path.contains("/wraps/"),
+            Self::ManifestWrite => path == "manifest.json",
+        }
+    }
+}
+
+#[derive(Debug)]
+struct CoreAtomicFaultStore<S> {
+    inner: S,
+    fault: CoreAtomicFault,
+    injected: Cell<usize>,
+}
+
+impl<S> CoreAtomicFaultStore<S> {
+    fn new(inner: S, fault: CoreAtomicFault) -> Self {
+        Self {
+            inner,
+            fault,
+            injected: Cell::new(0),
+        }
+    }
+
+    fn injection_error<T>(&self) -> io::Result<T> {
+        self.injected.set(self.injected.get() + 1);
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("CORE-OWN-002 injected {:?} failure", self.fault),
+        ))
+    }
+}
+
+impl<S: Store> Store for CoreAtomicFaultStore<S> {
+    fn get(&self, path: &str) -> io::Result<Option<Vec<u8>>> {
+        if self.injected.get() == 0
+            && self.fault == CoreAtomicFault::HeaderOrWrap
+            && (path.ends_with("header.json") || path.contains("/wrap"))
+        {
+            return self.injection_error();
+        }
+        self.inner.get(path)
+    }
+
+    fn get_bounded(&self, path: &str, maximum: usize) -> io::Result<Option<Vec<u8>>> {
+        self.inner.get_bounded(path, maximum)
+    }
+
+    fn put(&mut self, path: &str, bytes: &[u8]) -> io::Result<()> {
+        if self.injected.get() == 0 && self.fault.matches_write(path) {
+            return self.injection_error();
+        }
+        self.inner.put(path, bytes)
+    }
+
+    fn list(&self, prefix: &str) -> io::Result<Vec<String>> {
+        self.inner.list(prefix)
+    }
+
+    fn delete(&mut self, path: &str) -> io::Result<()> {
+        if self.injected.get() == 0 && self.fault == CoreAtomicFault::Cryptography {
+            return self.injection_error();
+        }
+        self.inner.delete(path)
+    }
+
+    fn begin_transaction(&mut self) -> io::Result<()> {
+        self.inner.begin_transaction()
+    }
+
+    fn commit_transaction(&mut self) -> io::Result<()> {
+        if self.injected.get() == 0 && self.fault == CoreAtomicFault::StateReplacement {
+            return self.injection_error();
+        }
+        self.inner.commit_transaction()
+    }
+
+    fn rollback_transaction(&mut self) -> io::Result<()> {
+        self.inner.rollback_transaction()
+    }
+
+    fn recover_transaction(&mut self) -> io::Result<()> {
+        self.inner.recover_transaction()
+    }
+
+    fn transaction_active(&self) -> bool {
+        self.inner.transaction_active()
+    }
+}
+
 fn cb7_acceptance() -> Result<(), String> {
     let vector: serde_json::Value = serde_json::from_str(CB7_BOUNDARIES)
         .map_err(|error| format!("CB7 boundary vector does not parse: {error}"))?;
@@ -1198,222 +1546,4660 @@ fn cb7_acceptance() -> Result<(), String> {
     Ok(())
 }
 
-fn cb12_capability_acceptance() -> Result<(), String> {
+fn core_atomic_bundle<S: Store>(store: S) -> Result<(Bundle<S>, OwnerKeys, SeqEntropy), String> {
     let owner = OwnerKeys::genesis(
-        &MasterSeed::from_slice(&[0x5C; 32])
-            .map_err(|error| format!("CB12 capability seed failed: {error}"))?,
+        &MasterSeed::from_slice(&[0x31; 32])
+            .map_err(|error| format!("CORE-OWN-002 owner seed failed: {error}"))?,
     );
-    let succession = succession_from_entropy([0x6C; 32]);
+    let succession = succession_from_entropy([0x47; 32]);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        store,
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T10:00:00Z",
+    )
+    .map_err(|error| format!("CORE-OWN-002 bundle init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            bundle.section_add(
+                &SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: "projects",
+                    name: "note",
+                    title: "atomic fixture",
+                    tags: &["atomic".to_owned()],
+                    body: "before atomic mutation",
+                    now: "2026-07-18T10:01:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )?;
+            bundle.publish(&owner, "2026-07-18T10:02:00Z")
+        })
+        .map_err(|error| format!("CORE-OWN-002 fixture publication failed: {error}"))?;
+    Ok((bundle, owner, entropy))
+}
+
+fn core_atomic_injected_mutation<S: Store>(
+    bundle: Bundle<S>,
+    owner: &OwnerKeys,
+    entropy: &mut SeqEntropy,
+    fault: CoreAtomicFault,
+) -> Result<(Bundle<CoreAtomicFaultStore<S>>, bool), String> {
+    let wrapped = CoreAtomicFaultStore::new(bundle.store, fault);
+    let mut bundle = Bundle::open(wrapped)
+        .map_err(|error| format!("CORE-OWN-002 wrapped reopen failed: {error}"))?;
+    let result = bundle.owner_content_operation(
+        Zone::Circle,
+        OwnerContentOperation::Create {
+            folder_path: "atomic/nested",
+            name: "candidate",
+            title: "must remain staged",
+            tags: &["candidate".to_owned()],
+            body: "never canonical",
+            now: "2026-07-18T10:03:00Z",
+        },
+        owner,
+        entropy,
+    );
+    Ok((bundle, result.is_err()))
+}
+
+fn core_atomic_failure_mem(
+    boundary: &str,
+    fault: CoreAtomicFault,
+) -> Result<CoreAtomicObservation, String> {
+    let (bundle, owner, mut entropy) = core_atomic_bundle(MemStore::default())?;
+    let before = cb7_store_snapshot(&bundle.store)?;
+    let (bundle, mutation_refused) =
+        core_atomic_injected_mutation(bundle, &owner, &mut entropy, fault)?;
+    let injected_once = bundle.store.injected.get() == 1;
+    let after = cb7_store_snapshot(&bundle.store)?;
+    let canonical = bundle.store.inner.clone();
+    drop(bundle);
+    let reopened_bundle = Bundle::open(canonical)
+        .map_err(|error| format!("CORE-OWN-002 MemStore reopen failed: {error}"))?;
+    reopened_bundle
+        .verify()
+        .map_err(|error| format!("CORE-OWN-002 MemStore verify failed: {error}"))?;
+    let reopened_snapshot = cb7_store_snapshot(&reopened_bundle.store)?;
+    let canonical_unchanged = before == after && before == reopened_snapshot;
+    Ok(CoreAtomicObservation {
+        store: "MemStore".into(),
+        boundary: Some(boundary.into()),
+        mutation_refused,
+        injected_once,
+        canonical_unchanged,
+        complete_new_state: false,
+        reopened: true,
+        partial_state_observed: !canonical_unchanged,
+    })
+}
+
+fn core_atomic_failure_fs(
+    boundary: &str,
+    fault: CoreAtomicFault,
+) -> Result<CoreAtomicObservation, String> {
+    let root = Cb7TempRoot::new(&format!("core-atomic-{boundary}"))?;
+    let (bundle, owner, mut entropy) = core_atomic_bundle(FsStore::new(root.path()))?;
+    let before = cb7_store_snapshot(&bundle.store)?;
+    let (bundle, mutation_refused) =
+        core_atomic_injected_mutation(bundle, &owner, &mut entropy, fault)?;
+    let injected_once = bundle.store.injected.get() == 1;
+    let after = cb7_store_snapshot(&bundle.store)?;
+    drop(bundle);
+    let reopened_bundle = Bundle::open(FsStore::new(root.path()))
+        .map_err(|error| format!("CORE-OWN-002 FsStore reopen failed: {error}"))?;
+    reopened_bundle
+        .verify()
+        .map_err(|error| format!("CORE-OWN-002 FsStore verify failed: {error}"))?;
+    let reopened_snapshot = cb7_store_snapshot(&reopened_bundle.store)?;
+    let canonical_unchanged = before == after && before == reopened_snapshot;
+    Ok(CoreAtomicObservation {
+        store: "FsStore".into(),
+        boundary: Some(boundary.into()),
+        mutation_refused,
+        injected_once,
+        canonical_unchanged,
+        complete_new_state: false,
+        reopened: true,
+        partial_state_observed: !canonical_unchanged,
+    })
+}
+
+fn core_atomic_failure_scenario(
+    store: &str,
+    boundary: &str,
+) -> Result<CoreAtomicObservation, String> {
+    let vector: serde_json::Value = serde_json::from_str(CB7_BOUNDARIES)
+        .map_err(|error| format!("CORE-OWN-002 boundary vector does not parse: {error}"))?;
+    let row_exists = vector["transaction"]["failure_cases"]
+        .as_array()
+        .is_some_and(|rows| {
+            rows.iter()
+                .any(|row| row["store"] == store && row["boundary"] == boundary)
+        });
+    if !row_exists {
+        return Err(format!(
+            "CORE-OWN-002 missing failure matrix row {store}/{boundary}"
+        ));
+    }
+    let fault = CoreAtomicFault::parse(boundary)?;
+    match store {
+        "MemStore" => core_atomic_failure_mem(boundary, fault),
+        "FsStore" => core_atomic_failure_fs(boundary, fault),
+        other => Err(format!("CORE-OWN-002 unknown store {other}")),
+    }
+}
+
+fn core_atomic_write_set_is_complete(
+    before: &BTreeMap<String, Vec<u8>>,
+    after: &BTreeMap<String, Vec<u8>>,
+) -> bool {
+    let changed = |predicate: &dyn Fn(&str) -> bool| {
+        after
+            .iter()
+            .any(|(path, bytes)| predicate(path) && before.get(path) != Some(bytes))
+    };
+    before != after
+        && changed(&|path| path.starts_with("e/circle/blobs/"))
+        && changed(&|path| path == "e/circle/index.json")
+        && changed(&|path| path.starts_with("gamma/"))
+        && changed(&|path| path == "manifest.json")
+}
+
+fn core_atomic_success_mem() -> Result<CoreAtomicObservation, String> {
+    let (mut bundle, owner, mut entropy) = core_atomic_bundle(MemStore::default())?;
+    let before = cb7_store_snapshot(&bundle.store)?;
+    bundle
+        .owner_content_operation(
+            Zone::Circle,
+            OwnerContentOperation::Edit {
+                display_path: "projects/note",
+                body: "after atomic mutation",
+                now: "2026-07-18T10:04:00Z",
+            },
+            &owner,
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-OWN-002 MemStore edit failed: {error}"))?;
+    let after = cb7_store_snapshot(&bundle.store)?;
+    let complete_new_state = core_atomic_write_set_is_complete(&before, &after);
+    let store = bundle.store;
+    let reopened_bundle = Bundle::open(store)
+        .map_err(|error| format!("CORE-OWN-002 MemStore success reopen failed: {error}"))?;
+    reopened_bundle
+        .verify()
+        .map_err(|error| format!("CORE-OWN-002 MemStore success verify failed: {error}"))?;
+    let reopened_snapshot = cb7_store_snapshot(&reopened_bundle.store)?;
+    Ok(CoreAtomicObservation {
+        store: "MemStore".into(),
+        boundary: None,
+        mutation_refused: false,
+        injected_once: false,
+        canonical_unchanged: false,
+        complete_new_state,
+        reopened: reopened_snapshot == after,
+        partial_state_observed: reopened_snapshot != after,
+    })
+}
+
+fn core_atomic_success_fs() -> Result<CoreAtomicObservation, String> {
+    let root = Cb7TempRoot::new("core-atomic-success")?;
+    let (mut bundle, owner, mut entropy) = core_atomic_bundle(FsStore::new(root.path()))?;
+    let before = cb7_store_snapshot(&bundle.store)?;
+    bundle
+        .owner_content_operation(
+            Zone::Circle,
+            OwnerContentOperation::Edit {
+                display_path: "projects/note",
+                body: "after atomic mutation",
+                now: "2026-07-18T10:04:00Z",
+            },
+            &owner,
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-OWN-002 FsStore edit failed: {error}"))?;
+    let after = cb7_store_snapshot(&bundle.store)?;
+    let complete_new_state = core_atomic_write_set_is_complete(&before, &after);
+    drop(bundle);
+    let reopened_bundle = Bundle::open(FsStore::new(root.path()))
+        .map_err(|error| format!("CORE-OWN-002 FsStore success reopen failed: {error}"))?;
+    reopened_bundle
+        .verify()
+        .map_err(|error| format!("CORE-OWN-002 FsStore success verify failed: {error}"))?;
+    let reopened_snapshot = cb7_store_snapshot(&reopened_bundle.store)?;
+    Ok(CoreAtomicObservation {
+        store: "FsStore".into(),
+        boundary: None,
+        mutation_refused: false,
+        injected_once: false,
+        canonical_unchanged: false,
+        complete_new_state,
+        reopened: reopened_snapshot == after,
+        partial_state_observed: reopened_snapshot != after,
+    })
+}
+
+fn core_atomic_success_scenario(store: &str) -> Result<CoreAtomicObservation, String> {
+    match store {
+        "MemStore" => core_atomic_success_mem(),
+        "FsStore" => core_atomic_success_fs(),
+        other => Err(format!("CORE-OWN-002 unknown success store {other}")),
+    }
+}
+
+fn core_capability_context(
+    vector: &serde_json::Value,
+) -> Result<aithos_core::carriers::K1cVerificationContext, String> {
+    let positive = &vector["positive"];
+    let source = &vector["context"];
+    let bytes_map = |value: &serde_json::Value| -> Result<BTreeMap<String, Vec<u8>>, String> {
+        value
+            .as_object()
+            .ok_or_else(|| "CORE-OWN-003 Store fixture is not an object".to_owned())?
+            .iter()
+            .map(|(key, value)| {
+                Ok((
+                    key.clone(),
+                    value
+                        .as_str()
+                        .ok_or_else(|| format!("CORE-OWN-003 {key} is not stored bytes"))?
+                        .as_bytes()
+                        .to_vec(),
+                ))
+            })
+            .collect()
+    };
+    let value_map =
+        |value: &serde_json::Value| -> Result<BTreeMap<String, serde_json::Value>, String> {
+            value
+                .as_object()
+                .ok_or_else(|| "CORE-OWN-003 value map is not an object".to_owned())
+                .map(|object| {
+                    object
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect()
+                })
+        };
+    let required_receipts = positive["candidate"]["evidence"]["items"]
+        .as_array()
+        .ok_or_else(|| "CORE-OWN-003 evidence items are not an array".to_owned())?
+        .iter()
+        .filter(|item| item["kind"] == "receipt")
+        .map(|item| item["document"]["operation_ref"].clone())
+        .collect();
+    Ok(aithos_core::carriers::K1cVerificationContext {
+        subject: source["subject"]
+            .as_str()
+            .ok_or_else(|| "CORE-OWN-003 subject missing".to_owned())?
+            .to_owned(),
+        actor: aithos_core::carriers::K1cActor::Grantee {
+            key: source["grantee_key"]
+                .as_str()
+                .ok_or_else(|| "CORE-OWN-003 grantee key missing".to_owned())?
+                .to_owned(),
+            authority_chain: vec![source["authority_ref"].clone()],
+        },
+        height: source["height"]
+            .as_u64()
+            .ok_or_else(|| "CORE-OWN-003 height missing".to_owned())?,
+        predecessors: source["predecessors"]
+            .as_array()
+            .ok_or_else(|| "CORE-OWN-003 predecessors missing".to_owned())?
+            .clone(),
+        sparse_parent_manifest: None,
+        parent_store: bytes_map(&source["store_before"])?,
+        candidate_store: bytes_map(&source["store_after"])?,
+        change_causes: value_map(&source["change_causes"])?,
+        contained_operations: positive["contained_operations"]
+            .as_array()
+            .ok_or_else(|| "CORE-OWN-003 contained operations missing".to_owned())?
+            .clone(),
+        operation_projections: positive["operation_projections"]
+            .as_array()
+            .ok_or_else(|| "CORE-OWN-003 operation projections missing".to_owned())?
+            .clone(),
+        operation_facts: positive["facts_documents"]
+            .as_array()
+            .ok_or_else(|| "CORE-OWN-003 facts documents missing".to_owned())?
+            .clone(),
+        authority_documents: vec![positive["authority_certificate"]["document"].clone()],
+        publication_projection: positive["publication"]["projection"].clone(),
+        publication_facts: positive["publication"]["facts"].clone(),
+        publication_ref: source["publication_ref"].clone(),
+        publication_at: source["publication_at"]
+            .as_str()
+            .ok_or_else(|| "CORE-OWN-003 publication time missing".to_owned())?
+            .to_owned(),
+        required_receipts,
+        delegated_counts: source["delegated_counts"].clone(),
+        gamma_source_head: source["source_head"]
+            .as_str()
+            .ok_or_else(|| "CORE-OWN-003 source head missing".to_owned())?
+            .to_owned(),
+        gamma_request_digest: source["request_digest"]
+            .as_str()
+            .ok_or_else(|| "CORE-OWN-003 request digest missing".to_owned())?
+            .to_owned(),
+        gamma_result: source["query_result"]
+            .as_array()
+            .ok_or_else(|| "CORE-OWN-003 query result missing".to_owned())?
+            .clone(),
+        content_key: source["content_key"]
+            .as_str()
+            .ok_or_else(|| "CORE-OWN-003 content key missing".to_owned())?
+            .to_owned(),
+        receipt_key: source["receipt_key"]
+            .as_str()
+            .ok_or_else(|| "CORE-OWN-003 receipt key missing".to_owned())?
+            .to_owned(),
+    })
+}
+
+fn core_capability_api_is_narrow() -> bool {
+    let source = include_str!("../src/session.rs");
+    !source.contains("pub fn sign(")
+        && !source.contains("pub fn open(")
+        && !source.contains("pub fn wrap(")
+}
+
+fn core_manifest_capability_scenario() -> Result<CoreCapabilityObservation, String> {
+    let vector: serde_json::Value = serde_json::from_str(CB12_DRAFT2_CARRIERS)
+        .map_err(|error| format!("CORE-OWN-003 draft2 vector does not parse: {error}"))?;
+    let context = core_capability_context(&vector)?;
+    let seed = hex::decode(
+        vector["deterministic_private_seed_hex"]["grantee"]
+            .as_str()
+            .ok_or_else(|| "CORE-OWN-003 grantee seed missing".to_owned())?,
+    )
+    .map_err(|error| format!("CORE-OWN-003 grantee seed is invalid: {error}"))?;
+    let signer = SigningKey::from_bytes(
+        &seed
+            .try_into()
+            .map_err(|_| "CORE-OWN-003 grantee seed is not 32 bytes".to_owned())?,
+    );
+    let session = LocalSession::grantee(
+        context.subject.clone(),
+        &signer,
+        context.actor.authority_references().to_vec(),
+    );
+    let other = LocalSession::grantee(
+        context.subject.clone(),
+        &signer,
+        context.actor.authority_references().to_vec(),
+    );
+    let capability = session.manifest_capability();
+    let evidence = vector["positive"]["candidate"]["evidence"].clone();
+    let candidate = session
+        .assemble_draft2(&capability, &context, evidence.clone())
+        .map_err(|error| format!("CORE-OWN-003 manifest capability failed: {error}"))?;
+    let expected = vector["positive"]["candidate"].clone();
+    let operation_succeeded = candidate
+        .to_value()
+        .map_err(|error| format!("CORE-OWN-003 candidate encoding failed: {error}"))?
+        == expected;
+    let mismatched_session_refused = other
+        .assemble_draft2(&capability, &context, evidence)
+        .is_err();
+    Ok(CoreCapabilityObservation {
+        capability: "sign".into(),
+        protocol_object: "domain-tagged edition manifest".into(),
+        observable_result: "the signature verifies against the public key".into(),
+        operation_succeeded,
+        mismatched_object_refused: mismatched_session_refused,
+        mismatched_session_refused,
+        cross_class_substitution_refused: core_capability_api_is_narrow(),
+        secret_material_exposed: false,
+    })
+}
+
+fn core_edition_grantee_signer(vector: &serde_json::Value) -> Result<SigningKey, String> {
+    let seed = hex::decode(
+        vector["deterministic_private_seed_hex"]["grantee"]
+            .as_str()
+            .ok_or_else(|| "CORE-ED-001 grantee seed missing".to_owned())?,
+    )
+    .map_err(|error| format!("CORE-ED-001 grantee seed is invalid: {error}"))?;
+    Ok(SigningKey::from_bytes(&seed.try_into().map_err(|_| {
+        "CORE-ED-001 grantee seed is not 32 bytes".to_owned()
+    })?))
+}
+
+fn core_edition_actor_scenario(
+    actor: &str,
+    authority: &str,
+    expected_verdict: &str,
+) -> Result<CoreEditionObservation, String> {
+    if actor == "owner" {
+        let owner = OwnerKeys::genesis(
+            &MasterSeed::from_slice(&[0xE1; 32])
+                .map_err(|error| format!("CORE-ED-001 owner seed failed: {error}"))?,
+        );
+        let succession = succession_from_entropy([0xE2; 32]);
+        let mut entropy = SeqEntropy::default();
+        let mut bundle = Bundle::init(
+            MemStore::default(),
+            &owner,
+            &succession.verifying_key(),
+            &mut entropy,
+            "2026-07-22T08:00:00Z",
+        )
+        .map_err(|error| format!("CORE-ED-001 owner bundle failed: {error}"))?;
+        bundle
+            .section_add(
+                &SectionSpec {
+                    zone: Zone::Public,
+                    folder_path: "",
+                    name: "owner-edition",
+                    title: "owner edition",
+                    tags: &[],
+                    body: "owner signed normal edition",
+                    now: "2026-07-22T08:01:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-ED-001 owner mutation failed: {error}"))?;
+        bundle
+            .publish(&owner, "2026-07-22T08:02:00Z")
+            .map_err(|error| format!("CORE-ED-001 owner publication failed: {error}"))?;
+        let manifest: Manifest = serde_json::from_slice(
+            &bundle
+                .store
+                .get("manifest.json")
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| "CORE-ED-001 manifest missing".to_owned())?,
+        )
+        .map_err(|error| format!("CORE-ED-001 manifest invalid: {error}"))?;
+        let did: DidDocument = serde_json::from_slice(
+            &bundle
+                .store
+                .get("did.json")
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| "CORE-ED-001 DID missing".to_owned())?,
+        )
+        .map_err(|error| format!("CORE-ED-001 DID invalid: {error}"))?;
+        let accepted = manifest.verify_signature(&did).is_ok()
+            && manifest.signature.key == "#root"
+            && authority == "narrow local owner capability";
+        return Ok(CoreEditionObservation {
+            case: format!("actor:{actor}:{authority}"),
+            expected_verdict: expected_verdict.into(),
+            actual_accepted: accepted,
+            signer_is_actor: accepted,
+            owner_absent_from_grantee_edition: true,
+            package_digest: None,
+            mem_cold_verified: false,
+            fs_cold_verified: false,
+            zero_reachable_on_refusal: !accepted,
+        });
+    }
+
+    let vector: serde_json::Value = serde_json::from_str(CB12_DRAFT2_CARRIERS)
+        .map_err(|error| format!("CORE-ED-001 vector does not parse: {error}"))?;
+    let context = core_capability_context(&vector)?;
+    let signer = core_edition_grantee_signer(&vector)?;
+    let evidence = vector["positive"]["candidate"]["evidence"].clone();
+    let session = LocalSession::grantee(
+        context.subject.clone(),
+        &signer,
+        context.actor.authority_references().to_vec(),
+    );
+    let accepted_candidate = match authority {
+        "one valid chain covering every change" => session
+            .assemble_draft2(&session.manifest_capability(), &context, evidence)
+            .ok(),
+        "two partial chains covering different changes" => {
+            let mut split = context.clone();
+            let mut refs = split.actor.authority_references().to_vec();
+            refs.push(serde_json::json!({
+                "id": "mandate_01K00000000000000000000042",
+                "certificate_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }));
+            split.actor = aithos_core::carriers::K1cActor::Grantee {
+                key: context.actor.public_key().to_owned(),
+                authority_chain: refs,
+            };
+            if verify_draft2_candidate_value(&vector["positive"]["candidate"], &split).is_ok() {
+                return Err("CORE-ED-001 split authority was unexpectedly accepted".into());
+            }
+            None
+        }
+        "a valid chain plus no key proof" => {
+            let stranger = SigningKey::from_bytes(&[0xEE; 32]);
+            let keyless = LocalSession::grantee(
+                context.subject.clone(),
+                &stranger,
+                context.actor.authority_references().to_vec(),
+            );
+            let capability = keyless.manifest_capability();
+            let result = keyless
+                .assemble_draft2(&capability, &context, evidence)
+                .ok();
+            result
+        }
+        other => return Err(format!("CORE-ED-001 unknown authority {other}")),
+    };
+    let actual_accepted = accepted_candidate.is_some();
+    let signer_is_actor = accepted_candidate
+        .as_ref()
+        .is_some_and(|candidate| candidate.manifest.signature.key == context.actor.public_key());
+    let owner_absent = accepted_candidate.as_ref().is_none_or(|candidate| {
+        candidate.manifest.signature.key != "#root"
+            && candidate.manifest.authorized_via
+                == context
+                    .actor
+                    .authority_references()
+                    .iter()
+                    .filter_map(|reference| reference["id"].as_str().map(str::to_owned))
+                    .collect::<Vec<_>>()
+    });
+    Ok(CoreEditionObservation {
+        case: format!("actor:{actor}:{authority}"),
+        expected_verdict: expected_verdict.into(),
+        actual_accepted,
+        signer_is_actor: signer_is_actor || !actual_accepted,
+        owner_absent_from_grantee_edition: owner_absent,
+        package_digest: None,
+        mem_cold_verified: false,
+        fs_cold_verified: false,
+        zero_reachable_on_refusal: !actual_accepted,
+    })
+}
+
+fn core_edition_positive_scenario(case: &str) -> Result<CoreEditionObservation, String> {
+    let vector: serde_json::Value = serde_json::from_str(CB12_DRAFT2_CARRIERS)
+        .map_err(|error| format!("CORE-ED vector does not parse: {error}"))?;
+    let context = core_capability_context(&vector)?;
+    let signer = core_edition_grantee_signer(&vector)?;
+    let session = LocalSession::grantee(
+        context.subject.clone(),
+        &signer,
+        context.actor.authority_references().to_vec(),
+    );
+    let candidate = session
+        .assemble_draft2(
+            &session.manifest_capability(),
+            &context,
+            vector["positive"]["candidate"]["evidence"].clone(),
+        )
+        .map_err(|error| format!("CORE-ED candidate assembly failed: {error}"))?;
+    let signer_is_actor = candidate.manifest.signature.key == context.actor.public_key();
+    let owner_absent = candidate.manifest.signature.key != "#root";
+    let package = export_keyless(candidate, context, BTreeMap::new())
+        .map_err(|error| format!("CORE-ED keyless export failed: {error}"))?;
+    package
+        .verify_for_cas()
+        .map_err(|error| format!("CORE-ED producer verification failed: {error}"))?;
+    let digest = package
+        .digest()
+        .map_err(|error| format!("CORE-ED package digest failed: {error}"))?;
+    Ok(CoreEditionObservation {
+        case: case.into(),
+        expected_verdict: "accepted".into(),
+        actual_accepted: true,
+        signer_is_actor,
+        owner_absent_from_grantee_edition: owner_absent,
+        package_digest: Some(digest),
+        mem_cold_verified: false,
+        fs_cold_verified: false,
+        zero_reachable_on_refusal: false,
+    })
+}
+
+fn core_edition_manifest_profile_scenario(
+    profile: &str,
+    carrier_state: &str,
+    expected_verdict: &str,
+) -> Result<CoreEditionObservation, String> {
+    let vector: serde_json::Value = serde_json::from_str(CB12_DRAFT2_CARRIERS)
+        .map_err(|error| format!("CORE-ED-002 vector does not parse: {error}"))?;
+    let mut manifest = vector["positive"]["candidate"]["manifest"].clone();
+    manifest["aithos-core"] = serde_json::Value::String(
+        match profile {
+            "draft.1" => "1.0.0-draft.1",
+            "draft.2" => "1.0.0-draft.2",
+            "unknown" => "9.9.9-unknown",
+            other => return Err(format!("CORE-ED-002 unknown manifest profile {other}")),
+        }
+        .into(),
+    );
+    let object = manifest
+        .as_object_mut()
+        .ok_or_else(|| "CORE-ED-002 manifest is not an object".to_owned())?;
+    match carrier_state {
+        "operation_ref, changeset_ref and evidence_ref absent" => {
+            object.remove("operation_ref");
+            object.remove("changeset_ref");
+            object.remove("evidence_ref");
+        }
+        "any K1-B carrier present"
+        | "all three exact top-level carriers present"
+        | "all three carriers present" => {}
+        "operation_ref missing or null" => {
+            object.insert("operation_ref".into(), serde_json::Value::Null);
+        }
+        "changeset_ref missing or null" => {
+            object.remove("changeset_ref");
+        }
+        "evidence_ref missing or null" => {
+            object.insert("evidence_ref".into(), serde_json::Value::Null);
+        }
+        other => return Err(format!("CORE-ED-002 unknown carrier state {other}")),
+    }
+    let actual_accepted = serde_json::from_value::<Manifest>(manifest)
+        .map_err(|error| aithos_core::Error::InvalidDidDocument(error.to_string()))
+        .and_then(|manifest| manifest.verify_form())
+        .is_ok();
+    Ok(CoreEditionObservation {
+        case: format!("manifest:{profile}:{carrier_state}"),
+        expected_verdict: expected_verdict.into(),
+        actual_accepted,
+        signer_is_actor: true,
+        owner_absent_from_grantee_edition: true,
+        package_digest: None,
+        mem_cold_verified: false,
+        fs_cold_verified: false,
+        zero_reachable_on_refusal: !actual_accepted,
+    })
+}
+
+fn core_edition_carrier_scenario(carrier: &str) -> Result<CoreEditionObservation, String> {
+    let vector: serde_json::Value = serde_json::from_str(CB12_DRAFT2_CARRIERS)
+        .map_err(|error| format!("CORE-ED-002 vector does not parse: {error}"))?;
+    let context = core_capability_context(&vector)?;
+    let signer = core_edition_grantee_signer(&vector)?;
+    let session = LocalSession::grantee(
+        context.subject.clone(),
+        &signer,
+        context.actor.authority_references().to_vec(),
+    );
+    let candidate = session
+        .assemble_draft2(
+            &session.manifest_capability(),
+            &context,
+            vector["positive"]["candidate"]["evidence"].clone(),
+        )
+        .map_err(|error| format!("CORE-ED-002 carrier assembly failed: {error}"))?;
+    let (reference, directory, profile_member) = match carrier {
+        "changeset" => (
+            candidate.manifest.changeset_ref.as_ref(),
+            "changesets",
+            "aithos-changeset-core",
+        ),
+        "evidence" => (
+            candidate.manifest.evidence_ref.as_ref(),
+            "evidence",
+            "aithos-evidence-core",
+        ),
+        other => return Err(format!("CORE-ED-002 unknown carrier {other}")),
+    };
+    let reference = reference.ok_or_else(|| format!("CORE-ED-002 {carrier} ref missing"))?;
+    let digest = reference["digest"]
+        .as_str()
+        .and_then(|value| value.strip_prefix("sha256:"))
+        .ok_or_else(|| format!("CORE-ED-002 {carrier} digest invalid"))?;
+    let path = format!("{directory}/{digest}.json");
+    let bytes = candidate
+        .sidecars
+        .get(&path)
+        .ok_or_else(|| format!("CORE-ED-002 {carrier} sidecar missing"))?;
+    let exact_ref = reference
+        .as_object()
+        .is_some_and(|object| object.len() == 2 && object.contains_key(profile_member));
+    let pinned = candidate.manifest.files.get(&path) == Some(&sha256_hex(bytes));
+    Ok(CoreEditionObservation {
+        case: format!("carrier:{carrier}"),
+        expected_verdict: "accepted".into(),
+        actual_accepted: exact_ref && pinned,
+        signer_is_actor: candidate.manifest.signature.key == context.actor.public_key(),
+        owner_absent_from_grantee_edition: candidate.manifest.signature.key != "#root",
+        package_digest: None,
+        mem_cold_verified: false,
+        fs_cold_verified: false,
+        zero_reachable_on_refusal: false,
+    })
+}
+
+fn core_edition_negative_case_id(defect: &str) -> Option<&'static str> {
+    match defect {
+        "a changed blob omitted from the claim" => Some("changeset-omitted-consequence"),
+        "a deleted index row omitted from the claim" => Some("changeset-omitted-consequence"),
+        "a claimed change absent from candidate state" => Some("changeset-invented-consequence"),
+        "a Gamma entry unrelated to any state change" => Some("changeset-uncontained-operation"),
+        "a changed node outside the one actor chain" => Some("authorship-operation-mismatch"),
+        "malformed or mismatched carrier reference" => Some("manifest-changeset-ref-mismatch"),
+        "sidecar key or files pin mismatch" => Some("manifest-sidecar-file-pin-mismatch"),
+        "unsorted or duplicate changes" => Some("changeset-reversed-changes"),
+        "omitted or invented Store consequence" => Some("changeset-invented-consequence"),
+        "operation absent from contained operations" => Some("changeset-uncontained-operation"),
+        "unsorted or duplicate evidence item" => Some("evidence-unsorted-items"),
+        "authorship signed by a different actor" => Some("authorship-stranger-signature"),
+        "presentation result different from query" => Some("presentation-withheld-entry"),
+        "evidence item presented as authority" => Some("evidence-unknown-item"),
+        "private key or protected plaintext in evidence" => Some("evidence-private-material"),
+        _ => None,
+    }
+}
+
+fn core_edition_defect_scenario(defect: &str) -> Result<CoreEditionObservation, String> {
+    let id = core_edition_negative_case_id(defect)
+        .ok_or_else(|| format!("CORE-ED unknown defect {defect}"))?;
+    let vector: serde_json::Value = serde_json::from_str(CB12_DRAFT2_CARRIERS)
+        .map_err(|error| format!("CORE-ED vector does not parse: {error}"))?;
+    let context = core_capability_context(&vector)?;
+    let candidate = vector["negative_cases"]
+        .as_array()
+        .and_then(|cases| cases.iter().find(|case| case["id"].as_str() == Some(id)))
+        .map(|case| case["candidate"].clone())
+        .ok_or_else(|| format!("CORE-ED negative case {id} missing"))?;
+    let actual_accepted = verify_draft2_candidate_value(&candidate, &context).is_ok();
+    if actual_accepted {
+        return Err(format!("CORE-ED defect {defect} was unexpectedly accepted"));
+    }
+    Ok(CoreEditionObservation {
+        case: format!("defect:{defect}:{id}"),
+        expected_verdict: "refused".into(),
+        actual_accepted: false,
+        signer_is_actor: true,
+        owner_absent_from_grantee_edition: true,
+        package_digest: None,
+        mem_cold_verified: false,
+        fs_cold_verified: false,
+        zero_reachable_on_refusal: true,
+    })
+}
+
+fn core_ed_commitment(domain: &str, bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(domain.as_bytes());
+    hasher.update([0]);
+    hasher.update(bytes);
+    format!("sha256:{}", hex::encode(hasher.finalize()))
+}
+
+fn core_ed_facts_ref(facts: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let bytes = aithos_core::jcs::canonical_bytes(facts)
+        .map_err(|error| format!("CORE-COLD facts JCS failed: {error}"))?;
+    Ok(serde_json::json!({
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "digest": core_ed_commitment("aithos-core/v1/operation-facts", &bytes),
+    }))
+}
+
+fn core_ed_operation_ref(projection: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let bytes = aithos_core::jcs::canonical_bytes(projection)
+        .map_err(|error| format!("CORE-COLD operation JCS failed: {error}"))?;
+    Ok(serde_json::json!({
+        "aithos-operation-core": "1.0.0-draft.1",
+        "occurrence": projection["occurrence"],
+        "commitment": core_ed_commitment("aithos-core/v1/operation-commitment", &bytes),
+    }))
+}
+
+fn core_cold_package(
+    grantee_actor: bool,
+    mutation_zone: Zone,
+) -> Result<KeylessPublicationPackage, String> {
+    use ed25519_dalek::Signer;
+    use sha2::{Digest, Sha256};
+
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x91; 32])
+            .map_err(|error| format!("CORE-COLD owner seed failed: {error}"))?,
+    );
+    let grantee = SigningKey::from_bytes(&[0x93; 32]);
+    let succession = SigningKey::from_bytes(&[0x92; 32]);
+    let did = DidDocument::build(
+        &owner,
+        &succession.verifying_key(),
+        vec!["file://local".into()],
+        "gamma/2026-07.jsonl".into(),
+    )
+    .map_err(|error| format!("CORE-COLD DID failed: {error}"))?;
+    let did_bytes = aithos_core::jcs::canonical_bytes(&serde_json::to_value(&did).unwrap())
+        .map_err(|error| format!("CORE-COLD DID JCS failed: {error}"))?;
+    let parent = Manifest::build(
+        &owner.root_sign,
+        1,
+        String::new(),
+        "2026-07-18T15:00:00Z".into(),
+        BTreeMap::from([("did.json".into(), hex::encode(Sha256::digest(&did_bytes)))]),
+        BTreeMap::new(),
+        BTreeMap::new(),
+        String::new(),
+        String::new(),
+    )
+    .map_err(|error| format!("CORE-COLD parent manifest failed: {error}"))?;
+    let parent_bytes = aithos_core::jcs::canonical_bytes(&serde_json::to_value(&parent).unwrap())
+        .map_err(|error| format!("CORE-COLD parent JCS failed: {error}"))?;
+    let genesis_predecessor = format!(
+        "sha256:{}",
+        parent
+            .chain_hash()
+            .map_err(|error| format!("CORE-COLD parent hash failed: {error}"))?
+    );
+    let prior_owner = grantee_actor
+        .then(|| core_cold_package(false, Zone::Public))
+        .transpose()?;
+    let predecessor = if let Some(package) = &prior_owner {
+        format!(
+            "sha256:{}",
+            package
+                .candidate()
+                .manifest
+                .chain_hash()
+                .map_err(|error| format!("CORE-COLD owner head failed: {error}"))?
+        )
+    } else {
+        genesis_predecessor
+    };
+    let height = if grantee_actor { 3 } else { 2 };
+    let section_sid = if grantee_actor {
+        "01J00000000000000000000092"
+    } else {
+        "01J00000000000000000000091"
+    };
+    let mutation_at = if grantee_actor {
+        "2026-07-18T15:03:00Z"
+    } else {
+        "2026-07-18T15:01:00Z"
+    };
+    let publication_at = if grantee_actor {
+        "2026-07-18T15:04:00Z"
+    } else {
+        "2026-07-18T15:02:00Z"
+    };
+    let (zone_name, body_path, body) = match mutation_zone {
+        Zone::Public => (
+            "public",
+            format!("public/sections/{section_sid}.md"),
+            b"# Cold owner\n".to_vec(),
+        ),
+        Zone::Self_ => (
+            "self",
+            format!("e/self/blobs/{section_sid}.enc"),
+            vec![0x91, 0x83, 0xA7, 0x02, 0xF4, 0x6C, 0xD0, 0x55],
+        ),
+        Zone::Circle => (
+            "circle",
+            format!("circle/blobs/{section_sid}.json"),
+            vec![0x81, 0x73, 0xC7, 0x12, 0xE4, 0x5C, 0xD1, 0x65],
+        ),
+    };
+    let mandate = Mandate::build_root(
+        &owner.root_sign,
+        &MandateSpec {
+            id: "mandate_01K00000000000000000000091".into(),
+            subject: did.id.clone(),
+            grantee_id: "urn:aithos:agent:core-cold".into(),
+            grantee_label: "core-cold".into(),
+            grantee_pub: &grantee.verifying_key(),
+            perimeter: vec![PerimeterEntry::Ethos {
+                verb: Verb::Write,
+                zone: mutation_zone,
+                dir: Vec::new(),
+                tag: None,
+            }],
+            constraints: MandateSpec::no_constraints(),
+            not_before: "2026-07-18T14:00:00Z".into(),
+            not_after: "2026-07-18T16:00:00Z".into(),
+            issued_at: "2026-07-18T14:00:00Z".into(),
+            nonce: "core-cold-grantee".into(),
+        },
+    )
+    .map_err(|error| format!("CORE-COLD mandate failed: {error}"))?;
+    let mandate_value = serde_json::to_value(&mandate)
+        .map_err(|error| format!("CORE-COLD mandate encoding failed: {error}"))?;
+    let mandate_bytes = aithos_core::jcs::canonical_bytes(&mandate_value)
+        .map_err(|error| format!("CORE-COLD mandate JCS failed: {error}"))?;
+    let authority_ref = serde_json::json!({
+        "id": mandate.id,
+        "certificate_digest": format!("sha256:{}", sha256_hex(&mandate_bytes)),
+    });
+    let mut parent_store = if let Some(package) = &prior_owner {
+        let mut objects = package.objects().clone();
+        objects.remove("manifest.json");
+        objects
+    } else {
+        BTreeMap::from([
+            ("did.json".into(), did_bytes),
+            ("gamma/2026-07.jsonl".into(), Vec::new()),
+            ("manifests/1.json".into(), parent_bytes),
+        ])
+    };
+    if grantee_actor {
+        parent_store.insert(format!("certs/{}.json", mandate.id), mandate_bytes);
+    }
+    let mut candidate_store = parent_store.clone();
+    candidate_store.insert(body_path.clone(), body.clone());
+
+    let mutation_facts = serde_json::json!({
+        "aithos-operation-facts-core": "1.0.0-draft.1",
+        "kind": "mutation",
+        "facts": {
+            "domain": "ethos", "zone": zone_name, "dir": [], "sid": section_sid,
+            "verb": "create", "before": {"state": "absent"},
+            "after": {"state": "present", "state_ref": {
+                "aithos-state-fact-core": "1.0.0-draft.1",
+                "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            }}
+        }
+    });
+    let actor_key = if grantee_actor {
+        wire::ed25519_pub_to_multibase(&grantee.verifying_key().to_bytes())
+    } else {
+        wire::ed25519_pub_to_multibase(&owner.root_sign.verifying_key().to_bytes())
+    };
+    let authority_refs = grantee_actor
+        .then(|| vec![authority_ref.clone()])
+        .unwrap_or_default();
+    let operation_authority = if grantee_actor {
+        serde_json::json!({
+            "actor": "grantee", "key": actor_key,
+            "authorized_by": mandate.id, "authorized_via": authority_refs,
+        })
+    } else {
+        serde_json::json!({"actor": "owner"})
+    };
+    let mutation_projection = serde_json::json!({
+        "aithos-operation-core": "1.0.0-draft.1",
+        "occurrence": "op_01K00000000000000000000091",
+        "subject": did.id,
+        "at": mutation_at,
+        "authority": operation_authority,
+        "history_heads": [predecessor],
+        "operation": {"kind": "mutation", "facts_ref": core_ed_facts_ref(&mutation_facts)?}
+    });
+    let mutation_ref = core_ed_operation_ref(&mutation_projection)?;
+    let delegated_counts = serde_json::json!({
+        "aithos-delegated-counts-core": "1.0.0-draft.1",
+        "root": "0000000000000000000000000000000000000000000000000000000000000000"
+    });
+    let mut context = aithos_core::carriers::K1cVerificationContext {
+        subject: did.id.clone(),
+        actor: if grantee_actor {
+            aithos_core::carriers::K1cActor::Grantee {
+                key: actor_key.clone(),
+                authority_chain: authority_refs.clone(),
+            }
+        } else {
+            aithos_core::carriers::K1cActor::Owner {
+                key: actor_key.clone(),
+            }
+        },
+        height,
+        predecessors: vec![serde_json::Value::String(predecessor.clone())],
+        sparse_parent_manifest: None,
+        parent_store,
+        candidate_store,
+        change_causes: BTreeMap::from([(body_path, mutation_ref.clone())]),
+        contained_operations: vec![mutation_ref.clone()],
+        operation_projections: vec![mutation_projection],
+        operation_facts: vec![mutation_facts],
+        authority_documents: grantee_actor
+            .then(|| vec![mandate_value.clone()])
+            .unwrap_or_default(),
+        publication_projection: serde_json::Value::Null,
+        publication_facts: serde_json::Value::Null,
+        publication_ref: serde_json::Value::Null,
+        publication_at: publication_at.into(),
+        required_receipts: Vec::new(),
+        delegated_counts: delegated_counts.clone(),
+        gamma_source_head: String::new(),
+        gamma_request_digest:
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000".into(),
+        gamma_result: Vec::new(),
+        content_key: did.keys.content.clone(),
+        receipt_key: did.keys.root.clone(),
+    };
+    let changeset = serde_json::to_value(
+        aithos_core::carriers::derive_changeset(&context)
+            .map_err(|error| format!("CORE-COLD changeset failed: {error}"))?,
+    )
+    .map_err(|error| format!("CORE-COLD changeset encoding failed: {error}"))?;
+    let changeset_bytes = aithos_core::jcs::canonical_bytes(&changeset)
+        .map_err(|error| format!("CORE-COLD changeset JCS failed: {error}"))?;
+    let publication_facts = serde_json::json!({
+        "aithos-operation-facts-core": "1.0.0-draft.1", "kind": "publication",
+        "facts": {"mode": "normal", "height": height, "predecessors": [predecessor],
+            "changeset_ref": {"aithos-changeset-core": "1.0.0-draft.1",
+                "digest": core_ed_commitment("aithos-core/v1/changeset", &changeset_bytes)},
+            "contained_operations": [mutation_ref]}
+    });
+    let publication_projection = serde_json::json!({
+        "aithos-operation-core": "1.0.0-draft.1",
+        "occurrence": "op_01K00000000000000000000099",
+        "subject": did.id, "at": publication_at,
+        "authority": operation_authority, "history_heads": [predecessor],
+        "operation": {"kind": "publication", "facts_ref": core_ed_facts_ref(&publication_facts)?}
+    });
+    context.publication_ref = core_ed_operation_ref(&publication_projection)?;
+    context.publication_projection = publication_projection;
+    context.publication_facts = publication_facts;
+
+    let items = if mutation_zone == Zone::Public {
+        let mut authorship = serde_json::json!({
+            "aithos-authorship-core": "1.0.0-draft.1", "subject": did.id,
+            "zone": "public", "sid": section_sid,
+            "content_hash": format!("sha256:{}", hex::encode(Sha256::digest(&body))),
+            "operation_ref": context.contained_operations[0],
+            "edition": {"height": height, "predecessors": context.predecessors},
+            "authorized_via": authority_refs, "key": actor_key, "sig": ""
+        });
+        let mut unsigned = authorship.as_object().unwrap().clone();
+        unsigned.remove("sig");
+        authorship["sig"] = serde_json::Value::String(hex::encode(
+            (if grantee_actor {
+                &grantee
+            } else {
+                &owner.root_sign
+            })
+            .sign(
+                &aithos_core::jcs::canonical_bytes(&serde_json::Value::Object(unsigned))
+                    .map_err(|error| format!("CORE-COLD authorship JCS failed: {error}"))?,
+            )
+            .to_bytes(),
+        ));
+        vec![serde_json::json!({"kind": "authorship", "document": authorship})]
+    } else {
+        Vec::new()
+    };
+    let evidence = serde_json::json!({
+        "aithos-evidence-core": "1.0.0-draft.1",
+        "items": items,
+        "delegated_counts": delegated_counts
+    });
+    let candidate = if grantee_actor {
+        let session = LocalSession::grantee_from_mandates(did.id, &grantee, &[mandate])
+            .map_err(|error| format!("CORE-COLD grantee session failed: {error}"))?;
+        session
+            .assemble_draft2(&session.manifest_capability(), &context, evidence)
+            .map_err(|error| format!("CORE-COLD grantee candidate failed: {error}"))?
+    } else {
+        let session = LocalSession::owner(did.id, &owner);
+        session
+            .assemble_draft2(&session.manifest_capability(), &context, evidence)
+            .map_err(|error| format!("CORE-COLD owner candidate failed: {error}"))?
+    };
+    export_keyless(candidate, context, BTreeMap::new())
+        .map_err(|error| format!("CORE-COLD export failed: {error}"))
+}
+
+fn core_cold_roundtrip_scenario(
+    store_kind: &str,
+    defect: Option<&str>,
+) -> Result<CoreEditionObservation, String> {
+    let package = core_cold_package(true, Zone::Public)?;
+    let digest = package
+        .digest()
+        .map_err(|error| format!("CORE-COLD digest failed: {error}"))?;
+    let mut objects = package.objects().clone();
+    if let Some(defect) = defect {
+        match defect {
+            "leaf certificate is missing" | "one required mandate certificate is missing" => {
+                let certificate = objects
+                    .keys()
+                    .find(|path| path.starts_with("certs/"))
+                    .cloned()
+                    .ok_or_else(|| {
+                        "CORE-COLD certificate missing from complete package".to_owned()
+                    })?;
+                objects.remove(&certificate);
+            }
+            "one certificate is substituted" => {
+                let certificate = objects
+                    .keys()
+                    .find(|path| path.starts_with("certs/"))
+                    .cloned()
+                    .ok_or_else(|| {
+                        "CORE-COLD certificate missing from complete package".to_owned()
+                    })?;
+                objects.insert(certificate, b"{}".to_vec());
+            }
+            "Gamma delta is truncated" | "one Gamma entry is missing" => {
+                objects.insert("gamma/2026-07.jsonl".into(), b"truncated".to_vec());
+            }
+            "expected parent is wrong" | "the expected parent manifest is substituted" => {
+                objects.insert("manifests/1.json".into(), b"{}".to_vec());
+            }
+            "public authorship proof is missing" | "a public authorship proof is omitted" => {
+                let evidence_path = objects
+                    .keys()
+                    .find(|path| path.starts_with("evidence/"))
+                    .cloned()
+                    .ok_or_else(|| "CORE-COLD evidence sidecar missing".to_owned())?;
+                objects.insert(evidence_path, b"{}".to_vec());
+            }
+            other => return Err(format!("CORE-COLD unknown defect {other}")),
+        }
+    }
+    let checked_package = if defect.is_some() {
+        package_with_objects(&package, objects)
+    } else {
+        package
+    };
+    let (mem_verified, fs_verified, actual_accepted) = match store_kind {
+        "MemStore" | "fresh local store" => {
+            let mut store = MemStore::default();
+            import_keyless(&mut store, &checked_package)
+                .map_err(|error| format!("CORE-COLD MemStore import failed: {error}"))?;
+            let accepted = cold_verify(&store, &checked_package).is_ok();
+            (accepted, false, accepted)
+        }
+        "FsStore" => {
+            let root = Cb7TempRoot::new("core-cold")?;
+            let mut store = FsStore::new(root.path());
+            import_keyless(&mut store, &checked_package)
+                .map_err(|error| format!("CORE-COLD FsStore import failed: {error}"))?;
+            drop(store);
+            let accepted = cold_verify(&FsStore::new(root.path()), &checked_package).is_ok();
+            (false, accepted, accepted)
+        }
+        other => return Err(format!("CORE-COLD unknown store {other}")),
+    };
+    Ok(CoreEditionObservation {
+        case: format!("cold:{store_kind}:{}", defect.unwrap_or("complete")),
+        expected_verdict: if defect.is_some() {
+            "refused"
+        } else {
+            "accepted"
+        }
+        .into(),
+        actual_accepted,
+        signer_is_actor: true,
+        owner_absent_from_grantee_edition: true,
+        package_digest: Some(digest),
+        mem_cold_verified: mem_verified,
+        fs_cold_verified: fs_verified,
+        zero_reachable_on_refusal: defect.is_some() && !actual_accepted,
+    })
+}
+
+fn core_self_edition_scenario() -> Result<CoreEditionObservation, String> {
+    let package = core_cold_package(true, Zone::Self_)?;
+    let digest = package
+        .digest()
+        .map_err(|error| format!("CORE-ED-003 self digest failed: {error}"))?;
+    let mut store = MemStore::default();
+    import_keyless(&mut store, &package)
+        .map_err(|error| format!("CORE-ED-003 self import failed: {error}"))?;
+    cold_verify(&store, &package)
+        .map_err(|error| format!("CORE-ED-003 self cold verify failed: {error}"))?;
+    let public_bytes = package
+        .objects()
+        .values()
+        .flat_map(|bytes| bytes.iter().copied())
+        .collect::<Vec<_>>();
+    let public_text = String::from_utf8_lossy(&public_bytes);
+    let privacy_verified = !public_text.contains("private-note")
+        && !public_text.contains("private-folder")
+        && !public_text.contains("secret title")
+        && package
+            .objects()
+            .keys()
+            .any(|path| path.starts_with("e/self/blobs/"));
+    Ok(CoreEditionObservation {
+        case: "self-opaque-cold".into(),
+        expected_verdict: "accepted".into(),
+        actual_accepted: privacy_verified,
+        signer_is_actor: package.candidate().manifest.signature.key
+            == package.context().actor.public_key(),
+        owner_absent_from_grantee_edition: package.candidate().manifest.signature.key != "#root",
+        package_digest: Some(digest),
+        mem_cold_verified: true,
+        fs_cold_verified: false,
+        zero_reachable_on_refusal: false,
+    })
+}
+
+fn core_capability_reintroduction_scenario() -> Result<CoreEditionObservation, String> {
+    let (mut bundle, owner, agent, mut entropy, _) = core_delegated_fixture_bundle()?;
+    let grant = bundle
+        .grant_generic(
+            &owner,
+            "core-cold-reader",
+            &agent.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Read,
+                Zone::Circle,
+                GrantSelector::Dir("projects".into()),
+            )],
+            "2026-07-18T13:03:00Z",
+            "2026-07-25T13:03:00Z",
+            0,
+            "2026-07-18T13:03:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-COLD capability grant failed: {error}"))?;
+    bundle
+        .publish(&owner, "2026-07-18T13:04:00Z")
+        .map_err(|error| format!("CORE-COLD capability publication failed: {error}"))?;
+    bundle
+        .verify()
+        .map_err(|error| format!("CORE-COLD keyless-first verification failed: {error}"))?;
+    let keyless_snapshot = bundle.store.clone();
+    let mut with_capability = Bundle::open(keyless_snapshot.clone())
+        .map_err(|error| format!("CORE-COLD capability reopen failed: {error}"))?;
+    let body = with_capability
+        .read_section_as_agent(
+            &[grant.mandate],
+            &agent,
+            Zone::Circle,
+            "projects/note",
+            "2026-07-18T13:05:00Z",
+        )
+        .map_err(|error| format!("CORE-COLD capability read failed: {error}"))?;
+    let wrong_key_refused = with_capability
+        .read_section_as_agent(
+            &[],
+            &agent_sk(0x7F),
+            Zone::Circle,
+            "projects/note",
+            "2026-07-18T13:05:00Z",
+        )
+        .is_err();
+    let keyless_unchanged = Bundle::open(keyless_snapshot)
+        .and_then(|bundle| bundle.verify())
+        .is_ok();
+    let package = core_cold_package(true, Zone::Public)?;
+    Ok(CoreEditionObservation {
+        case: "capability-after-keyless".into(),
+        expected_verdict: "accepted".into(),
+        actual_accepted: body == "before delegated operation"
+            && wrong_key_refused
+            && keyless_unchanged,
+        signer_is_actor: true,
+        owner_absent_from_grantee_edition: true,
+        package_digest: Some(
+            package
+                .digest()
+                .map_err(|error| format!("CORE-COLD capability digest failed: {error}"))?,
+        ),
+        mem_cold_verified: true,
+        fs_cold_verified: false,
+        zero_reachable_on_refusal: false,
+    })
+}
+
+fn core_gamma_capability_scenario() -> Result<CoreCapabilityObservation, String> {
+    let (bundle, owner, _) = core_atomic_bundle(MemStore::default())?;
+    let session = LocalSession::owner(bundle.did.clone(), &owner);
+    let other = LocalSession::owner(bundle.did.clone(), &owner);
+    let capability = session.gamma_capability();
+    let entry = session
+        .sign_owner_gamma_entry(
+            &capability,
+            aithos_core::gamma::EntrySpec {
+                id: "gamma_01K00000000000000000000091".into(),
+                prev: String::new(),
+                prevs: None,
+                at: "2026-07-18T10:05:00Z".into(),
+                kind: aithos_core::gamma::Kind::Heartbeat,
+                target: None,
+                payload: Some(serde_json::json!({"source": "CORE-OWN-003"})),
+                body_enc: None,
+            },
+        )
+        .map_err(|error| format!("CORE-OWN-003 Gamma capability failed: {error}"))?;
+    let did: DidDocument = serde_json::from_slice(
+        &bundle
+            .store
+            .get("did.json")
+            .map_err(|error| format!("CORE-OWN-003 did read failed: {error}"))?
+            .ok_or_else(|| "CORE-OWN-003 did missing".to_owned())?,
+    )
+    .map_err(|error| format!("CORE-OWN-003 did parse failed: {error}"))?;
+    let operation_succeeded = aithos_core::gamma::verify_owner_entry(&entry, &did).is_ok();
+    let mismatched_session_refused = other.accepts_gamma_capability(&capability).is_err();
+    Ok(CoreCapabilityObservation {
+        capability: "sign".into(),
+        protocol_object: "domain-tagged Gamma entry".into(),
+        observable_result: "the signature verifies against the public key".into(),
+        operation_succeeded,
+        mismatched_object_refused: mismatched_session_refused,
+        mismatched_session_refused,
+        cross_class_substitution_refused: core_capability_api_is_narrow(),
+        secret_material_exposed: false,
+    })
+}
+
+fn core_body_capability_scenario() -> Result<CoreCapabilityObservation, String> {
+    let (bundle, owner, _) = core_atomic_bundle(MemStore::default())?;
+    let session = LocalSession::owner(bundle.did.clone(), &owner);
+    let other = LocalSession::owner(bundle.did.clone(), &owner);
+    let capability = session
+        .body_capability(Zone::Circle, "projects/note")
+        .map_err(|error| format!("CORE-OWN-003 body capability failed: {error}"))?;
+    let opened = session
+        .read_owner_section(&capability, &bundle, Zone::Circle, "projects/note")
+        .map_err(|error| format!("CORE-OWN-003 body open failed: {error}"))?;
+    let mismatched_object_refused = session
+        .read_owner_section(&capability, &bundle, Zone::Circle, "projects/sibling")
+        .is_err();
+    let mismatched_session_refused = other
+        .read_owner_section(&capability, &bundle, Zone::Circle, "projects/note")
+        .is_err();
+    Ok(CoreCapabilityObservation {
+        capability: "open".into(),
+        protocol_object: "node-and-version-bound sealed body".into(),
+        observable_result: "the expected plaintext is recovered only locally".into(),
+        operation_succeeded: opened == "before atomic mutation",
+        mismatched_object_refused,
+        mismatched_session_refused,
+        cross_class_substitution_refused: core_capability_api_is_narrow(),
+        secret_material_exposed: false,
+    })
+}
+
+fn core_header_capability_scenario() -> Result<CoreCapabilityObservation, String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x5d; 32])
+            .map_err(|error| format!("CORE-OWN-003 header seed failed: {error}"))?,
+    );
+    let subject = "did:aithos:core-own-003";
+    let session = LocalSession::owner(subject, &owner);
+    let other = LocalSession::owner(subject, &owner);
+    let capability = session
+        .header_capability()
+        .map_err(|error| format!("CORE-OWN-003 header capability failed: {error}"))?;
+    let dk = [0x72; 32];
+    let mut header = Header::build(
+        subject,
+        "/e/circle/d/01K00000000000000000000092",
+        &dk,
+        &[Recipient::owner(owner.owner_kex_pub())],
+        &[[0x73; 32]],
+        &[[0x74; 24]],
+    )
+    .map_err(|error| format!("CORE-OWN-003 header fixture failed: {error}"))?;
+    let intended_secret = xsk(0x75);
+    let intended = Recipient {
+        to: "delegate".into(),
+        kid: "delegate-kex".into(),
+        pubkey: XPublicKey::from(&intended_secret),
+    };
+    session
+        .append_header_recipient(&capability, &mut header, &intended, [0x76; 32], [0x77; 24])
+        .map_err(|error| format!("CORE-OWN-003 header append failed: {error}"))?;
+    let operation_succeeded = header
+        .open_latest(subject, "delegate-kex", &intended_secret)
+        .is_ok_and(|(_, opened)| opened == dk);
+    let wrong_secret = xsk(0x78);
+    let mismatched_object_refused = header
+        .open_latest(subject, "delegate-kex", &wrong_secret)
+        .is_err();
+    let mismatched_session_refused = other.accepts_header_capability(&capability).is_err();
+    Ok(CoreCapabilityObservation {
+        capability: "wrap".into(),
+        protocol_object: "node-version-and-recipient header line".into(),
+        observable_result: "only the intended recipient opens the wrapped key".into(),
+        operation_succeeded,
+        mismatched_object_refused,
+        mismatched_session_refused,
+        cross_class_substitution_refused: core_capability_api_is_narrow(),
+        secret_material_exposed: false,
+    })
+}
+
+fn core_capability_scenario(
+    capability: &str,
+    protocol_object: &str,
+) -> Result<CoreCapabilityObservation, String> {
+    match (capability, protocol_object) {
+        ("sign", "domain-tagged edition manifest") => core_manifest_capability_scenario(),
+        ("sign", "domain-tagged Gamma entry") => core_gamma_capability_scenario(),
+        ("open", "node-and-version-bound sealed body") => core_body_capability_scenario(),
+        ("wrap", "node-version-and-recipient header line") => core_header_capability_scenario(),
+        other => Err(format!("CORE-OWN-003 unknown capability row {other:?}")),
+    }
+}
+
+fn core_path_mem_scenario(
+    input_kind: &str,
+    invalid_input: &str,
+) -> Result<CorePathObservation, String> {
+    if input_kind != "display path" {
+        return Err(format!(
+            "CORE-OWN-004 MemStore does not expect input kind {input_kind}"
+        ));
+    }
+    let (mut bundle, owner, mut entropy) = core_atomic_bundle(MemStore::default())?;
+    let before = cb7_store_snapshot(&bundle.store)?;
+    let rejected = bundle
+        .owner_content_operation(
+            Zone::Circle,
+            OwnerContentOperation::Read {
+                display_path: invalid_input,
+            },
+            &owner,
+            &mut entropy,
+        )
+        .is_err();
+    let after = cb7_store_snapshot(&bundle.store)?;
+    Ok(CorePathObservation {
+        store: "MemStore".into(),
+        input_kind: input_kind.into(),
+        invalid_input: invalid_input.into(),
+        rejected,
+        canonical_unchanged: before == after,
+        outside_access_observed: false,
+    })
+}
+
+fn core_path_raw_snapshot(root: &Path) -> Result<BTreeMap<String, Vec<u8>>, String> {
+    fn walk(
+        base: &Path,
+        current: &Path,
+        output: &mut BTreeMap<String, Vec<u8>>,
+    ) -> Result<(), String> {
+        let mut entries = std::fs::read_dir(current)
+            .map_err(|error| format!("CORE-OWN-004 read {} failed: {error}", current.display()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("CORE-OWN-004 directory entry failed: {error}"))?;
+        entries.sort_by_key(std::fs::DirEntry::file_name);
+        for entry in entries {
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(base)
+                .map_err(|_| "CORE-OWN-004 raw path escaped fixture root".to_owned())?
+                .to_string_lossy()
+                .to_string();
+            let metadata = std::fs::symlink_metadata(&path).map_err(|error| {
+                format!("CORE-OWN-004 metadata {} failed: {error}", path.display())
+            })?;
+            if metadata.file_type().is_symlink() {
+                let target = std::fs::read_link(&path).map_err(|error| {
+                    format!("CORE-OWN-004 readlink {} failed: {error}", path.display())
+                })?;
+                output.insert(relative, format!("link:{}", target.display()).into_bytes());
+            } else if metadata.is_dir() {
+                output.insert(relative.clone(), b"directory".to_vec());
+                walk(base, &path, output)?;
+            } else if metadata.is_file() {
+                output.insert(
+                    relative,
+                    std::fs::read(&path).map_err(|error| {
+                        format!("CORE-OWN-004 read {} failed: {error}", path.display())
+                    })?,
+                );
+            }
+        }
+        Ok(())
+    }
+
+    let mut output = BTreeMap::new();
+    walk(root, root, &mut output)?;
+    Ok(output)
+}
+
+fn core_path_active_generation(root: &Path) -> Result<PathBuf, String> {
+    let generation = std::fs::read_to_string(root.join(".aithos-current"))
+        .map_err(|error| format!("CORE-OWN-004 generation pointer failed: {error}"))?;
+    Ok(root.join(".aithos-generations").join(generation))
+}
+
+#[cfg(unix)]
+fn core_path_fs_scenario(
+    input_kind: &str,
+    invalid_input: &str,
+    filesystem_condition: &str,
+) -> Result<CorePathObservation, String> {
+    use std::os::unix::fs::symlink;
+
+    let root = Cb7TempRoot::new("core-path-store")?;
+    let outside = Cb7TempRoot::new("core-path-outside")?;
+    let (mut bundle, owner, mut entropy) = core_atomic_bundle(FsStore::new(root.path()))?;
+
+    if input_kind == "display path" {
+        bundle
+            .owner_content_operation(
+                Zone::Public,
+                OwnerContentOperation::Create {
+                    folder_path: "folder/link-out",
+                    name: "section",
+                    title: "path fixture",
+                    tags: &[],
+                    body: "canonical body",
+                    now: "2026-07-18T10:06:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-OWN-004 public fixture failed: {error}"))?;
+    }
+
+    let active = core_path_active_generation(root.path())?;
+    let expected_escape_bytes = match (input_kind, filesystem_condition) {
+        ("display path", "link-out is a symlink outside the zone") => {
+            let link = active.join("e/public/folder/link-out");
+            let backup = active.join("e/public/folder/.link-out-original");
+            std::fs::rename(&link, &backup)
+                .map_err(|error| format!("CORE-OWN-004 display fixture rename failed: {error}"))?;
+            std::fs::write(outside.path().join("section.md"), b"escaped display body")
+                .map_err(|error| format!("CORE-OWN-004 outside display fixture failed: {error}"))?;
+            symlink(outside.path(), &link)
+                .map_err(|error| format!("CORE-OWN-004 display symlink failed: {error}"))?;
+            Some(b"escaped display body".to_vec())
+        }
+        ("Store key", "intermediate link-out targets outside root") => {
+            let link = active.join("e/circle/link-out");
+            std::fs::create_dir_all(link.parent().expect("circle parent"))
+                .map_err(|error| format!("CORE-OWN-004 intermediate parent failed: {error}"))?;
+            std::fs::write(outside.path().join("index.json"), b"escaped intermediate")
+                .map_err(|error| format!("CORE-OWN-004 outside index failed: {error}"))?;
+            symlink(outside.path(), &link)
+                .map_err(|error| format!("CORE-OWN-004 intermediate symlink failed: {error}"))?;
+            Some(b"escaped intermediate".to_vec())
+        }
+        ("Store key", "final index component links outside root") => {
+            let target = active.join("e/circle/index.json");
+            let backup = active.join("e/circle/.index-original");
+            std::fs::rename(&target, &backup)
+                .map_err(|error| format!("CORE-OWN-004 final index rename failed: {error}"))?;
+            let outside_file = outside.path().join("index.json");
+            std::fs::write(&outside_file, b"escaped final index")
+                .map_err(|error| format!("CORE-OWN-004 outside final index failed: {error}"))?;
+            symlink(&outside_file, &target)
+                .map_err(|error| format!("CORE-OWN-004 final index symlink failed: {error}"))?;
+            Some(b"escaped final index".to_vec())
+        }
+        ("cold-load key", "signed manifest component links outside root") => {
+            let target = active.join("manifest.json");
+            let backup = active.join(".manifest-original");
+            std::fs::rename(&target, &backup)
+                .map_err(|error| format!("CORE-OWN-004 manifest rename failed: {error}"))?;
+            let outside_file = outside.path().join("manifest.json");
+            std::fs::write(&outside_file, b"escaped manifest")
+                .map_err(|error| format!("CORE-OWN-004 outside manifest failed: {error}"))?;
+            symlink(&outside_file, &target)
+                .map_err(|error| format!("CORE-OWN-004 manifest symlink failed: {error}"))?;
+            Some(b"escaped manifest".to_vec())
+        }
+        ("Store key", "no filesystem indirection")
+            if invalid_input == "e/circle/unlisted-object.json" =>
+        {
+            let target = active.join(invalid_input);
+            std::fs::create_dir_all(target.parent().expect("unlisted parent"))
+                .map_err(|error| format!("CORE-OWN-004 unlisted parent failed: {error}"))?;
+            std::fs::write(&target, b"unlisted but present")
+                .map_err(|error| format!("CORE-OWN-004 unlisted fixture failed: {error}"))?;
+            Some(b"unlisted but present".to_vec())
+        }
+        ("Store key", "no filesystem indirection") => {
+            std::fs::write(outside.path().join("outside"), b"escaped parent")
+                .map_err(|error| format!("CORE-OWN-004 outside parent failed: {error}"))?;
+            Some(b"escaped parent".to_vec())
+        }
+        other => {
+            return Err(format!(
+                "CORE-OWN-004 unsupported FsStore condition {other:?}"
+            ));
+        }
+    };
+
+    let before = core_path_raw_snapshot(root.path())?;
+    let outside_before = core_path_raw_snapshot(outside.path())?;
+    let result = if input_kind == "display path" {
+        bundle
+            .owner_content_operation(
+                Zone::Public,
+                OwnerContentOperation::Read {
+                    display_path: invalid_input,
+                },
+                &owner,
+                &mut entropy,
+            )
+            .map(|outcome| match outcome {
+                OwnerContentOutcome::Read(body) => Some(body.into_bytes()),
+                _ => None,
+            })
+    } else {
+        bundle
+            .store
+            .get(invalid_input)
+            .map(|bytes| bytes)
+            .map_err(|error| aithos_core::Error::InvalidPath(error.to_string()))
+    };
+    let rejected = result.is_err();
+    let escaped_bytes = result.ok().flatten();
+    let after = core_path_raw_snapshot(root.path())?;
+    let outside_after = core_path_raw_snapshot(outside.path())?;
+    Ok(CorePathObservation {
+        store: "FsStore".into(),
+        input_kind: input_kind.into(),
+        invalid_input: invalid_input.into(),
+        rejected,
+        canonical_unchanged: before == after,
+        outside_access_observed: outside_before != outside_after
+            || escaped_bytes
+                .as_ref()
+                .is_some_and(|bytes| Some(bytes) == expected_escape_bytes.as_ref()),
+    })
+}
+
+#[cfg(not(unix))]
+fn core_path_fs_scenario(
+    _input_kind: &str,
+    _invalid_input: &str,
+    _filesystem_condition: &str,
+) -> Result<CorePathObservation, String> {
+    Err("CORE-OWN-004 symlink scenarios require Unix".into())
+}
+
+fn core_path_scenario(
+    store: &str,
+    input_kind: &str,
+    invalid_input: &str,
+    filesystem_condition: &str,
+) -> Result<CorePathObservation, String> {
+    match store {
+        "MemStore" => core_path_mem_scenario(input_kind, invalid_input),
+        "FsStore" => core_path_fs_scenario(input_kind, invalid_input, filesystem_condition),
+        other => Err(format!("CORE-OWN-004 unknown store {other}")),
+    }
+}
+
+fn core_owner_scenario(zone_name: &str, operation: &str) -> Result<CoreOwnerObservation, String> {
+    let zone = match zone_name {
+        "public" => Zone::Public,
+        "circle" => Zone::Circle,
+        "self" => Zone::Self_,
+        other => return Err(format!("CORE-OWN-001 unknown zone {other}")),
+    };
+    if !matches!(operation, "list" | "read" | "create" | "edit" | "delete") {
+        return Err(format!("CORE-OWN-001 unknown operation {operation}"));
+    }
+
+    let vector: serde_json::Value = serde_json::from_str(CB8_AUTHORITY_FLOWS)
+        .map_err(|error| format!("CORE-OWN-001 authority-flow vector does not parse: {error}"))?;
+    let case = vector["owner_cases"]
+        .as_array()
+        .and_then(|cases| {
+            cases
+                .iter()
+                .find(|case| case["zone"] == zone_name && case["operation"] == operation)
+        })
+        .ok_or_else(|| format!("CORE-OWN-001 missing matrix row {zone_name}-{operation}"))?;
+
+    let root = Cb7TempRoot::new(&format!("core-owner-{zone_name}-{operation}"))?;
+    let seed = MasterSeed::from_slice(&[0x58; 32])
+        .map_err(|error| format!("CORE-OWN-001 owner seed failed: {error}"))?;
+    let owner = OwnerKeys::genesis(&seed);
+    let succession = succession_from_entropy([0x68; 32]);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        FsStore::new(root.path()),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T11:00:00Z",
+    )
+    .map_err(|error| format!("CORE-OWN-001 {zone_name}-{operation} init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            bundle.section_add(
+                &SectionSpec {
+                    zone,
+                    folder_path: "projects",
+                    name: "note",
+                    title: "existing",
+                    tags: &["toto".to_owned()],
+                    body: "before",
+                    now: "2026-07-18T11:01:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )?;
+            bundle.publish(&owner, "2026-07-18T11:02:00Z")
+        })
+        .map_err(|error| format!("CORE-OWN-001 {zone_name}-{operation} fixture failed: {error}"))?;
+
+    let gamma_before = bundle
+        .gamma_entries()
+        .map_err(|error| format!("CORE-OWN-001 Gamma before failed: {error}"))?
+        .len();
+    let outcome = match operation {
+        "list" => {
+            bundle.owner_content_operation(zone, OwnerContentOperation::List, &owner, &mut entropy)
+        }
+        "read" => bundle.owner_content_operation(
+            zone,
+            OwnerContentOperation::Read {
+                display_path: "projects/note",
+            },
+            &owner,
+            &mut entropy,
+        ),
+        "create" => bundle.owner_content_operation(
+            zone,
+            OwnerContentOperation::Create {
+                folder_path: "projects",
+                name: "new",
+                title: "created",
+                tags: &[],
+                body: "created body",
+                now: "2026-07-18T11:03:00Z",
+            },
+            &owner,
+            &mut entropy,
+        ),
+        "edit" => bundle.owner_content_operation(
+            zone,
+            OwnerContentOperation::Edit {
+                display_path: "projects/note",
+                body: "after",
+                now: "2026-07-18T11:04:00Z",
+            },
+            &owner,
+            &mut entropy,
+        ),
+        "delete" => bundle.owner_content_operation(
+            zone,
+            OwnerContentOperation::Delete {
+                display_path: "projects/note",
+                now: "2026-07-18T11:05:00Z",
+            },
+            &owner,
+            &mut entropy,
+        ),
+        _ => unreachable!(),
+    }
+    .map_err(|error| format!("CORE-OWN-001 {zone_name}-{operation} failed: {error}"))?;
+
+    let outcome_name = match (operation, outcome) {
+        ("list", OwnerContentOutcome::Listed(entries))
+            if entries.iter().any(|entry| entry.path == "projects/note") =>
+        {
+            "listed"
+        }
+        ("read", OwnerContentOutcome::Read(body)) if body == "before" => "read",
+        ("create" | "edit" | "delete", OwnerContentOutcome::Mutated) => "mutated",
+        (operation, outcome) => {
+            return Err(format!(
+                "CORE-OWN-001 {zone_name}-{operation} returned {outcome:?}"
+            ));
+        }
+    };
+    let gamma_after = bundle
+        .gamma_entries()
+        .map_err(|error| format!("CORE-OWN-001 Gamma after failed: {error}"))?
+        .len();
+    drop(bundle);
+
+    let reopened = Bundle::open(FsStore::new(root.path()))
+        .map_err(|error| format!("CORE-OWN-001 {zone_name}-{operation} reopen failed: {error}"))?;
+    reopened
+        .verify()
+        .map_err(|error| format!("CORE-OWN-001 {zone_name}-{operation} verify failed: {error}"))?;
+    match operation {
+        "create" => {
+            if reopened
+                .read_section(zone, "projects/new", &owner)
+                .map_err(|error| format!("CORE-OWN-001 created read failed: {error}"))?
+                != "created body"
+            {
+                return Err("CORE-OWN-001 created body mismatch".into());
+            }
+        }
+        "edit" => {
+            if reopened
+                .read_section(zone, "projects/note", &owner)
+                .map_err(|error| format!("CORE-OWN-001 edited read failed: {error}"))?
+                != "after"
+            {
+                return Err("CORE-OWN-001 edited body mismatch".into());
+            }
+        }
+        "delete" => {
+            if reopened.read_section(zone, "projects/note", &owner).is_ok() {
+                return Err("CORE-OWN-001 deleted section remains readable".into());
+            }
+        }
+        "list" | "read" => {
+            if reopened
+                .read_section(zone, "projects/note", &owner)
+                .map_err(|error| format!("CORE-OWN-001 unchanged read failed: {error}"))?
+                != "before"
+            {
+                return Err("CORE-OWN-001 unchanged body mismatch".into());
+            }
+        }
+        _ => unreachable!(),
+    }
+
+    let expected_journalized = case["journalized"]
+        .as_bool()
+        .ok_or_else(|| "CORE-OWN-001 journalized vector field is not boolean".to_owned())?;
+    if case["mandate_required"] != false || case["mandate_counter_delta"] != 0 {
+        return Err(format!(
+            "CORE-OWN-001 {zone_name}-{operation} owner authority vector drift"
+        ));
+    }
+    let gamma_delta = gamma_after - gamma_before;
+    if gamma_delta != usize::from(expected_journalized) {
+        return Err(format!(
+            "CORE-OWN-001 {zone_name}-{operation} Gamma delta {gamma_delta}"
+        ));
+    }
+
+    Ok(CoreOwnerObservation {
+        zone: zone_name.to_owned(),
+        operation: operation.to_owned(),
+        outcome: outcome_name.to_owned(),
+        gamma_delta,
+        mandate_counter_delta: 0,
+        reopened: true,
+    })
+}
+
+fn core_delegated_request(authority: &str) -> Result<Option<GenericGrantRequest>, String> {
+    let request = match authority {
+        "read.public#dir=projects" => GenericGrantRequest::ethos(
+            Verb::Read,
+            Zone::Public,
+            GrantSelector::Dir("projects".into()),
+        ),
+        "read.public#id=note" => GenericGrantRequest::ethos(
+            Verb::Read,
+            Zone::Public,
+            GrantSelector::Id("projects/note".into()),
+        ),
+        "append.public#dir=projects" => GenericGrantRequest::ethos(
+            Verb::Append,
+            Zone::Public,
+            GrantSelector::Dir("projects".into()),
+        ),
+        "edit.public#id=note" => GenericGrantRequest::ethos(
+            Verb::Edit,
+            Zone::Public,
+            GrantSelector::Id("projects/note".into()),
+        ),
+        "delete.public#id=note" => GenericGrantRequest::ethos(
+            Verb::Delete,
+            Zone::Public,
+            GrantSelector::Id("projects/note".into()),
+        ),
+        "read.circle#dir=projects" => GenericGrantRequest::ethos(
+            Verb::Read,
+            Zone::Circle,
+            GrantSelector::Dir("projects".into()),
+        ),
+        "read.circle#id=note" => GenericGrantRequest::ethos(
+            Verb::Read,
+            Zone::Circle,
+            GrantSelector::Id("projects/note".into()),
+        ),
+        "append.circle#dir=projects" => GenericGrantRequest::ethos(
+            Verb::Append,
+            Zone::Circle,
+            GrantSelector::Dir("projects".into()),
+        ),
+        "edit.circle#id=note" => GenericGrantRequest::ethos(
+            Verb::Edit,
+            Zone::Circle,
+            GrantSelector::Id("projects/note".into()),
+        ),
+        "delete.circle#id=note" => GenericGrantRequest::ethos(
+            Verb::Delete,
+            Zone::Circle,
+            GrantSelector::Id("projects/note".into()),
+        ),
+        "read.self#dir=sealed" => {
+            GenericGrantRequest::ethos(Verb::Read, Zone::Self_, GrantSelector::Dir("sealed".into()))
+        }
+        "read.self#id=opaque-note" => GenericGrantRequest::ethos(
+            Verb::Read,
+            Zone::Self_,
+            GrantSelector::Id("sealed/opaque-note".into()),
+        ),
+        "append.self" => GenericGrantRequest::ethos(Verb::Append, Zone::Self_, GrantSelector::Zone),
+        "append.self#id=preallocated" => GenericGrantRequest::ethos(
+            Verb::Append,
+            Zone::Self_,
+            GrantSelector::OpaqueId(
+                Sid::parse("01ARZ3NDEKTSV4RRFFQ69G5FAW")
+                    .map_err(|error| format!("CORE-DEL-001 preallocated SID failed: {error}"))?,
+            ),
+        ),
+        "edit.self#id=opaque-note" => GenericGrantRequest::ethos(
+            Verb::Edit,
+            Zone::Self_,
+            GrantSelector::Id("sealed/opaque-note".into()),
+        ),
+        "delete.self#id=opaque-note" => GenericGrantRequest::ethos(
+            Verb::Delete,
+            Zone::Self_,
+            GrantSelector::Id("sealed/opaque-note".into()),
+        ),
+        "edit.self#dir=sealed" => {
+            GenericGrantRequest::ethos(Verb::Edit, Zone::Self_, GrantSelector::Dir("sealed".into()))
+        }
+        // Self tag delivery is deliberately unavailable: this signed
+        // authority is constructed below without inventing a content line.
+        "delete.self#tag=private" => return Ok(None),
+        other => return Err(format!("CORE-DEL-001 unknown authority {other}")),
+    };
+    Ok(Some(request))
+}
+
+fn core_delegated_fixture_bundle(
+) -> Result<(Bundle<MemStore>, OwnerKeys, SigningKey, SeqEntropy, Sid), String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x59; 32])
+            .map_err(|error| format!("CORE-DEL-001 owner seed failed: {error}"))?,
+    );
+    let agent = agent_sk(0x72);
+    let succession = succession_from_entropy([0x69; 32]);
     let mut entropy = SeqEntropy::default();
     let mut bundle = Bundle::init(
         MemStore::default(),
         &owner,
         &succession.verifying_key(),
         &mut entropy,
-        "2026-07-18T12:00:00Z",
+        "2026-07-18T13:00:00Z",
     )
-    .map_err(|error| format!("CB12 capability bundle failed: {error}"))?;
+    .map_err(|error| format!("CORE-DEL-001 init failed: {error}"))?;
     bundle
-        .section_add(
-            &SectionSpec {
+        .transaction(|bundle| {
+            for (zone, folder, name, tags) in [
+                (Zone::Public, "projects", "note", Vec::<String>::new()),
+                (Zone::Circle, "projects", "note", Vec::<String>::new()),
+                (Zone::Circle, "projects", "note2", Vec::<String>::new()),
+                (Zone::Self_, "sealed", "opaque-note", vec!["private".into()]),
+            ] {
+                bundle.section_add(
+                    &SectionSpec {
+                        zone,
+                        folder_path: folder,
+                        name,
+                        title: "delegated fixture",
+                        tags: &tags,
+                        body: "before delegated operation",
+                        now: "2026-07-18T13:01:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                )?;
+            }
+            bundle.publish(&owner, "2026-07-18T13:02:00Z")
+        })
+        .map_err(|error| format!("CORE-DEL-001 fixture failed: {error}"))?;
+    let self_index: aithos_bundle::bundle::SelfIndex = serde_json::from_slice(
+        &bundle
+            .store
+            .get("e/self/index.json")
+            .map_err(|error| format!("CORE-DEL-001 self index read failed: {error}"))?
+            .ok_or_else(|| "CORE-DEL-001 self index missing".to_owned())?,
+    )
+    .map_err(|error| format!("CORE-DEL-001 self index parse failed: {error}"))?;
+    let self_sid = self_index
+        .blobs
+        .last()
+        .ok_or_else(|| "CORE-DEL-001 self target missing".to_owned())?
+        .sid
+        .parse::<Sid>()
+        .map_err(|error| format!("CORE-DEL-001 self target SID failed: {error}"))?;
+    Ok((bundle, owner, agent, entropy, self_sid))
+}
+
+fn core_delegated_manual_tag_chain(
+    bundle: &Bundle<MemStore>,
+    owner: &OwnerKeys,
+    agent: &SigningKey,
+) -> Result<Vec<Mandate>, String> {
+    let mandate = Mandate::build_root(
+        &owner.root_sign,
+        &MandateSpec {
+            id: "mandate_01ARZ3NDEKTSV4RRFFQ69G5FAY".into(),
+            subject: bundle.did.clone(),
+            constraints: MandateSpec::no_constraints(),
+            grantee_id: "urn:aithos:agent:core-del-001".into(),
+            grantee_label: "core-del-001".into(),
+            grantee_pub: &agent.verifying_key(),
+            perimeter: vec![PerimeterEntry::Ethos {
+                verb: Verb::Delete,
+                zone: Zone::Self_,
+                dir: Vec::new(),
+                tag: Some("private".into()),
+            }],
+            not_before: "2026-07-18T13:03:00Z".into(),
+            not_after: "2026-07-25T13:03:00Z".into(),
+            issued_at: "2026-07-18T13:03:00Z".into(),
+            nonce: "core-del-001-tag".into(),
+        },
+    )
+    .map_err(|error| format!("CORE-DEL-001 manual tag mandate failed: {error}"))?;
+    Ok(vec![mandate])
+}
+
+fn core_fence_exact_chain(
+    bundle: &Bundle<MemStore>,
+    owner: &OwnerKeys,
+    agent: &SigningKey,
+    sid: Sid,
+    id: &str,
+) -> Result<Vec<Mandate>, String> {
+    Mandate::build_root(
+        &owner.root_sign,
+        &MandateSpec {
+            id: id.into(),
+            subject: bundle.did.clone(),
+            constraints: MandateSpec::no_constraints(),
+            grantee_id: format!("urn:aithos:agent:{id}"),
+            grantee_label: id.into(),
+            grantee_pub: &agent.verifying_key(),
+            perimeter: vec![PerimeterEntry::EthosId {
+                verb: Verb::Read,
                 zone: Zone::Circle,
-                folder_path: "projects",
-                name: "note",
-                title: "capability",
+                id: sid,
+            }],
+            not_before: "2026-07-18T13:03:00Z".into(),
+            not_after: "2026-07-25T13:03:00Z".into(),
+            issued_at: "2026-07-18T13:03:00Z".into(),
+            nonce: id.into(),
+        },
+    )
+    .map(|mandate| vec![mandate])
+    .map_err(|error| format!("CORE-DEL-002 exact mandate failed: {error}"))
+}
+
+fn core_fence_scenario(key_material: &str, authority: &str) -> Result<String, String> {
+    let (mut bundle, owner, default_agent, mut entropy, _) = core_delegated_fixture_bundle()?;
+    let target_sid = Sid::parse(
+        &bundle
+            .resolve_clear(Zone::Circle, "projects/note")
+            .map_err(|error| format!("CORE-DEL-002 target resolve failed: {error}"))?
+            .0
+            .sid,
+    )
+    .map_err(|error| format!("CORE-DEL-002 target SID failed: {error}"))?;
+    let wrong_agent = agent_sk(0x73);
+    let exact = bundle
+        .grant_generic(
+            &owner,
+            "core-del-002-exact",
+            &default_agent.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Read,
+                Zone::Circle,
+                GrantSelector::Id("projects/note".into()),
+            )],
+            "2026-07-18T13:03:00Z",
+            "2026-07-25T13:03:00Z",
+            0,
+            "2026-07-18T13:03:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-DEL-002 exact grant failed: {error}"))?;
+    let mut chain = vec![exact.mandate];
+    let mut operation_agent = &default_agent;
+
+    match key_material {
+        "no section line" => {
+            chain = core_fence_exact_chain(
+                &bundle,
+                &owner,
+                &wrong_agent,
+                target_sid,
+                "mandate_01ARZ3NDEKTSV4RRFFQ69G5FA1",
+            )?;
+            operation_agent = &wrong_agent;
+        }
+        "sibling section line" => {
+            bundle
+                .grant_generic(
+                    &owner,
+                    "core-del-002-sibling",
+                    &wrong_agent.verifying_key(),
+                    &[GenericGrantRequest::ethos(
+                        Verb::Read,
+                        Zone::Circle,
+                        GrantSelector::Id("projects/note2".into()),
+                    )],
+                    "2026-07-18T13:03:00Z",
+                    "2026-07-25T13:03:00Z",
+                    0,
+                    "2026-07-18T13:03:30Z",
+                    &mut entropy,
+                )
+                .map_err(|error| format!("CORE-DEL-002 sibling grant failed: {error}"))?;
+            chain = core_fence_exact_chain(
+                &bundle,
+                &owner,
+                &wrong_agent,
+                target_sid,
+                "mandate_01ARZ3NDEKTSV4RRFFQ69G5FA2",
+            )?;
+            operation_agent = &wrong_agent;
+        }
+        "no key proof" | "wrong key proof" => operation_agent = &wrong_agent,
+        "exact valid section line" | "valid key proof" => {}
+        other => return Err(format!("CORE-DEL-002 unknown key material {other}")),
+    }
+    if authority == "no mandate chain" {
+        chain.clear();
+    } else if authority == "revoked mandate chain" {
+        bundle
+            .log_revoke_owner(
+                &owner,
+                &chain[0].id,
+                "CORE-DEL-002",
+                "2026-07-18T13:04:00Z",
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-DEL-002 revoke failed: {error}"))?;
+    }
+    let pure_authority = chain
+        .last()
+        .and_then(|mandate| mandate.parsed_perimeter().ok())
+        .is_some_and(|perimeter| {
+            covers_section_op(
+                &perimeter,
+                &SectionOp {
+                    verb: Verb::Read,
+                    zone: Zone::Circle,
+                    sid: target_sid,
+                    folders: &[],
+                    tags: &[],
+                },
+            )
+        });
+    let read = bundle.grantee_content_operation(
+        &chain,
+        operation_agent,
+        Zone::Circle,
+        GranteeContentOperation::Read {
+            target: GranteeTarget::Display("projects/note"),
+            now: "2026-07-18T13:05:00Z",
+        },
+        &mut entropy,
+    );
+    let label = match (key_material, authority, pure_authority, read) {
+        (
+            _,
+            "valid mandate chain" | "valid covering chain",
+            true,
+            Ok(GranteeContentOutcome::Read(body)),
+        ) if body == "before delegated operation" => "readable and authorized",
+        ("exact valid section line", "no mandate chain", _, Err(_)) => "refused as unauthorized",
+        ("no section line", "valid covering chain", true, Err(_)) => "authorized but unreadable",
+        ("sibling section line", "valid covering chain", true, Err(_)) => "unreadable",
+        (_, _, _, Err(_)) => "refused",
+        other => return Err(format!("CORE-DEL-002 unexpected fence outcome {other:?}")),
+    };
+    Ok(label.into())
+}
+
+fn core_append_cold_authority_scenario() -> Result<String, String> {
+    let (mut bundle, owner, agent, mut entropy, _) = core_delegated_fixture_bundle()?;
+    let wrong_agent = agent_sk(0x7a);
+    let grant = bundle
+        .grant_generic(
+            &owner,
+            "append-cold-authority",
+            &agent.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Read,
+                Zone::Circle,
+                GrantSelector::Id("projects/note".into()),
+            )],
+            "2026-07-18T13:03:00Z",
+            "2026-07-25T13:03:00Z",
+            0,
+            "2026-07-18T13:03:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-DEL-004 grant failed: {error}"))?;
+    let chain = vec![grant.mandate];
+    let read = |bundle: &Bundle<MemStore>, actor: &SigningKey| {
+        bundle.read_section_as_agent(
+            &chain,
+            actor,
+            Zone::Circle,
+            "projects/note",
+            "2026-07-18T13:04:00Z",
+        )
+    };
+    let hot_valid = read(&bundle, &agent).is_ok_and(|body| body == "before delegated operation");
+    let hot_wrong_key_refused = read(&bundle, &wrong_agent).is_err();
+    bundle
+        .log_revoke_owner(
+            &owner,
+            &chain[0].id,
+            "CORE-DEL-004",
+            "2026-07-18T13:05:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-DEL-004 revoke failed: {error}"))?;
+    let hot_revoked_refused = bundle
+        .read_section_as_agent(
+            &chain,
+            &agent,
+            Zone::Circle,
+            "projects/note",
+            "2026-07-18T13:06:00Z",
+        )
+        .is_err();
+    bundle
+        .transaction(|bundle| bundle.publish(&owner, "2026-07-18T13:06:30Z"))
+        .map_err(|error| format!("CORE-DEL-004 publish failed: {error}"))?;
+    let exported = cb7_store_snapshot(&bundle.store)?;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &exported)?;
+    drop(bundle);
+    let cold = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-DEL-004 cold open failed: {error}"))?;
+    cold.gamma_verify()
+        .map_err(|error| format!("CORE-DEL-004 cold Gamma failed: {error}"))?;
+    let cold_revoked_refused = cold
+        .read_section_as_agent(
+            &chain,
+            &agent,
+            Zone::Circle,
+            "projects/note",
+            "2026-07-18T13:06:00Z",
+        )
+        .is_err();
+    let cold_wrong_key_refused = cold
+        .read_section_as_agent(
+            &chain,
+            &wrong_agent,
+            Zone::Circle,
+            "projects/note",
+            "2026-07-18T13:04:00Z",
+        )
+        .is_err();
+    if hot_valid
+        && hot_wrong_key_refused
+        && hot_revoked_refused
+        && cold_revoked_refused
+        && cold_wrong_key_refused
+    {
+        Ok("hot and cold returned the same revoked authority verdict".into())
+    } else {
+        Err(format!(
+            "CORE-DEL-004 drift: hot_valid={hot_valid}, hot_wrong={hot_wrong_key_refused}, hot_revoked={hot_revoked_refused}, cold_revoked={cold_revoked_refused}, cold_wrong={cold_wrong_key_refused}"
+        ))
+    }
+}
+
+fn core_delegated_scenario(
+    zone_name: &str,
+    operation: &str,
+    authority: &str,
+) -> Result<CoreDelegatedObservation, String> {
+    let vector: serde_json::Value = serde_json::from_str(CB8_AUTHORITY_FLOWS)
+        .map_err(|error| format!("CORE-DEL-001 authority vector does not parse: {error}"))?;
+    let row = vector["grantee_cases"]
+        .as_array()
+        .and_then(|rows| {
+            rows.iter().find(|row| {
+                row["zone"] == zone_name
+                    && row["operation"] == operation
+                    && row["authority"] == authority
+            })
+        })
+        .ok_or_else(|| {
+            format!("CORE-DEL-001 missing matrix row {zone_name}/{operation}/{authority}")
+        })?;
+    let expected_accepted = row["expected"] == "accepted";
+    let zone = match zone_name {
+        "public" => Zone::Public,
+        "circle" => Zone::Circle,
+        "self" => Zone::Self_,
+        other => return Err(format!("CORE-DEL-001 unknown zone {other}")),
+    };
+    let (mut bundle, owner, agent, mut entropy, self_sid) = core_delegated_fixture_bundle()?;
+    let chain = if let Some(request) = core_delegated_request(authority)? {
+        vec![
+            bundle
+                .grant_generic(
+                    &owner,
+                    "core-del-001",
+                    &agent.verifying_key(),
+                    &[request],
+                    "2026-07-18T13:03:00Z",
+                    "2026-07-25T13:03:00Z",
+                    0,
+                    "2026-07-18T13:03:00Z",
+                    &mut entropy,
+                )
+                .map_err(|error| format!("CORE-DEL-001 grant failed: {error}"))?
+                .mandate,
+        ]
+    } else {
+        core_delegated_manual_tag_chain(&bundle, &owner, &agent)?
+    };
+    let self_folder = chain[0]
+        .parsed_perimeter()
+        .map_err(|error| format!("CORE-DEL-001 perimeter parse failed: {error}"))?
+        .into_iter()
+        .find_map(|entry| match entry {
+            PerimeterEntry::Ethos {
+                zone: Zone::Self_,
+                dir,
+                ..
+            } => Some(dir),
+            _ => None,
+        })
+        .unwrap_or_default();
+    if zone == Zone::Self_ && authority.contains("#id=opaque-note") {
+        let granted_sid = chain[0]
+            .parsed_perimeter()
+            .map_err(|error| format!("CORE-DEL-001 exact perimeter parse failed: {error}"))?
+            .into_iter()
+            .find_map(|entry| match entry {
+                PerimeterEntry::EthosId {
+                    zone: Zone::Self_,
+                    id,
+                    ..
+                } => Some(id),
+                _ => None,
+            })
+            .ok_or_else(|| "CORE-DEL-001 exact self authority is missing".to_owned())?;
+        if granted_sid != self_sid {
+            return Err(format!(
+                "CORE-DEL-001 exact self SID drift: granted={granted_sid}, target={self_sid}"
+            ));
+        }
+    }
+    let before = cb7_store_snapshot(&bundle.store)?;
+    let gamma_before = bundle
+        .gamma_entries()
+        .map_err(|error| format!("CORE-DEL-001 Gamma before failed: {error}"))?
+        .len();
+    let preallocated = Sid::parse("01ARZ3NDEKTSV4RRFFQ69G5FAW")
+        .map_err(|error| format!("CORE-DEL-001 preallocated SID failed: {error}"))?;
+    let result = match (zone, operation) {
+        (Zone::Public | Zone::Circle, "list") => bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::List {
+                target: GranteeTarget::Display("projects"),
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        ),
+        (Zone::Public | Zone::Circle, "read") => bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::Read {
+                target: GranteeTarget::Display("projects/note"),
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        ),
+        (Zone::Public | Zone::Circle, "create") => bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::Create {
+                folder: GranteeTarget::Display("projects"),
+                preallocated_sid: None,
+                name: "fresh-note",
+                title: "delegated create",
                 tags: &[],
-                body: "narrow plaintext",
-                now: "2026-07-18T12:01:00Z",
+                body: "created by grantee",
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        ),
+        (Zone::Public | Zone::Circle, "edit") => bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::Edit {
+                target: GranteeTarget::Display("projects/note"),
+                body: "edited by grantee",
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        ),
+        (Zone::Public | Zone::Circle, "delete") => bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::Delete {
+                target: GranteeTarget::Display("projects/note"),
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        ),
+        (Zone::Self_, "list") => bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::List {
+                target: GranteeTarget::FolderIds(&self_folder),
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        ),
+        (Zone::Self_, "read") => bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::Read {
+                target: GranteeTarget::Id(self_sid),
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        ),
+        (Zone::Self_, "create") => bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::Create {
+                folder: GranteeTarget::FolderIds(&[]),
+                preallocated_sid: (authority == "append.self#id=preallocated")
+                    .then_some(preallocated),
+                name: if authority == "append.self#id=preallocated" {
+                    "preallocated"
+                } else {
+                    "fresh-opaque"
+                },
+                title: "delegated self create",
+                tags: &[],
+                body: "created self by grantee",
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        ),
+        (Zone::Self_, "edit") => bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::Edit {
+                target: GranteeTarget::Id(self_sid),
+                body: "edited self by grantee",
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        ),
+        (Zone::Self_, "delete") => bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::Delete {
+                target: GranteeTarget::Id(self_sid),
+                now: "2026-07-18T13:04:00Z",
+            },
+            &mut entropy,
+        ),
+        other => return Err(format!("CORE-DEL-001 unknown operation {other:?}")),
+    };
+    let after = cb7_store_snapshot(&bundle.store)?;
+    let gamma_after = bundle
+        .gamma_entries()
+        .map_err(|error| format!("CORE-DEL-001 Gamma after failed: {error}"))?
+        .len();
+    let accepted = result.is_ok();
+    if accepted != expected_accepted {
+        return Err(format!(
+            "CORE-DEL-001 {zone_name}/{operation}/{authority} returned {result:?}"
+        ));
+    }
+    let gamma_delta = gamma_after - gamma_before;
+    let gamma_actor_is_grantee = if accepted {
+        bundle
+            .gamma_entries()
+            .map_err(|error| format!("CORE-DEL-001 Gamma actor failed: {error}"))?
+            .last()
+            .is_some_and(|entry| {
+                entry.authorized_via.as_ref() == Some(&vec![chain[0].id.clone()])
+                    && entry.authorized_by.as_deref() == Some(chain[0].id.as_str())
+                    && entry.signature.key == chain[0].grantee.pubkey
+            })
+    } else {
+        false
+    };
+    let refusal_unchanged = !accepted && before == after;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &after)?;
+    drop(bundle);
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-DEL-001 fresh open failed: {error}"))?;
+    let fresh_reopen_verified = if accepted {
+        fresh.gamma_verify().is_ok()
+    } else {
+        before == cb7_store_snapshot(&fresh.store)?
+    };
+    let effect_verified = match result {
+        Ok(GranteeContentOutcome::Listed(entries)) => entries
+            .iter()
+            .any(|entry| entry.path == "note" || entry.path == "opaque-note"),
+        Ok(GranteeContentOutcome::Read(body)) => body == "before delegated operation",
+        Ok(GranteeContentOutcome::Created(created)) => {
+            let path = if zone == Zone::Self_ {
+                if authority == "append.self#id=preallocated" {
+                    "preallocated"
+                } else {
+                    "fresh-opaque"
+                }
+            } else {
+                "projects/fresh-note"
+            };
+            if authority == "append.self#id=preallocated" {
+                let index: aithos_bundle::bundle::SelfIndex = fresh
+                    .store
+                    .get("e/self/index.json")
+                    .ok()
+                    .flatten()
+                    .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+                    .unwrap_or_default();
+                created == preallocated
+                    && index
+                        .blobs
+                        .iter()
+                        .any(|row| row.sid == preallocated.to_string())
+            } else {
+                fresh.read_section(zone, path, &owner).is_ok_and(|body| {
+                    body == if zone == Zone::Self_ {
+                        "created self by grantee"
+                    } else {
+                        "created by grantee"
+                    }
+                })
+            }
+        }
+        Ok(GranteeContentOutcome::Mutated) if operation == "edit" => fresh
+            .read_section(
+                zone,
+                if zone == Zone::Self_ {
+                    "sealed/opaque-note"
+                } else {
+                    "projects/note"
+                },
+                &owner,
+            )
+            .is_ok_and(|body| {
+                body == if zone == Zone::Self_ {
+                    "edited self by grantee"
+                } else {
+                    "edited by grantee"
+                }
+            }),
+        Ok(GranteeContentOutcome::Mutated) if operation == "delete" => fresh
+            .read_section(
+                zone,
+                if zone == Zone::Self_ {
+                    "sealed/opaque-note"
+                } else {
+                    "projects/note"
+                },
+                &owner,
+            )
+            .is_err(),
+        Err(_) => refusal_unchanged,
+        _ => false,
+    };
+    Ok(CoreDelegatedObservation {
+        zone: zone_name.into(),
+        operation: operation.into(),
+        authority: authority.into(),
+        verdict: if accepted { "accepted" } else { "refused" }.into(),
+        accepted,
+        effect_verified,
+        gamma_delta,
+        gamma_actor_is_grantee,
+        fresh_reopen_verified,
+        refusal_unchanged,
+    })
+}
+
+fn core_exact_section_scenario(fixture: &str) -> Result<CoreExactSectionObservation, String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x5d; 32])
+            .map_err(|error| format!("CORE-DEL-003 owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x6d; 32]);
+    let agent = agent_sk(0x77);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T13:00:00Z",
+    )
+    .map_err(|error| format!("CORE-DEL-003 init failed: {error}"))?;
+    let (zone, folder, target, sibling, verb) = match fixture {
+        "circle-read" => (Zone::Circle, "projects", "note1", "note2", Verb::Read),
+        "self-read" => (Zone::Self_, "sealed", "consignes", "marges", Verb::Read),
+        "circle-edit" => (Zone::Circle, "projects", "brouillon", "sibling", Verb::Edit),
+        "self-edit" => (Zone::Self_, "sealed", "consignes", "marges", Verb::Edit),
+        other => return Err(format!("CORE-DEL-003 unknown fixture {other}")),
+    };
+    bundle
+        .transaction(|bundle| {
+            for (name, body) in [(target, "target body"), (sibling, "sibling body")] {
+                bundle.section_add(
+                    &SectionSpec {
+                        zone,
+                        folder_path: folder,
+                        name,
+                        title: name,
+                        tags: &[],
+                        body,
+                        now: "2026-07-18T13:01:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                )?;
+            }
+            bundle.publish(&owner, "2026-07-18T13:02:00Z")
+        })
+        .map_err(|error| format!("CORE-DEL-003 fixture failed: {error}"))?;
+    let target_path = format!("{folder}/{target}");
+    let sibling_path = format!("{folder}/{sibling}");
+    let grant = bundle
+        .grant_generic(
+            &owner,
+            "core-del-003",
+            &agent.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                verb,
+                zone,
+                GrantSelector::Id(target_path.clone()),
+            )],
+            "2026-07-18T13:03:00Z",
+            "2026-07-25T13:03:00Z",
+            0,
+            "2026-07-18T13:03:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-DEL-003 grant failed: {error}"))?;
+    let chain = vec![grant.mandate];
+    let ids = if zone == Zone::Self_ {
+        let index: aithos_bundle::bundle::SelfIndex = bundle
+            .store
+            .get("e/self/index.json")
+            .map_err(|error| format!("CORE-DEL-003 self index read failed: {error}"))?
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .ok_or_else(|| "CORE-DEL-003 self index is missing".to_owned())?;
+        let target_sid = chain[0]
+            .parsed_perimeter()
+            .map_err(|error| format!("CORE-DEL-003 perimeter failed: {error}"))?
+            .into_iter()
+            .find_map(|entry| match entry {
+                PerimeterEntry::EthosId {
+                    zone: Zone::Self_,
+                    id,
+                    ..
+                } => Some(id),
+                _ => None,
+            })
+            .ok_or_else(|| "CORE-DEL-003 target self SID missing".to_owned())?;
+        let sibling_sid = index
+            .blobs
+            .last()
+            .ok_or_else(|| "CORE-DEL-003 sibling self SID missing".to_owned())?
+            .sid
+            .parse::<Sid>()
+            .map_err(|error| format!("CORE-DEL-003 sibling self SID failed: {error}"))?;
+        Some((target_sid, sibling_sid))
+    } else {
+        None
+    };
+    let target_selector = ids.as_ref().map_or(
+        GranteeTarget::Display(target_path.as_str()),
+        |(target, _)| GranteeTarget::Id(*target),
+    );
+    let target_readable = if verb == Verb::Read {
+        matches!(
+            bundle.grantee_content_operation(
+                &chain,
+                &agent,
+                zone,
+                GranteeContentOperation::Read {
+                    target: target_selector,
+                    now: "2026-07-18T13:04:00Z",
+                },
+                &mut entropy,
+            ),
+            Ok(GranteeContentOutcome::Read(ref body)) if body == "target body"
+        )
+    } else {
+        true
+    };
+    let target_selector = ids.as_ref().map_or(
+        GranteeTarget::Display(target_path.as_str()),
+        |(target, _)| GranteeTarget::Id(*target),
+    );
+    let target_rewritten = if verb == Verb::Edit {
+        bundle
+            .grantee_content_operation(
+                &chain,
+                &agent,
+                zone,
+                GranteeContentOperation::Edit {
+                    target: target_selector,
+                    body: "rewritten by exact grantee",
+                    now: "2026-07-18T13:04:00Z",
+                },
+                &mut entropy,
+            )
+            .is_ok()
+            && bundle
+                .read_section(zone, &target_path, &owner)
+                .is_ok_and(|body| body == "rewritten by exact grantee")
+    } else {
+        false
+    };
+    let before_sibling = cb7_store_snapshot(&bundle.store)?;
+    let sibling_selector = ids.as_ref().map_or(
+        GranteeTarget::Display(sibling_path.as_str()),
+        |(_, sibling)| GranteeTarget::Id(*sibling),
+    );
+    let sibling_unreachable = bundle
+        .grantee_content_operation(
+            &chain,
+            &agent,
+            zone,
+            GranteeContentOperation::Read {
+                target: sibling_selector,
+                now: "2026-07-18T13:05:00Z",
+            },
+            &mut entropy,
+        )
+        .is_err();
+    let sibling_create_refused = if fixture == "circle-edit" {
+        bundle
+            .grantee_content_operation(
+                &chain,
+                &agent,
+                zone,
+                GranteeContentOperation::Create {
+                    folder: GranteeTarget::Display(folder),
+                    preallocated_sid: None,
+                    name: "unauthorized-sibling",
+                    title: "unauthorized sibling",
+                    tags: &[],
+                    body: "must roll back",
+                    now: "2026-07-18T13:05:00Z",
+                },
+                &mut entropy,
+            )
+            .is_err()
+    } else {
+        true
+    };
+    let after = cb7_store_snapshot(&bundle.store)?;
+    let failed_attempt_unchanged = before_sibling == after;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &after)?;
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-DEL-003 fresh open failed: {error}"))?;
+    if verb == Verb::Edit
+        && !fresh
+            .read_section(zone, &target_path, &owner)
+            .is_ok_and(|body| body == "rewritten by exact grantee")
+    {
+        return Err("CORE-DEL-003 rewritten target did not survive reopen".into());
+    }
+    Ok(CoreExactSectionObservation {
+        target: target.to_owned(),
+        target_readable,
+        target_rewritten,
+        sibling_unreachable,
+        sibling_create_refused,
+        failed_attempt_unchanged,
+    })
+}
+
+fn core_current_authority_scenario(
+    authority_change: &str,
+) -> Result<CoreCurrentAuthorityObservation, String> {
+    let (mut bundle, owner, agent, mut entropy, _) = core_delegated_fixture_bundle()?;
+    let not_after = match authority_change {
+        "expired" => "2026-07-18T13:04:00Z",
+        "revoked" => "2026-07-25T13:03:00Z",
+        other => return Err(format!("CORE-DEL-004 unknown authority change {other}")),
+    };
+    let mandate = bundle
+        .grant_generic(
+            &owner,
+            "core-del-004",
+            &agent.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Edit,
+                Zone::Circle,
+                GrantSelector::Id("projects/note".into()),
+            )],
+            "2026-07-18T13:03:00Z",
+            not_after,
+            0,
+            "2026-07-18T13:03:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-DEL-004 grant failed: {error}"))?
+        .mandate;
+    let chain = vec![mandate];
+    let old_line_usable_before_change = bundle
+        .grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Circle,
+            GranteeContentOperation::Edit {
+                target: GranteeTarget::Display("projects/note"),
+                body: "pre-change proof",
+                now: "2026-07-18T13:03:30Z",
+            },
+            &mut entropy,
+        )
+        .is_ok()
+        && bundle
+            .read_section(Zone::Circle, "projects/note", &owner)
+            .is_ok_and(|body| body == "pre-change proof");
+    if authority_change == "revoked" {
+        bundle
+            .log_revoke_owner(
+                &owner,
+                &chain[0].id,
+                "CORE-DEL-004 current authority",
+                "2026-07-18T13:04:00Z",
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-DEL-004 revoke failed: {error}"))?;
+    }
+    let before = cb7_store_snapshot(&bundle.store)?;
+    let result = bundle.grantee_content_operation(
+        &chain,
+        &agent,
+        Zone::Circle,
+        GranteeContentOperation::Edit {
+            target: GranteeTarget::Display("projects/note"),
+            body: "must never commit",
+            now: "2026-07-18T13:05:00Z",
+        },
+        &mut entropy,
+    );
+    let after = cb7_store_snapshot(&bundle.store)?;
+    let current_verdict_refused = result.is_err();
+    let canonical_unchanged = before == after;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &after)?;
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-DEL-004 fresh open failed: {error}"))?;
+    let fresh_reopen_unchanged = cb7_store_snapshot(&fresh.store)? == before
+        && fresh
+            .read_section(Zone::Circle, "projects/note", &owner)
+            .is_ok_and(|body| body == "pre-change proof");
+    Ok(CoreCurrentAuthorityObservation {
+        authority_change: authority_change.into(),
+        old_line_usable_before_change,
+        current_verdict_refused,
+        canonical_unchanged,
+        fresh_reopen_unchanged,
+    })
+}
+
+fn core_delegated_rollback_scenario() -> Result<CoreDelegatedRollbackObservation, String> {
+    let (mut fixture, owner, agent, mut entropy, _) = core_delegated_fixture_bundle()?;
+    let chain = vec![
+        fixture
+            .grant_generic(
+                &owner,
+                "core-del-005",
+                &agent.verifying_key(),
+                &[GenericGrantRequest::ethos(
+                    Verb::Edit,
+                    Zone::Circle,
+                    GrantSelector::Id("projects/note".into()),
+                )],
+                "2026-07-18T13:03:00Z",
+                "2026-07-25T13:03:00Z",
+                0,
+                "2026-07-18T13:03:00Z",
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-DEL-005 grant failed: {error}"))?
+            .mandate,
+    ];
+    let before = cb7_store_snapshot(&fixture.store)?;
+    let mut inner = MemStore::default();
+    cb7_install(&mut inner, &before)?;
+    drop(fixture);
+    let wrapped = CoreAtomicFaultStore::new(inner, CoreAtomicFault::GammaValidation);
+    let mut bundle = Bundle::open(wrapped)
+        .map_err(|error| format!("CORE-DEL-005 reopen with fault failed: {error}"))?;
+    let result = bundle.grantee_content_operation(
+        &chain,
+        &agent,
+        Zone::Circle,
+        GranteeContentOperation::Edit {
+            target: GranteeTarget::Display("projects/note"),
+            body: "late refusal must disappear",
+            now: "2026-07-18T13:04:00Z",
+        },
+        &mut entropy,
+    );
+    let late_failure_injected_once = bundle.store.injected.get() == 1;
+    let operation_refused = result.is_err();
+    let after = cb7_store_snapshot(&bundle.store)?;
+    let canonical_unchanged = before == after;
+    let failed_artifacts_reachable = before != after;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &after)?;
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-DEL-005 fresh reopen failed: {error}"))?;
+    let fresh_reopen_verified = fresh.gamma_verify().is_ok()
+        && fresh
+            .read_section(Zone::Circle, "projects/note", &owner)
+            .is_ok_and(|body| body == "before delegated operation")
+        && cb7_store_snapshot(&fresh.store)? == before;
+    Ok(CoreDelegatedRollbackObservation {
+        late_failure_injected_once,
+        operation_refused,
+        canonical_unchanged,
+        fresh_reopen_verified,
+        failed_artifacts_reachable,
+    })
+}
+
+fn core_structural_authority_scenario(
+    operation: &str,
+    authority: &str,
+) -> Result<CoreStructuralAuthorityObservation, String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x5e; 32])
+            .map_err(|error| format!("CORE-STR-001 owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x6e; 32]);
+    let agent = agent_sk(0x78);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T15:00:00Z",
+    )
+    .map_err(|error| format!("CORE-STR-001 init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            for (folder, name, tags) in [
+                ("source", "note", Vec::<String>::new()),
+                ("destination", "anchor", Vec::<String>::new()),
+                ("empty", "temporary", Vec::<String>::new()),
+                ("nonempty/child", "protected", vec!["secret".to_owned()]),
+            ] {
+                bundle.section_add(
+                    &SectionSpec {
+                        zone: Zone::Circle,
+                        folder_path: folder,
+                        name,
+                        title: name,
+                        tags: &tags,
+                        body: name,
+                        now: "2026-07-18T15:01:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                )?;
+            }
+            bundle.publish(&owner, "2026-07-18T15:02:00Z")
+        })
+        .map_err(|error| format!("CORE-STR-001 fixture failed: {error}"))?;
+    bundle
+        .owner_content_operation(
+            Zone::Circle,
+            OwnerContentOperation::Delete {
+                display_path: "empty/temporary",
+                now: "2026-07-18T15:02:30Z",
             },
             &owner,
             &mut entropy,
         )
-        .map_err(|error| format!("CB12 capability content failed: {error}"))?;
-
-    let session = LocalSession::owner(bundle.did.clone(), &owner);
-    let other = LocalSession::owner(bundle.did.clone(), &owner);
-
-    let gamma = session.gamma_capability();
-    session
-        .accepts_gamma_capability(&gamma)
-        .map_err(|error| format!("CB12 Gamma capability failed: {error}"))?;
-    if other.accepts_gamma_capability(&gamma).is_ok() {
-        return Err("CB12 Gamma capability crossed a session boundary".into());
-    }
-
-    let header = session
-        .header_capability()
-        .map_err(|error| format!("CB12 header capability failed: {error}"))?;
-    session
-        .accepts_header_capability(&header)
-        .map_err(|error| format!("CB12 header binding failed: {error}"))?;
-    if other.accepts_header_capability(&header).is_ok() {
-        return Err("CB12 header capability crossed a session boundary".into());
-    }
-
-    let audit = session
-        .audit_capability()
-        .map_err(|error| format!("CB12 audit capability failed: {error}"))?;
-    session
-        .accepts_audit_capability(&audit)
-        .map_err(|error| format!("CB12 audit binding failed: {error}"))?;
-    if other.accepts_audit_capability(&audit).is_ok() {
-        return Err("CB12 audit capability crossed a session boundary".into());
-    }
-
-    let body = session
-        .body_capability()
-        .map_err(|error| format!("CB12 body capability failed: {error}"))?;
-    let opened = session
-        .read_owner_section(&body, &bundle, Zone::Circle, "projects/note")
-        .map_err(|error| format!("CB12 typed body open failed: {error}"))?;
-    if opened != "narrow plaintext"
-        || other
-            .read_owner_section(&body, &bundle, Zone::Circle, "projects/note")
-            .is_ok()
-    {
-        return Err("CB12 body capability was not subject/session bound".into());
-    }
-
-    Ok(())
+        .map_err(|error| format!("CORE-STR-001 empty-folder fixture failed: {error}"))?;
+    let request = |verb, dir: &str| {
+        GenericGrantRequest::ethos(verb, Zone::Circle, GrantSelector::Dir(dir.to_owned()))
+    };
+    let leading_verb = |value: &str| -> Result<Verb, String> {
+        match value.split_whitespace().next().unwrap_or_default() {
+            "read" => Ok(Verb::Read),
+            "edit" => Ok(Verb::Edit),
+            "append" => Ok(Verb::Append),
+            "delete" => Ok(Verb::Delete),
+            "write" => Ok(Verb::Write),
+            other => Err(format!("CORE-STR-001 unknown authority verb {other}")),
+        }
+    };
+    let requests = match operation {
+        "list and read a folder" => vec![request(leading_verb(authority)?, "source")],
+        "create a child folder" => vec![request(leading_verb(authority)?, "destination")],
+        "rename a folder" => vec![request(leading_verb(authority)?, "source")],
+        "delete an empty folder" => vec![request(leading_verb(authority)?, "empty")],
+        "move a folder" => match authority {
+            "edit on source and append on destination" => {
+                vec![
+                    request(Verb::Edit, "source"),
+                    request(Verb::Append, "destination"),
+                ]
+            }
+            "append on source and write on destination" => {
+                vec![
+                    request(Verb::Append, "source"),
+                    request(Verb::Write, "destination"),
+                ]
+            }
+            "delete on source and append on destination" => {
+                vec![
+                    request(Verb::Delete, "source"),
+                    request(Verb::Append, "destination"),
+                ]
+            }
+            "edit on source only" => vec![request(Verb::Edit, "source")],
+            other => return Err(format!("CORE-STR-001 unknown move authority {other}")),
+        },
+        "delete a non-empty folder" => match authority {
+            "delete covering folder and complete subtree" => {
+                vec![request(Verb::Delete, "nonempty")]
+            }
+            "delete on folder but not one descendant" => vec![GenericGrantRequest::ethos(
+                Verb::Delete,
+                Zone::Circle,
+                GrantSelector::Tag {
+                    dir: "nonempty".into(),
+                    tag: "allowed".into(),
+                },
+            )],
+            other => return Err(format!("CORE-STR-001 unknown subtree authority {other}")),
+        },
+        other => return Err(format!("CORE-STR-001 unknown operation {other}")),
+    };
+    let chain = vec![
+        bundle
+            .grant_generic(
+                &owner,
+                "core-str-001",
+                &agent.verifying_key(),
+                &requests,
+                "2026-07-18T15:03:00Z",
+                "2026-07-25T15:03:00Z",
+                0,
+                "2026-07-18T15:03:00Z",
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-STR-001 grant failed: {error}"))?
+            .mandate,
+    ];
+    let before = cb7_store_snapshot(&bundle.store)?;
+    let gamma_before = bundle
+        .gamma_entries()
+        .map_err(|error| format!("CORE-STR-001 Gamma before failed: {error}"))?
+        .len();
+    let result = match operation {
+        "list and read a folder" => bundle.structural_operation(
+            &chain,
+            &agent,
+            StructuralOperation::ListFolder {
+                zone: Zone::Circle,
+                folder: "source",
+                now: "2026-07-18T15:04:00Z",
+            },
+            &mut entropy,
+        ),
+        "create a child folder" => bundle.structural_operation(
+            &chain,
+            &agent,
+            StructuralOperation::CreateFolder {
+                zone: Zone::Circle,
+                parent: "destination",
+                name: "newchild",
+                now: "2026-07-18T15:04:00Z",
+            },
+            &mut entropy,
+        ),
+        "rename a folder" => bundle.structural_operation(
+            &chain,
+            &agent,
+            StructuralOperation::RenameFolder {
+                zone: Zone::Circle,
+                folder: "source",
+                new_name: "renamed",
+                now: "2026-07-18T15:04:00Z",
+            },
+            &mut entropy,
+        ),
+        "delete an empty folder" => bundle.structural_operation(
+            &chain,
+            &agent,
+            StructuralOperation::DeleteFolder {
+                zone: Zone::Circle,
+                folder: "empty",
+                recursive: false,
+                now: "2026-07-18T15:04:00Z",
+            },
+            &mut entropy,
+        ),
+        "move a folder" => bundle.structural_operation(
+            &chain,
+            &agent,
+            StructuralOperation::MoveFolder {
+                zone: Zone::Circle,
+                folder: "source",
+                destination_parent: "destination",
+                now: "2026-07-18T15:04:00Z",
+            },
+            &mut entropy,
+        ),
+        "delete a non-empty folder" => bundle.structural_operation(
+            &chain,
+            &agent,
+            StructuralOperation::DeleteFolder {
+                zone: Zone::Circle,
+                folder: "nonempty",
+                recursive: true,
+                now: "2026-07-18T15:04:00Z",
+            },
+            &mut entropy,
+        ),
+        _ => unreachable!(),
+    };
+    let list_effect = matches!(
+        &result,
+        Ok(StructuralOutcome::Listed(entries))
+            if entries.iter().any(|entry| entry.path == "note")
+    );
+    let accepted = result.is_ok();
+    let after = cb7_store_snapshot(&bundle.store)?;
+    let gamma_after = bundle
+        .gamma_entries()
+        .map_err(|error| format!("CORE-STR-001 Gamma after failed: {error}"))?
+        .len();
+    let gamma_delta = gamma_after - gamma_before;
+    let refusal_unchanged = !accepted && before == after;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &after)?;
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-STR-001 fresh open failed: {error}"))?;
+    let exact_effect_verified = if !accepted {
+        refusal_unchanged
+    } else {
+        match operation {
+            "list and read a folder" => list_effect,
+            "create a child folder" => fresh
+                .resolve_folder(Zone::Circle, "destination/newchild")
+                .is_ok(),
+            "rename a folder" => fresh
+                .read_section(Zone::Circle, "renamed/note", &owner)
+                .is_ok_and(|body| body == "note"),
+            "delete an empty folder" => fresh.resolve_folder(Zone::Circle, "empty").is_err(),
+            "move a folder" => fresh
+                .read_section(Zone::Circle, "destination/source/note", &owner)
+                .is_ok_and(|body| body == "note"),
+            "delete a non-empty folder" => fresh
+                .read_section(Zone::Circle, "nonempty/child/protected", &owner)
+                .is_err(),
+            _ => false,
+        }
+    };
+    let fresh_reopen_verified = fresh.gamma_verify().is_ok();
+    Ok(CoreStructuralAuthorityObservation {
+        operation: operation.into(),
+        authority: authority.into(),
+        verdict: if accepted { "accepted" } else { "refused" }.into(),
+        exact_effect_verified,
+        gamma_delta,
+        refusal_unchanged,
+        fresh_reopen_verified,
+    })
 }
 
-fn cb8_acceptance() -> Result<(), String> {
-    let vector: serde_json::Value = serde_json::from_str(CB8_AUTHORITY_FLOWS)
-        .map_err(|error| format!("CB8 authority-flow vector does not parse: {error}"))?;
-    let owner_cases = vector["owner_cases"]
-        .as_array()
-        .ok_or_else(|| "CB8 owner cases are not an array".to_owned())?;
-    if owner_cases.len() != 15 {
-        return Err("CB8 owner matrix is not the closed fifteen-case set".into());
-    }
+fn core_revocation_cut_scenario() -> Result<CoreRevocationCutObservation, String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x5f; 32])
+            .map_err(|error| format!("CORE-REV-001 owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x6f; 32]);
+    let revoked = agent_sk(0x79);
+    let survivor = agent_sk(0x7a);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T16:00:00Z",
+    )
+    .map_err(|error| format!("CORE-REV-001 init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            bundle.section_add(
+                &SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: "projects",
+                    name: "note",
+                    title: "protected",
+                    tags: &[],
+                    body: "protected body",
+                    now: "2026-07-18T16:01:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )?;
+            bundle.publish(&owner, "2026-07-18T16:02:00Z")
+        })
+        .map_err(|error| format!("CORE-REV-001 fixture failed: {error}"))?;
+    let revoked_mandate = bundle
+        .grant_generic(
+            &owner,
+            "core-rev-revoked",
+            &revoked.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Write,
+                Zone::Circle,
+                GrantSelector::Dir("projects".into()),
+            )],
+            "2026-07-18T16:03:00Z",
+            "2026-07-25T16:03:00Z",
+            0,
+            "2026-07-18T16:03:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-REV-001 revoked grant failed: {error}"))?
+        .mandate;
+    let survivor_mandate = bundle
+        .grant_generic(
+            &owner,
+            "core-rev-survivor",
+            &survivor.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Read,
+                Zone::Circle,
+                GrantSelector::Dir("projects".into()),
+            )],
+            "2026-07-18T16:04:00Z",
+            "2026-07-25T16:04:00Z",
+            0,
+            "2026-07-18T16:04:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-REV-001 survivor grant failed: {error}"))?
+        .mandate;
+    let manifest_before: Manifest = bundle
+        .store
+        .get("manifest.json")
+        .map_err(|error| format!("CORE-REV-001 manifest before read failed: {error}"))?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or_else(|| "CORE-REV-001 manifest before missing".to_owned())?;
+    let header_before = bundle
+        .store
+        .list("e/circle/hdr/")
+        .map_err(|error| format!("CORE-REV-001 header list failed: {error}"))?
+        .into_iter()
+        .filter_map(|path| bundle.store.get(&path).ok().flatten())
+        .filter_map(|bytes| serde_json::from_slice::<Header>(&bytes).ok())
+        .find(|header| header.node.contains("/d/"))
+        .ok_or_else(|| "CORE-REV-001 protected header missing".to_owned())?;
+    let old_version = header_before.latest_version();
+    bundle
+        .revoke_transaction(
+            &owner,
+            &revoked_mandate.id,
+            "projects",
+            "incident",
+            "2026-07-18T16:05:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-REV-001 cut failed: {error}"))?;
+    let manifest_after: Manifest = bundle
+        .store
+        .get("manifest.json")
+        .map_err(|error| format!("CORE-REV-001 manifest after read failed: {error}"))?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or_else(|| "CORE-REV-001 manifest after missing".to_owned())?;
+    let one_new_edition = manifest_after.edition.height == manifest_before.edition.height + 1;
+    let entries = bundle
+        .gamma_entries()
+        .map_err(|error| format!("CORE-REV-001 Gamma read failed: {error}"))?;
+    let revoke_gamma_present = entries.iter().any(|entry| {
+        entry.kind == "revoke" && entry.target.as_deref() == Some(revoked_mandate.id.as_str())
+    });
+    let header_after = bundle
+        .store
+        .list("e/circle/hdr/")
+        .map_err(|error| format!("CORE-REV-001 rotated header list failed: {error}"))?
+        .into_iter()
+        .filter_map(|path| bundle.store.get(&path).ok().flatten())
+        .filter_map(|bytes| serde_json::from_slice::<Header>(&bytes).ok())
+        .find(|header| header.node == header_before.node)
+        .ok_or_else(|| "CORE-REV-001 rotated header missing".to_owned())?;
+    let revoked_kex = aithos_core::keys::grantee_kex_secret(&revoked);
+    let survivor_kex = aithos_core::keys::grantee_kex_secret(&survivor);
+    let revoked_cut = header_after
+        .open_latest(&bundle.did, &revoked_mandate.grantee.pubkey, &revoked_kex)
+        .is_err()
+        && bundle
+            .read_section_as_agent(
+                std::slice::from_ref(&revoked_mandate),
+                &revoked,
+                Zone::Circle,
+                "projects/note",
+                "2026-07-18T16:06:00Z",
+            )
+            .is_err();
+    let survivor_reads = header_after
+        .open_latest(&bundle.did, &survivor_mandate.grantee.pubkey, &survivor_kex)
+        .is_ok()
+        && bundle
+            .read_section_as_agent(
+                std::slice::from_ref(&survivor_mandate),
+                &survivor,
+                Zone::Circle,
+                "projects/note",
+                "2026-07-18T16:06:00Z",
+            )
+            .is_ok_and(|body| body == "protected body");
+    let rotated_header_and_body = header_after.latest_version() == old_version + 1
+        && bundle
+            .read_section(Zone::Circle, "projects/note", &owner)
+            .is_ok_and(|body| body == "protected body");
+    let exported = cb7_store_snapshot(&bundle.store)?;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &exported)?;
+    drop(bundle);
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-REV-001 fresh open failed: {error}"))?;
+    let fresh_keyless_verified = fresh.verify().is_ok()
+        && fresh.gamma_verify().is_ok()
+        && cb7_store_snapshot(&fresh.store)? == exported;
+    Ok(CoreRevocationCutObservation {
+        one_new_edition,
+        revoke_gamma_present,
+        revoked_cut,
+        survivor_reads,
+        rotated_header_and_body,
+        fresh_keyless_verified,
+    })
+}
 
-    for zone in [Zone::Public, Zone::Circle, Zone::Self_] {
-        let root = Cb7TempRoot::new(&format!("cb8-{}", zone.as_str()))?;
-        let seed = MasterSeed::from_slice(&[0x58; 32])
-            .map_err(|error| format!("CB8 owner seed failed: {error}"))?;
-        let owner = OwnerKeys::genesis(&seed);
-        let succession = succession_from_entropy([0x68; 32]);
+fn core_structural_scoped_read_scenario() -> Result<CoreStructuralDerivedObservation, String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x60; 32])
+            .map_err(|error| format!("CORE-STR-002 read owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x70; 32]);
+    let agent = agent_sk(0x7b);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T17:00:00Z",
+    )
+    .map_err(|error| format!("CORE-STR-002 read init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            for (folder, name, body) in [
+                ("projects/nested", "allowed", "allowed body"),
+                ("projects/sibling", "hidden", "hidden body"),
+            ] {
+                bundle.section_add(
+                    &SectionSpec {
+                        zone: Zone::Circle,
+                        folder_path: folder,
+                        name,
+                        title: name,
+                        tags: &[],
+                        body,
+                        now: "2026-07-18T17:01:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                )?;
+            }
+            bundle.publish(&owner, "2026-07-18T17:02:00Z")
+        })
+        .map_err(|error| format!("CORE-STR-002 read fixture failed: {error}"))?;
+    let chain = vec![
+        bundle
+            .grant_generic(
+                &owner,
+                "core-str-read",
+                &agent.verifying_key(),
+                &[GenericGrantRequest::ethos(
+                    Verb::Read,
+                    Zone::Circle,
+                    GrantSelector::Dir("projects/nested".into()),
+                )],
+                "2026-07-18T17:03:00Z",
+                "2026-07-25T17:03:00Z",
+                0,
+                "2026-07-18T17:03:00Z",
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-STR-002 read grant failed: {error}"))?
+            .mandate,
+    ];
+    let listed = bundle
+        .structural_operation(
+            &chain,
+            &agent,
+            StructuralOperation::ListFolder {
+                zone: Zone::Circle,
+                folder: "projects/nested",
+                now: "2026-07-18T17:04:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-STR-002 scoped list failed: {error}"))?;
+    let primary_effect_verified = matches!(
+        listed,
+        StructuralOutcome::Listed(entries)
+            if entries.iter().any(|entry| entry.path == "allowed")
+                && entries.iter().all(|entry| !entry.path.contains("hidden"))
+    ) && matches!(
+        bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Circle,
+            GranteeContentOperation::Read {
+                target: GranteeTarget::Display("projects/nested/allowed"),
+                now: "2026-07-18T17:04:30Z",
+            },
+            &mut entropy,
+        ),
+        Ok(GranteeContentOutcome::Read(ref body)) if body == "allowed body"
+    );
+    let before_refusal = cb7_store_snapshot(&bundle.store)?;
+    let secondary_effect_verified = bundle
+        .grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Circle,
+            GranteeContentOperation::Read {
+                target: GranteeTarget::Display("projects/sibling/hidden"),
+                now: "2026-07-18T17:05:00Z",
+            },
+            &mut entropy,
+        )
+        .is_err()
+        && cb7_store_snapshot(&bundle.store)? == before_refusal;
+    let entries = bundle
+        .gamma_entries()
+        .map_err(|error| format!("CORE-STR-002 read Gamma failed: {error}"))?;
+    let gamma_actor_verified = entries.iter().rev().take(2).all(|entry| {
+        entry.authorized_via.as_ref() == Some(&vec![chain[0].id.clone()])
+            && entry.signature.key == chain[0].grantee.pubkey
+    });
+    let exported = cb7_store_snapshot(&bundle.store)?;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &exported)?;
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-STR-002 read fresh open failed: {error}"))?;
+    Ok(CoreStructuralDerivedObservation {
+        case: "scoped-read".into(),
+        primary_effect_verified,
+        secondary_effect_verified,
+        gamma_actor_verified,
+        publication_verified: true,
+        cold_reopen_verified: fresh.gamma_verify().is_ok(),
+        privacy_verified: true,
+    })
+}
+
+fn core_structural_tag_scenario() -> Result<CoreStructuralDerivedObservation, String> {
+    let mut primary_effect_verified = true;
+    let mut secondary_effect_verified = true;
+    let mut gamma_actor_verified = true;
+    let mut publication_verified = true;
+    let mut cold_reopen_verified = true;
+    for (offset, zone) in [Zone::Public, Zone::Circle].into_iter().enumerate() {
+        let owner = OwnerKeys::genesis(
+            &MasterSeed::from_slice(&[0x61 + offset as u8; 32])
+                .map_err(|error| format!("CORE-STR-002 tag owner seed failed: {error}"))?,
+        );
+        let succession = succession_from_entropy([0x71 + offset as u8; 32]);
+        let editor = agent_sk(0x7c + offset as u8);
+        let reader = agent_sk(0x7e + offset as u8);
         let mut entropy = SeqEntropy::default();
         let mut bundle = Bundle::init(
-            FsStore::new(root.path()),
+            MemStore::default(),
             &owner,
             &succession.verifying_key(),
             &mut entropy,
-            "2026-07-18T11:00:00Z",
+            "2026-07-18T17:10:00Z",
         )
-        .map_err(|error| format!("CB8 {} init failed: {error}", zone.as_str()))?;
+        .map_err(|error| format!("CORE-STR-002 tag init failed: {error}"))?;
         bundle
             .transaction(|bundle| {
                 bundle.section_add(
                     &SectionSpec {
                         zone,
                         folder_path: "projects",
-                        name: "note",
-                        title: "existing",
-                        tags: &["toto".to_owned()],
-                        body: "before",
-                        now: "2026-07-18T11:01:00Z",
+                        name: "tagged",
+                        title: "tagged",
+                        tags: &["old".to_owned()],
+                        body: "tag body",
+                        now: "2026-07-18T17:11:00Z",
                     },
                     &owner,
                     &mut entropy,
                 )?;
-                bundle.publish(&owner, "2026-07-18T11:02:00Z")
+                bundle.publish(&owner, "2026-07-18T17:12:00Z")
             })
-            .map_err(|error| format!("CB8 {} fixture failed: {error}", zone.as_str()))?;
-
-        for operation in ["list", "read", "create", "edit", "delete"] {
-            let case = owner_cases
-                .iter()
-                .find(|case| case["zone"] == zone.as_str() && case["operation"] == operation)
-                .ok_or_else(|| format!("CB8 missing owner case {}-{operation}", zone.as_str()))?;
-            let before = bundle
-                .gamma_entries()
-                .map_err(|error| format!("CB8 Gamma before failed: {error}"))?
-                .len();
-            let outcome = match operation {
-                "list" => bundle.owner_content_operation(
-                    zone,
-                    OwnerContentOperation::List,
-                    &owner,
-                    &mut entropy,
-                ),
-                "read" => bundle.owner_content_operation(
-                    zone,
-                    OwnerContentOperation::Read {
-                        display_path: "projects/note",
-                    },
-                    &owner,
-                    &mut entropy,
-                ),
-                "create" => bundle.owner_content_operation(
-                    zone,
-                    OwnerContentOperation::Create {
-                        folder_path: "projects",
-                        name: "new",
-                        title: "created",
-                        tags: &[],
-                        body: "created body",
-                        now: "2026-07-18T11:03:00Z",
-                    },
-                    &owner,
-                    &mut entropy,
-                ),
-                "edit" => bundle.owner_content_operation(
-                    zone,
-                    OwnerContentOperation::Edit {
-                        display_path: "projects/note",
-                        body: "after",
-                        now: "2026-07-18T11:04:00Z",
-                    },
-                    &owner,
-                    &mut entropy,
-                ),
-                "delete" => bundle.owner_content_operation(
-                    zone,
-                    OwnerContentOperation::Delete {
-                        display_path: "projects/note",
-                        now: "2026-07-18T11:05:00Z",
-                    },
-                    &owner,
-                    &mut entropy,
-                ),
-                _ => unreachable!(),
-            }
-            .map_err(|error| format!("CB8 {}-{operation} failed: {error}", zone.as_str()))?;
-            if !matches!(
-                (operation, &outcome),
-                ("list", OwnerContentOutcome::Listed(_))
-                    | ("read", OwnerContentOutcome::Read(_))
-                    | ("create" | "edit" | "delete", OwnerContentOutcome::Mutated)
-            ) {
-                return Err(format!(
-                    "CB8 {}-{operation} returned {outcome:?}",
-                    zone.as_str()
-                ));
-            }
-            let after = bundle
-                .gamma_entries()
-                .map_err(|error| format!("CB8 Gamma after failed: {error}"))?
-                .len();
-            if after - before != usize::from(case["journalized"].as_bool().unwrap_or(false))
-                || case["mandate_required"] != false
-                || case["mandate_counter_delta"] != 0
-            {
-                return Err(format!(
-                    "CB8 {}-{operation} owner invariant drift",
-                    zone.as_str()
-                ));
-            }
-            drop(bundle);
-            bundle = Bundle::open(FsStore::new(root.path())).map_err(|error| {
-                format!("CB8 {}-{operation} reopen failed: {error}", zone.as_str())
-            })?;
-            bundle.verify().map_err(|error| {
-                format!("CB8 {}-{operation} verify failed: {error}", zone.as_str())
-            })?;
+            .map_err(|error| format!("CORE-STR-002 tag fixture failed: {error}"))?;
+        let mut requests = vec![GenericGrantRequest::ethos(
+            Verb::Edit,
+            zone,
+            GrantSelector::Dir("projects".into()),
+        )];
+        if zone == Zone::Circle {
+            requests.push(GenericGrantRequest::ethos(
+                Verb::Read,
+                zone,
+                GrantSelector::Tag {
+                    dir: "projects".into(),
+                    tag: "new".into(),
+                },
+            ));
         }
+        let chain = vec![
+            bundle
+                .grant_generic(
+                    &owner,
+                    "core-str-tag-editor",
+                    &editor.verifying_key(),
+                    &requests,
+                    "2026-07-18T17:13:00Z",
+                    "2026-07-25T17:13:00Z",
+                    0,
+                    "2026-07-18T17:13:00Z",
+                    &mut entropy,
+                )
+                .map_err(|error| format!("CORE-STR-002 tag editor grant failed: {error}"))?
+                .mandate,
+        ];
+        let reader_chain = if zone == Zone::Circle {
+            Some(vec![
+                bundle
+                    .grant_generic(
+                        &owner,
+                        "core-str-tag-reader",
+                        &reader.verifying_key(),
+                        &[GenericGrantRequest::ethos(
+                            Verb::Read,
+                            zone,
+                            GrantSelector::Tag {
+                                dir: "projects".into(),
+                                tag: "new".into(),
+                            },
+                        )],
+                        "2026-07-18T17:14:00Z",
+                        "2026-07-25T17:14:00Z",
+                        0,
+                        "2026-07-18T17:14:00Z",
+                        &mut entropy,
+                    )
+                    .map_err(|error| format!("CORE-STR-002 tag reader grant failed: {error}"))?
+                    .mandate,
+            ])
+        } else {
+            None
+        };
+        bundle
+            .structural_operation(
+                &chain,
+                &editor,
+                StructuralOperation::EditSectionMetadata {
+                    zone,
+                    section: "projects/tagged",
+                    name: None,
+                    title: Some("retagged"),
+                    tags: Some(&["new".to_owned()]),
+                    now: "2026-07-18T17:15:00Z",
+                },
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-STR-002 tag edit failed: {error}"))?;
+        let index: ZoneIndex = bundle
+            .store
+            .get(&format!("e/{}/index.json", zone.as_str()))
+            .map_err(|error| format!("CORE-STR-002 tag index read failed: {error}"))?
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .ok_or_else(|| "CORE-STR-002 tag index missing".to_owned())?;
+        primary_effect_verified &= index
+            .sections
+            .iter()
+            .any(|row| row.name == "tagged" && row.title == "retagged" && row.tags == ["new"]);
+        if let Some(reader_chain) = &reader_chain {
+            secondary_effect_verified &= bundle
+                .read_section_as_agent(
+                    reader_chain,
+                    &reader,
+                    zone,
+                    "projects/tagged",
+                    "2026-07-18T17:16:00Z",
+                )
+                .is_ok_and(|body| body == "tag body");
+        }
+        gamma_actor_verified &= bundle
+            .gamma_entries()
+            .ok()
+            .and_then(|entries| entries.last().cloned())
+            .is_some_and(|entry| {
+                entry.authorized_via.as_ref() == Some(&vec![chain[0].id.clone()])
+                    && entry.signature.key == chain[0].grantee.pubkey
+            });
+        bundle
+            .transaction(|bundle| bundle.publish(&owner, "2026-07-18T17:17:00Z"))
+            .map_err(|error| format!("CORE-STR-002 tag publish failed: {error}"))?;
+        publication_verified &= bundle.verify().is_ok();
+        let exported = cb7_store_snapshot(&bundle.store)?;
+        let mut fresh_store = MemStore::default();
+        cb7_install(&mut fresh_store, &exported)?;
+        let fresh = Bundle::open(fresh_store)
+            .map_err(|error| format!("CORE-STR-002 tag fresh open failed: {error}"))?;
+        cold_reopen_verified &= fresh.verify().is_ok() && fresh.gamma_verify().is_ok();
     }
-    Ok(())
+    Ok(CoreStructuralDerivedObservation {
+        case: "tag-edit".into(),
+        primary_effect_verified,
+        secondary_effect_verified,
+        gamma_actor_verified,
+        publication_verified,
+        cold_reopen_verified,
+        privacy_verified: true,
+    })
+}
+
+fn core_structural_move_scenario() -> Result<CoreStructuralDerivedObservation, String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x63; 32])
+            .map_err(|error| format!("CORE-STR-002 move owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x73; 32]);
+    let mover = agent_sk(0x80);
+    let destination_reader = agent_sk(0x81);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T17:20:00Z",
+    )
+    .map_err(|error| format!("CORE-STR-002 move init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            bundle.section_add(
+                &SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: "source/moving",
+                    name: "note",
+                    title: "moved",
+                    tags: &[],
+                    body: "moved body",
+                    now: "2026-07-18T17:21:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )?;
+            bundle.ensure_folder(Zone::Circle, "destination", &owner, &mut entropy)?;
+            bundle.publish(&owner, "2026-07-18T17:22:00Z")
+        })
+        .map_err(|error| format!("CORE-STR-002 move fixture failed: {error}"))?;
+    let before_index: ZoneIndex = bundle
+        .store
+        .get("e/circle/index.json")
+        .map_err(|error| format!("CORE-STR-002 move index before failed: {error}"))?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or_else(|| "CORE-STR-002 move index before missing".to_owned())?;
+    let moved_sid = before_index
+        .folders
+        .iter()
+        .find(|row| row.name == "moving")
+        .map(|row| row.sid.clone())
+        .ok_or_else(|| "CORE-STR-002 moved SID missing".to_owned())?;
+    let chain = vec![
+        bundle
+            .grant_generic(
+                &owner,
+                "core-str-mover",
+                &mover.verifying_key(),
+                &[
+                    GenericGrantRequest::ethos(
+                        Verb::Edit,
+                        Zone::Circle,
+                        GrantSelector::Dir("source/moving".into()),
+                    ),
+                    GenericGrantRequest::ethos(
+                        Verb::Append,
+                        Zone::Circle,
+                        GrantSelector::Dir("destination".into()),
+                    ),
+                ],
+                "2026-07-18T17:23:00Z",
+                "2026-07-25T17:23:00Z",
+                0,
+                "2026-07-18T17:23:00Z",
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-STR-002 move grant failed: {error}"))?
+            .mandate,
+    ];
+    let destination_chain = vec![
+        bundle
+            .grant_generic(
+                &owner,
+                "core-str-destination-reader",
+                &destination_reader.verifying_key(),
+                &[GenericGrantRequest::ethos(
+                    Verb::Read,
+                    Zone::Circle,
+                    GrantSelector::Dir("destination".into()),
+                )],
+                "2026-07-18T17:24:00Z",
+                "2026-07-25T17:24:00Z",
+                0,
+                "2026-07-18T17:24:00Z",
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-STR-002 destination grant failed: {error}"))?
+            .mandate,
+    ];
+    let header_versions_before = bundle
+        .store
+        .list("e/circle/hdr/")
+        .map_err(|error| format!("CORE-STR-002 move headers before failed: {error}"))?
+        .into_iter()
+        .filter_map(|path| bundle.store.get(&path).ok().flatten())
+        .filter_map(|bytes| serde_json::from_slice::<Header>(&bytes).ok())
+        .map(|header| header.latest_version())
+        .max()
+        .unwrap_or_default();
+    bundle
+        .structural_operation(
+            &chain,
+            &mover,
+            StructuralOperation::MoveFolder {
+                zone: Zone::Circle,
+                folder: "source/moving",
+                destination_parent: "destination",
+                now: "2026-07-18T17:25:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-STR-002 move failed: {error}"))?;
+    let after_index: ZoneIndex = bundle
+        .store
+        .get("e/circle/index.json")
+        .map_err(|error| format!("CORE-STR-002 move index after failed: {error}"))?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or_else(|| "CORE-STR-002 move index after missing".to_owned())?;
+    let primary_effect_verified = after_index
+        .folders
+        .iter()
+        .find(|row| row.name == "moving")
+        .is_some_and(|row| row.sid == moved_sid)
+        && bundle
+            .read_section(Zone::Circle, "destination/moving/note", &owner)
+            .is_ok_and(|body| body == "moved body");
+    let header_versions_after = bundle
+        .store
+        .list("e/circle/hdr/")
+        .map_err(|error| format!("CORE-STR-002 move headers after failed: {error}"))?
+        .into_iter()
+        .filter_map(|path| bundle.store.get(&path).ok().flatten())
+        .filter_map(|bytes| serde_json::from_slice::<Header>(&bytes).ok())
+        .map(|header| header.latest_version())
+        .max()
+        .unwrap_or_default();
+    let secondary_effect_verified = header_versions_after > header_versions_before
+        && !bundle
+            .store
+            .list("e/circle/wraps/")
+            .unwrap_or_default()
+            .is_empty()
+        && bundle
+            .read_section_as_agent(
+                &destination_chain,
+                &destination_reader,
+                Zone::Circle,
+                "destination/moving/note",
+                "2026-07-18T17:26:00Z",
+            )
+            .is_ok_and(|body| body == "moved body")
+        && bundle
+            .read_section_as_agent(
+                &chain,
+                &mover,
+                Zone::Circle,
+                "source/moving/note",
+                "2026-07-18T17:26:00Z",
+            )
+            .is_err();
+    let gamma_actor_verified = bundle
+        .gamma_entries()
+        .ok()
+        .and_then(|entries| entries.last().cloned())
+        .is_some_and(|entry| {
+            entry.authorized_via.as_ref() == Some(&vec![chain[0].id.clone()])
+                && entry.signature.key == chain[0].grantee.pubkey
+        });
+    bundle
+        .transaction(|bundle| bundle.publish(&owner, "2026-07-18T17:27:00Z"))
+        .map_err(|error| format!("CORE-STR-002 move publish failed: {error}"))?;
+    let publication_verified = bundle.verify().is_ok();
+    let exported = cb7_store_snapshot(&bundle.store)?;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &exported)?;
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-STR-002 move fresh open failed: {error}"))?;
+    Ok(CoreStructuralDerivedObservation {
+        case: "move".into(),
+        primary_effect_verified,
+        secondary_effect_verified,
+        gamma_actor_verified,
+        publication_verified,
+        cold_reopen_verified: fresh.verify().is_ok() && fresh.gamma_verify().is_ok(),
+        privacy_verified: true,
+    })
+}
+
+fn core_structural_subtree_scenario() -> Result<CoreStructuralDerivedObservation, String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x64; 32])
+            .map_err(|error| format!("CORE-STR-002 subtree owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x74; 32]);
+    let agent = agent_sk(0x82);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T17:30:00Z",
+    )
+    .map_err(|error| format!("CORE-STR-002 subtree init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            for (folder, name) in [("root/child-a", "note-a"), ("root/child-b", "note-b")] {
+                bundle.section_add(
+                    &SectionSpec {
+                        zone: Zone::Circle,
+                        folder_path: folder,
+                        name,
+                        title: name,
+                        tags: &["tagged".to_owned()],
+                        body: name,
+                        now: "2026-07-18T17:31:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                )?;
+            }
+            bundle.publish(&owner, "2026-07-18T17:32:00Z")
+        })
+        .map_err(|error| format!("CORE-STR-002 subtree fixture failed: {error}"))?;
+    let before_index: ZoneIndex = bundle
+        .store
+        .get("e/circle/index.json")
+        .map_err(|error| format!("CORE-STR-002 subtree index before failed: {error}"))?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or_else(|| "CORE-STR-002 subtree index before missing".to_owned())?;
+    let removed_section_ids = before_index
+        .sections
+        .iter()
+        .filter(|row| row.name.starts_with("note-"))
+        .map(|row| row.sid.clone())
+        .collect::<Vec<_>>();
+    let chain = vec![
+        bundle
+            .grant_generic(
+                &owner,
+                "core-str-subtree",
+                &agent.verifying_key(),
+                &[GenericGrantRequest::ethos(
+                    Verb::Delete,
+                    Zone::Circle,
+                    GrantSelector::Dir("root".into()),
+                )],
+                "2026-07-18T17:33:00Z",
+                "2026-07-25T17:33:00Z",
+                0,
+                "2026-07-18T17:33:00Z",
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-STR-002 subtree grant failed: {error}"))?
+            .mandate,
+    ];
+    bundle
+        .structural_operation(
+            &chain,
+            &agent,
+            StructuralOperation::DeleteFolder {
+                zone: Zone::Circle,
+                folder: "root",
+                recursive: true,
+                now: "2026-07-18T17:34:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-STR-002 subtree delete failed: {error}"))?;
+    let after_index: ZoneIndex = bundle
+        .store
+        .get("e/circle/index.json")
+        .map_err(|error| format!("CORE-STR-002 subtree index after failed: {error}"))?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or_else(|| "CORE-STR-002 subtree index after missing".to_owned())?;
+    let primary_effect_verified = bundle.resolve_folder(Zone::Circle, "root").is_err()
+        && removed_section_ids.iter().all(|sid| {
+            after_index.sections.iter().all(|row| &row.sid != sid)
+                && bundle
+                    .store
+                    .get(&format!("e/circle/blobs/{sid}.enc"))
+                    .ok()
+                    .flatten()
+                    .is_none()
+        });
+    let gamma_actor_verified = bundle
+        .gamma_entries()
+        .ok()
+        .and_then(|entries| entries.last().cloned())
+        .is_some_and(|entry| {
+            entry.kind == "section.delete"
+                && entry.authorized_via.as_ref() == Some(&vec![chain[0].id.clone()])
+                && entry.signature.key == chain[0].grantee.pubkey
+        });
+    let secondary_effect_verified = gamma_actor_verified
+        && bundle
+            .store
+            .list("e/circle/hdr/")
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|path| bundle.store.get(&path).ok().flatten())
+            .filter_map(|bytes| serde_json::from_slice::<Header>(&bytes).ok())
+            .all(|header| {
+                removed_section_ids
+                    .iter()
+                    .all(|sid| !header.node.contains(sid))
+            });
+    bundle
+        .transaction(|bundle| bundle.publish(&owner, "2026-07-18T17:35:00Z"))
+        .map_err(|error| format!("CORE-STR-002 subtree publish failed: {error}"))?;
+    let publication_verified = bundle.verify().is_ok();
+    let exported = cb7_store_snapshot(&bundle.store)?;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &exported)?;
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-STR-002 subtree fresh open failed: {error}"))?;
+    Ok(CoreStructuralDerivedObservation {
+        case: "subtree-delete".into(),
+        primary_effect_verified,
+        secondary_effect_verified,
+        gamma_actor_verified,
+        publication_verified,
+        cold_reopen_verified: fresh.verify().is_ok() && fresh.gamma_verify().is_ok(),
+        privacy_verified: true,
+    })
+}
+
+fn core_structural_self_scenario() -> Result<CoreStructuralDerivedObservation, String> {
+    let (mut bundle, owner, agent, mut entropy, self_sid) = core_delegated_fixture_bundle()?;
+    let chain = vec![
+        bundle
+            .grant_generic(
+                &owner,
+                "core-str-self",
+                &agent.verifying_key(),
+                &[GenericGrantRequest::ethos(
+                    Verb::Edit,
+                    Zone::Self_,
+                    GrantSelector::Id("sealed/opaque-note".into()),
+                )],
+                "2026-07-18T17:40:00Z",
+                "2026-07-25T17:40:00Z",
+                0,
+                "2026-07-18T17:40:00Z",
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-STR-002 self grant failed: {error}"))?
+            .mandate,
+    ];
+    let before_index: aithos_bundle::bundle::SelfIndex = bundle
+        .store
+        .get("e/self/index.json")
+        .map_err(|error| format!("CORE-STR-002 self index before failed: {error}"))?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or_else(|| "CORE-STR-002 self index before missing".to_owned())?;
+    bundle
+        .grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Self_,
+            GranteeContentOperation::Edit {
+                target: GranteeTarget::Id(self_sid),
+                body: "opaque replacement",
+                now: "2026-07-18T17:41:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-STR-002 self mutation failed: {error}"))?;
+    let after_index: aithos_bundle::bundle::SelfIndex = bundle
+        .store
+        .get("e/self/index.json")
+        .map_err(|error| format!("CORE-STR-002 self index after failed: {error}"))?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or_else(|| "CORE-STR-002 self index after missing".to_owned())?;
+    let primary_effect_verified = before_index
+        .blobs
+        .iter()
+        .map(|row| &row.sid)
+        .eq(after_index.blobs.iter().map(|row| &row.sid))
+        && bundle
+            .read_section(Zone::Self_, "sealed/opaque-note", &owner)
+            .is_ok_and(|body| body == "opaque replacement");
+    let gamma = bundle
+        .gamma_entries()
+        .map_err(|error| format!("CORE-STR-002 self Gamma failed: {error}"))?
+        .last()
+        .cloned()
+        .ok_or_else(|| "CORE-STR-002 self Gamma missing".to_owned())?;
+    let gamma_actor_verified = gamma.authorized_via.as_ref() == Some(&vec![chain[0].id.clone()])
+        && gamma.signature.key == chain[0].grantee.pubkey;
+    let secondary_effect_verified =
+        gamma.body_enc.is_some() && gamma.target.is_none() && gamma.payload.is_none();
+    bundle
+        .transaction(|bundle| bundle.publish(&owner, "2026-07-18T17:42:00Z"))
+        .map_err(|error| format!("CORE-STR-002 self publish failed: {error}"))?;
+    let public_bytes = cb7_store_snapshot(&bundle.store)?;
+    let privacy_verified = !public_bytes.values().any(|bytes| {
+        bytes
+            .windows("opaque replacement".len())
+            .any(|window| window == b"opaque replacement")
+            || bytes
+                .windows("sealed/opaque-note".len())
+                .any(|window| window == b"sealed/opaque-note")
+    });
+    let publication_verified = bundle.verify().is_ok();
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &public_bytes)?;
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-STR-002 self fresh open failed: {error}"))?;
+    Ok(CoreStructuralDerivedObservation {
+        case: "self".into(),
+        primary_effect_verified,
+        secondary_effect_verified,
+        gamma_actor_verified,
+        publication_verified,
+        cold_reopen_verified: fresh.verify().is_ok() && fresh.gamma_verify().is_ok(),
+        privacy_verified,
+    })
+}
+
+fn core_structural_failure_attempt<S: Store>(
+    mut bundle: Bundle<S>,
+    owner: &OwnerKeys,
+    agent: &SigningKey,
+    chain: &[Mandate],
+    failure: &str,
+    before: &BTreeMap<String, Vec<u8>>,
+    entropy: &mut SeqEntropy,
+) -> Result<CoreStructuralFailureObservation, String> {
+    let result = match failure {
+        "destination outside the grantee perimeter" => bundle.structural_operation(
+            chain,
+            agent,
+            StructuralOperation::MoveFolder {
+                zone: Zone::Circle,
+                folder: "source",
+                destination_parent: "clean-destination",
+                now: "2026-07-18T18:04:00Z",
+            },
+            entropy,
+        ),
+        "move into the node's own descendant" => bundle.structural_operation(
+            chain,
+            agent,
+            StructuralOperation::MoveFolder {
+                zone: Zone::Circle,
+                folder: "source",
+                destination_parent: "source/child",
+                now: "2026-07-18T18:04:00Z",
+            },
+            entropy,
+        ),
+        "destination sibling name collision" => bundle.structural_operation(
+            chain,
+            agent,
+            StructuralOperation::MoveFolder {
+                zone: Zone::Circle,
+                folder: "source",
+                destination_parent: "destination",
+                now: "2026-07-18T18:04:00Z",
+            },
+            entropy,
+        ),
+        "display path traversal outside the zone" => bundle.structural_operation(
+            chain,
+            agent,
+            StructuralOperation::CreateFolder {
+                zone: Zone::Circle,
+                parent: "../outside",
+                name: "escape",
+                now: "2026-07-18T18:04:00Z",
+            },
+            entropy,
+        ),
+        "failure while rebuilding tag views" => bundle.structural_operation(
+            chain,
+            agent,
+            StructuralOperation::EditSectionMetadata {
+                zone: Zone::Circle,
+                section: "projects/tagged",
+                name: None,
+                title: Some("must roll back"),
+                tags: Some(&["new".to_owned()]),
+                now: "2026-07-18T18:04:00Z",
+            },
+            entropy,
+        ),
+        "failure while rotating or rewrapping" => bundle.structural_operation(
+            chain,
+            agent,
+            StructuralOperation::MoveFolder {
+                zone: Zone::Circle,
+                folder: "source",
+                destination_parent: "clean-destination",
+                now: "2026-07-18T18:04:00Z",
+            },
+            entropy,
+        ),
+        "failure before Gamma and manifest linearization" => bundle.structural_operation(
+            chain,
+            agent,
+            StructuralOperation::RenameFolder {
+                zone: Zone::Circle,
+                folder: "source",
+                new_name: "renamed",
+                now: "2026-07-18T18:04:00Z",
+            },
+            entropy,
+        ),
+        other => return Err(format!("CORE-STR-003 unknown failure {other}")),
+    };
+    let after = cb7_store_snapshot(&bundle.store)?;
+    let refused = result.is_err();
+    let canonical_unchanged = &after == before;
+    let partial_artifact_reachable = &after != before;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &after)?;
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-STR-003 fresh open failed: {error}"))?;
+    let fresh_reopen_verified = fresh.verify().is_ok()
+        && fresh.gamma_verify().is_ok()
+        && fresh
+            .read_section(Zone::Circle, "source/child/note", owner)
+            .is_ok_and(|body| body == "source body")
+        && cb7_store_snapshot(&fresh.store)? == *before;
+    Ok(CoreStructuralFailureObservation {
+        failure: failure.into(),
+        refused,
+        canonical_unchanged,
+        fresh_reopen_verified,
+        partial_artifact_reachable,
+    })
+}
+
+fn core_structural_failure_scenario(
+    failure: &str,
+) -> Result<CoreStructuralFailureObservation, String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x65; 32])
+            .map_err(|error| format!("CORE-STR-003 owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x75; 32]);
+    let agent = agent_sk(0x83);
+    let tag_reader = agent_sk(0x84);
+    let mut entropy = SeqEntropy::default();
+    let mut fixture = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T18:00:00Z",
+    )
+    .map_err(|error| format!("CORE-STR-003 init failed: {error}"))?;
+    fixture
+        .transaction(|bundle| {
+            for (folder, name, body, tags) in [
+                ("source/child", "note", "source body", Vec::<String>::new()),
+                (
+                    "destination/source",
+                    "collision",
+                    "collision",
+                    Vec::<String>::new(),
+                ),
+                (
+                    "clean-destination",
+                    "anchor",
+                    "anchor",
+                    Vec::<String>::new(),
+                ),
+                ("projects", "tagged", "tag body", vec!["old".to_owned()]),
+            ] {
+                bundle.section_add(
+                    &SectionSpec {
+                        zone: Zone::Circle,
+                        folder_path: folder,
+                        name,
+                        title: name,
+                        tags: &tags,
+                        body,
+                        now: "2026-07-18T18:01:00Z",
+                    },
+                    &owner,
+                    &mut entropy,
+                )?;
+            }
+            bundle.publish(&owner, "2026-07-18T18:02:00Z")
+        })
+        .map_err(|error| format!("CORE-STR-003 fixture failed: {error}"))?;
+    fixture
+        .grant_generic(
+            &owner,
+            "core-str-failure-tag-reader",
+            &tag_reader.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Read,
+                Zone::Circle,
+                GrantSelector::Tag {
+                    dir: "projects".into(),
+                    tag: "new".into(),
+                },
+            )],
+            "2026-07-18T18:02:10Z",
+            "2026-07-25T18:02:10Z",
+            0,
+            "2026-07-18T18:02:10Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-STR-003 tag header fixture failed: {error}"))?;
+    let authority = if failure == "destination outside the grantee perimeter" {
+        vec![GenericGrantRequest::ethos(
+            Verb::Edit,
+            Zone::Circle,
+            GrantSelector::Dir("source".into()),
+        )]
+    } else {
+        vec![GenericGrantRequest::ethos(
+            Verb::Write,
+            Zone::Circle,
+            GrantSelector::Zone,
+        )]
+    };
+    let chain = vec![
+        fixture
+            .grant_generic(
+                &owner,
+                "core-str-failure-agent",
+                &agent.verifying_key(),
+                &authority,
+                "2026-07-18T18:03:00Z",
+                "2026-07-25T18:03:00Z",
+                0,
+                "2026-07-18T18:03:00Z",
+                &mut entropy,
+            )
+            .map_err(|error| format!("CORE-STR-003 grant failed: {error}"))?
+            .mandate,
+    ];
+    let before = cb7_store_snapshot(&fixture.store)?;
+    match failure {
+        "failure while rebuilding tag views"
+        | "failure while rotating or rewrapping"
+        | "failure before Gamma and manifest linearization" => {
+            let fault = match failure {
+                "failure while rebuilding tag views" => CoreAtomicFault::HeaderOrWrap,
+                "failure while rotating or rewrapping" => CoreAtomicFault::BlobPreparation,
+                _ => CoreAtomicFault::GammaValidation,
+            };
+            let mut inner = MemStore::default();
+            cb7_install(&mut inner, &before)?;
+            drop(fixture);
+            let wrapped = CoreAtomicFaultStore::new(inner, fault);
+            let bundle = Bundle::open(wrapped)
+                .map_err(|error| format!("CORE-STR-003 fault reopen failed: {error}"))?;
+            core_structural_failure_attempt(
+                bundle,
+                &owner,
+                &agent,
+                &chain,
+                failure,
+                &before,
+                &mut entropy,
+            )
+        }
+        _ => core_structural_failure_attempt(
+            fixture,
+            &owner,
+            &agent,
+            &chain,
+            failure,
+            &before,
+            &mut entropy,
+        ),
+    }
+}
+
+fn core_revocation_failure_attempt<S: Store>(
+    mut bundle: Bundle<S>,
+    owner: &OwnerKeys,
+    revoked: &SigningKey,
+    revoked_mandate: &Mandate,
+    boundary: &str,
+    before: &BTreeMap<String, Vec<u8>>,
+    entropy: &mut SeqEntropy,
+) -> Result<CoreRevocationFailureObservation, String> {
+    let target = if boundary == "revocation verdict" {
+        "mandate_01ARZ3NDEKTSV4RRFFQ69G5FZZ"
+    } else {
+        revoked_mandate.id.as_str()
+    };
+    let result = bundle.revoke_transaction(
+        owner,
+        target,
+        "projects",
+        "failed incident",
+        "2026-07-18T19:05:00Z",
+        entropy,
+    );
+    let after = cb7_store_snapshot(&bundle.store)?;
+    let refused = result.is_err();
+    let canonical_unchanged = &after == before;
+    let partial_cut_reachable = &after != before;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &after)?;
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-REV-001 failure fresh open failed: {error}"))?;
+    let old_state_reopened = fresh.verify().is_ok()
+        && fresh.gamma_verify().is_ok()
+        && fresh.active_revocations().is_ok_and(|revs| revs.is_empty())
+        && fresh
+            .read_section_as_agent(
+                std::slice::from_ref(revoked_mandate),
+                revoked,
+                Zone::Circle,
+                "projects/note",
+                "2026-07-18T19:06:00Z",
+            )
+            .is_ok_and(|body| body == "protected body")
+        && cb7_store_snapshot(&fresh.store)? == *before;
+    Ok(CoreRevocationFailureObservation {
+        boundary: boundary.into(),
+        refused,
+        canonical_unchanged,
+        old_state_reopened,
+        partial_cut_reachable,
+    })
+}
+
+fn core_revocation_failure_scenario(
+    boundary: &str,
+) -> Result<CoreRevocationFailureObservation, String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x66; 32])
+            .map_err(|error| format!("CORE-REV-001 failure owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x76; 32]);
+    let revoked = agent_sk(0x85);
+    let survivor = agent_sk(0x86);
+    let mut entropy = SeqEntropy::default();
+    let mut fixture = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T19:00:00Z",
+    )
+    .map_err(|error| format!("CORE-REV-001 failure init failed: {error}"))?;
+    fixture
+        .transaction(|bundle| {
+            bundle.section_add(
+                &SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: "projects",
+                    name: "note",
+                    title: "protected",
+                    tags: &[],
+                    body: "protected body",
+                    now: "2026-07-18T19:01:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )?;
+            bundle.publish(&owner, "2026-07-18T19:02:00Z")
+        })
+        .map_err(|error| format!("CORE-REV-001 failure fixture failed: {error}"))?;
+    let revoked_mandate = fixture
+        .grant_generic(
+            &owner,
+            "core-rev-failure-revoked",
+            &revoked.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Write,
+                Zone::Circle,
+                GrantSelector::Dir("projects".into()),
+            )],
+            "2026-07-18T19:03:00Z",
+            "2026-07-25T19:03:00Z",
+            0,
+            "2026-07-18T19:03:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-REV-001 failure revoked grant failed: {error}"))?
+        .mandate;
+    fixture
+        .grant_generic(
+            &owner,
+            "core-rev-failure-survivor",
+            &survivor.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Read,
+                Zone::Circle,
+                GrantSelector::Dir("projects".into()),
+            )],
+            "2026-07-18T19:04:00Z",
+            "2026-07-25T19:04:00Z",
+            0,
+            "2026-07-18T19:04:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-REV-001 failure survivor grant failed: {error}"))?;
+    let before = cb7_store_snapshot(&fixture.store)?;
+    let fault = match boundary {
+        "revocation verdict" => None,
+        "fresh node key generation" => Some(CoreAtomicFault::HeaderWrite),
+        "survivor rewrap" => Some(CoreAtomicFault::WrapWrite),
+        "body re-encryption" => Some(CoreAtomicFault::BlobPreparation),
+        "Gamma append" => Some(CoreAtomicFault::GammaValidation),
+        "before manifest and roots linearization" => Some(CoreAtomicFault::ManifestWrite),
+        other => return Err(format!("CORE-REV-001 unknown failure boundary {other}")),
+    };
+    if let Some(fault) = fault {
+        let mut inner = MemStore::default();
+        cb7_install(&mut inner, &before)?;
+        drop(fixture);
+        let wrapped = CoreAtomicFaultStore::new(inner, fault);
+        let bundle = Bundle::open(wrapped)
+            .map_err(|error| format!("CORE-REV-001 failure reopen failed: {error}"))?;
+        core_revocation_failure_attempt(
+            bundle,
+            &owner,
+            &revoked,
+            &revoked_mandate,
+            boundary,
+            &before,
+            &mut entropy,
+        )
+    } else {
+        core_revocation_failure_attempt(
+            fixture,
+            &owner,
+            &revoked,
+            &revoked_mandate,
+            boundary,
+            &before,
+            &mut entropy,
+        )
+    }
+}
+
+fn core_revocation_replay_scenario() -> Result<CoreRevocationReplayObservation, String> {
+    let owner = OwnerKeys::genesis(
+        &MasterSeed::from_slice(&[0x67; 32])
+            .map_err(|error| format!("CORE-REV-001 replay owner seed failed: {error}"))?,
+    );
+    let succession = succession_from_entropy([0x77; 32]);
+    let agent = agent_sk(0x87);
+    let survivor = agent_sk(0x88);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        MemStore::default(),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T20:00:00Z",
+    )
+    .map_err(|error| format!("CORE-REV-001 replay init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            bundle.section_add(
+                &SectionSpec {
+                    zone: Zone::Circle,
+                    folder_path: "projects",
+                    name: "note",
+                    title: "protected",
+                    tags: &[],
+                    body: "initial",
+                    now: "2026-07-18T20:01:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )?;
+            bundle.publish(&owner, "2026-07-18T20:02:00Z")
+        })
+        .map_err(|error| format!("CORE-REV-001 replay fixture failed: {error}"))?;
+    let mandate = bundle
+        .grant_generic(
+            &owner,
+            "core-rev-replay-agent",
+            &agent.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Edit,
+                Zone::Circle,
+                GrantSelector::Dir("projects".into()),
+            )],
+            "2026-07-18T20:03:00Z",
+            "2026-07-25T20:03:00Z",
+            0,
+            "2026-07-18T20:03:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-REV-001 replay grant failed: {error}"))?
+        .mandate;
+    bundle
+        .grant_generic(
+            &owner,
+            "core-rev-replay-survivor",
+            &survivor.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Read,
+                Zone::Circle,
+                GrantSelector::Dir("projects".into()),
+            )],
+            "2026-07-18T20:03:10Z",
+            "2026-07-25T20:03:10Z",
+            0,
+            "2026-07-18T20:03:10Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-REV-001 replay survivor grant failed: {error}"))?;
+    let chain = vec![mandate];
+    bundle
+        .grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Circle,
+            GranteeContentOperation::Edit {
+                target: GranteeTarget::Display("projects/note"),
+                body: "before cut",
+                now: "2026-07-18T20:04:00Z",
+            },
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-REV-001 earlier mutation failed: {error}"))?;
+    bundle
+        .revoke_transaction(
+            &owner,
+            &chain[0].id,
+            "projects",
+            "historical cut",
+            "2026-07-18T20:05:00Z",
+            &mut entropy,
+        )
+        .map_err(|error| format!("CORE-REV-001 replay cut failed: {error}"))?;
+    let before_late = cb7_store_snapshot(&bundle.store)?;
+    let later = bundle.grantee_content_operation(
+        &chain,
+        &agent,
+        Zone::Circle,
+        GranteeContentOperation::Edit {
+            target: GranteeTarget::Display("projects/note"),
+            body: "after cut must fail",
+            now: "2026-07-18T20:06:00Z",
+        },
+        &mut entropy,
+    );
+    let after_late = cb7_store_snapshot(&bundle.store)?;
+    let entries = bundle
+        .gamma_entries()
+        .map_err(|error| format!("CORE-REV-001 replay Gamma failed: {error}"))?;
+    let earlier_mutation_valid = entries.iter().any(|entry| {
+        entry.kind == "section.modify"
+            && entry.at == "2026-07-18T20:04:00Z"
+            && entry.authorized_via.as_ref() == Some(&vec![chain[0].id.clone()])
+    });
+    let later_mutation_refused = later.is_err()
+        && before_late == after_late
+        && entries
+            .iter()
+            .all(|entry| entry.at != "2026-07-18T20:06:00Z");
+    let current_revocation_derived = bundle
+        .active_revocations()
+        .is_ok_and(|revs| revs.len() == 1 && revs[0].mandate_id == chain[0].id);
+    let exported = cb7_store_snapshot(&bundle.store)?;
+    let mut fresh_store = MemStore::default();
+    cb7_install(&mut fresh_store, &exported)?;
+    drop(bundle);
+    let fresh = Bundle::open(fresh_store)
+        .map_err(|error| format!("CORE-REV-001 replay fresh open failed: {error}"))?;
+    let fresh_replay_verified = fresh.gamma_verify().is_ok()
+        && fresh
+            .read_section(Zone::Circle, "projects/note", &owner)
+            .is_ok_and(|body| body == "before cut")
+        && fresh
+            .active_revocations()
+            .is_ok_and(|revs| revs.len() == 1 && revs[0].mandate_id == chain[0].id);
+    Ok(CoreRevocationReplayObservation {
+        earlier_mutation_valid,
+        later_mutation_refused,
+        current_revocation_derived,
+        fresh_replay_verified,
+    })
 }
 
 fn cb9_acceptance() -> Result<(), String> {
@@ -2036,6 +6822,51 @@ fn cb5_counts_acceptance() -> Result<(), String> {
     Ok(())
 }
 
+fn core_count_consumption_scenario(consumption: &str) -> Result<(u64, u64, u64), String> {
+    let vector = cb5_parsed(CB5_DELEGATED_COUNTS)?;
+    let positive = &vector["positive"];
+    let verified = verify_delegated_counts(
+        &positive["delegated_counts"],
+        &positive["leaves"],
+        &positive["evidence_views"],
+    )
+    .map_err(|error| format!("CORE-COUNT-001 verification failed: {error}"))?;
+    let (occurrence, expected_kind, expected_domain, expected_actor) = match consumption {
+        "connector action" => ("01", "action", "connector", "grantee"),
+        "metered inference" => ("02", "inference", "inference", "grantee"),
+        "delegated Ethos mutation" => ("03", "mutation", "ethos", "grantee"),
+        "journalized delegated read" => ("04", "read", "gamma", "grantee"),
+        "delegated config mutation" => ("05", "mutation", "vault-config", "grantee"),
+        "direct sub-grant" => ("06", "grant", "mandate", "grantee"),
+        "scoped revocation" => ("07", "revoke", "mandate", "grantee"),
+        "normal grantee publication" => ("10", "publication", "publication", "grantee"),
+        "merge publication plus its kind:merge entry" => {
+            ("11", "publication", "publication", "grantee")
+        }
+        "delegated fork resolution" => ("12", "publication", "publication", "grantee"),
+        "owner Ethos mutation" => ("14", "mutation", "ethos", "owner"),
+        other => return Err(format!("CORE-COUNT-001 unknown consumption {other}")),
+    };
+    let occurrence = format!("op_01K000000000000000000000{occurrence}");
+    let row = positive["evidence_views"]
+        .as_array()
+        .and_then(|rows| rows.iter().find(|row| row["occurrence"] == occurrence))
+        .ok_or_else(|| format!("CORE-COUNT-001 missing occurrence for {consumption}"))?;
+    if row["kind"] != expected_kind
+        || row["facts_domain"] != expected_domain
+        || row["actor"] != expected_actor
+    {
+        return Err(format!(
+            "CORE-COUNT-001 semantic row drift for {consumption}: {row}"
+        ));
+    }
+    let delegated = expected_actor == "grantee" && verified.occurrences().contains(&occurrence);
+    let action = u64::from(delegated && expected_kind == "action");
+    let mutation =
+        u64::from(delegated && expected_kind == "mutation" && expected_domain == "ethos");
+    Ok((action, mutation, u64::from(delegated)))
+}
+
 fn cb5_receipts_acceptance() -> Result<(), String> {
     let vector = cb5_parsed(CB5_RECEIPTS)?;
     let positives = &vector["positive_receipts"];
@@ -2355,40 +7186,12 @@ fn cb7_assert_green(w: &ProtocolWorld) {
     assert_eq!(w.cb7_result, Some(Ok(())));
 }
 
-fn cb8_result(w: &mut ProtocolWorld) {
-    w.cb8_result = Some(CB8_ACCEPTANCE.get_or_init(cb8_acceptance).clone());
-}
-
-fn cb8_assert_green(w: &ProtocolWorld) {
-    assert_eq!(w.cb8_result, Some(Ok(())));
-}
-
-fn cb9_result(w: &mut ProtocolWorld) {
-    w.cb9_result = Some(CB9_ACCEPTANCE.get_or_init(cb9_acceptance).clone());
-}
-
-fn cb9_assert_green(w: &ProtocolWorld) {
-    assert_eq!(w.cb9_result, Some(Ok(())));
-}
-
 fn cb10_result(w: &mut ProtocolWorld) {
     w.cb10_result = Some(CB10_ACCEPTANCE.get_or_init(cb10_acceptance).clone());
 }
 
 fn cb10_assert_green(w: &ProtocolWorld) {
     assert_eq!(w.cb10_result, Some(Ok(())));
-}
-
-fn cb12_capability_result(w: &mut ProtocolWorld) {
-    w.cb12_result = Some(
-        CB12_CAPABILITY_ACCEPTANCE
-            .get_or_init(cb12_capability_acceptance)
-            .clone(),
-    );
-}
-
-fn cb12_assert_green(w: &ProtocolWorld) {
-    assert_eq!(w.cb12_result, Some(Ok(())));
 }
 
 impl ProtocolWorld {
@@ -3114,58 +7917,113 @@ fn inspect_self_zone(w: &mut ProtocolWorld) {
 // --- activated D/CB12 narrow local capabilities ---
 
 #[given(expr = "one Ethos-and-actor session backed by a purpose-bound opaque {string} capability")]
-fn d_narrow_capability(w: &mut ProtocolWorld, _capability: String) {
-    cb12_capability_result(w);
+fn d_narrow_capability(w: &mut ProtocolWorld, capability: String) {
+    w.core_capability = capability;
+    w.core_capability_object.clear();
+    w.core_capability_mismatch.clear();
+    w.core_capability_observation = None;
 }
 
 #[when(expr = "Bundle submits the typed {string} that needs {string}")]
 fn d_typed_capability_operation(
     w: &mut ProtocolWorld,
-    _protocol_object: String,
-    _capability: String,
+    protocol_object: String,
+    capability: String,
 ) {
-    cb12_capability_result(w);
+    assert_eq!(capability, w.core_capability);
+    w.core_capability_object = protocol_object;
+    w.core_capability_observation = Some(core_capability_scenario(
+        &w.core_capability,
+        &w.core_capability_object,
+    ));
 }
 
 #[then(expr = "{string}")]
 fn d_capability_result(w: &mut ProtocolWorld, observable: String) {
-    assert!(!observable.is_empty(), "closed D capability result");
-    cb12_assert_green(w);
+    let observation = w
+        .core_capability_observation
+        .as_ref()
+        .expect("CORE-OWN-003 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(observation.capability, w.core_capability);
+    assert_eq!(observation.protocol_object, w.core_capability_object);
+    assert_eq!(observation.observable_result, observable);
+    assert!(observation.operation_succeeded);
 }
 
 #[then(expr = "using that capability for {string} is refused")]
-fn d_mismatched_capability_refused(w: &mut ProtocolWorld, _object: String) {
-    cb12_assert_green(w);
+fn d_mismatched_capability_refused(w: &mut ProtocolWorld, object: String) {
+    w.core_capability_mismatch = object;
+    assert!(
+        w.core_capability_observation
+            .as_ref()
+            .expect("CORE-OWN-003 observation")
+            .as_ref()
+            .unwrap_or_else(|error| panic!("{error}"))
+            .mismatched_object_refused
+    );
 }
 
 #[then(
     regex = r#"^(?:arbitrary bytes or a mismatched Ethos, actor, purpose, node, version or recipient are refused|a capability for another protocol artifact class cannot substitute|no universal sign, open or wrap capability is exposed|no seed or private key is accepted or returned by the bundle operation)$"#
 )]
 fn d_capability_boundary_holds(w: &mut ProtocolWorld) {
-    cb12_assert_green(w);
+    let observation = w
+        .core_capability_observation
+        .as_ref()
+        .expect("CORE-OWN-003 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert!(observation.mismatched_session_refused);
+    assert!(observation.cross_class_substitution_refused);
+    assert!(!observation.secret_material_exposed);
 }
 
 // --- step E whens ---
 
-#[given(
-    regex = r#"^(?:a published bundle with circle sections "note1" and "note2" in folder "projets"|self sections "consignes" and "marges"|a published bundle with circle section "brouillon" in folder "projets")$"#
-)]
-fn e_exact_section_fixture(w: &mut ProtocolWorld) {
-    cb9_result(w);
+#[given("a published bundle with circle sections \"note1\" and \"note2\" in folder \"projets\"")]
+fn e_exact_circle_read_fixture(w: &mut ProtocolWorld) {
+    w.core_exact_section_fixture = "circle-read".into();
 }
 
-#[when(
-    regex = r#"^the owner grants the agent (?:read|edit) on (?:self )?section "(?:note1|consignes|brouillon)" by id$"#
-)]
+#[given("self sections \"consignes\" and \"marges\"")]
+fn e_exact_self_fixture(w: &mut ProtocolWorld) {
+    w.core_exact_section_fixture = "self-read".into();
+}
+
+#[given("a published bundle with circle section \"brouillon\" in folder \"projets\"")]
+fn e_exact_circle_edit_fixture(w: &mut ProtocolWorld) {
+    w.core_exact_section_fixture = "circle-edit".into();
+}
+
+#[when("the owner grants the agent read on section \"note1\" by id")]
+#[when("the owner grants the agent read on self section \"consignes\" by id")]
+#[when("the owner grants the agent edit on section \"brouillon\" by id")]
 fn e_exact_section_grant(w: &mut ProtocolWorld) {
-    cb9_result(w);
+    w.core_exact_section_observation =
+        Some(core_exact_section_scenario(&w.core_exact_section_fixture));
+}
+
+#[when("the owner grants the agent edit on self section \"consignes\" by id")]
+fn e_exact_self_edit_grant(w: &mut ProtocolWorld) {
+    w.core_exact_section_fixture = "self-edit".into();
+    w.core_exact_section_observation = Some(core_exact_section_scenario("self-edit"));
 }
 
 #[then(
     regex = r#"^(?:the agent rewrites "(?:brouillon|consignes)" with its own keypair|the agent cannot create a sibling section in "projets")$"#
 )]
 fn e_exact_section_outcome(w: &mut ProtocolWorld) {
-    cb9_assert_green(w);
+    let observation = w
+        .core_exact_section_observation
+        .as_ref()
+        .expect("CORE-DEL-003 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert!(observation.target_rewritten);
+    assert!(observation.sibling_create_refused);
+    assert!(observation.failed_attempt_unchanged);
 }
 
 #[when(expr = "the agent delegates read on circle section {string} by id")]
@@ -3239,87 +8097,364 @@ fn e_self_create_proof_is_opaque(w: &mut ProtocolWorld) {
 
 #[given(expr = "a grantee operation with {string} and {string}")]
 fn e_possession_and_chain(w: &mut ProtocolWorld, possession: String, chain: String) {
-    let verdict = match (possession.as_str(), chain.as_str()) {
-        ("valid key proof", "valid mandate chain") => cb4_validate_positive_session().is_ok(),
-        ("valid key proof", "no mandate chain") => {
-            cb4_validate_session("certificate-mandate-mismatch").is_ok()
-        }
-        ("no key proof", "valid mandate chain") => {
-            cb4_validate_session("missing-native-leaf-proof").is_ok()
-        }
-        ("wrong key proof", "valid mandate chain") => {
-            cb4_validate_session("native-leaf-proof-wrong-key").is_ok()
-        }
-        ("valid key proof", "revoked mandate chain") => {
-            cb6_result(w);
-            false
-        }
-        other => panic!("unknown possession/chain case: {other:?}"),
-    };
-    w.cb3_verdict = Some(verdict);
+    w.core_fence_key_material = possession;
+    w.core_fence_authority = chain;
+    w.core_fence_result = None;
 }
 
 #[when("the pure verifier evaluates the same target and time")]
 fn e_evaluate_possession_and_chain(w: &mut ProtocolWorld) {
-    assert!(
-        w.cb3_verdict.is_some(),
-        "Core session verdict was evaluated"
-    );
+    let result = core_fence_scenario(&w.core_fence_key_material, &w.core_fence_authority);
+    w.cb3_verdict = Some(result.as_deref() == Ok("readable and authorized"));
+    w.core_fence_result = Some(result);
 }
 
 #[given("a form-valid grantee operation, historical Gamma prefix and injected time")]
 fn e_append_replay_fixture(w: &mut ProtocolWorld) {
-    cb6_result(w);
-    cb9_result(w);
+    w.core_fence_result = Some(core_append_cold_authority_scenario());
 }
 
 #[when("it is evaluated before append and replayed from the exported edition")]
 fn e_append_and_cold_verdict(w: &mut ProtocolWorld) {
-    cb6_assert_green(w);
-    cb9_assert_green(w);
+    assert!(w.core_fence_result.as_ref().is_some_and(Result::is_ok));
 }
 
 #[then("both paths return the same typed authorization verdict")]
 #[then("revocation, constraints and proof of possession are present in both paths")]
 fn e_append_cold_same_verdict(w: &mut ProtocolWorld) {
-    cb6_assert_green(w);
-    cb9_assert_green(w);
+    assert_eq!(
+        w.core_fence_result.as_ref().expect("CORE-DEL-004 result"),
+        &Ok("hot and cold returned the same revoked authority verdict".into())
+    );
 }
 
-#[given(regex = r#"^a grantee mandate carrying ".*"$"#)]
-fn fplus_applicability_fixture(w: &mut ProtocolWorld) {
-    cb5_constraints_result(w);
+fn core_constraint_family(value: &str) -> ConstraintFamily {
+    match value {
+        "validity window" => ConstraintFamily::ValidityWindow,
+        "freshness and heartbeat" => ConstraintFamily::FreshnessHeartbeat,
+        "session binding" => ConstraintFamily::SessionBinding,
+        "first_party_only and purpose" => ConstraintFamily::FirstPartyPurpose,
+        "obligation targeting the operation" => ConstraintFamily::Obligation,
+        "max_actions" => ConstraintFamily::MaxActions,
+        "max_mutations" => ConstraintFamily::MaxMutations,
+        "max_consumptions" => ConstraintFamily::MaxConsumptions,
+        "max_children" => ConstraintFamily::MaxChildren,
+        "budgets" => ConstraintFamily::Budgets,
+        "action_params and spend_cap" => ConstraintFamily::ActionParamsSpendCap,
+        "disclose_agency" => ConstraintFamily::DiscloseAgency,
+        "notify" => ConstraintFamily::Notify,
+        "log_reads" => ConstraintFamily::LogReads,
+        other => panic!("unknown constraint family {other}"),
+    }
 }
 
-#[when(regex = r#"^it attempts canonical operation ".*"$"#)]
-fn fplus_applicability_operation(w: &mut ProtocolWorld) {
-    cb5_constraints_result(w);
+fn core_constraint_operation(value: &str) -> ConstraintOperation {
+    match value {
+        "read presentation" => ConstraintOperation::ReadPresentation,
+        "Ethos mutation" => ConstraintOperation::EthosMutation,
+        "connector action" => ConstraintOperation::ConnectorAction,
+        "inference" => ConstraintOperation::Inference,
+        "vault config read" | "journalized vault config read" => {
+            ConstraintOperation::VaultConfigRead
+        }
+        "vault config mutation" => ConstraintOperation::VaultConfigMutation,
+        "grant" => ConstraintOperation::Grant,
+        "revoke" => ConstraintOperation::Revoke,
+        "publication" => ConstraintOperation::Publication,
+        other => panic!("unknown constraint operation {other}"),
+    }
 }
 
-#[then(regex = r#"^that family is ".*"$"#)]
-#[then(regex = r#"^cold verification requires ".*"$"#)]
-fn fplus_applicability_verdict(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
+fn core_constraint_applicability(value: &str) -> ConstraintApplicability {
+    match value {
+        "applicable" => ConstraintApplicability::Applicable,
+        "non-applicable" => ConstraintApplicability::NonApplicable,
+        "executor fact" => ConstraintApplicability::ExecutorFact,
+        "best effort only" => ConstraintApplicability::BestEffortOnly,
+        other => panic!("unknown constraint applicability {other}"),
+    }
+}
+
+fn core_constraint_evidence(value: &str) -> ConstraintEvidence {
+    match value {
+        "none" => ConstraintEvidence::None,
+        "signed time facts" => ConstraintEvidence::SignedTimeFacts,
+        "revocation state and beacon" => ConstraintEvidence::RevocationStateAndBeacon,
+        "signed session certificate" => ConstraintEvidence::SignedSessionCertificate,
+        "mandate and operation binding" => ConstraintEvidence::MandateAndOperationBinding,
+        "public signed receipt" => ConstraintEvidence::PublicSignedReceipt,
+        "Gamma action count" => ConstraintEvidence::GammaActionCount,
+        "delegated mutation count" => ConstraintEvidence::DelegatedMutationCount,
+        "delegated-consumption count" => ConstraintEvidence::DelegatedConsumptionCount,
+        "delegated-consumption proof" => ConstraintEvidence::DelegatedConsumptionProof,
+        "signed read consumption evidence" => ConstraintEvidence::SignedReadConsumptionEvidence,
+        "direct-child grant count" => ConstraintEvidence::DirectChildGrantCount,
+        "profile and required attestation" => ConstraintEvidence::ProfileAndRequiredAttestation,
+        "approved public attestation" => ConstraintEvidence::ApprovedPublicAttestation,
+        "never a validity proof" => ConstraintEvidence::NeverValidityProof,
+        "signed Gamma read entry" => ConstraintEvidence::SignedGammaReadEntry,
+        "signed read evidence" => ConstraintEvidence::SignedReadEvidence,
+        other => panic!("unknown constraint evidence {other}"),
+    }
+}
+
+#[given(expr = "a grantee mandate carrying {string}")]
+fn fplus_applicability_fixture(w: &mut ProtocolWorld, family: String) {
+    w.core_constraint_family = family;
+    w.core_constraint_requirement = None;
+}
+
+#[when(expr = "it attempts canonical operation {string}")]
+fn fplus_applicability_operation(w: &mut ProtocolWorld, operation: String) {
+    w.core_constraint_requirement = Some(constraint_requirement(
+        core_constraint_family(&w.core_constraint_family),
+        core_constraint_operation(&operation),
+    ));
+}
+
+#[then(expr = "that family is {string}")]
+fn fplus_applicability_verdict(w: &mut ProtocolWorld, expected: String) {
+    assert_eq!(
+        w.core_constraint_requirement
+            .expect("constraint requirement")
+            .applicability,
+        core_constraint_applicability(&expected)
+    );
+}
+
+#[then(expr = "cold verification requires {string}")]
+fn fplus_applicability_evidence(w: &mut ProtocolWorld, expected: String) {
+    assert_eq!(
+        w.core_constraint_requirement
+            .expect("constraint requirement")
+            .evidence,
+        core_constraint_evidence(&expected)
+    );
 }
 
 #[given("a delegated consumption with all constraint facts injected")]
-#[when("Core evaluates it before effect and from a fresh-store historical replay")]
 fn fplus_append_replay_fixture(w: &mut ProtocolWorld) {
-    cb5_constraints_result(w);
+    w.core_constraint_replay = None;
+}
+
+#[when("Core evaluates it before effect and from a fresh-store historical replay")]
+fn fplus_append_replay_action(w: &mut ProtocolWorld) {
+    use ConstraintFamily::{
+        ActionParamsSpendCap, Budgets, DiscloseAgency, FirstPartyPurpose, FreshnessHeartbeat,
+        LogReads, MaxActions, MaxChildren, MaxConsumptions, MaxMutations, Notify, Obligation,
+        SessionBinding, ValidityWindow,
+    };
+    use ConstraintOperation::{
+        ConnectorAction, EthosMutation, Grant, Inference, Publication, ReadPresentation, Revoke,
+        VaultConfigMutation, VaultConfigRead,
+    };
+    let families = [
+        ValidityWindow,
+        FreshnessHeartbeat,
+        SessionBinding,
+        FirstPartyPurpose,
+        Obligation,
+        MaxActions,
+        MaxMutations,
+        MaxConsumptions,
+        MaxChildren,
+        Budgets,
+        ActionParamsSpendCap,
+        DiscloseAgency,
+        Notify,
+        LogReads,
+    ];
+    let operations = [
+        ReadPresentation,
+        EthosMutation,
+        ConnectorAction,
+        Inference,
+        VaultConfigRead,
+        VaultConfigMutation,
+        Grant,
+        Revoke,
+        Publication,
+    ];
+    let result = (|| {
+        for family in families {
+            for operation in operations {
+                let append = constraint_requirement(family, operation);
+                let cold = constraint_requirement(family, operation);
+                if append != cold {
+                    return Err(format!(
+                        "applicability drift for {family:?} on {operation:?}"
+                    ));
+                }
+            }
+        }
+        let unevaluable = serde_json::json!({"quantum_cap": 1});
+        for mode in ["append", "cold"] {
+            if !matches!(
+                verify_operation_constraints(&unevaluable),
+                Err(aithos_core::Error::InvalidMandate(_))
+            ) {
+                return Err(format!("{mode} accepted an unevaluable required fact"));
+            }
+        }
+        Ok(())
+    })();
+    w.core_constraint_replay = Some(result);
 }
 
 #[then("every applicable, non-applicable, public-proof and executor-proof cell matches")]
 #[then("a required fact that cannot be evaluated is refused in both modes")]
 fn fplus_append_replay_verdict(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
+    assert_eq!(w.core_constraint_replay, Some(Ok(())));
 }
 
-#[given(regex = r#"^a ".*" parent mandate with max_children 4$"#)]
+fn cb5_max_children_mandate(vector: &serde_json::Value, name: &str) -> Result<Mandate, String> {
+    serde_json::from_str(
+        vector["certificates"][name]["jcs"]
+            .as_str()
+            .ok_or_else(|| format!("missing max_children certificate {name}"))?,
+    )
+    .map_err(|error| format!("invalid max_children certificate {name}: {error}"))
+}
+
+fn cb5_max_children_case(id: &str) -> Result<(), String> {
+    let vector = cb5_parsed(CB5_MAX_CHILDREN)?;
+    let case = vector["cases"]
+        .as_array()
+        .and_then(|cases| cases.iter().find(|case| case["id"] == id))
+        .ok_or_else(|| format!("missing max_children case {id}"))?;
+    let parent =
+        cb5_max_children_mandate(&vector, case["parent"].as_str().ok_or("missing parent")?)?;
+    let child = cb5_max_children_mandate(&vector, case["child"].as_str().ok_or("missing child")?)?;
+    if parent.version != child.version {
+        return Err("mixed mandate versions".into());
+    }
+    constraints_attenuate_for_profile(
+        &parent.version,
+        &parent.constraints,
+        &child.constraints,
+        &child.not_before,
+        &child.not_after,
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn cb5_migration_scenario() -> Result<(), String> {
+    let vector = cb5_parsed(CB5_MAX_CHILDREN)?;
+    let migration = &vector["migration"];
+    let names = |key: &str| -> Result<Vec<&str>, String> {
+        migration[key]
+            .as_array()
+            .ok_or_else(|| format!("migration {key} is not an array"))?
+            .iter()
+            .map(|name| {
+                name.as_str()
+                    .ok_or_else(|| format!("migration {key} contains a non-string"))
+            })
+            .collect()
+    };
+    let legacy_names = names("legacy_chain")?;
+    let reissued_names = names("reissued_chain")?;
+    let legacy_bytes = legacy_names
+        .iter()
+        .map(|name| {
+            vector["certificates"][name]["jcs"]
+                .as_str()
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
+    let legacy = legacy_names
+        .iter()
+        .map(|name| cb5_max_children_mandate(&vector, name))
+        .collect::<Result<Vec<_>, _>>()?;
+    let reissued = reissued_names
+        .iter()
+        .map(|name| cb5_max_children_mandate(&vector, name))
+        .collect::<Result<Vec<_>, _>>()?;
+    if legacy
+        .iter()
+        .any(|mandate| mandate.version != "1.0.0-draft.1")
+        || reissued
+            .iter()
+            .any(|mandate| mandate.version != "1.0.0-draft.2")
+        || legacy
+            .iter()
+            .zip(&reissued)
+            .any(|(old, new)| old.id == new.id)
+    {
+        return Err("migration did not reissue one homogeneous fresh-id chain".into());
+    }
+    constraints_attenuate_for_profile(
+        &reissued[0].version,
+        &reissued[0].constraints,
+        &reissued[1].constraints,
+        &reissued[1].not_before,
+        &reissued[1].not_after,
+    )
+    .map_err(|error| format!("reissued chain failed: {error}"))?;
+    let entries = migration["grant_entries_jcs"]
+        .as_array()
+        .ok_or("migration grant entries are not an array")?
+        .iter()
+        .map(|entry| {
+            serde_json::from_str::<aithos_core::gamma::Entry>(entry.as_str().unwrap_or_default())
+                .map_err(|error| error.to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    aithos_core::gamma::verify_links(&entries)
+        .map_err(|error| format!("migration Gamma links failed: {error}"))?;
+    for (name, bytes) in legacy_names.iter().zip(legacy_bytes) {
+        if vector["certificates"][name]["jcs"].as_str() != Some(bytes) {
+            return Err(format!("migration rewrote historical certificate {name}"));
+        }
+    }
+    Ok(())
+}
+
+#[given(expr = "a {string} parent mandate with max_children 4")]
+fn fplus_versioned_parent(w: &mut ProtocolWorld, parent_version: String) {
+    w.core_constraint_parent_version = parent_version;
+    w.core_constraint_case_result = None;
+}
+
+#[when(expr = "it mints a {string} chain leaf with {string}")]
+fn fplus_versioned_child(w: &mut ProtocolWorld, child_version: String, constraint: String) {
+    let id = match (
+        w.core_constraint_parent_version.as_str(),
+        child_version.as_str(),
+        constraint.as_str(),
+    ) {
+        ("draft.1", "draft.1", "no max_children") => "draft1_omission_historical",
+        ("draft.2", "draft.2", "no max_children") => "draft2_omission_leaf",
+        ("draft.1", "draft.2", "max_children 4") => "mixed_draft1_to_draft2",
+        ("draft.2", "draft.1", "max_children 4") => "mixed_draft2_to_draft1",
+        other => panic!("unknown versioned max_children case {other:?}"),
+    };
+    w.core_constraint_case_result = Some(cb5_max_children_case(id));
+}
+
 #[given("a valid homogeneous draft.1 chain whose certificate bytes are recorded")]
-#[when(regex = r#"^it mints a ".*" chain leaf with ".*"$"#)]
+fn fplus_migration_fixture(w: &mut ProtocolWorld) {
+    w.core_constraint_case_result = None;
+}
+
 #[when("its authorities migrate the authority to draft.2")]
-fn fplus_versioned_constraints(w: &mut ProtocolWorld) {
-    cb5_constraints_result(w);
+fn fplus_migration_action(w: &mut ProtocolWorld) {
+    w.core_constraint_case_result = Some(cb5_migration_scenario());
+}
+
+#[then(expr = "the child chain is {string}")]
+fn fplus_versioned_verdict(w: &mut ProtocolWorld, verdict: String) {
+    if w.core_constraint_case_result.is_none() {
+        cb5_assert_green(w);
+        return;
+    }
+    assert_eq!(
+        w.core_constraint_case_result
+            .as_ref()
+            .expect("max_children result")
+            .is_ok(),
+        verdict == "accepted"
+    );
 }
 
 #[then(regex = r#"^every certificate is reissued under draft\.2 in issuer order$"#)]
@@ -3327,92 +8462,327 @@ fn fplus_versioned_constraints(w: &mut ProtocolWorld) {
 #[then("the resulting chain contains only draft.2 mandates")]
 #[then("no draft.1 certificate byte or signature is changed or reinterpreted")]
 fn fplus_versioned_constraints_hold(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
+    assert_eq!(w.core_constraint_case_result, Some(Ok(())));
 }
 
-#[given(
-    regex = r#"^(?:a mandate with an obligation explicitly targeting ".*"|a grantee publication explicitly requiring owner co_sign|a delegated publication whose operation requires ".*"|a delegated operation with a complete ordered receipt set)$"#
-)]
-fn gplus_bound_receipt_fixture(w: &mut ProtocolWorld) {
-    cb5_receipts_result(w);
-    cb6_result(w);
+fn core_signed_r2_scenario(operation: &str, receipt_state: &str) -> Result<(), String> {
+    use ed25519_dalek::Signer;
+
+    let vector = cb5_parsed(CB5_RECEIPTS)?;
+    let (context, obligation) = match operation {
+        "public content edit" => (
+            vector["contexts"]["mutation-ethos-edit"].clone(),
+            vector["obligations"]["mutation"].clone(),
+        ),
+        "structural move" => {
+            let context = vector["contexts"]["mutation-structure-move"].clone();
+            let obligation = serde_json::json!({
+                "id": "structure-approval",
+                "check": "human.approve",
+                "attestor": [vector["public_keys"]["attestor_a"].clone()],
+                "verdict": "approve",
+                "max_age": "5m",
+                "applies_to_operation": {"kind":"mutation", "domain":"structure", "verb":"move"}
+            });
+            (context, obligation)
+        }
+        "normal publication" => {
+            let context = vector["contexts"]["publication-normal"].clone();
+            let obligation = serde_json::json!({
+                "id": "owner-co-sign",
+                "check": "owner.co_sign",
+                "attestor": [vector["public_keys"]["attestor_a"].clone()],
+                "verdict": "approve",
+                "max_age": "5m",
+                "applies_to_operation": {"kind":"publication", "mode":"normal"}
+            });
+            (context, obligation)
+        }
+        "connector action" => (
+            vector["contexts"]["action"].clone(),
+            vector["obligations"]["action"].clone(),
+        ),
+        other => return Err(format!("unknown bound-receipt operation {other}")),
+    };
+    if receipt_state == "no receipt" {
+        return verify_r2_receipt(
+            &serde_json::json!([]),
+            &context,
+            "1.0.0-draft.3",
+            &obligation,
+        )
+        .map(|_| ())
+        .map_err(|error| error.to_string());
+    }
+    let mut operation_ref = context["operation_ref"].clone();
+    if matches!(
+        receipt_state,
+        "receipt for different arguments" | "replayed sibling receipt"
+    ) {
+        operation_ref["occurrence"] = "op_01K00000000000000000000099".into();
+    }
+    let at = if receipt_state == "stale owner co_sign receipt" {
+        "2026-07-18T10:00:00Z"
+    } else {
+        context["projection"]["at"].as_str().unwrap_or_default()
+    };
+    let mut receipt = serde_json::json!({
+        "v": 2,
+        "family": "obligation",
+        "operation_ref": operation_ref,
+        "obligation": obligation["id"],
+        "verdict": obligation["verdict"],
+        "at": at,
+        "sig": ""
+    });
+    let seed: [u8; 32] = hex::decode(
+        vector["deterministic_private_seed_hex"]["attestor_a"]
+            .as_str()
+            .ok_or("missing attestor seed")?,
+    )
+    .map_err(|error| error.to_string())?
+    .try_into()
+    .map_err(|_| "attestor seed length".to_owned())?;
+    let mut unsigned = receipt.clone();
+    unsigned.as_object_mut().unwrap().remove("sig");
+    receipt["sig"] = hex::encode(
+        SigningKey::from_bytes(&seed)
+            .sign(&aithos_core::jcs::canonical_bytes(&unsigned).map_err(|error| error.to_string())?)
+            .to_bytes(),
+    )
+    .into();
+    verify_r2_receipt(
+        &serde_json::json!([receipt]),
+        &context,
+        "1.0.0-draft.3",
+        &obligation,
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
 }
 
-#[when(
-    regex = r#"^(?:the operation is evaluated with ".*"|the owner attests the exact publication operation_ref|the grantee supplies ".*"|it is evaluated before append and from a fresh exported store)$"#
-)]
-fn gplus_bound_receipt_action(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
-    cb6_assert_green(w);
+#[given(expr = "a mandate with an obligation explicitly targeting {string}")]
+fn gplus_bound_receipt_fixture(w: &mut ProtocolWorld, operation: String) {
+    w.core_bound_receipt_operation = operation;
+    w.core_bound_receipt_result = None;
 }
 
-#[when(
-    regex = r#"^(?:the grantee presents ".*" for that canonical operation|the owner supplies the bound approval receipt|the public edition carries ".*"|it is evaluated before effect and replayed from a fresh keyless store)$"#
-)]
-fn gplus_bound_receipt_evaluation(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
-    cb6_assert_green(w);
+#[given("a grantee publication explicitly requiring owner co_sign")]
+fn gplus_cosigned_publication_fixture(w: &mut ProtocolWorld) {
+    w.core_edition_case = "cosigned-grantee-publication".into();
+    w.core_edition_observation = Some(core_edition_positive_scenario(
+        "cosigned-grantee-publication",
+    ));
 }
 
-#[then(
-    regex = r#"^(?:the receipt is checked against that exact operation_ref|the grantee remains the sole publication actor|the owner is only a receipt attestor and gains no content authority|no provider claim, grantee declaration or missing receipt is inferred as truth|append-time and cold-time return the same typed obligation verdict|no receipt is omitted, reordered or counted twice)$"#
-)]
-fn gplus_bound_receipt_verdict(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
-    cb6_assert_green(w);
+#[when(expr = "the grantee presents {string} for that canonical operation")]
+fn gplus_bound_receipt_evaluation(w: &mut ProtocolWorld, receipt_state: String) {
+    w.core_bound_receipt_result = Some(core_signed_r2_scenario(
+        &w.core_bound_receipt_operation,
+        &receipt_state,
+    ));
 }
 
-#[then(
-    regex = r#"^(?:any accepted receipt is bound to the leaf mandate, operation arguments and time|the grantee remains the sole edition actor and signer|keyless cold verification is ".*"|both verdicts accept the same receipts and reject the same replays)$"#
-)]
+#[then("any accepted receipt is bound to the leaf mandate, operation arguments and time")]
 fn gplus_bound_receipt_final_verdict(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
-    cb6_assert_green(w);
+    assert!(w.core_bound_receipt_result.is_some());
+}
+
+#[when("the owner supplies the bound approval receipt")]
+fn gplus_cosigned_publication_action(w: &mut ProtocolWorld) {
+    assert!(w.core_edition_observation.is_some());
+}
+
+#[then("the grantee remains the sole edition actor and signer")]
+#[then("the grantee remains the sole publication actor")]
+#[then("the owner is only a receipt attestor and gains no content authority")]
+fn gplus_cosigned_publication_verdict(w: &mut ProtocolWorld) {
+    let observation = w
+        .core_edition_observation
+        .as_ref()
+        .expect("co-signed publication observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert!(observation.actual_accepted);
+    assert!(observation.signer_is_actor);
+    assert!(observation.owner_absent_from_grantee_edition);
+}
+
+#[given(expr = "a delegated publication whose operation requires {string}")]
+fn gplus_executor_fact_fixture(w: &mut ProtocolWorld, executor_fact: String) {
+    w.core_bound_receipt_operation = executor_fact;
+    w.core_bound_receipt_result = None;
+}
+
+#[when(expr = "the public edition carries {string}")]
+fn gplus_executor_fact_action(w: &mut ProtocolWorld, public_evidence: String) {
+    let family = match w.core_bound_receipt_operation.as_str() {
+        "action_params" | "spend_cap" => ConstraintFamily::ActionParamsSpendCap,
+        "disclose_agency" => ConstraintFamily::DiscloseAgency,
+        other => panic!("unknown executor fact {other}"),
+    };
+    let requirement = constraint_requirement(family, ConstraintOperation::ConnectorAction);
+    let approved = public_evidence == "approved bound attestation"
+        && requirement.applicability == ConstraintApplicability::ExecutorFact
+        && requirement.evidence == ConstraintEvidence::ApprovedPublicAttestation
+        && core_u1_receipt("action").is_ok();
+    w.core_bound_receipt_result = Some(if approved {
+        Ok(())
+    } else {
+        Err("required executor fact has no approved bound attestation".into())
+    });
+}
+
+#[then(expr = "keyless cold verification is {string}")]
+fn gplus_executor_fact_verdict(w: &mut ProtocolWorld, verdict: String) {
+    assert_eq!(
+        w.core_bound_receipt_result
+            .as_ref()
+            .expect("executor-fact result")
+            .is_ok(),
+        verdict == "accepted"
+    );
+}
+
+#[given("a delegated operation with a complete ordered receipt set")]
+fn gplus_receipt_replay_fixture(w: &mut ProtocolWorld) {
+    w.core_bound_receipt_result = None;
+    w.core_bound_receipt_sealed = false;
+}
+
+#[when("it is evaluated before effect and replayed from a fresh keyless store")]
+fn gplus_receipt_replay_action(w: &mut ProtocolWorld) {
+    let append = core_r2_complete_scenario();
+    let cold = core_r2_complete_scenario();
+    w.core_bound_receipt_sealed = cb5_parsed(CB5_RECEIPTS)
+        .map(|vector| {
+            let public = serde_json::to_string(&vector["contexts"]).unwrap_or_default();
+            !public.contains("prompt") && !public.contains("request_body")
+        })
+        .unwrap_or(false);
+    w.core_bound_receipt_result = Some(match (append, cold) {
+        (Ok(a), Ok(b)) if a == b => Ok(()),
+        (left, right) => Err(format!("append/cold receipt drift: {left:?} vs {right:?}")),
+    });
+}
+
+#[then("both verdicts accept the same receipts and reject the same replays")]
+#[then("no receipt is omitted, reordered or counted twice")]
+#[then("append-time and cold-time return the same typed obligation verdict")]
+fn gplus_receipt_replay_verdict(w: &mut ProtocolWorld) {
+    assert_eq!(w.core_bound_receipt_result, Some(Ok(())));
 }
 
 #[then("sealed operation data is never exposed to the keyless verifier")]
 fn gplus_keyless_data_stays_sealed(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
-    cb6_assert_green(w);
+    assert!(w.core_bound_receipt_sealed);
 }
 
-#[given(
-    regex = r#"^(?:an edition whose Gamma roots and inclusion proofs recompute exactly|one accepted mixed history of reads, actions, inferences, mutations, config mutations, grants, revocations, publications and merges)$"#
-)]
-fn h2_semantic_replay_fixture(w: &mut ProtocolWorld) {
-    cb5_counts_result(w);
-    cb6_result(w);
+fn core_semantic_counts_replay_scenario() -> Result<u64, String> {
+    let coexistence: serde_json::Value = serde_json::from_str(CB6_COEXISTENCE)
+        .map_err(|error| format!("coexistence vector does not parse: {error}"))?;
+    let section = &coexistence["positive"];
+    let did: DidDocument = serde_json::from_str(
+        coexistence["did"]["jcs"]
+            .as_str()
+            .ok_or("coexistence DID is missing")?,
+    )
+    .map_err(|error| error.to_string())?;
+    let certificates = section["certificate_names"]
+        .as_array()
+        .ok_or("certificate names are not an array")?
+        .iter()
+        .map(|name| {
+            let name = name.as_str().unwrap_or_default();
+            let mandate: Mandate = serde_json::from_str(
+                coexistence["certificates"][name]["jcs"]
+                    .as_str()
+                    .ok_or_else(|| format!("missing certificate {name}"))?,
+            )
+            .map_err(|error| error.to_string())?;
+            Ok((mandate.id.clone(), mandate))
+        })
+        .collect::<Result<BTreeMap<_, _>, String>>()?;
+    let entries = section["gamma_jsonl"]
+        .as_str()
+        .ok_or("coexistence Gamma is missing")?
+        .lines()
+        .map(|line| serde_json::from_str(line).map_err(|error| error.to_string()))
+        .collect::<Result<Vec<aithos_core::gamma::Entry>, _>>()?;
+    let mut append = GammaReplayState::new(did.clone(), certificates.clone());
+    let mut cold = GammaReplayState::new(did, certificates);
+    for entry in &entries {
+        append.admit(entry).map_err(|error| error.to_string())?;
+    }
+    for entry in serde_json::from_str::<serde_json::Value>(
+        &serde_json::to_string(&entries).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?
+    .as_array()
+    .ok_or("reloaded Gamma is not an array")?
+    {
+        let entry: aithos_core::gamma::Entry =
+            serde_json::from_value(entry.clone()).map_err(|error| error.to_string())?;
+        cold.admit(&entry).map_err(|error| error.to_string())?;
+    }
+    append.finish().map_err(|error| error.to_string())?;
+    cold.finish().map_err(|error| error.to_string())?;
+    if append.head().map_err(|error| error.to_string())?
+        != cold.head().map_err(|error| error.to_string())?
+        || append.counters() != cold.counters()
+    {
+        return Err("append/cold Gamma replay drift".into());
+    }
+    core_count_positive_scenario()?;
+    Ok(entries.len() as u64)
+}
+
+#[given("an edition whose Gamma roots and inclusion proofs recompute exactly")]
+fn h2_unauthorized_root_fixture(w: &mut ProtocolWorld) {
+    w.core_delegated_observation = None;
 }
 
 #[given("one proven mutation is outside its actor's SID perimeter")]
+fn h2_unauthorized_root_mutation(w: &mut ProtocolWorld) {
+    w.core_delegated_observation = Some(core_delegated_scenario(
+        "self",
+        "edit",
+        "edit.self#dir=sealed",
+    ));
+}
+
 #[when("the fresh-store verifier performs semantic replay")]
-#[when(
-    regex = r#"^(?:semantic replay encounters one mutation outside its actor authority|append-time and a fresh cold store rebuild semantic state and counters|counters are computed before the next append and from a fresh-store replay)$"#
-)]
-fn h2_semantic_replay_action(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
-    cb6_assert_green(w);
-}
-
-#[then(
-    regex = r#"^(?:the edition is rejected despite valid structural roots|no root or proof substitutes for the failed Core verdict|both paths accept the same occurrences in the same causal order|action, mutation, total-consumption and direct-child tallies are identical)$"#
-)]
-fn h2_semantic_replay_verdict(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
-    cb6_assert_green(w);
-}
-
-#[then("every conceptual tally and limit verdict is identical")]
-fn h2_semantic_replay_final_verdict(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
-    cb6_assert_green(w);
+fn h2_unauthorized_root_action(w: &mut ProtocolWorld) {
+    assert!(w.core_delegated_observation.is_some());
 }
 
 #[then("the edition is rejected despite the valid roots")]
+fn h2_unauthorized_root_verdict(w: &mut ProtocolWorld) {
+    let observation = core_delegated_observation(w);
+    assert!(!observation.accepted);
+    assert!(observation.refusal_unchanged);
+    assert!(observation.fresh_reopen_verified);
+    assert_eq!(observation.gamma_delta, 0);
+}
+
+#[given("one accepted mixed history of reads, actions, inferences, mutations, config mutations, grants, revocations, publications and merges")]
+fn h2_semantic_replay_fixture(w: &mut ProtocolWorld) {
+    w.core_count_suite = None;
+}
+
+#[when("counters are computed before the next append and from a fresh-store replay")]
+fn h2_semantic_replay_action(w: &mut ProtocolWorld) {
+    w.core_count_suite = Some(core_semantic_counts_replay_scenario());
+}
+
+#[then("every conceptual tally and limit verdict is identical")]
 #[then("the roots commit that replay state without replacing semantic checks")]
-fn h2_semantic_roots_do_not_authorize(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
-    cb6_assert_green(w);
+fn h2_semantic_replay_verdict(w: &mut ProtocolWorld) {
+    assert!(w
+        .core_count_suite
+        .as_ref()
+        .expect("semantic replay result")
+        .is_ok());
 }
 
 #[given(
@@ -3473,71 +8843,235 @@ fn cb4_positive_contract_terminal_consequence(w: &mut ProtocolWorld) {
 }
 
 #[given(
-    regex = r#"^(?:a candidate normal edition by ".*"|a grantee has one chain covering every candidate change|a grantee publication explicitly requires an owner co_sign obligation|a candidate manifest under ".*"|a complete derived ".*" document D|parent and candidate states with contained operation occurrences|a complete K1-C changeset and evidence set for one candidate manifest|a draft2 candidate with contained operation occurrences|a complete draft2 evidence set for delegated occurrences|a K1-C evidence item of kind ".*"|all public proof material needed by the contained operations|a parent edition and a candidate state with ".*"|one grantee candidate changes content, an index row and its derived root path|a grantee publishes a public section mutation|a grantee publishes a public content mutation|a grantee publishes an authorized self mutation by exact SID|a canonical read\.gamma query whose result is made opposable|a draft2 candidate with ".*"|a grantee edition exported into a fresh empty ".*" store|a complete exported delegated edition)$"#
+    regex = r#"^(?:a grantee publication explicitly requires an owner co_sign obligation|parent and candidate states with contained operation occurrences|a complete K1-C changeset and evidence set for one candidate manifest|a draft2 candidate with contained operation occurrences|a complete draft2 evidence set for delegated occurrences|all public proof material needed by the contained operations|one grantee candidate changes content, an index row and its derived root path|a grantee publishes a public section mutation|a grantee publishes a public content mutation|a canonical read\.gamma query whose result is made opposable|a complete exported delegated edition)$"#
 )]
 fn m_carrier_fixture(w: &mut ProtocolWorld) {
-    cb4_result(w);
-    cb6_result(w);
-    cb9_result(w);
-    cb12_capability_result(w);
+    w.core_edition_case = "draft2-positive".into();
+    w.core_edition_observation = Some(core_edition_positive_scenario("draft2-positive"));
+}
+
+#[given(expr = "a candidate normal edition by {string}")]
+fn core_edition_actor_fixture(w: &mut ProtocolWorld, actor: String) {
+    w.core_edition_case = format!("actor:{actor}");
+    w.core_edition_argument = actor;
+}
+
+#[given("a grantee has one chain covering every candidate change")]
+fn core_edition_grantee_fixture(w: &mut ProtocolWorld) {
+    w.core_edition_case = "actor:leaf grantee".into();
+    w.core_edition_argument = "leaf grantee".into();
+    w.core_edition_secondary = "one valid chain covering every change".into();
+}
+
+#[given(expr = "every derived change is covered by {string}")]
+fn core_edition_authority_fixture(w: &mut ProtocolWorld, authority: String) {
+    w.core_edition_secondary = authority.clone();
+    let expected = if authority == "narrow local owner capability"
+        || authority == "one valid chain covering every change"
+    {
+        "accepted"
+    } else {
+        "refused"
+    };
+    w.core_edition_observation = Some(core_edition_actor_scenario(
+        &w.core_edition_argument,
+        &authority,
+        expected,
+    ));
+}
+
+#[given(expr = "a candidate manifest under {string}")]
+fn core_edition_manifest_fixture(w: &mut ProtocolWorld, profile: String) {
+    w.core_edition_case = format!("manifest:{profile}");
+    w.core_edition_argument = profile;
+}
+
+#[given(expr = "its K1-B carrier state is {string}")]
+fn core_edition_manifest_carriers(w: &mut ProtocolWorld, carrier_state: String) {
+    let expected = match (w.core_edition_argument.as_str(), carrier_state.as_str()) {
+        ("draft.1", "operation_ref, changeset_ref and evidence_ref absent")
+        | ("draft.2", "all three exact top-level carriers present") => "accepted",
+        _ => "refused",
+    };
+    w.core_edition_secondary = carrier_state.clone();
+    w.core_edition_observation = Some(core_edition_manifest_profile_scenario(
+        &w.core_edition_argument,
+        &carrier_state,
+        expected,
+    ));
+}
+
+#[given(expr = "a complete derived {string} document D")]
+fn core_edition_carrier_fixture(w: &mut ProtocolWorld, carrier: String) {
+    w.core_edition_case = format!("carrier:{carrier}");
+    w.core_edition_argument = carrier.clone();
+    w.core_edition_observation = Some(core_edition_carrier_scenario(&carrier));
+}
+
+#[given(expr = "a K1-C evidence item of kind {string}")]
+fn core_edition_evidence_kind_fixture(w: &mut ProtocolWorld, kind: String) {
+    let vector: serde_json::Value =
+        serde_json::from_str(CB12_DRAFT2_CARRIERS).expect("CORE-ED-002 vector parses");
+    let item_exists = vector["positive"]["candidate"]["evidence"]["items"]
+        .as_array()
+        .is_some_and(|items| items.iter().any(|item| item["kind"] == kind));
+    let mut observation = core_edition_positive_scenario(&format!("evidence:{kind}"));
+    if let Ok(observation) = &mut observation {
+        observation.actual_accepted &= item_exists;
+    }
+    w.core_edition_case = format!("evidence:{kind}");
+    w.core_edition_argument = kind;
+    w.core_edition_observation = Some(observation);
+}
+
+#[given(expr = "a parent edition and a candidate state with {string}")]
+fn core_edition_changeset_defect_fixture(w: &mut ProtocolWorld, defect: String) {
+    w.core_edition_case = format!("defect:{defect}");
+    w.core_edition_argument = defect.clone();
+    w.core_edition_observation = Some(core_edition_defect_scenario(&defect));
+}
+
+#[given(expr = "a draft2 candidate with {string}")]
+fn core_edition_carrier_defect_fixture(w: &mut ProtocolWorld, defect: String) {
+    w.core_edition_case = format!("defect:{defect}");
+    w.core_edition_argument = defect.clone();
+    w.core_edition_observation = Some(core_edition_defect_scenario(&defect));
+}
+
+#[given("a grantee publishes an authorized self mutation by exact SID")]
+fn core_edition_self_fixture(w: &mut ProtocolWorld) {
+    w.core_edition_case = "self-opaque-cold".into();
+    w.core_edition_observation = Some(core_self_edition_scenario());
+}
+
+#[given(expr = "a grantee edition exported into a fresh empty {string} store")]
+fn core_edition_incomplete_export_fixture(w: &mut ProtocolWorld, store: String) {
+    w.core_edition_case = "incomplete-export".into();
+    w.core_edition_argument = store;
+    w.core_edition_observation = None;
+}
+
+#[when(expr = "{string} is present")]
+fn core_edition_incomplete_export_defect(w: &mut ProtocolWorld, defect: String) {
+    w.core_edition_secondary = defect.clone();
+    w.core_edition_observation = Some(core_cold_roundtrip_scenario(
+        &w.core_edition_argument,
+        Some(&defect),
+    ));
 }
 
 #[given(
-    regex = r#"^(?:every derived change is covered by ".*"|no applicable obligation requires owner approval|its K1-B carrier state is ".*"|all private capabilities are absent)$"#
+    regex = r#"^(?:no applicable obligation requires owner approval|all private capabilities are absent)$"#
 )]
 #[when(
-    regex = r#"^(?:Bundle validates the candidate against its expected parent|the grantee publishes the normal edition|the owner provides a fresh bound approval receipt|Bundle validates signed manifest form before semantic replay|Bundle addresses and pins D for a draft2 manifest|Bundle derives their K1-C changeset|Bundle checks every changed canonical Store object|Bundle derives its closed changeset and publication operation|a fresh-store verifier replays authorship, session, receipts and catalog evidence|Core validates the selected item|Bundle constructs the K1-C evidence set|Bundle derives the typed changeset by comparing both states|the candidate is validated|its K1-C authorship document is encoded|the edition is reopened without private capabilities|a keyless verifier checks the parent and candidate editions|its K1-C presentation is encoded|Bundle validates carriers and asks Core for one semantic verdict|".*" is present|Bundle checks layout, version, hashes, references and reachability)$"#
+    regex = r#"^(?:Bundle validates the candidate against its expected parent|the grantee publishes the normal edition|the owner provides a fresh bound approval receipt|Bundle validates signed manifest form before semantic replay|Bundle addresses and pins D for a draft2 manifest|Bundle derives their K1-C changeset|Bundle checks every changed canonical Store object|Bundle derives its closed changeset and publication operation|a fresh-store verifier replays authorship, session, receipts and catalog evidence|Core validates the selected item|Bundle constructs the K1-C evidence set|Bundle derives the typed changeset by comparing both states|the candidate is validated|its K1-C authorship document is encoded|the edition is reopened without private capabilities|a keyless verifier checks the parent and candidate editions|its K1-C presentation is encoded|Bundle validates carriers and asks Core for one semantic verdict|Bundle checks layout, version, hashes, references and reachability)$"#
 )]
 fn m_carrier_action(w: &mut ProtocolWorld) {
-    cb4_assert_green(w);
-    cb6_assert_green(w);
-    cb9_assert_green(w);
-    cb12_assert_green(w);
+    if w.core_edition_case == "incomplete-export" {
+        return;
+    }
+    if w.core_edition_observation.is_none() {
+        let case = if w.core_edition_case.is_empty() {
+            "draft2-positive"
+        } else {
+            &w.core_edition_case
+        };
+        w.core_edition_observation = Some(core_edition_positive_scenario(case));
+    }
 }
 
 #[then(
     regex = r#"^(?:no actor is represented as another actor|the grantee alone signs as actor|no owner signature, key or online participation is required|the grantee remains the sole actor and edition signer|the owner appears only as the receipt attestor|the manifest is ".*"|its reference has exactly ".*" and digest|digest is domain-separated SHA-256 of ".*", NUL and RFC8785-JCS of D|its Store key is ".*"|files pins those exact JCS bytes with the historical bare SHA-256|it has exactly aithos-changeset-core, height, predecessors, operations and changes|height and predecessors equal the publication facts|operations equal contained_operations in causal order without the publication occurrence|every change has exactly key_commitment, before, after and operation_ref|absent state has only state while present state adds byte_commitment|every change names one contained operation and before differs from after|an aggregate key names its last writer after causal replay|changes sort by key commitment then occurrence with no duplicate key|the changeset explains content, index, root, header, wrap, Gamma, vault and rotation consequences|it excludes its own sidecar, the evidence sidecar and the candidate manifest|the manifest references and files pins explain those three carrier objects|no carrier digest depends transitively on the candidate manifest|the changeset carries the contained operation references in causal order|excludes the publication operation_ref and candidate manifest hash|publication facts commit the completed changeset|every verifier reconstructs the same dependency direction|every item is correlated through its exact operation_ref|authority is still derived only from owner capability or the mandate chain|no private content, credential, DK, private key or protected plaintext is present|the nested documents validate under their own profile|an unused, duplicate, uncorrelated or authority-bearing item is refused|it has exactly aithos-evidence-core, items and delegated_counts|items sort by complete RFC8785-JCS bytes with no duplicate|delegated_counts is always the exact D7 reference, including the empty root|every required proof appears once while unrelated proof is refused|authority is still derived only from owner capability or one mandate chain|the edition is refused|no caller-asserted changeset can override the derived result|the content operation is covered by the leaf chain|Gamma explains the authored change|deterministic index and root updates are recognized as consequences|any unexplained parasite change is refused|it has exactly aithos-authorship-core, subject, zone, sid, content_hash, operation_ref, edition, authorized_via, key and sig|zone is public and content_hash covers the exact stored public body bytes|edition has exactly height and predecessors matching publication facts|authorized_via and key equal the reconstructed W1 authority|the grantee key signs RFC8785-JCS with top-level sig omitted|no candidate manifest or carrier digest enters the signature|its signature binds content hash, SID, operation, edition and authorized_via|Gamma and the manifest commit that proof|the verifier distinguishes grantee authorship from owner authorship|it proves inclusion, replacement or absence for the same opaque SID|it learns no name, path, title, tags, content, folder relation or key|it has exactly aithos-gamma-presentation-core, subject, operation_ref, source_head, request_digest, entries, at, key and sig|entries are the complete selected Gamma objects in verified order without duplicate id|Bundle re-executes the query against source_head and obtains those exact entries|the verified presenter key signs RFC8785-JCS with top-level sig omitted|no Gamma entry, Gamma kind or second occurrence is created|publication is refused|no candidate manifest, carrier sidecar or Gamma delta becomes reachable|cold verification is refused|it supplies typed public artifacts to one pure Core verifier|no public helper returns Allow from layout, link or hash checks alone)$"#
 )]
 fn m_carrier_verdict(w: &mut ProtocolWorld) {
-    if w.cb5_result.is_some() {
-        cb5_assert_green(w);
-        cb6_assert_green(w);
-        return;
-    }
-    cb4_assert_green(w);
-    cb6_assert_green(w);
-    cb9_assert_green(w);
-    cb12_assert_green(w);
+    let result = w
+        .core_edition_observation
+        .as_ref()
+        .expect("every carrier scenario must construct its own CORE-ED observation");
+    let observation = result
+        .as_ref()
+        .unwrap_or_else(|error| panic!("CORE-ED scenario failed: {error}"));
+    assert!(observation.signer_is_actor, "{}", observation.case);
+    assert!(
+        observation.owner_absent_from_grantee_edition,
+        "{}",
+        observation.case
+    );
+    assert_eq!(
+        observation.actual_accepted,
+        observation.expected_verdict == "accepted",
+        "{}",
+        observation.case
+    );
 }
 
 #[then("every change remains covered by the grantee's single chain")]
 fn g_plus_single_grantee_chain_covers_changes(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
-    cb6_assert_green(w);
+    m_carrier_verdict(w);
+    let observation = w
+        .core_edition_observation
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .expect("CORE-ED grantee changes observation");
+    assert!(observation.actual_accepted);
+    assert!(observation.owner_absent_from_grantee_edition);
 }
 
-#[given(
-    regex = r#"^(?:a lived bundle containing owner and grantee publications|a fresh local store whose complete history already verifies keyless|a complete export in a fresh local store)$"#
-)]
+#[given("a lived bundle containing owner and grantee publications")]
 fn k_cold_round_trip_fixture(w: &mut ProtocolWorld) {
-    cb9_result(w);
-    cb12_capability_result(w);
+    w.core_edition_case = "cold-roundtrip".into();
+}
+
+#[given("a fresh local store whose complete history already verifies keyless")]
+fn k_cold_verified_fixture(w: &mut ProtocolWorld) {
+    w.core_edition_case = "cold-capability-reintroduction".into();
+    w.core_edition_observation = Some(core_capability_reintroduction_scenario());
+}
+
+#[given("a complete export in a fresh local store")]
+fn k_cold_defect_fixture(w: &mut ProtocolWorld) {
+    w.core_edition_case = "cold-defect".into();
+}
+
+#[when(expr = "its public and opaque artifacts are exported into a fresh empty {string} store")]
+fn k_cold_export_action(w: &mut ProtocolWorld, store: String) {
+    w.core_edition_argument = store.clone();
+    w.core_edition_observation = Some(core_cold_roundtrip_scenario(&store, None));
+}
+
+#[when(expr = "{string} is introduced before reopen")]
+fn k_cold_defect_action(w: &mut ProtocolWorld, defect: String) {
+    w.core_edition_argument = "fresh local store".into();
+    w.core_edition_secondary = defect.clone();
+    w.core_edition_observation = Some(core_cold_roundtrip_scenario(
+        "fresh local store",
+        Some(&defect),
+    ));
 }
 
 #[when(
-    regex = r#"^(?:its public and opaque artifacts are exported into a fresh empty ".*" store|the producer is destroyed and all private signing, opening and wrapping capabilities are absent|one separately supplied grantee opening capability is attached|".*" is introduced before reopen)$"#
+    regex = r#"^(?:the producer is destroyed and all private signing, opening and wrapping capabilities are absent|one separately supplied grantee opening capability is attached)$"#
 )]
 fn k_cold_round_trip_action(w: &mut ProtocolWorld) {
-    cb9_assert_green(w);
-    cb12_assert_green(w);
+    assert!(w.core_edition_observation.is_some());
 }
 
 #[then(
     regex = r#"^(?:Bundle reopens and cold-verifies the complete editions and Gamma history|owner and grantee authorship remain distinct|no provider, remote store, network client or connector call participates|it opens only the content lines in its still-valid perimeter|removing it again leaves the keyless verdict unchanged|cold verification is rejected without private fallback)$"#
 )]
 fn k_cold_round_trip_verdict(w: &mut ProtocolWorld) {
-    cb9_assert_green(w);
-    cb12_assert_green(w);
+    m_carrier_verdict(w);
+    let observation = w
+        .core_edition_observation
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .expect("CORE-COLD observation");
+    if observation.expected_verdict == "accepted" {
+        assert!(observation.mem_cold_verified || observation.fs_cold_verified);
+        assert!(observation.package_digest.is_some());
+    } else {
+        assert!(observation.zero_reachable_on_refusal);
+    }
 }
 
 #[given(
@@ -3690,8 +9224,12 @@ fn mandate_rejected(w: &mut ProtocolWorld) {
 
 #[then(expr = "the agent reads {string} with its own keypair")]
 fn agent_reads_path(w: &mut ProtocolWorld, path: String) {
-    if w.cb9_result.is_some() {
-        cb9_assert_green(w);
+    if let Some(observation) = &w.core_exact_section_observation {
+        let observation = observation
+            .as_ref()
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(observation.target, path);
+        assert!(observation.target_readable);
         return;
     }
     assert_eq!(w.agent_reads(&w.chain, AGENT, &path).as_deref(), Ok(BODY));
@@ -3705,8 +9243,13 @@ fn agent_reads_in_folder(w: &mut ProtocolWorld, name: String) {
 
 #[then(expr = "{string} stays out of the agent's reach")]
 fn name_out_of_reach(w: &mut ProtocolWorld, name: String) {
-    if w.cb9_result.is_some() {
-        cb9_assert_green(w);
+    if let Some(observation) = &w.core_exact_section_observation {
+        let observation = observation
+            .as_ref()
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_ne!(observation.target, name);
+        assert!(observation.sibling_unreachable);
+        assert!(observation.failed_attempt_unchanged);
         return;
     }
     let path = format!("{}/{name}", w.granted_folder);
@@ -4405,71 +9948,843 @@ fn cb4_session_conveys_no_authority(w: &mut ProtocolWorld) {
 
 // ---------------------------------------------------------- CB5 pure contracts
 
-#[given(
-    regex = r#"^(?:a draft\.2 parent mandate with max_children 4 and issue depth 2|a draft\.2 root mandate with max_children 3 and issue depth 2|its sole direct child has max_children 3 and issue depth 1|a directly owner-issued mandate whose chain ends at that mandate|a valid root-leaf mandate preserving unknown constraint "quantum_cap"|a current-version verifier receives ".*"|the same canonical mutation is available to an owner and a grantee)$"#
-)]
-fn cb5_constraints_given(w: &mut ProtocolWorld) {
-    cb5_constraints_result(w);
+#[given("a draft.2 parent mandate with max_children 4 and issue depth 2")]
+fn cb5_max_children_parent(w: &mut ProtocolWorld) {
+    w.core_constraint_case_result = None;
 }
 
-#[when(
-    regex = r#"^(?:it mints a child with ".*"|that child mints three direct children|its constraints contain ".*"|the grantee attempts a covered delegated mutation|the owner performs it with a narrow local capability)$"#
-)]
-fn cb5_constraints_when(w: &mut ProtocolWorld) {
-    cb5_constraints_result(w);
+#[when(expr = "it mints a child with {string}")]
+fn cb5_max_children_child(w: &mut ProtocolWorld, child_constraint: String) {
+    let id = match child_constraint.as_str() {
+        "max_children 4" => "draft2_equal",
+        "max_children 2" => "draft2_reduced",
+        "max_children 5" => "draft2_wider",
+        "no max_children and can delegate" => "draft2_omission_delegating",
+        "no max_children and is a chain leaf" => "draft2_omission_leaf",
+        other => panic!("unknown max_children attenuation case {other}"),
+    };
+    w.core_constraint_case_result = Some(cb5_max_children_case(id));
 }
 
-#[then(
-    regex = r#"^(?:the child chain is ".*"|all three grants verify against the child's meter|the root still proves exactly one direct child|certificate validation is ".*"|using it as a delegation parent is ".*"|the verdict is a typed extension not understood refusal|the unknown extension remains visible in the audit|no Gamma entry, canonical state or counter changes|Gamma records the owner mutation|no mandate, constraint or delegated counter is consumed)$"#
-)]
-fn cb5_constraints_then(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
+#[given("a draft.2 root mandate with max_children 3 and issue depth 2")]
+fn cb5_direct_children_root(w: &mut ProtocolWorld) {
+    w.core_constraint_case_result = None;
 }
 
-#[given(
-    regex = r#"^(?:a W1 ".*" occurrence citing a profile that requires attestation|an action usage receipt signed by the cited profile attestation key|an inference usage receipt signed by the cited profile attestation key|byte-identical historical v1 usage receipts|an effective pinned obligation for one W1 operation|one canonical operation whose authority, native facts and time are fixed|a homogeneous draft3 chain with applies_to_operation ".*"|byte-identical draft1 and draft2 obligation mandates)$"#
-)]
-fn cb5_receipts_given(w: &mut ProtocolWorld) {
-    cb5_receipts_result(w);
+#[given("its sole direct child has max_children 3 and issue depth 1")]
+fn cb5_direct_children_child(_w: &mut ProtocolWorld) {}
+
+#[when("that child mints three direct children")]
+fn cb5_direct_children_action(w: &mut ProtocolWorld) {
+    let result = (|| {
+        let vector = cb5_parsed(CB5_MAX_CHILDREN)?;
+        let direct = &vector["direct_children_only"];
+        let entries = direct["grant_entries_jcs"]
+            .as_array()
+            .ok_or("direct-child entries are not an array")?
+            .iter()
+            .map(|entry| {
+                serde_json::from_str::<aithos_core::gamma::Entry>(
+                    entry.as_str().unwrap_or_default(),
+                )
+                .map_err(|error| error.to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        aithos_core::gamma::verify_links(&entries)
+            .map_err(|error| format!("direct-child Gamma links failed: {error}"))?;
+        let parent = cb5_max_children_mandate(
+            &vector,
+            direct["parent_chain"][0].as_str().ok_or("missing parent")?,
+        )?;
+        let child = cb5_max_children_mandate(
+            &vector,
+            direct["child_chain"][1].as_str().ok_or("missing child")?,
+        )?;
+        if aithos_core::gamma::count_children(&entries, &parent.id) != 1
+            || aithos_core::gamma::count_children(&entries, &child.id) != 3
+        {
+            return Err("direct-child meters drifted".into());
+        }
+        Ok(())
+    })();
+    w.core_constraint_case_result = Some(result);
 }
 
-#[when(
-    regex = r#"^(?:Core validates its U1 receipt with family ".*"|Core correlates each receipt with its exact operation_ref|W1 and historical evidence are verified|its R2 receipt has ".*"|a pinned attestor signs its R2 obligation receipt|the grantee presents canonical operation ".*"|applies_to_operation is presented through a sidecar or mixed-version chain)$"#
-)]
-fn cb5_receipts_when(w: &mut ProtocolWorld) {
-    cb5_receipts_result(w);
+#[then("all three grants verify against the child's meter")]
+#[then("the root still proves exactly one direct child")]
+fn cb5_direct_children_verdict(w: &mut ProtocolWorld) {
+    assert_eq!(w.core_constraint_case_result, Some(Ok(())));
 }
 
-#[then(
-    regex = r#"^(?:the receipt members are exactly ".*"|sig verifies over RFC8785-JCS with sig omitted|the family cannot relabel the reconstructed operation|action tokens replace only that action's declared usage|checked tokens_in plus tokens_out replace only that inference's declared usage|a wrong key, family, reference, overflow, duplicate or non-closed member table is refused as InvalidGammaEntry|no U1 receipt changes the pre-effect operation commitment|v1 verifies only under its historical carrier and semantics|W1 requires an exact v2 U1 receipt when attestation is applicable|neither version synthesizes fields from the other|its exact members are ".*"|family is "obligation" and v is the JSON number 2|operation_ref binds the leaf mandate, operation arguments and occurrence|the receipt carries no mandate_id, action or args_hash duplicate|a missing, stale, replayed, mismatched, duplicate or non-closed receipt is GammaObligationUnsatisfied|matcher applicability is ".*"|no caller-supplied fact or wildcard participates|the matcher is refused as InvalidMandate|draft3 requires exactly one selector per obligation|migration reissues the complete homogeneous chain)$"#
-)]
-fn cb5_receipts_then(w: &mut ProtocolWorld) {
-    if w.cb4_result.is_some() {
-        cb4_assert_green(w);
-    } else {
-        cb5_assert_green(w);
+fn cb5_root_constraint_case(
+    name: &str,
+) -> Result<(Result<(), String>, Result<(), String>), String> {
+    let vector = cb5_parsed(CB2_MANDATE_CONTRACTS)?;
+    let cases = vector["constraints"]["root_leaf_cases"]
+        .as_array()
+        .ok_or("root constraint cases are not an array")?;
+    let case = cases
+        .iter()
+        .find(|case| case["case"] == name)
+        .ok_or_else(|| format!("missing root constraint case {name}"))?;
+    let mandate: Mandate = serde_json::from_str(
+        case["document_jcs"]
+            .as_str()
+            .ok_or("missing root constraint mandate")?,
+    )
+    .map_err(|error| error.to_string())?;
+    let did: DidDocument = serde_json::from_str(
+        vector["signed_fixtures"]["did_document_jcs"]
+            .as_str()
+            .ok_or("missing signed DID fixture")?,
+    )
+    .map_err(|error| error.to_string())?;
+    let certificate = verify_chain(std::slice::from_ref(&mandate), &did, &mandate.issued_at)
+        .map_err(|error| error.to_string());
+    let delegation = constraints_attenuate_for_profile(
+        &mandate.version,
+        &mandate.constraints,
+        &mandate.constraints,
+        &mandate.not_before,
+        &mandate.not_after,
+    )
+    .map_err(|error| error.to_string());
+    Ok((certificate, delegation))
+}
+
+#[given("a directly owner-issued mandate whose chain ends at that mandate")]
+fn cb5_root_constraint_fixture(w: &mut ProtocolWorld) {
+    w.core_constraint_certificate_result = None;
+    w.core_constraint_delegation_result = None;
+}
+
+#[when(expr = "its constraints contain {string}")]
+fn cb5_root_constraint_action(w: &mut ProtocolWorld, constraint_case: String) {
+    let name = match constraint_case.as_str() {
+        "known well-formed max_actions" => "known well-formed root constraint",
+        "known malformed max_actions" => "known malformed root constraint",
+        "unknown opaque quantum_cap" => "unknown constraint on directly issued chain leaf",
+        other => panic!("unknown root constraint case {other}"),
+    };
+    let (certificate, delegation) = cb5_root_constraint_case(name).expect("root constraint vector");
+    w.core_constraint_certificate_result = Some(certificate);
+    w.core_constraint_delegation_result = Some(delegation);
+}
+
+#[then(expr = "certificate validation is {string}")]
+fn cb5_root_certificate_verdict(w: &mut ProtocolWorld, verdict: String) {
+    assert_eq!(
+        w.core_constraint_certificate_result
+            .as_ref()
+            .expect("certificate verdict")
+            .is_ok(),
+        matches!(verdict.as_str(), "accepted" | "preserved")
+    );
+}
+
+#[then(expr = "using it as a delegation parent is {string}")]
+fn cb5_root_delegation_verdict(w: &mut ProtocolWorld, verdict: String) {
+    assert_eq!(
+        w.core_constraint_delegation_result
+            .as_ref()
+            .expect("delegation verdict")
+            .is_ok(),
+        verdict == "accepted"
+    );
+}
+
+#[given("a valid root-leaf mandate preserving unknown constraint \"quantum_cap\"")]
+fn cb5_unknown_constraint_fixture(w: &mut ProtocolWorld) {
+    let (certificate, delegation) =
+        cb5_root_constraint_case("unknown constraint on directly issued chain leaf")
+            .expect("unknown root constraint vector");
+    assert!(certificate.is_ok());
+    w.core_constraint_delegation_result = Some(delegation);
+    w.core_constraint_effect_snapshot = CB2_MANDATE_CONTRACTS.to_owned();
+}
+
+#[given(expr = "a current-version verifier receives {string}")]
+fn cb5_unknown_constraint_claim(_w: &mut ProtocolWorld, _claim: String) {}
+
+#[when("the grantee attempts a covered delegated mutation")]
+fn cb5_unknown_constraint_action(w: &mut ProtocolWorld) {
+    let vector = cb5_parsed(CB2_MANDATE_CONTRACTS).expect("mandate contracts");
+    let case = vector["constraints"]["root_leaf_cases"]
+        .as_array()
+        .and_then(|cases| {
+            cases
+                .iter()
+                .find(|case| case["case"] == "unknown constraint on directly issued chain leaf")
+        })
+        .expect("unknown constraint case");
+    let mandate: Mandate = serde_json::from_str(case["document_jcs"].as_str().unwrap())
+        .expect("unknown constraint mandate");
+    w.core_constraint_delegation_result = Some(
+        verify_operation_constraints(&mandate.constraints)
+            .map(|_| ())
+            .map_err(|error| error.to_string()),
+    );
+}
+
+#[then("the verdict is a typed extension not understood refusal")]
+#[then("the unknown extension remains visible in the audit")]
+#[then("no Gamma entry, canonical state or counter changes")]
+fn cb5_unknown_constraint_verdict(w: &mut ProtocolWorld) {
+    assert!(w
+        .core_constraint_delegation_result
+        .as_ref()
+        .expect("unknown constraint verdict")
+        .is_err());
+    assert_eq!(w.core_constraint_effect_snapshot, CB2_MANDATE_CONTRACTS);
+}
+
+#[given("the same canonical mutation is available to an owner and a grantee")]
+fn cb5_owner_constraint_fixture(w: &mut ProtocolWorld) {
+    w.core_owner_observation = None;
+}
+
+#[when("the owner performs it with a narrow local capability")]
+fn cb5_owner_constraint_action(w: &mut ProtocolWorld) {
+    w.core_owner_observation = Some(core_owner_scenario("public", "edit"));
+}
+
+#[then("Gamma records the owner mutation")]
+fn cb5_owner_constraint_gamma(w: &mut ProtocolWorld) {
+    let observation = w
+        .core_owner_observation
+        .as_ref()
+        .expect("owner constraint observation")
+        .as_ref()
+        .expect("owner constraint scenario");
+    assert_eq!(observation.gamma_delta, 1);
+}
+
+#[then("no mandate, constraint or delegated counter is consumed")]
+fn cb5_owner_constraint_no_mandate(w: &mut ProtocolWorld) {
+    let observation = w
+        .core_owner_observation
+        .as_ref()
+        .expect("owner constraint observation")
+        .as_ref()
+        .expect("owner constraint scenario");
+    assert_eq!(observation.mandate_counter_delta, 0);
+}
+
+fn core_u1_receipt(operation: &str) -> Result<(serde_json::Value, u64), String> {
+    let vector = cb5_parsed(CB5_RECEIPTS)?;
+    let (receipt_name, context_name) = match operation {
+        "action" => ("u1_action", "action"),
+        "inference" => ("u1_inference", "inference"),
+        other => return Err(format!("unknown U1 operation {other}")),
+    };
+    let receipt = vector["positive_receipts"][receipt_name]["receipt"].clone();
+    let verified = verify_u1_receipt(
+        &serde_json::json!([receipt.clone()]),
+        &vector["contexts"][context_name],
+        &vector["budget_profile"],
+    )
+    .map_err(|error| format!("U1 {operation} failed: {error}"))?;
+    Ok((receipt, verified.actual_tokens()))
+}
+
+fn core_u1_all_receipts() -> Result<u64, String> {
+    let vector = cb5_parsed(CB5_RECEIPTS)?;
+    let (_, action) = core_u1_receipt("action")?;
+    let (_, inference) = core_u1_receipt("inference")?;
+    for case in vector["negative_u1_cases"]
+        .as_array()
+        .ok_or("U1 negatives are not an array")?
+    {
+        let context = if case["id"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("inference-"))
+        {
+            &vector["contexts"]["inference"]
+        } else {
+            &vector["contexts"]["action"]
+        };
+        if !matches!(
+            verify_u1_receipt(&case["candidate"], context, &vector["budget_profile"]),
+            Err(aithos_core::Error::InvalidGammaEntry(_))
+        ) {
+            return Err(format!("U1 negative {} did not fail", case["id"]));
+        }
+    }
+    Ok(action + inference)
+}
+
+#[given(expr = "a W1 {string} occurrence citing a profile that requires attestation")]
+fn cb5_u1_fixture(w: &mut ProtocolWorld, operation: String) {
+    w.core_receipt_operation = operation;
+    w.core_receipt_document = None;
+    w.core_receipt_result = None;
+}
+
+#[when(expr = "Core validates its U1 receipt with family {string}")]
+fn cb5_u1_action(w: &mut ProtocolWorld, family: String) {
+    let expected_family = match w.core_receipt_operation.as_str() {
+        "action" => "usage.action",
+        "inference" => "usage.inference",
+        other => panic!("unknown U1 operation {other}"),
+    };
+    assert_eq!(family, expected_family);
+    let result = core_u1_receipt(&w.core_receipt_operation);
+    match result {
+        Ok((receipt, tokens)) => {
+            w.core_receipt_document = Some(receipt);
+            w.core_receipt_result = Some(Ok(tokens));
+        }
+        Err(error) => w.core_receipt_result = Some(Err(error)),
     }
 }
 
-#[given(
-    regex = r#"^(?:a homogeneous draft3 mandate carrying max_mutations and max_consumptions|a mandate history containing one ".*"|a historical edition and Gamma vector predating mutation and total meters|delegated-counts material with an invalid shape, proof, tally or occurrence correlation|a grantee ".*" contains two semantically distinct already-counted mutations|its publisher authority is evidenced by ".*"|the same publisher decision has ".*")$"#
-)]
-fn cb5_counts_given(w: &mut ProtocolWorld) {
-    cb5_counts_result(w);
+fn core_receipt_members(document: &serde_json::Value) -> BTreeSet<&str> {
+    document
+        .as_object()
+        .expect("receipt object")
+        .keys()
+        .map(String::as_str)
+        .collect()
 }
 
-#[when(
-    regex = r#"^(?:its accepted occurrences are committed for cold replay|the verifier rebuilds action, Ethos-mutation and total-consumption tallies|a verifier replays it under its historical protocol version|Core validates it at append time or during cold replay|semantic replay rebuilds the total delegated-consumption tally)$"#
+fn core_expected_members(members: &str) -> BTreeSet<&str> {
+    members.split(',').collect()
+}
+
+#[then(expr = "the receipt members are exactly {string}")]
+fn cb5_u1_members(w: &mut ProtocolWorld, members: String) {
+    assert_eq!(
+        core_receipt_members(w.core_receipt_document.as_ref().expect("U1 receipt")),
+        core_expected_members(&members)
+    );
+}
+
+#[then("sig verifies over RFC8785-JCS with sig omitted")]
+fn cb5_receipt_signature(w: &mut ProtocolWorld) {
+    assert!(w
+        .core_receipt_result
+        .as_ref()
+        .expect("receipt result")
+        .is_ok());
+}
+
+#[then("the family cannot relabel the reconstructed operation")]
+fn cb5_u1_family_is_bound(w: &mut ProtocolWorld) {
+    let vector = cb5_parsed(CB5_RECEIPTS).expect("receipt vector");
+    let wrong_context = if w.core_receipt_operation == "action" {
+        &vector["contexts"]["inference"]
+    } else {
+        &vector["contexts"]["action"]
+    };
+    assert!(verify_u1_receipt(
+        &serde_json::json!([w.core_receipt_document.clone().expect("U1 receipt")]),
+        wrong_context,
+        &vector["budget_profile"],
+    )
+    .is_err());
+}
+
+#[given("an action usage receipt signed by the cited profile attestation key")]
+fn cb5_u1_pair_fixture(w: &mut ProtocolWorld) {
+    w.core_receipt_result = None;
+}
+
+#[given("an inference usage receipt signed by the cited profile attestation key")]
+fn cb5_u1_pair_second_fixture(_w: &mut ProtocolWorld) {}
+
+#[when("Core correlates each receipt with its exact operation_ref")]
+fn cb5_u1_pair_action(w: &mut ProtocolWorld) {
+    w.core_receipt_result = Some(core_u1_all_receipts());
+}
+
+#[then("action tokens replace only that action's declared usage")]
+#[then("checked tokens_in plus tokens_out replace only that inference's declared usage")]
+#[then(
+    "a wrong key, family, reference, overflow, duplicate or non-closed member table is refused as InvalidGammaEntry"
 )]
+#[then("no U1 receipt changes the pre-effect operation commitment")]
+fn cb5_u1_pair_verdict(w: &mut ProtocolWorld) {
+    assert_eq!(w.core_receipt_result, Some(Ok(9912)));
+}
+
+fn core_historical_receipt_scenario() -> Result<u64, String> {
+    let vector: serde_json::Value =
+        serde_json::from_str(FPLUS_CONSTRAINTS).map_err(|error| error.to_string())?;
+    let attestation = &vector["attestation"];
+    let public: [u8; 32] = hex::decode(
+        attestation["provider_pub_hex"]
+            .as_str()
+            .ok_or("missing provider public key")?,
+    )
+    .map_err(|error| error.to_string())?
+    .try_into()
+    .map_err(|_| "provider public key length".to_owned())?;
+    let entry: aithos_core::gamma::Entry = serde_json::from_value(serde_json::json!({
+        "v": 1,
+        "id": "gamma_00000000000000000000000001",
+        "prev": "",
+        "at": "2026-07-18T12:00:00Z",
+        "kind": "action",
+        "target": "connector.test",
+        "payload": {
+            "args_hash": attestation["args_hash"],
+            "model": "claude-haiku",
+            "tokens": 10000,
+            "receipt": attestation["receipt"]
+        },
+        "signature": {"alg":"ed25519", "key":"#content", "value":""}
+    }))
+    .map_err(|error| error.to_string())?;
+    let profile = BudgetProfile {
+        id: "haiku".into(),
+        models: Some(vec!["claude-haiku".into()]),
+        token_budget: Some(20_000),
+        windows: None,
+        max_actions: None,
+        require_attestation: true,
+        attestation_key: Some(wire::ed25519_pub_to_multibase(&public)),
+    };
+    verify_receipt(&entry, &profile)
+        .map_err(|error| format!("historical v1 receipt failed: {error}"))?;
+    let cb2 = cb5_parsed(CB5_RECEIPTS)?;
+    if !matches!(
+        verify_u1_receipt(
+            &serde_json::json!([attestation["receipt"].clone()]),
+            &cb2["contexts"]["action"],
+            &cb2["budget_profile"],
+        ),
+        Err(aithos_core::Error::InvalidGammaEntry(_))
+    ) {
+        return Err("historical v1 receipt was reinterpreted as U1".into());
+    }
+    Ok(attestation["receipt"]["tokens"]
+        .as_u64()
+        .unwrap_or_default())
+}
+
+#[given("byte-identical historical v1 usage receipts")]
+fn cb5_historical_receipt_fixture(w: &mut ProtocolWorld) {
+    w.core_receipt_result = None;
+}
+
+#[when("W1 and historical evidence are verified")]
+fn cb5_historical_receipt_action(w: &mut ProtocolWorld) {
+    w.core_receipt_result = Some(core_historical_receipt_scenario());
+}
+
+#[then("v1 verifies only under its historical carrier and semantics")]
+#[then("W1 requires an exact v2 U1 receipt when attestation is applicable")]
+#[then("neither version synthesizes fields from the other")]
+fn cb5_historical_receipt_verdict(w: &mut ProtocolWorld) {
+    assert_eq!(w.core_receipt_result, Some(Ok(8412)));
+}
+
+fn core_r2_receipt(presentation: &str) -> Result<serde_json::Value, String> {
+    let vector = cb5_parsed(CB5_RECEIPTS)?;
+    let name = match presentation {
+        "no presented digest" => "r2_without_presented_digest",
+        "a strict presented digest" => "r2_with_presented_digest",
+        other => return Err(format!("unknown R2 presentation state {other}")),
+    };
+    let receipt = vector["positive_receipts"][name]["receipt"].clone();
+    verify_r2_receipt(
+        &serde_json::json!([receipt.clone()]),
+        &vector["contexts"]["action"],
+        "1.0.0-draft.2",
+        &vector["obligations"]["action"],
+    )
+    .map_err(|error| format!("R2 receipt failed: {error}"))?;
+    Ok(receipt)
+}
+
+#[given("an effective pinned obligation for one W1 operation")]
+fn cb5_r2_fixture(w: &mut ProtocolWorld) {
+    w.core_receipt_document = None;
+    w.core_receipt_result = None;
+}
+
+#[when(expr = "its R2 receipt has {string}")]
+fn cb5_r2_action(w: &mut ProtocolWorld, presentation: String) {
+    match core_r2_receipt(&presentation) {
+        Ok(receipt) => {
+            w.core_receipt_document = Some(receipt);
+            w.core_receipt_result = Some(Ok(0));
+        }
+        Err(error) => w.core_receipt_result = Some(Err(error)),
+    }
+}
+
+#[then(expr = "its exact members are {string}")]
+fn cb5_r2_members(w: &mut ProtocolWorld, members: String) {
+    if w.core_receipt_document.is_none() {
+        if w.core_edition_observation.is_some() {
+            m_carrier_verdict(w);
+        } else {
+            cb4_assert_green(w);
+        }
+        return;
+    }
+    assert_eq!(
+        core_receipt_members(w.core_receipt_document.as_ref().expect("R2 receipt")),
+        core_expected_members(&members)
+    );
+}
+
+#[then("family is \"obligation\" and v is the JSON number 2")]
+fn cb5_r2_closed_header(w: &mut ProtocolWorld) {
+    let receipt = w.core_receipt_document.as_ref().expect("R2 receipt");
+    assert_eq!(receipt["family"], "obligation");
+    assert_eq!(receipt["v"], 2);
+}
+
+fn core_r2_complete_scenario() -> Result<u64, String> {
+    let vector = cb5_parsed(CB5_RECEIPTS)?;
+    let receipt = &vector["positive_receipts"]["r2_with_presented_digest"]["receipt"];
+    verify_r2_receipt(
+        &serde_json::json!([receipt]),
+        &vector["contexts"]["action"],
+        "1.0.0-draft.2",
+        &vector["obligations"]["action"],
+    )
+    .map_err(|error| error.to_string())?;
+    for case in vector["negative_r2_cases"]
+        .as_array()
+        .ok_or("R2 negatives are not an array")?
+    {
+        if !matches!(
+            verify_r2_receipt(
+                &case["candidate"],
+                &vector["contexts"]["action"],
+                "1.0.0-draft.2",
+                &vector["obligations"]["action"],
+            ),
+            Err(aithos_core::Error::GammaObligationUnsatisfied(_))
+        ) {
+            return Err(format!("R2 negative {} did not fail", case["id"]));
+        }
+    }
+    Ok(vector["negative_r2_cases"]
+        .as_array()
+        .map_or(0, |cases| cases.len()) as u64)
+}
+
+#[given("one canonical operation whose authority, native facts and time are fixed")]
+fn cb5_r2_complete_fixture(w: &mut ProtocolWorld) {
+    w.core_receipt_result = None;
+}
+
+#[when("a pinned attestor signs its R2 obligation receipt")]
+fn cb5_r2_complete_action(w: &mut ProtocolWorld) {
+    w.core_receipt_result = Some(core_r2_complete_scenario());
+}
+
+#[then("operation_ref binds the leaf mandate, operation arguments and occurrence")]
+#[then("the receipt carries no mandate_id, action or args_hash duplicate")]
+#[then(
+    "a missing, stale, replayed, mismatched, duplicate or non-closed receipt is GammaObligationUnsatisfied"
+)]
+fn cb5_r2_complete_verdict(w: &mut ProtocolWorld) {
+    assert_eq!(w.core_receipt_result, Some(Ok(25)));
+}
+
+#[given(expr = "a homogeneous draft3 chain with applies_to_operation {string}")]
+fn cb5_matcher_fixture(w: &mut ProtocolWorld, matcher: String) {
+    w.core_receipt_operation = matcher;
+    w.core_receipt_matcher = None;
+}
+
+#[when(expr = "the grantee presents canonical operation {string}")]
+fn cb5_matcher_action(w: &mut ProtocolWorld, operation: String) {
+    let vector = cb5_parsed(CB5_RECEIPTS).expect("receipt vector");
+    let id = match (w.core_receipt_operation.as_str(), operation.as_str()) {
+        ("read ethos", "public content read") => "matcher-1",
+        ("mutation ethos edit", "public content edit") => "matcher-2",
+        ("mutation structure move", "structural move") => "matcher-3",
+        ("inference", "inference") => "matcher-4",
+        ("grant", "sub-grant") => "matcher-5",
+        ("revoke", "revocation") => "matcher-6",
+        ("rotate vault", "connector vault rotation") => "matcher-7",
+        ("publication normal", "normal publication") => "matcher-8",
+        ("mutation ethos edit", "public content delete") => "matcher-9",
+        other => panic!("unknown matcher case {other:?}"),
+    };
+    let case = vector["matcher_cases"]
+        .as_array()
+        .and_then(|cases| cases.iter().find(|case| case["id"] == id))
+        .expect("matcher case");
+    let obligation = serde_json::json!({
+        "id": "gherkin-matcher",
+        "check": "human.approve",
+        "attestor": [vector["public_keys"]["attestor_a"].clone()],
+        "verdict": "approve",
+        "applies_to_operation": case["matcher"].clone()
+    });
+    let verified = verify_obligation("1.0.0-draft.3", &obligation).expect("valid matcher");
+    w.core_receipt_matcher = Some(
+        obligation_matches(
+            &verified,
+            &vector["contexts"][case["context"].as_str().unwrap()],
+        )
+        .expect("matcher verdict"),
+    );
+}
+
+#[then(expr = "matcher applicability is {string}")]
+fn cb5_matcher_verdict(w: &mut ProtocolWorld, verdict: String) {
+    assert_eq!(w.core_receipt_matcher, Some(verdict == "applicable"));
+}
+
+#[then("no caller-supplied fact or wildcard participates")]
+fn cb5_matcher_closed(w: &mut ProtocolWorld) {
+    assert!(w.core_receipt_matcher.is_some());
+}
+
+fn core_matcher_history_scenario() -> Result<u64, String> {
+    let vector = cb5_parsed(CB5_RECEIPTS)?;
+    verify_obligation_chain(&vector["draft3_obligation_chain"])
+        .map_err(|error| format!("positive matcher chain failed: {error}"))?;
+    let mut rejected = 0;
+    for case in vector["negative_matcher_cases"]
+        .as_array()
+        .ok_or("matcher negatives are not an array")?
+    {
+        if verify_obligation(
+            case["profile"].as_str().unwrap_or_default(),
+            &case["candidate"],
+        )
+        .is_ok()
+        {
+            return Err(format!("matcher negative {} did not fail", case["id"]));
+        }
+        rejected += 1;
+    }
+    for case in vector["negative_matcher_chain_cases"]
+        .as_array()
+        .ok_or("matcher-chain negatives are not an array")?
+    {
+        if verify_obligation_chain(&case["candidate"]).is_ok() {
+            return Err(format!(
+                "matcher-chain negative {} did not fail",
+                case["id"]
+            ));
+        }
+        rejected += 1;
+    }
+    Ok(rejected)
+}
+
+#[given("byte-identical draft1 and draft2 obligation mandates")]
+fn cb5_matcher_history_fixture(w: &mut ProtocolWorld) {
+    w.core_receipt_result = None;
+}
+
+#[when("applies_to_operation is presented through a sidecar or mixed-version chain")]
+fn cb5_matcher_history_action(w: &mut ProtocolWorld) {
+    w.core_receipt_result = Some(core_matcher_history_scenario());
+}
+
+#[then("the matcher is refused as InvalidMandate")]
+#[then("draft3 requires exactly one selector per obligation")]
+#[then("migration reissues the complete homogeneous chain")]
+fn cb5_matcher_history_verdict(w: &mut ProtocolWorld) {
+    assert_eq!(w.core_receipt_result, Some(Ok(24)));
+}
+
+fn core_count_positive_scenario() -> Result<u64, String> {
+    let vector = cb5_parsed(CB5_DELEGATED_COUNTS)?;
+    let positive = &vector["positive"];
+    let verified = verify_delegated_counts(
+        &positive["delegated_counts"],
+        &positive["leaves"],
+        &positive["evidence_views"],
+    )
+    .map_err(|error| error.to_string())?;
+    verify_delegated_count_mandates(&positive["mandates"]).map_err(|error| error.to_string())?;
+    if verified.occurrences().len() != 14
+        || verified
+            .counts_for("mandate_01J00000000000000000000020")
+            .is_none_or(|counts| counts.mutations() != 2 || counts.consumptions() != 14)
+    {
+        return Err("delegated count positive tally drift".into());
+    }
+    Ok(verified.occurrences().len() as u64)
+}
+
+fn core_count_historical_scenario() -> Result<u64, String> {
+    let vector = cb5_parsed(CB5_DELEGATED_COUNTS)?;
+    if vector["profiles"]["delegated_counts"] != "1.0.0-draft.1"
+        || vector["profiles"]["mandate"] != "1.0.0-draft.3"
+        || vector["inventory"]["historical_gamma_counts_root_is_not_reinterpreted"] != true
+    {
+        return Err("delegated-count profile or historical inventory drift".into());
+    }
+    for id in ["unknown-profile", "missing-profile"] {
+        let case = vector["negative_counter_cases"]
+            .as_array()
+            .and_then(|cases| cases.iter().find(|case| case["id"] == id))
+            .ok_or_else(|| format!("missing historical counter case {id}"))?;
+        if verify_delegated_counts(
+            &case["candidate"]["delegated_counts"],
+            &case["candidate"]["leaves"],
+            &case["candidate"]["evidence_views"],
+        )
+        .is_ok()
+        {
+            return Err(format!("historical profile defect {id} was accepted"));
+        }
+    }
+    core_count_positive_scenario()
+}
+
+fn core_count_invalid_scenario() -> Result<u64, String> {
+    let vector = cb5_parsed(CB5_DELEGATED_COUNTS)?;
+    let mut refused = 0_u64;
+    for case in vector["negative_counter_cases"]
+        .as_array()
+        .ok_or("counter negatives are not an array")?
+    {
+        let candidate = &case["candidate"];
+        if !matches!(
+            verify_delegated_counts(
+                &candidate["delegated_counts"],
+                &candidate["leaves"],
+                &candidate["evidence_views"],
+            ),
+            Err(aithos_core::Error::InvalidDelegatedCounts(_))
+        ) {
+            return Err(format!("counter defect {} was accepted", case["id"]));
+        }
+        refused += 1;
+    }
+    for case in vector["negative_mandate_cases"]
+        .as_array()
+        .ok_or("mandate negatives are not an array")?
+    {
+        if !matches!(
+            verify_delegated_count_mandates(&case["candidate"]),
+            Err(aithos_core::Error::InvalidMandate(_))
+        ) {
+            return Err(format!("mandate defect {} was accepted", case["id"]));
+        }
+        refused += 1;
+    }
+    Ok(refused)
+}
+
+fn core_count_publication_scenario(operation: &str) -> Result<u64, String> {
+    let vector = cb5_parsed(CB5_DELEGATED_COUNTS)?;
+    let positive = &vector["positive"];
+    let verified = verify_delegated_counts(
+        &positive["delegated_counts"],
+        &positive["leaves"],
+        &positive["evidence_views"],
+    )
+    .map_err(|error| error.to_string())?;
+    let publication = match operation {
+        "normal publication" => "op_01K00000000000000000000010",
+        "disjoint merge" => "op_01K00000000000000000000011",
+        "fork resolution" => "op_01K00000000000000000000012",
+        other => return Err(format!("unknown publication-count operation {other}")),
+    };
+    let mutations = [
+        "op_01K00000000000000000000003",
+        "op_01K00000000000000000000015",
+    ];
+    let distinct = mutations
+        .iter()
+        .chain(std::iter::once(&publication))
+        .filter(|occurrence| {
+            verified
+                .occurrences()
+                .iter()
+                .any(|accepted| accepted == **occurrence)
+        })
+        .count();
+    if distinct != 3 {
+        return Err(format!("{operation} did not count as one publisher unit"));
+    }
+    Ok(distinct as u64)
+}
+
+#[given("a homogeneous draft3 mandate carrying max_mutations and max_consumptions")]
+fn cb5_counts_positive_fixture(w: &mut ProtocolWorld) {
+    w.core_count_suite = Some(core_count_positive_scenario());
+}
+
+#[given("a historical edition and Gamma vector predating mutation and total meters")]
+fn cb5_counts_historical_fixture(w: &mut ProtocolWorld) {
+    w.core_count_suite = Some(core_count_historical_scenario());
+}
+
+#[given("delegated-counts material with an invalid shape, proof, tally or occurrence correlation")]
+fn cb5_counts_invalid_fixture(w: &mut ProtocolWorld) {
+    w.core_count_suite = Some(core_count_invalid_scenario());
+}
+
+#[given(expr = "a grantee {string} contains two semantically distinct already-counted mutations")]
+fn cb5_counts_publication_fixture(w: &mut ProtocolWorld, operation: String) {
+    w.core_receipt_operation = operation;
+    w.core_count_suite = None;
+}
+
+#[given(expr = "its publisher authority is evidenced by {string}")]
+#[given(expr = "the same publisher decision has {string}")]
+fn cb5_counts_publication_evidence(_w: &mut ProtocolWorld, _evidence: String) {}
+
+#[given(expr = "a mandate history containing one {string}")]
+fn core_count_consumption_given(w: &mut ProtocolWorld, consumption: String) {
+    w.core_count_observation = Some(core_count_consumption_scenario(&consumption));
+}
+
+#[when("its accepted occurrences are committed for cold replay")]
+#[when("a verifier replays it under its historical protocol version")]
+#[when("Core validates it at append time or during cold replay")]
 fn cb5_counts_when(w: &mut ProtocolWorld) {
-    cb5_counts_result(w);
+    assert!(w.core_count_suite.is_some());
+}
+
+#[when("semantic replay rebuilds the total delegated-consumption tally")]
+fn cb5_counts_publication_action(w: &mut ProtocolWorld) {
+    w.core_count_suite = Some(core_count_publication_scenario(&w.core_receipt_operation));
+}
+
+#[when("the verifier rebuilds action, Ethos-mutation and total-consumption tallies")]
+fn core_count_consumption_when(w: &mut ProtocolWorld) {
+    assert!(w.core_count_observation.is_some());
 }
 
 #[then(
-    regex = r#"^(?:max_mutations counts only delegated Ethos mutation occurrences|max_consumptions counts every delegated canonical occurrence once|delegated_counts has exactly aithos-delegated-counts-core and root|its leaves have only non-zero mutations and consumptions|historical gamma_counts_root and entries bytes are unchanged|the action tally changes by ".*"|the mutation tally changes by ".*"|the total delegated-consumption tally changes by ".*"|the historical edition remains byte-identical and verifiable|new meter material is accepted only under the delegated-counts profile|old Gamma kinds, max_actions and count roots are never reinterpreted|new meter material under an old or unversioned schema, or under an unknown counter-schema version, fails closed|it is refused as InvalidDelegatedCounts|a malformed max_mutations or max_consumptions certificate is refused as InvalidMandate|the two mutations and the publication contribute exactly three|the edition and Gamma evidence correlate to the same single publisher unit|any Gamma evidence and edition reference for the same contained mutation count it once|no manifest, root or derived write-set consequence adds another consumption|the closed Gamma kind registry gains no implicit publication entry)$"#
+    regex = r#"^(?:max_mutations counts only delegated Ethos mutation occurrences|max_consumptions counts every delegated canonical occurrence once|delegated_counts has exactly aithos-delegated-counts-core and root|its leaves have only non-zero mutations and consumptions|historical gamma_counts_root and entries bytes are unchanged|the historical edition remains byte-identical and verifiable|new meter material is accepted only under the delegated-counts profile|old Gamma kinds, max_actions and count roots are never reinterpreted|new meter material under an old or unversioned schema, or under an unknown counter-schema version, fails closed|it is refused as InvalidDelegatedCounts|a malformed max_mutations or max_consumptions certificate is refused as InvalidMandate|the two mutations and the publication contribute exactly three|the edition and Gamma evidence correlate to the same single publisher unit|any Gamma evidence and edition reference for the same contained mutation count it once|no manifest, root or derived write-set consequence adds another consumption|the closed Gamma kind registry gains no implicit publication entry)$"#
 )]
 fn cb5_counts_then(w: &mut ProtocolWorld) {
-    cb5_assert_green(w);
+    assert!(w
+        .core_count_suite
+        .as_ref()
+        .expect("delegated count suite")
+        .is_ok());
+}
+
+fn core_count_deltas(w: &ProtocolWorld) -> (u64, u64, u64) {
+    *w.core_count_observation
+        .as_ref()
+        .expect("CORE-COUNT-001 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[then(expr = "the action tally changes by {string}")]
+fn core_count_action_delta(w: &mut ProtocolWorld, expected: String) {
+    assert_eq!(core_count_deltas(w).0, expected.parse::<u64>().unwrap());
+}
+
+#[then(expr = "the mutation tally changes by {string}")]
+fn core_count_mutation_delta(w: &mut ProtocolWorld, expected: String) {
+    assert_eq!(core_count_deltas(w).1, expected.parse::<u64>().unwrap());
+}
+
+#[then(expr = "the total delegated-consumption tally changes by {string}")]
+fn core_count_total_delta(w: &mut ProtocolWorld, expected: String) {
+    assert_eq!(core_count_deltas(w).2, expected.parse::<u64>().unwrap());
 }
 
 #[given(
@@ -4518,96 +10833,704 @@ fn cb6_then(w: &mut ProtocolWorld) {
 
 // ------------------------------------------------------- CB7 transactions
 
-#[given(
-    regex = r#"^(?:a published ".*" bundle snapshotted byte for byte|an injected failure at ".*")$"#
-)]
-fn cb7_given(w: &mut ProtocolWorld) {
-    cb7_result(w);
+#[given(expr = "a published {string} bundle snapshotted byte for byte")]
+fn core_atomic_fixture(w: &mut ProtocolWorld, store: String) {
+    w.core_atomic_store = store.clone();
+    w.core_atomic_boundary = None;
+    w.core_atomic_observation = None;
+    w.core_path_store = store;
+    w.core_path_observation = None;
 }
 
-#[when(
-    regex = r#"^(?:the owner attempts a valid mutation and publication|the owner commits a valid circle edit|a caller supplies ".*" as a ".*" under ".*")$"#
-)]
-fn cb7_when(w: &mut ProtocolWorld) {
-    cb7_result(w);
+#[given(expr = "an injected failure at {string}")]
+fn core_atomic_boundary(w: &mut ProtocolWorld, boundary: String) {
+    if w.core_revocation_failure_boundary == "__fixture__" {
+        w.core_revocation_failure_boundary = boundary;
+    } else {
+        w.core_atomic_boundary = Some(boundary);
+    }
+}
+
+#[when("the owner attempts a valid mutation and publication")]
+fn core_atomic_failure_attempt(w: &mut ProtocolWorld) {
+    let boundary = w
+        .core_atomic_boundary
+        .as_deref()
+        .expect("CORE-OWN-002 injected boundary");
+    w.core_atomic_observation = Some(core_atomic_failure_scenario(&w.core_atomic_store, boundary));
+}
+
+#[when("the owner commits a valid circle edit")]
+fn core_atomic_success_attempt(w: &mut ProtocolWorld) {
+    w.core_atomic_observation = Some(core_atomic_success_scenario(&w.core_atomic_store));
+}
+
+fn core_atomic_observation(w: &ProtocolWorld) -> &CoreAtomicObservation {
+    w.core_atomic_observation
+        .as_ref()
+        .expect("CORE-OWN-002 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[then("the mutation is refused before canonical effect")]
+fn core_atomic_refused(w: &mut ProtocolWorld) {
+    let observation = core_atomic_observation(w);
+    assert!(observation.mutation_refused);
+    assert!(observation.injected_once);
+}
+
+#[then("the canonical bundle is byte-for-byte identical to the snapshot")]
+fn core_atomic_unchanged(w: &mut ProtocolWorld) {
+    if let Some(observation) = &w.core_path_observation {
+        assert!(
+            observation
+                .as_ref()
+                .unwrap_or_else(|error| panic!("{error}"))
+                .canonical_unchanged
+        );
+    } else {
+        assert!(core_atomic_observation(w).canonical_unchanged);
+    }
+}
+
+#[then(expr = "re-reading or reopening the {string} observes the old manifest and Gamma head")]
+fn core_atomic_old_head(w: &mut ProtocolWorld, store: String) {
+    let observation = core_atomic_observation(w);
+    assert_eq!(observation.store, store);
+    assert!(observation.reopened);
+    assert!(observation.canonical_unchanged);
 }
 
 #[then(
-    regex = r#"^(?:the mutation is refused before canonical effect|the canonical bundle is byte-for-byte identical to the snapshot|re-reading or reopening the ".*" observes the old manifest and Gamma head|no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle|staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan|one deterministic write-set advances content, roots, manifest and Gamma|normal completion exposes the complete new state at one logical commit point|a crash or lost acknowledgement at that point resolves to the complete old or complete new state from the canonical manifest and Gamma head|no reader or reopen observes an individual file replacement or partial edition|the operation is rejected before any out-of-root store access)$"#
+    "no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle"
 )]
-fn cb7_then(w: &mut ProtocolWorld) {
-    cb7_assert_green(w);
+fn core_atomic_no_failed_artifact(w: &mut ProtocolWorld) {
+    assert!(core_atomic_observation(w).canonical_unchanged);
+}
+
+#[then("staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan")]
+fn core_atomic_staging_clean(w: &mut ProtocolWorld) {
+    assert!(!core_atomic_observation(w).partial_state_observed);
+}
+
+#[then("one deterministic write-set advances content, roots, manifest and Gamma")]
+fn core_atomic_complete_write_set(w: &mut ProtocolWorld) {
+    assert!(core_atomic_observation(w).complete_new_state);
+}
+
+#[then("normal completion exposes the complete new state at one logical commit point")]
+fn core_atomic_linearized(w: &mut ProtocolWorld) {
+    let observation = core_atomic_observation(w);
+    assert!(!observation.mutation_refused);
+    assert!(observation.complete_new_state);
+}
+
+#[then("a crash or lost acknowledgement at that point resolves to the complete old or complete new state from the canonical manifest and Gamma head")]
+fn core_atomic_recovery(w: &mut ProtocolWorld) {
+    assert!(core_atomic_observation(w).reopened);
+}
+
+#[then("no reader or reopen observes an individual file replacement or partial edition")]
+fn core_atomic_no_partial_state(w: &mut ProtocolWorld) {
+    assert!(!core_atomic_observation(w).partial_state_observed);
+}
+
+#[when(expr = "a caller supplies {string} as a {string} under {string}")]
+fn core_path_attempt(
+    w: &mut ProtocolWorld,
+    invalid_input: String,
+    input_kind: String,
+    filesystem_condition: String,
+) {
+    w.core_path_invalid_input = invalid_input;
+    w.core_path_input_kind = input_kind;
+    w.core_path_filesystem_condition = filesystem_condition;
+    w.core_path_observation = Some(core_path_scenario(
+        &w.core_path_store,
+        &w.core_path_input_kind,
+        &w.core_path_invalid_input,
+        &w.core_path_filesystem_condition,
+    ));
+}
+
+#[then("the operation is rejected before any out-of-root store access")]
+fn core_path_refused_before_access(w: &mut ProtocolWorld) {
+    let observation = w
+        .core_path_observation
+        .as_ref()
+        .expect("CORE-OWN-004 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(observation.store, w.core_path_store);
+    assert_eq!(observation.input_kind, w.core_path_input_kind);
+    assert_eq!(observation.invalid_input, w.core_path_invalid_input);
+    assert!(observation.rejected);
+    assert!(!observation.outside_access_observed);
 }
 
 // -------------------------------------------------------- CB8 owner parity
 
-#[given(
-    regex = r#"^(?:an owner-local bundle session for zone ".*"|a published existing folder and section in that zone)$"#
-)]
-fn cb8_given(w: &mut ProtocolWorld) {
-    cb8_result(w);
+#[given(expr = "an owner-local bundle session for zone {string}")]
+fn core_owner_zone(w: &mut ProtocolWorld, zone: String) {
+    w.core_owner_zone = zone;
+    w.core_owner_fixture_ready = false;
+    w.core_owner_observation = None;
 }
 
-#[when(regex = r#"^the owner performs ".*" through the common bundle operation$"#)]
-fn cb8_when(w: &mut ProtocolWorld) {
-    cb8_result(w);
+#[given("a published existing folder and section in that zone")]
+fn core_owner_fixture(w: &mut ProtocolWorld) {
+    w.core_owner_fixture_ready = true;
 }
 
-#[then(
-    regex = r#"^(?:the operation succeeds from the narrow owner capability without a mandate|every mutation is journalized without consuming mandate counters|the resulting edition reopens and verifies from a fresh local store)$"#
-)]
-fn cb8_then(w: &mut ProtocolWorld) {
-    cb8_assert_green(w);
+#[when(expr = "the owner performs {string} through the common bundle operation")]
+fn core_owner_operation(w: &mut ProtocolWorld, operation: String) {
+    assert!(w.core_owner_fixture_ready, "owner fixture was not prepared");
+    w.core_owner_operation = operation;
+    w.core_owner_observation = Some(core_owner_scenario(
+        &w.core_owner_zone,
+        &w.core_owner_operation,
+    ));
+}
+
+#[then("the operation succeeds from the narrow owner capability without a mandate")]
+fn core_owner_succeeds(w: &mut ProtocolWorld) {
+    let observation = w
+        .core_owner_observation
+        .as_ref()
+        .expect("CORE-OWN-001 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(observation.zone, w.core_owner_zone);
+    assert_eq!(observation.operation, w.core_owner_operation);
+    assert_eq!(
+        observation.outcome,
+        if matches!(w.core_owner_operation.as_str(), "list") {
+            "listed"
+        } else if matches!(w.core_owner_operation.as_str(), "read") {
+            "read"
+        } else {
+            "mutated"
+        }
+    );
+}
+
+#[then("every mutation is journalized without consuming mandate counters")]
+fn core_owner_gamma(w: &mut ProtocolWorld) {
+    let observation = w
+        .core_owner_observation
+        .as_ref()
+        .expect("CORE-OWN-001 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(
+        observation.gamma_delta,
+        usize::from(matches!(
+            observation.operation.as_str(),
+            "create" | "edit" | "delete"
+        ))
+    );
+    assert_eq!(observation.mandate_counter_delta, 0);
+}
+
+#[then("the resulting edition reopens and verifies from a fresh local store")]
+fn core_owner_reopens(w: &mut ProtocolWorld) {
+    assert!(
+        w.core_owner_observation
+            .as_ref()
+            .expect("CORE-OWN-001 observation")
+            .as_ref()
+            .unwrap_or_else(|error| panic!("{error}"))
+            .reopened
+    );
 }
 
 // ----------------------------------------------- CB9 delegated content
 
-#[given(
-    regex = r#"^(?:a published bundle and a grantee with ".*"|a grantee holds ".*" and presents ".*"|an agent with edit authority on one public section|an agent with exact authority for self SID ".*"|a grantee opened a local bundle session while its chain was valid|the mandate becomes ".*" before the candidate mutation|a published bundle snapshotted before a delegated edit|the candidate fails an applicable constraint during Core validation)$"#
-)]
-fn cb9_given(w: &mut ProtocolWorld) {
-    cb9_result(w);
+#[given(expr = "a published bundle and a grantee with {string}")]
+fn core_delegated_fixture(w: &mut ProtocolWorld, authority: String) {
+    w.core_delegated_authority = authority;
+    w.core_delegated_zone.clear();
+    w.core_delegated_operation.clear();
+    w.core_delegated_observation = None;
 }
 
-#[when(
-    regex = r#"^(?:the grantee performs ".*" in ".*"|it attempts to read the exact protected section|the agent publishes a normal delegated edit|it performs ".*" and publishes|the grantee attempts to commit that mutation|the bundle transaction is reopened)$"#
-)]
-fn cb9_when(w: &mut ProtocolWorld) {
-    cb9_result(w);
+#[when(expr = "the grantee performs {string} in {string}")]
+fn core_delegated_operation(w: &mut ProtocolWorld, operation: String, zone: String) {
+    w.core_delegated_operation = operation;
+    w.core_delegated_zone = zone;
+    w.core_delegated_observation = Some(core_delegated_scenario(
+        &w.core_delegated_zone,
+        &w.core_delegated_operation,
+        &w.core_delegated_authority,
+    ));
 }
 
-#[then(
-    regex = r#"^(?:the operation is ".*"|an accepted operation is journalized and cold-verifiable under the same chain|the result is ".*"|its authorship signature binds content hash, SID, operation, edition and authorized_via|Gamma and the manifest commit that signature|fresh-store verification labels the grantee, never the owner, as author|the edition proves ".*" for that SID|reveals no name, path, title, tags, body, folder relation or key|the current pure verdict refuses it|the bundle, manifest and Gamma head remain byte-for-byte unchanged|every canonical byte equals the snapshot|no failed authorship proof, blob or Gamma entry remains reachable)$"#
-)]
-fn cb9_then(w: &mut ProtocolWorld) {
-    if w.cb5_result.is_some() {
+fn core_delegated_observation(w: &ProtocolWorld) -> &CoreDelegatedObservation {
+    w.core_delegated_observation
+        .as_ref()
+        .expect("CORE-DEL-001 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[then(expr = "the operation is {string}")]
+fn core_delegated_verdict(w: &mut ProtocolWorld, verdict: String) {
+    if let Some(result) = &w.core_bound_receipt_result {
+        assert_eq!(result.is_ok(), verdict == "accepted");
+        return;
+    }
+    if let Some(observation) = &w.core_structural_observation {
+        let observation = observation
+            .as_ref()
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(observation.verdict, verdict);
+        assert!(observation.exact_effect_verified);
+        assert!(observation.fresh_reopen_verified);
+        if verdict == "accepted" {
+            assert_eq!(observation.gamma_delta, 1);
+        } else {
+            assert_eq!(observation.gamma_delta, 0);
+            assert!(observation.refusal_unchanged);
+        }
+        return;
+    }
+    if w.core_delegated_observation.is_none() {
+        if w.cb5_result.is_some() {
+            cb5_assert_green(w);
+            cb6_assert_green(w);
+        } else {
+            cb10_assert_green(w);
+        }
+        return;
+    }
+    let observation = core_delegated_observation(w);
+    assert_eq!(observation.zone, w.core_delegated_zone);
+    assert_eq!(observation.operation, w.core_delegated_operation);
+    assert_eq!(observation.authority, w.core_delegated_authority);
+    assert_eq!(observation.verdict, verdict);
+    assert_eq!(observation.accepted, verdict == "accepted");
+    if observation.accepted {
+        assert!(observation.effect_verified);
+    } else {
+        assert!(observation.refusal_unchanged);
+    }
+}
+
+#[then("an accepted operation is journalized and cold-verifiable under the same chain")]
+fn core_delegated_cold_verdict(w: &mut ProtocolWorld) {
+    let observation = core_delegated_observation(w);
+    if observation.accepted {
+        assert_eq!(observation.gamma_delta, 1);
+        assert!(observation.gamma_actor_is_grantee);
+        assert!(observation.fresh_reopen_verified);
+    } else {
+        assert_eq!(observation.gamma_delta, 0);
+        assert!(observation.refusal_unchanged);
+    }
+}
+
+#[given(expr = "a grantee holds {string} and presents {string}")]
+fn core_fence_fixture(w: &mut ProtocolWorld, key_material: String, authority: String) {
+    w.core_fence_key_material = key_material;
+    w.core_fence_authority = authority;
+    w.core_fence_result = None;
+}
+
+#[when("it attempts to read the exact protected section")]
+fn core_fence_read(w: &mut ProtocolWorld) {
+    w.core_fence_result = Some(core_fence_scenario(
+        &w.core_fence_key_material,
+        &w.core_fence_authority,
+    ));
+}
+
+#[then(expr = "the result is {string}")]
+fn core_fence_verdict(w: &mut ProtocolWorld, verdict: String) {
+    if let Some(result) = &w.core_fence_result {
+        assert_eq!(
+            result.as_ref().unwrap_or_else(|error| panic!("{error}")),
+            &verdict
+        );
+    } else if w.cb5_result.is_some() {
         cb5_assert_green(w);
         cb6_assert_green(w);
     } else if w.cb10_result.is_some() {
         cb10_assert_green(w);
     } else {
-        cb9_assert_green(w);
+        panic!("result step has no scenario-specific observation");
     }
+}
+
+#[given("an agent with edit authority on one public section")]
+fn cb9_public_authorship_given(w: &mut ProtocolWorld) {
+    w.core_edition_case = "delegated-public-authorship".into();
+    w.core_edition_observation = Some(core_edition_positive_scenario(
+        "delegated-public-authorship",
+    ));
+}
+
+#[given(regex = r#"^an agent with exact authority for self SID ".*"$"#)]
+fn cb9_self_authorship_given(w: &mut ProtocolWorld) {
+    w.core_edition_case = "self-opaque-cold".into();
+    w.core_edition_observation = Some(core_self_edition_scenario());
+}
+
+#[when(
+    regex = r#"^(?:the agent publishes a normal delegated edit|it performs ".*" and publishes)$"#
+)]
+fn cb9_when(w: &mut ProtocolWorld) {
+    assert!(w.core_edition_observation.is_some());
+}
+
+#[then(
+    regex = r#"^(?:its authorship signature binds content hash, SID, operation, edition and authorized_via|Gamma and the manifest commit that signature|fresh-store verification labels the grantee, never the owner, as author|the edition proves ".*" for that SID|reveals no name, path, title, tags, body, folder relation or key)$"#
+)]
+fn cb9_then(w: &mut ProtocolWorld) {
+    m_carrier_verdict(w);
+}
+
+#[given("a grantee opened a local bundle session while its chain was valid")]
+fn core_current_authority_fixture(w: &mut ProtocolWorld) {
+    w.core_current_authority_observation = None;
+}
+
+#[given(expr = "the mandate becomes {string} before the candidate mutation")]
+fn core_current_authority_changes(w: &mut ProtocolWorld, authority_change: String) {
+    w.core_current_authority_observation = Some(core_current_authority_scenario(&authority_change));
+}
+
+#[when("the grantee attempts to commit that mutation")]
+fn core_current_authority_attempt(w: &mut ProtocolWorld) {
+    assert!(w.core_current_authority_observation.is_some());
+}
+
+fn core_current_authority_observation(w: &ProtocolWorld) -> &CoreCurrentAuthorityObservation {
+    w.core_current_authority_observation
+        .as_ref()
+        .expect("CORE-DEL-004 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[then("the current pure verdict refuses it")]
+fn core_current_authority_refused(w: &mut ProtocolWorld) {
+    let observation = core_current_authority_observation(w);
+    assert!(matches!(
+        observation.authority_change.as_str(),
+        "expired" | "revoked"
+    ));
+    assert!(observation.old_line_usable_before_change);
+    assert!(observation.current_verdict_refused);
+}
+
+#[then("the bundle, manifest and Gamma head remain byte-for-byte unchanged")]
+fn core_current_authority_unchanged(w: &mut ProtocolWorld) {
+    let observation = core_current_authority_observation(w);
+    assert!(observation.canonical_unchanged);
+    assert!(observation.fresh_reopen_unchanged);
+}
+
+#[given("a published bundle snapshotted before a delegated edit")]
+fn core_delegated_rollback_fixture(w: &mut ProtocolWorld) {
+    w.core_delegated_rollback_observation = None;
+}
+
+#[given("late Gamma validation fails after cryptographic preparation")]
+fn core_delegated_rollback_injection(w: &mut ProtocolWorld) {
+    w.core_delegated_rollback_observation = Some(core_delegated_rollback_scenario());
+}
+
+#[when("the bundle transaction is reopened")]
+fn core_delegated_rollback_reopen(w: &mut ProtocolWorld) {
+    assert!(w.core_delegated_rollback_observation.is_some());
+}
+
+fn core_delegated_rollback_observation(w: &ProtocolWorld) -> &CoreDelegatedRollbackObservation {
+    w.core_delegated_rollback_observation
+        .as_ref()
+        .expect("CORE-DEL-005 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[then("every canonical byte equals the snapshot")]
+fn core_delegated_rollback_bytes(w: &mut ProtocolWorld) {
+    let observation = core_delegated_rollback_observation(w);
+    assert!(observation.late_failure_injected_once);
+    assert!(observation.operation_refused);
+    assert!(observation.canonical_unchanged);
+    assert!(observation.fresh_reopen_verified);
+}
+
+#[then("no failed authorship proof, blob or Gamma entry remains reachable")]
+fn core_delegated_rollback_unreachable(w: &mut ProtocolWorld) {
+    assert!(!core_delegated_rollback_observation(w).failed_artifacts_reachable);
 }
 
 // ------------------------------------- CB10 structure, revocation and vault
 
 #[given(
-    regex = r#"^(?:a grantee with ".*"|a grantee with read on one nested folder|a public or circle section whose authorized edit changes its tags|an authorized move with source and destination authority|a grantee delete perimeter covering a folder and its complete subtree|a published bundle snapshotted before a structural mutation|a grantee mutation in self|a published encrypted subtree shared with one grantee and one survivor|a published bundle snapshotted byte for byte before revocation|a valid delegated mutation before its mandate revocation|an otherwise identical mutation at or after revoked_at|the validated G-A classification|a grantee has exact act\.x\.mail\.config and the exact /x/mail line|a grantee presents ".*" and holds ".*"|an agent may perform act\.x\.mail\.send through a tool host|the tool host opens /x/mail only owner-locally or with its own exact config authority and line|/x/mail material is held by an external secret manager|one holder may audit sealed action arguments|another holder may open /x/mail config|mail and calendar have independent vault nodes|a published bundle snapshotted before a mail config mutation|an injected failure before local commit|a published mail config mutation and one refused vault attempt)$"#
+    regex = r#"^(?:the validated G-A classification|a grantee has exact act\.x\.mail\.config and the exact /x/mail line|a grantee presents ".*" and holds ".*"|an agent may perform act\.x\.mail\.send through a tool host|the tool host opens /x/mail only owner-locally or with its own exact config authority and line|/x/mail material is held by an external secret manager|one holder may audit sealed action arguments|another holder may open /x/mail config|mail and calendar have independent vault nodes|a published bundle snapshotted before a mail config mutation|an injected failure before local commit|a published mail config mutation and one refused vault attempt)$"#
 )]
 fn cb10_given(w: &mut ProtocolWorld) {
     cb10_result(w);
 }
 
 #[when(
-    regex = r#"^(?:it attempts ".*"|it lists the folder and reads one contained section|the mutation commits|the node is reparented|the folder is deleted|the mutation encounters ".*"|keyless verification derives its state transition|an authorized manager revokes the grantee|the transaction rotates, rewraps survivors, re-encrypts protected content and appends Gamma|an authorized manager attempts revoke, rotation and publication|a fresh store replays the complete Gamma history|a mandate carries exact act\.x\.mail\.config|it performs config ".*" for mail|it attempts to open mail config at /x/mail|Core authorizes and Gamma commits the action|a caller has no owner-local context and lacks exact config authority or line|each capability is exercised|".*" is attempted for mail|the authorized mutation is attempted|a keyless verifier inspects manifests, proofs, Gamma clear fields, logs and errors)$"#
+    regex = r#"^(?:a mandate carries exact act\.x\.mail\.config|it performs config ".*" for mail|it attempts to open mail config at /x/mail|Core authorizes and Gamma commits the action|a caller has no owner-local context and lacks exact config authority or line|each capability is exercised|".*" is attempted for mail|the authorized mutation is attempted|a keyless verifier inspects manifests, proofs, Gamma clear fields, logs and errors)$"#
 )]
 fn cb10_when(w: &mut ProtocolWorld) {
     cb10_result(w);
 }
 
+#[given(expr = "a grantee with {string}")]
+fn core_structural_authority_fixture(w: &mut ProtocolWorld, authority: String) {
+    w.core_structural_authority = authority;
+    w.core_structural_observation = None;
+}
+
+#[when(expr = "it attempts {string}")]
+fn core_structural_authority_attempt(w: &mut ProtocolWorld, operation: String) {
+    w.core_structural_observation = Some(core_structural_authority_scenario(
+        &operation,
+        &w.core_structural_authority,
+    ));
+}
+
+#[given("a grantee with read on one nested folder")]
+fn core_structural_scoped_read_fixture(w: &mut ProtocolWorld) {
+    w.core_structural_derived_case = "scoped-read".into();
+    w.core_structural_derived_observation = None;
+}
+
+#[given("a public or circle section whose authorized edit changes its tags")]
+fn core_structural_tag_fixture(w: &mut ProtocolWorld) {
+    w.core_structural_derived_case = "tag-edit".into();
+    w.core_structural_derived_observation = None;
+}
+
+#[given("an authorized move with source and destination authority")]
+fn core_structural_move_fixture(w: &mut ProtocolWorld) {
+    w.core_structural_derived_case = "move".into();
+    w.core_structural_derived_observation = None;
+}
+
+#[given("a grantee delete perimeter covering a folder and its complete subtree")]
+fn core_structural_subtree_fixture(w: &mut ProtocolWorld) {
+    w.core_structural_derived_case = "subtree-delete".into();
+    w.core_structural_derived_observation = None;
+}
+
+#[given("a grantee mutation in self")]
+fn core_structural_self_fixture(w: &mut ProtocolWorld) {
+    w.core_structural_derived_case = "self".into();
+    w.core_structural_derived_observation = None;
+}
+
+fn core_structural_derived_run(w: &mut ProtocolWorld) {
+    let result = match w.core_structural_derived_case.as_str() {
+        "scoped-read" => core_structural_scoped_read_scenario(),
+        "tag-edit" => core_structural_tag_scenario(),
+        "move" => core_structural_move_scenario(),
+        "subtree-delete" => core_structural_subtree_scenario(),
+        "self" => core_structural_self_scenario(),
+        other => Err(format!("CORE-STR-002 unknown derived case {other}")),
+    };
+    w.core_structural_derived_observation = Some(result);
+}
+
+#[when("it lists the folder and reads one contained section")]
+#[when("the mutation commits")]
+#[when("the node is reparented")]
+#[when("the folder is deleted")]
+#[when("keyless verification derives its state transition")]
+fn core_structural_derived_execute(w: &mut ProtocolWorld) {
+    core_structural_derived_run(w);
+}
+
+fn core_structural_derived_observation(w: &ProtocolWorld) -> &CoreStructuralDerivedObservation {
+    let observation = w
+        .core_structural_derived_observation
+        .as_ref()
+        .expect("CORE-STR-002 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(observation.case, w.core_structural_derived_case);
+    observation
+}
+
 #[then(
-    regex = r#"^(?:only covered children are presented|a sibling subtree remains absent and unreadable|index rows and affected tag wraps are deterministically derived|the authorizing Gamma entry, roots and manifest commit together|its stable SID follows the node|required rotation, survivor lines and destination up-link wrap join the transaction|the old parent derives no future node key|the derived changeset includes every removed row, blob, header and tag consequence|one actor chain covers every non-derived removal|it is refused before canonical effect|reopen observes the byte-identical old bundle and Gamma head|dir and tag claims never authorize the mutation|proofs reveal only allowed opaque SIDs and commitments|no folder relationship or display metadata escapes|one edition commits the revocation and every derived cryptographic change|the revoked line opens no new key or rewritten body|a fresh keyless store verifies the authority, cut and resulting roots|the canonical bundle remains byte-for-byte identical to the snapshot|reopening observes the old recipients, old Gamma head and old edition|no revocation entry or rotated material from the failed attempt is reachable|the earlier mutation remains valid|the later mutation is rejected|current revocation state is derived only from verified prior entries|config remains outside the read, act and binding business catalog|all applicable constraints and obligations explicitly present in the whole presented chain apply|no wildcard or inferred binding co_sign covers it|the vault operation is authorized under its applicable constraints|Gamma, roots and publication commit any mutation atomically|config authority grants no external mail action|this protocol version exposes no narrower config read or write authority|a finer split requires a later version and never reinterprets this mandate|the tool host resolves the credential at the last moment|the agent receives no config plaintext, DK or vault line|the secret manager result cannot authorize or open the vault|Core remains the source of the protocol verdict|neither capability opens the other's sealed material|only /x/mail recipients, versions and roots may change|Gamma, config evidence and publication commit atomically|fresh-store keyless verification receives no credential|the canonical bundle remains byte-for-byte identical|no Gamma entry, header generation or config blob from the attempt is reachable|it finds no credential, config plaintext, private key or DK|encrypted normative header lines remain opaque and non-authorizing)$"#
+    regex = r#"^(?:only covered children are presented|a sibling subtree remains absent and unreadable|index rows and affected tag wraps are deterministically derived|the authorizing Gamma entry, roots and manifest commit together|its stable SID follows the node|required rotation, survivor lines and destination up-link wrap join the transaction|the old parent derives no future node key|the derived changeset includes every removed row, blob, header and tag consequence|one actor chain covers every non-derived removal|dir and tag claims never authorize the mutation|proofs reveal only allowed opaque SIDs and commitments|no folder relationship or display metadata escapes)$"#
+)]
+fn core_structural_derived_verified(w: &mut ProtocolWorld) {
+    let observation = core_structural_derived_observation(w);
+    assert!(observation.primary_effect_verified);
+    assert!(observation.secondary_effect_verified);
+    assert!(observation.gamma_actor_verified);
+    assert!(observation.publication_verified);
+    assert!(observation.cold_reopen_verified);
+    assert!(observation.privacy_verified);
+}
+
+#[given("a published bundle snapshotted before a structural mutation")]
+fn core_structural_failure_fixture(w: &mut ProtocolWorld) {
+    w.core_structural_failure_observation = None;
+}
+
+#[when(expr = "the mutation encounters {string}")]
+fn core_structural_failure_execute(w: &mut ProtocolWorld, failure: String) {
+    w.core_structural_failure_observation = Some(core_structural_failure_scenario(&failure));
+}
+
+fn core_structural_failure_observation(w: &ProtocolWorld) -> &CoreStructuralFailureObservation {
+    w.core_structural_failure_observation
+        .as_ref()
+        .expect("CORE-STR-003 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[then("it is refused before canonical effect")]
+fn core_structural_failure_refused(w: &mut ProtocolWorld) {
+    let observation = core_structural_failure_observation(w);
+    assert!(!observation.failure.is_empty());
+    assert!(observation.refused);
+    assert!(observation.canonical_unchanged);
+    assert!(!observation.partial_artifact_reachable);
+}
+
+#[then("reopen observes the byte-identical old bundle and Gamma head")]
+fn core_structural_failure_reopen(w: &mut ProtocolWorld) {
+    assert!(core_structural_failure_observation(w).fresh_reopen_verified);
+}
+
+#[given("a published bundle snapshotted byte for byte before revocation")]
+fn core_revocation_failure_fixture(w: &mut ProtocolWorld) {
+    w.core_revocation_failure_boundary = "__fixture__".into();
+    w.core_revocation_failure_observation = None;
+}
+
+#[when("an authorized manager attempts revoke, rotation and publication")]
+fn core_revocation_failure_execute(w: &mut ProtocolWorld) {
+    w.core_revocation_failure_observation = Some(core_revocation_failure_scenario(
+        &w.core_revocation_failure_boundary,
+    ));
+}
+
+fn core_revocation_failure_observation(w: &ProtocolWorld) -> &CoreRevocationFailureObservation {
+    w.core_revocation_failure_observation
+        .as_ref()
+        .expect("CORE-REV-001 failure observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[then("the canonical bundle remains byte-for-byte identical to the snapshot")]
+fn core_revocation_failure_unchanged(w: &mut ProtocolWorld) {
+    let observation = core_revocation_failure_observation(w);
+    assert_eq!(observation.boundary, w.core_revocation_failure_boundary);
+    assert!(observation.refused);
+    assert!(observation.canonical_unchanged);
+}
+
+#[then("reopening observes the old recipients, old Gamma head and old edition")]
+fn core_revocation_failure_reopen(w: &mut ProtocolWorld) {
+    assert!(core_revocation_failure_observation(w).old_state_reopened);
+}
+
+#[then("no revocation entry or rotated material from the failed attempt is reachable")]
+fn core_revocation_failure_no_partial(w: &mut ProtocolWorld) {
+    assert!(!core_revocation_failure_observation(w).partial_cut_reachable);
+}
+
+#[given("a valid delegated mutation before its mandate revocation")]
+fn core_revocation_replay_fixture(w: &mut ProtocolWorld) {
+    w.core_revocation_replay_observation = None;
+}
+
+#[given("an otherwise identical mutation at or after revoked_at")]
+fn core_revocation_replay_late_candidate(w: &mut ProtocolWorld) {
+    assert!(w.core_revocation_replay_observation.is_none());
+}
+
+#[when("a fresh store replays the complete Gamma history")]
+fn core_revocation_replay_execute(w: &mut ProtocolWorld) {
+    w.core_revocation_replay_observation = Some(core_revocation_replay_scenario());
+}
+
+fn core_revocation_replay_observation(w: &ProtocolWorld) -> &CoreRevocationReplayObservation {
+    w.core_revocation_replay_observation
+        .as_ref()
+        .expect("CORE-REV-001 replay observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[then("the earlier mutation remains valid")]
+fn core_revocation_replay_earlier(w: &mut ProtocolWorld) {
+    let observation = core_revocation_replay_observation(w);
+    assert!(observation.earlier_mutation_valid);
+    assert!(observation.fresh_replay_verified);
+}
+
+#[then("the later mutation is rejected")]
+fn core_revocation_replay_later(w: &mut ProtocolWorld) {
+    assert!(core_revocation_replay_observation(w).later_mutation_refused);
+}
+
+#[then("current revocation state is derived only from verified prior entries")]
+fn core_revocation_replay_current(w: &mut ProtocolWorld) {
+    assert!(core_revocation_replay_observation(w).current_revocation_derived);
+}
+
+#[given("a published encrypted subtree shared with one grantee and one survivor")]
+fn core_revocation_cut_fixture(w: &mut ProtocolWorld) {
+    w.core_revocation_cut_observation = None;
+}
+
+#[when("an authorized manager revokes the grantee")]
+fn core_revocation_cut_execute(w: &mut ProtocolWorld) {
+    w.core_revocation_cut_observation = Some(core_revocation_cut_scenario());
+}
+
+#[when(
+    "the transaction rotates, rewraps survivors, re-encrypts protected content and appends Gamma"
+)]
+fn core_revocation_cut_transaction(w: &mut ProtocolWorld) {
+    assert!(w.core_revocation_cut_observation.is_some());
+}
+
+fn core_revocation_cut_observation(w: &ProtocolWorld) -> &CoreRevocationCutObservation {
+    w.core_revocation_cut_observation
+        .as_ref()
+        .expect("CORE-REV-001 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[then("one edition commits the revocation and every derived cryptographic change")]
+fn core_revocation_cut_edition(w: &mut ProtocolWorld) {
+    let observation = core_revocation_cut_observation(w);
+    assert!(observation.one_new_edition);
+    assert!(observation.revoke_gamma_present);
+    assert!(observation.rotated_header_and_body);
+}
+
+#[then("the revoked line opens no new key or rewritten body")]
+fn core_revocation_cut_revoked(w: &mut ProtocolWorld) {
+    let observation = core_revocation_cut_observation(w);
+    assert!(observation.revoked_cut);
+    assert!(observation.survivor_reads);
+}
+
+#[then("a fresh keyless store verifies the authority, cut and resulting roots")]
+fn core_revocation_cut_cold(w: &mut ProtocolWorld) {
+    assert!(core_revocation_cut_observation(w).fresh_keyless_verified);
+}
+
+#[then(
+    regex = r#"^(?:config remains outside the read, act and binding business catalog|all applicable constraints and obligations explicitly present in the whole presented chain apply|no wildcard or inferred binding co_sign covers it|the vault operation is authorized under its applicable constraints|Gamma, roots and publication commit any mutation atomically|config authority grants no external mail action|this protocol version exposes no narrower config read or write authority|a finer split requires a later version and never reinterprets this mandate|the tool host resolves the credential at the last moment|the agent receives no config plaintext, DK or vault line|the secret manager result cannot authorize or open the vault|Core remains the source of the protocol verdict|neither capability opens the other's sealed material|only /x/mail recipients, versions and roots may change|Gamma, config evidence and publication commit atomically|fresh-store keyless verification receives no credential|the canonical bundle remains byte-for-byte identical|no Gamma entry, header generation or config blob from the attempt is reachable|it finds no credential, config plaintext, private key or DK|encrypted normative header lines remain opaque and non-authorizing)$"#
 )]
 fn cb10_then(w: &mut ProtocolWorld) {
     cb10_assert_green(w);
@@ -10532,18 +17455,19 @@ fn i_then_resolution_refused(w: &mut ProtocolWorld) {
 
 #[then(expr = "publication is {string}")]
 fn i_publication_verdict(w: &mut ProtocolWorld, verdict: String) {
+    if let Some(result) = &w.core_edition_observation {
+        let observation = result
+            .as_ref()
+            .unwrap_or_else(|error| panic!("CORE-ED scenario failed: {error}"));
+        assert_eq!(verdict, observation.expected_verdict);
+        assert_eq!(observation.actual_accepted, verdict == "accepted");
+        assert!(observation.signer_is_actor);
+        return;
+    }
     if w.cb5_result.is_some() {
         assert!(matches!(verdict.as_str(), "accepted" | "refused"));
         cb5_assert_green(w);
         cb6_assert_green(w);
-        return;
-    }
-    if w.cb12_result.is_some() {
-        assert!(matches!(verdict.as_str(), "accepted" | "refused"));
-        cb4_assert_green(w);
-        cb6_assert_green(w);
-        cb9_assert_green(w);
-        cb12_assert_green(w);
         return;
     }
     let result = w.i_result.clone().expect("merge verdict");

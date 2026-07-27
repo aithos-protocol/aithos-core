@@ -1,5 +1,8 @@
 # Handoff — Piste G : lot G3 CLOS (l'AS OAuth `gateway_as`, 2026-07-17)
 
+> **ARCHIVE DE PREUVE.** Gate G3 clos ; les baselines et prochaines étapes sont
+> historiques.
+
 **Branche :** `feat/obligations` (jamais switché)
 **HEAD d'entrée :** `22a67c4` → **chaîne de la session :** `4eb1b39`
 (contrat @wip seul) → `9610fe1` (impl G3, 33 scénarios détaggés). Le

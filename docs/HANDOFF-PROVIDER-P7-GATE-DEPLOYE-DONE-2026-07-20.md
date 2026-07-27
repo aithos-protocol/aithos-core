@@ -1,5 +1,8 @@
 # HANDOFF — Piste P / P7 bascule control-plane : GATE DÉPLOYÉ — FAIT (2026-07-20)
 
+> **ARCHIVE DE PREUVE.** Bascule P7 close ; ne pas utiliser ce document comme
+> runbook permanent.
+
 Date : 2026-07-20 (fin d'après-midi). Dépôts : `code/aithos-core` +
 `provider/`. État DISQUE = vérité. Statut : **le gate déployé P7 est JOUÉ
 et VERT** — la table DynamoDB `aithos-provider-prod-control` est la SEULE

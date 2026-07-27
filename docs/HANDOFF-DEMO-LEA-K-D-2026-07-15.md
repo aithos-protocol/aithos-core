@@ -1,5 +1,8 @@
 # Handoff — démo Léa : lots K (briefing) et D (répétition générale)
 
+> **ARCHIVE — lot exécuté.** Voir le runbook `DEMO-LEA.md` et le scénario
+> `DEMO-LEA-SCENARIO.md` pour les références encore utiles.
+
 **Date :** 2026-07-15 (8ᵉ session gw, fin — profil cloud+janitor)
 **Branche :** `feat/obligations` (jamais switcher)
 **HEAD de sortie :** le commit docs qui suit `56d2a14`

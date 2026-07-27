@@ -29,12 +29,12 @@ Feature: Connector classes and isolated vault capabilities
 
     Scenario Outline: Catalog authority begins only with a homogeneous draft3 chain
       Given a connector mandate chain under "<profile>"
-      When it presents "<catalog claim>" for a new W1 action occurrence
+      When it presents "<catalog_claim>" for a new W1 action occurrence
       Then catalog authority is "<verdict>"
       And historical mandate bytes are never reinterpreted
 
       Examples:
-        | profile | catalog claim                                     | verdict  |
+        | profile | catalog_claim                                     | verdict  |
         | draft.1 | a later catalog sidecar                           | refused  |
         | draft.2 | a later owner approval                            | refused  |
         | draft.3 | the exact catalog and approval pinned at issuance | accepted |
@@ -61,12 +61,12 @@ Feature: Connector classes and isolated vault capabilities
       And a keyless verifier never treats catalog signature alone as owner approval
 
     Scenario Outline: Every catalog action has exactly one canonical class
-      Given a signed connector catalog whose action has "<class assignment>"
+      Given a signed connector catalog whose action has "<class_assignment>"
       When the owner and a keyless verifier validate its form
       Then the catalog is "<verdict>"
 
       Examples:
-        | class assignment          | verdict  |
+        | class_assignment          | verdict  |
         | exactly one read class    | accepted |
         | exactly one act class     | accepted |
         | exactly one binding class | accepted |
@@ -93,11 +93,11 @@ Feature: Connector classes and isolated vault capabilities
 
     Scenario Outline: Catalog drift never widens an existing mandate
       Given a mandate pins one approved connector catalog
-      When runtime presents "<catalog change>"
+      When runtime presents "<catalog_change>"
       Then the action is refused until new owner-approved authority is issued
 
       Examples:
-        | catalog change                         |
+        | catalog_change                         |
         | an action added after issuance         |
         | an act action reclassified as binding  |
         | another manifest with the same version |
@@ -111,12 +111,12 @@ Feature: Connector classes and isolated vault capabilities
       And canonical rights require re-enrolment
 
     Scenario Outline: Delegation and execution use the same pinned catalog class
-      Given a parent mandate carries "<parent authority>" under one approved catalog
-      When it delegates "<child authority>" under "<child catalog>"
+      Given a parent mandate carries "<parent_authority>" under one approved catalog
+      When it delegates "<child_authority>" under "<child_catalog>"
       Then the child chain is "<verdict>"
 
       Examples:
-        | parent authority   | child authority      | child catalog         | verdict  |
+        | parent_authority   | child_authority      | child_catalog         | verdict  |
         | act.x.mail.*       | act.x.mail.list      | identical pinned one  | accepted |
         | act.x.mail.*       | act.x.mail.send      | identical pinned one  | accepted |
         | act.x.mail.*       | act.x.mail.purchase  | identical pinned one  | refused  |

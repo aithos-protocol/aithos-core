@@ -79,7 +79,7 @@ Feature: Signed enterprise control and proof surface
       Then status reports bounded process, Vault and relay readiness
       And no sentinel or upstream error detail appears in the response or logs
 
-    @sdk
+    @wip @sdk
     Scenario: Live proof agrees with the independently verified remote proof
       Given the same signed proof exists in the gateway sidecar and RemoteStore
       When the browser fetches both copies

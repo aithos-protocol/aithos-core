@@ -1,5 +1,8 @@
 # Prompt de reprise — finaliser intégralement Aithos Core
 
+> **ARCHIVE — ne pas exécuter.** Le plan auquel ce prompt renvoie a été clos par
+> CB13.
+
 Copier le bloc ci-dessous dans une nouvelle tâche Codex.
 
 ```text

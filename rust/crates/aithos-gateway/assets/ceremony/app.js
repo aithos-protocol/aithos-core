@@ -93,6 +93,23 @@ async function decryptKeystore(document, passphrase) {
   }
 }
 
+function ceremonyHttpError(path, response, answer) {
+  const description = typeof answer?.error_description === "string" && answer.error_description
+    ? answer.error_description
+    : null;
+  const code = typeof answer?.error === "string" && answer.error ? answer.error : null;
+  if (description && code) {
+    return `${description} (${code}, HTTP ${response.status} on ${path})`;
+  }
+  if (description) {
+    return `${description} (HTTP ${response.status} on ${path})`;
+  }
+  if (code) {
+    return `The gateway refused the ceremony: ${code} (HTTP ${response.status} on ${path})`;
+  }
+  return `The gateway refused the ceremony (HTTP ${response.status} on ${path})`;
+}
+
 async function postJson(path, body, accept = "application/json") {
   const response = await fetch(path, {
     method: "POST",
@@ -103,7 +120,7 @@ async function postJson(path, body, accept = "application/json") {
   });
   const answer = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(answer?.error_description || "The gateway refused the ceremony");
+    throw new Error(ceremonyHttpError(path, response, answer));
   }
   return answer;
 }
@@ -277,7 +294,12 @@ unlockButton.addEventListener("click", async () => {
       throw new Error("The gateway returned malformed ceremony data");
     }
     if (preparation.eligible_parents.length === 0) {
-      throw new Error("No fresh mandate with session-issuing authority is eligible for this signer");
+      const resource = preparation.bindings?.resource;
+      throw new Error(
+        resource
+          ? `No eligible session parent for this signer on resource ${resource}. Publish a G4 parent (issue right, purpose = that resource) for keystore public_key ${delegatePub}, then retry within the ceremony window.`
+          : `No eligible session parent for this signer (${delegatePub}).`,
+      );
     }
     parentSelect.replaceChildren();
     preparation.eligible_parents.forEach((parent, index) => {

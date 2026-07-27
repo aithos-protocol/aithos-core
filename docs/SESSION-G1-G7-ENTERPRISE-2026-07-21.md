@@ -1,5 +1,8 @@
 # Session G1 + G7 entreprise — 2026-07-21
 
+> **ARCHIVE DE SESSION.** `G7b` et les lots OAuth SaaS ont avancé depuis ce
+> snapshot ; ses prochains pas ne sont plus opposables.
+
 Statut : `G7a COMPLETE`, prêt pour `G7b`.
 
 Ce journal est la trace d'intégration locale de la verticale définie par

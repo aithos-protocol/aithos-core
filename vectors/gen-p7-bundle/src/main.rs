@@ -159,6 +159,7 @@ fn owner_package(
         },
         height,
         predecessors: predecessors.iter().cloned().map(Value::String).collect(),
+        sparse_parent_manifest: None,
         parent_store,
         candidate_store,
         change_causes: mutations
@@ -620,6 +621,7 @@ fn build_delegated(vector: &Value) -> Value {
         },
         height: context_v["height"].as_u64().expect("height"),
         predecessors: context_v["predecessors"].as_array().expect("preds").clone(),
+        sparse_parent_manifest: None,
         parent_store: string_map(&context_v["store_before"]),
         candidate_store: string_map(&context_v["store_after"]),
         change_causes: value_map(&context_v["change_causes"]),

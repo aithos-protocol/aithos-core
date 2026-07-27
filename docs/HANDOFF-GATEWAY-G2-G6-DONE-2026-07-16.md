@@ -1,5 +1,8 @@
 # Handoff — Piste G : lots G2 + G6 CLOS (12ᵉ session gw, 2026-07-16 nuit)
 
+> **ARCHIVE DE PREUVE.** Lots clos, conservés pour la traçabilité ; les prochains
+> travaux indiqués ici ne sont plus courants.
+
 **Branche :** `feat/obligations` (jamais switché)
 **HEAD d'entrée :** `6fdfe3c` → **HEAD de sortie :** le commit docs qui suit
 `1350e20` (chaîne de la session : `3b451ae` contrats seuls → `d17d77b` G2 →

@@ -1,6 +1,7 @@
 //! SDK-1 RED/GREEN contract: the public reader is anonymous and cannot
 //! accidentally be used as an authenticated/private store client.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use aithos_bundle::remote::{PublicRemoteError, PublicRemoteStore};
@@ -10,7 +11,25 @@ use aithos_provider::dns::MemDnsTxt;
 use aithos_provider::heads::MemHeads;
 use aithos_provider::nonces::MemNonces;
 use aithos_provider::objects::MemObjects;
-use aithos_provider::service::{build_router, AppState};
+use aithos_provider::service::{build_router, parse_browser_origins, AppState};
+
+#[test]
+fn signed_browser_origins_are_exact_canonical_and_tls_bounded() {
+    let parsed = parse_browser_origins(Some(
+        "https://app.aithos.fr,http://127.0.0.1:4173,http://[::1]:4173",
+    ))
+    .unwrap();
+    assert_eq!(parsed.len(), 3);
+    for invalid in [
+        "*",
+        "null",
+        "http://app.aithos.fr",
+        "https://app.aithos.fr/extra",
+        "https://app.aithos.fr,https://app.aithos.fr",
+    ] {
+        assert!(parse_browser_origins(Some(invalid)).is_err(), "{invalid}");
+    }
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn public_reader_fetches_anonymously_and_refuses_private_paths() {
@@ -57,6 +76,7 @@ async fn public_reader_fetches_anonymously_and_refuses_private_paths() {
         acme: AcmeState::new(),
         authority: format!("127.0.0.1:{port}"),
         test_now_enabled: false,
+        browser_origins: Arc::new(BTreeSet::from(["https://app.aithos.fr".to_owned()])),
     });
     tokio::spawn(async move {
         axum::serve(listener, build_router(state)).await.ok();
@@ -96,4 +116,117 @@ async fn public_reader_fetches_anonymously_and_refuses_private_paths() {
             .and_then(|value| value.to_str().ok()),
         Some("*")
     );
+
+    let http = reqwest::Client::new();
+    let public_preflight = http
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("http://127.0.0.1:{port}/t/{tenant}/{did}/e/public/welcome.md"),
+        )
+        .header("Origin", "https://elsewhere.example")
+        .header("Access-Control-Request-Method", "GET")
+        .header("Access-Control-Request-Headers", "X-Aithos-Store")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(public_preflight.status(), 204);
+    assert_eq!(
+        public_preflight
+            .headers()
+            .get("access-control-allow-origin")
+            .and_then(|value| value.to_str().ok()),
+        Some("*")
+    );
+
+    let publication_url = format!("http://127.0.0.1:{port}/t/{tenant}/{did}/manifest.json");
+    let signed_preflight = http
+        .request(reqwest::Method::OPTIONS, &publication_url)
+        .header("Origin", "https://app.aithos.fr")
+        .header("Access-Control-Request-Method", "PUT")
+        .header(
+            "Access-Control-Request-Headers",
+            "Content-Type, If-Head, X-Aithos-Auth, X-Aithos-Store",
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(signed_preflight.status(), 204);
+    assert_eq!(
+        signed_preflight
+            .headers()
+            .get("access-control-allow-origin")
+            .and_then(|value| value.to_str().ok()),
+        Some("https://app.aithos.fr")
+    );
+    assert!(signed_preflight
+        .headers()
+        .get("access-control-allow-credentials")
+        .is_none());
+
+    for (origin, method, headers) in [
+        (
+            "https://neighbor.aithos.fr",
+            "PUT",
+            "Content-Type, If-Head, X-Aithos-Auth, X-Aithos-Store",
+        ),
+        (
+            "https://app.aithos.fr",
+            "POST",
+            "Content-Type, If-Head, X-Aithos-Auth, X-Aithos-Store",
+        ),
+        (
+            "https://app.aithos.fr",
+            "PUT",
+            "Content-Type, If-Head, X-Aithos-Auth, X-Aithos-Store, X-Extra",
+        ),
+    ] {
+        let refused = http
+            .request(reqwest::Method::OPTIONS, &publication_url)
+            .header("Origin", origin)
+            .header("Access-Control-Request-Method", method)
+            .header("Access-Control-Request-Headers", headers)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), 403);
+        assert!(refused
+            .headers()
+            .get("access-control-allow-origin")
+            .is_none());
+    }
+
+    let refused_actual = http
+        .put(&publication_url)
+        .header("Origin", "https://neighbor.aithos.fr")
+        .header("Content-Type", "application/octet-stream")
+        .header("If-Head", "none")
+        .header("X-Aithos-Auth", "invalid")
+        .header("X-Aithos-Store", "1.0.0-draft.1")
+        .body(Vec::new())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused_actual.status(), 403);
+    assert!(refused_actual
+        .headers()
+        .get("access-control-allow-origin")
+        .is_none());
+
+    let duplicate_origin = http
+        .put(&publication_url)
+        .header("Origin", "https://app.aithos.fr")
+        .header("Origin", "https://neighbor.aithos.fr")
+        .header("Content-Type", "application/octet-stream")
+        .header("If-Head", "none")
+        .header("X-Aithos-Auth", "invalid")
+        .header("X-Aithos-Store", "1.0.0-draft.1")
+        .body(Vec::new())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(duplicate_origin.status(), 403);
+    assert!(duplicate_origin
+        .headers()
+        .get("access-control-allow-origin")
+        .is_none());
 }

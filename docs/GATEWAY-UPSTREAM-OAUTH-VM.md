@@ -1,5 +1,9 @@
 # Gateway — connexion OAuth amont sur VM
 
+> **ARCHIVE OPÉRATIONNELLE.** Ce runbook décrit le socle OAuth amont initial.
+> Pour les profils actuels Notion/Sheets/Gmail, utiliser
+> `RUNBOOK-CONNECTOR-PROFILES-OAUTH-SAAS.md`.
+
 Ce runbook couvre le premier gate du client OAuth amont : authorization code
 + PKCE, callback HTTPS public, secrets et tokens dans le Vault du client,
 refresh automatique et refus fail-closed avant tout appel MCP.

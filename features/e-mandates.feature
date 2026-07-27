@@ -108,12 +108,12 @@ Feature: Mandates and the offline verifier
 
     Scenario Outline: A signed mandate with invalid form is rejected before its signature can authorize
       Given a mandate whose signature bytes are otherwise valid
-      When its "<field>" has "<invalid form>"
+      When its "<field>" has "<invalid_form>"
       Then mandate form validation is refused
       And no authorization helper returns a partial Allow
 
       Examples:
-        | field                 | invalid form                         |
+        | field                 | invalid_form                         |
         | protocol version      | unsupported version                   |
         | signature algorithm   | algorithm other than ed25519          |
         | announced signer key  | key different from the issuer         |

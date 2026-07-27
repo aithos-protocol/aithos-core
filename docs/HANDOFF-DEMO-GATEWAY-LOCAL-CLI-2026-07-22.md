@@ -1,5 +1,10 @@
 # HANDOFF — exécuter la démo CLI avec gateway locale
 
+> **ARCHIVE D'EXÉCUTION.** Ce document décrit une répétition ponctuelle et un
+> état de processus observé le 22 juillet ; il ne garantit pas qu'une Gateway
+> écoute encore sur les ports indiqués. Utiliser les runbooks courants et refaire
+> les probes avant toute répétition.
+
 Date : 2026-07-22
 
 Statut : **READY pour exécution accompagnée**, sans développement, déploiement,

@@ -1,5 +1,8 @@
 # Handoff — Pass L : écritures déléguées (circle) + super-mandat
 
+> **ARCHIVE — ne pas utiliser comme reprise.** Ce handoff contient des chemins
+> antérieurs à `/v2` et décrit un lot désormais intégré.
+
 > État au 2026-07-12, session Cowork. Correctif développé et validé dans le
 > sandbox cloud ; **PAS ENCORE ÉCRIT SUR LE DISQUE LOCAL** (bridge desktop
 > déconnecté au moment du commit). C'est l'action n°1 ci-dessous.

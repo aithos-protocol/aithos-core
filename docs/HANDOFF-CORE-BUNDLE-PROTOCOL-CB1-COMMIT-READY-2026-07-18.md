@@ -1,5 +1,8 @@
 # Handoff — protocole Core + Bundle, CB1 prêt au commit et non commité
 
+> **ARCHIVE — étape CB1 dépassée.** CB1 a été intégré et la séquence CB2–CB13
+> est close. Ne pas reprendre les instructions de commit de ce snapshot.
+
 **Date :** 2026-07-18
 
 **Dépôt :** `/Volumes/Math17/aithos/v2/code/aithos-core`

@@ -175,6 +175,8 @@ pub struct OAuthAuthorizationParameters {
     #[serde(default)]
     pub include_granted_scopes: bool,
     #[serde(default)]
+    pub prompt_consent: bool,
+    #[serde(default)]
     pub prompt_consent_on_repair: bool,
 }
 
@@ -465,6 +467,13 @@ impl ContextTools {
             )),
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Legacy(tools) => tools.is_empty(),
+            Self::Hub(tools) => tools.is_empty(),
+        }
+    }
 }
 
 /// Where the ethos (bundle + gamma) lives. Both variants parse from day
@@ -679,6 +688,25 @@ fn default_dashboard_origins() -> Vec<String> {
     vec!["https://app.aithos.fr".to_owned()]
 }
 
+/// Durable hot-enrollment catalogue. The browser supplies only an Ethos DID
+/// and the two mandate ids: Provider coordinates and local custody stay pinned
+/// here. `template_context` must be one already-declared Remote context; only
+/// its `url` and `tenant` are inherited. Static tools are never inherited.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EthosCatalogConfig {
+    pub root: PathBuf,
+    pub template_context: String,
+    pub audience: String,
+    pub enrollment_authority_contexts: Vec<String>,
+    #[serde(default = "default_ethos_catalog_max_contexts")]
+    pub max_contexts: usize,
+}
+
+fn default_ethos_catalog_max_contexts() -> usize {
+    256
+}
+
 /// Outbound relay configuration (G1). The stanza is entirely opt-in:
 /// omitting it leaves the direct listener on its historical path.
 #[derive(Debug, Clone, Deserialize)]
@@ -802,6 +830,9 @@ pub struct GatewayConfig {
     /// is restricted to loopback; public access goes through G1 public TLS.
     #[serde(default)]
     pub dashboard: Option<DashboardConfig>,
+    /// Optional durable overlay of Owner-co-admitted Ethos contexts.
+    #[serde(default)]
+    pub ethos_catalog: Option<EthosCatalogConfig>,
 }
 
 impl GatewayConfig {
@@ -849,6 +880,9 @@ impl GatewayConfig {
                     "dashboard context names must be canonical lowercase URL labels".into(),
                 ));
             }
+        }
+        if let Some(catalog) = &self.ethos_catalog {
+            validate_ethos_catalog(catalog, self)?;
         }
         if let Some(profiles) = &self.connector_profiles {
             if self.dashboard.is_none() || self.contexts.is_none() || self.journal.is_none() {
@@ -1928,6 +1962,143 @@ fn validate_dashboard(dashboard: &DashboardConfig, listen: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_ethos_catalog(catalog: &EthosCatalogConfig, config: &GatewayConfig) -> Result<()> {
+    if config.dashboard.is_none()
+        || config.journal.is_none()
+        || config.contexts.is_none()
+        || config.servers.is_none()
+    {
+        return Err(GatewayError::ConfigRejected(
+            "`ethos_catalog` requires the dashboard governed-hub shape (servers, contexts and journal)"
+                .into(),
+        ));
+    }
+    if !lexically_normal_absolute_path(&catalog.root) || catalog.root.parent().is_none() {
+        return Err(GatewayError::ConfigRejected(
+            "`ethos_catalog.root` must be an absolute, normalized non-root path".into(),
+        ));
+    }
+    if !(1..=4_096).contains(&catalog.max_contexts) {
+        return Err(GatewayError::ConfigRejected(
+            "`ethos_catalog.max_contexts` must be between 1 and 4096".into(),
+        ));
+    }
+    if !is_control_label(&catalog.template_context) {
+        return Err(GatewayError::ConfigRejected(
+            "`ethos_catalog.template_context` is not a canonical context label".into(),
+        ));
+    }
+    let contexts = config.contexts.as_deref().unwrap_or_default();
+    let template = contexts
+        .iter()
+        .find(|context| context.name == catalog.template_context)
+        .ok_or_else(|| {
+            GatewayError::ConfigRejected(
+                "`ethos_catalog.template_context` must name a statically configured context".into(),
+            )
+        })?;
+    let StoreConfig::Remote { url, tenant, .. } = &template.store else {
+        return Err(GatewayError::ConfigRejected(
+            "`ethos_catalog.template_context` must use a remote store".into(),
+        ));
+    };
+    validate_pinned_http_url(url, "ethos_catalog template provider")?;
+    validate_catalog_tenant(tenant)?;
+    validate_pinned_http_url(&catalog.audience, "ethos_catalog.audience")?;
+    let audience = reqwest::Url::parse(&catalog.audience).map_err(|_| {
+        GatewayError::ConfigRejected("`ethos_catalog.audience` is not an absolute URL".into())
+    })?;
+    if audience.path() != "/mcp" {
+        return Err(GatewayError::ConfigRejected(
+            "`ethos_catalog.audience` must name the byte-exact `/mcp` resource".into(),
+        ));
+    }
+    for context in contexts {
+        let local = match &context.store {
+            StoreConfig::Remote {
+                local: Some(root), ..
+            }
+            | StoreConfig::Fs { root }
+            | StoreConfig::Replicated { root, .. } => Some(root),
+            StoreConfig::Remote { local: None, .. } | StoreConfig::S3 { .. } => None,
+        };
+        if let Some(local) = local {
+            if !lexically_normal_absolute_path(local) {
+                return Err(GatewayError::ConfigRejected(
+                    "`ethos_catalog` requires normalized absolute static context roots".into(),
+                ));
+            }
+            if catalog.root.starts_with(local) || local.starts_with(&catalog.root) {
+                return Err(GatewayError::ConfigRejected(
+                    "`ethos_catalog.root` must be disjoint from static context store roots".into(),
+                ));
+            }
+        }
+    }
+    if catalog.enrollment_authority_contexts.is_empty() {
+        return Err(GatewayError::ConfigRejected(
+            "`ethos_catalog.enrollment_authority_contexts` is empty".into(),
+        ));
+    }
+    let mut authorities = std::collections::BTreeSet::new();
+    for name in &catalog.enrollment_authority_contexts {
+        if !is_control_label(name)
+            || !authorities.insert(name.as_str())
+            || !contexts.iter().any(|context| context.name == *name)
+        {
+            return Err(GatewayError::ConfigRejected(
+                "`ethos_catalog.enrollment_authority_contexts` must contain distinct statically configured context labels"
+                    .into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn lexically_normal_absolute_path(path: &std::path::Path) -> bool {
+    use std::path::Component;
+
+    path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::RootDir | Component::Normal(_)))
+}
+
+fn validate_catalog_tenant(tenant: &str) -> Result<()> {
+    let valid = (3..=32).contains(&tenant.len())
+        && tenant
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        && tenant
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+    if !valid {
+        return Err(GatewayError::ConfigRejected(
+            "`ethos_catalog` template tenant is invalid".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_pinned_http_url(value: &str, at: &str) -> Result<()> {
+    let url = reqwest::Url::parse(value)
+        .map_err(|_| GatewayError::ConfigRejected(format!("`{at}` is not an absolute URL")))?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || (url.scheme() == "http" && !is_loopback_http(value))
+    {
+        return Err(GatewayError::ConfigRejected(format!(
+            "`{at}` requires HTTPS outside loopback and no credentials, query or fragment"
+        )));
+    }
+    Ok(())
+}
+
 fn is_control_label(value: &str) -> bool {
     (1..=64).contains(&value.len())
         && value
@@ -2483,6 +2654,39 @@ connector_profiles:
             "        approval_ttl_seconds: 900\n        arbitrary_provider_input: true",
         );
         assert!(GatewayConfig::from_yaml(&format!("{HUB}{free_form}")).is_err());
+    }
+
+    #[test]
+    fn integrated_demo_template_is_secret_free_and_parseable() {
+        let template = include_str!("../../../../demo/integrated/gateway.example.yaml");
+        let rendered = template
+            .replace("${AITHOS_DEMO_TENANT}", "demo")
+            .replace("${AITHOS_DEMO_DID}", "did:aithos:demo-owner")
+            .replace(
+                "${AITHOS_DEMO_AGENT_MANDATE}",
+                "mandate_01J000000000000000000000001",
+            )
+            .replace("${AITHOS_DEMO_STATE}", "/tmp/aithos-demo")
+            .replace("${AITHOS_DEMO_SHEETS_MANIFEST_PIN}", "sha256:test")
+            .replace("${AITHOS_DEMO_GMAIL_MANIFEST_PIN}", "sha256:gmail-test")
+            .replace(
+                "${AITHOS_DEMO_GMAIL_ALLOWED_RECIPIENT}",
+                "demo@example.test",
+            )
+            .replace("${AITHOS_DEMO_SPREADSHEET_ID}", "sheet-1")
+            .replace("${AITHOS_DEMO_SHEET_RANGE}", "Demo!B2:C3")
+            .replace("${AITHOS_DEMO_GOOGLE_CLIENT_ID}", "demo-client-id");
+
+        assert!(
+            !rendered.contains("${AITHOS_"),
+            "all public placeholders are covered"
+        );
+        let config = GatewayConfig::from_yaml(&rendered)
+            .unwrap_or_else(|error| panic!("integrated demo template must parse: {error}"));
+        assert_eq!(config.contexts.as_ref().map(Vec::len), Some(1));
+        assert_eq!(config.connector_profiles.as_ref().map(Vec::len), Some(2));
+        assert!(!template.contains("client_secret:"));
+        assert!(!template.contains("token: "));
     }
 
     #[test]
@@ -3477,6 +3681,78 @@ journal:
             GatewayConfig::from_yaml(&off_loopback),
             Err(GatewayError::ConfigRejected(m)) if m.contains("requires TLS")
         ));
+    }
+
+    #[test]
+    fn ethos_catalog_pins_a_remote_template_and_static_co_admitters() {
+        let yaml = r#"
+listen: 127.0.0.1:4870
+dashboard:
+  allowed_origins: [https://app.aithos.fr]
+servers:
+  - name: bootstrap
+    transport: http
+    url: https://mcp.example/mcp
+contexts:
+  - name: authority
+    store:
+      kind: remote
+      url: https://store.aithos.fr
+      tenant: demo
+      did: did:aithos:z6MkhjJ8CSUwE1m7dCfp4HhQZ7JwTX1JrM44oF4ZqQWfLQwT
+      mandate: [mandate_01J00000000000000000000001]
+      local: /var/lib/aithos/authority
+    tools:
+      bootstrap__ping:
+        server: bootstrap
+        tool: ping
+        access: read
+journal:
+  store: { kind: fs, root: /var/lib/aithos/journal }
+ethos_catalog:
+  root: /var/lib/aithos/catalog
+  template_context: authority
+  audience: https://demo.mcp.aithos.fr/mcp
+  enrollment_authority_contexts: [authority]
+"#;
+        let config = GatewayConfig::from_yaml(yaml).expect("catalog config");
+        let catalog = config.ethos_catalog.expect("catalog");
+        assert_eq!(catalog.template_context, "authority");
+        assert_eq!(catalog.max_contexts, 256);
+    }
+
+    #[test]
+    fn ethos_catalog_refuses_unpinned_or_ambiguous_admission() {
+        let base = r#"
+listen: 127.0.0.1:4870
+dashboard: {}
+servers:
+  - name: bootstrap
+    transport: http
+    url: https://mcp.example/mcp
+contexts:
+  - name: authority
+    store: { kind: fs, root: /tmp/authority }
+    tools:
+      bootstrap__ping:
+        server: bootstrap
+        tool: ping
+        access: read
+journal:
+  store: { kind: fs, root: /tmp/journal }
+"#;
+        for stanza in [
+            "ethos_catalog:\n  root: /tmp/catalog\n  template_context: authority\n  audience: https://gateway.example/mcp\n  enrollment_authority_contexts: [authority]\n",
+            "ethos_catalog:\n  root: /tmp/catalog/../authority\n  template_context: authority\n  audience: https://gateway.example/mcp\n  enrollment_authority_contexts: [authority]\n",
+            "ethos_catalog:\n  root: /tmp/catalog\n  template_context: missing\n  audience: https://gateway.example/mcp\n  enrollment_authority_contexts: [authority]\n",
+            "ethos_catalog:\n  root: /tmp/catalog\n  template_context: authority\n  audience: http://gateway.example/mcp\n  enrollment_authority_contexts: [authority]\n",
+            "ethos_catalog:\n  root: /tmp/catalog\n  template_context: authority\n  audience: https://gateway.example/mcp\n  enrollment_authority_contexts: [neighbor]\n",
+        ] {
+            assert!(
+                GatewayConfig::from_yaml(&format!("{base}{stanza}")).is_err(),
+                "must reject {stanza}"
+            );
+        }
     }
 
     #[test]

@@ -176,11 +176,11 @@ Feature: Integration — one bundle lives the whole protocol (plan §K, spec §0
 
     Scenario Outline: A missing or substituted public artifact fails the cold round trip
       Given a complete export in a fresh local store
-      When "<artifact defect>" is introduced before reopen
+      When "<artifact_defect>" is introduced before reopen
       Then cold verification is rejected without private fallback
 
       Examples:
-        | artifact defect                              |
+        | artifact_defect                              |
         | one required mandate certificate is missing |
         | one certificate is substituted              |
         | one Gamma entry is missing                   |

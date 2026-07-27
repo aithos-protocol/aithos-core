@@ -1,5 +1,8 @@
 # HANDOFF — Piste P / Provider P2 : GATE DÉPLOYÉ étape 6 — FAIT (2026-07-20)
 
+> **ARCHIVE DE PREUVE.** Gate déployé terminé ; commandes et identifiants sont
+> historiques.
+
 Date : 2026-07-20 (après-midi). Dépôts : `code/aithos-core` +
 `provider/`. État DISQUE = vérité. Statut : **le gate déployé étape 6 est
 JOUÉ et VERT** — backends durables S3 + DynamoDB en prod, preuve wire

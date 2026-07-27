@@ -1,5 +1,7 @@
 # PROMPT REPRISE — Piste P / P7 : GATE DÉPLOYÉ (2026-07-20)
 
+> **ARCHIVE — ne pas exécuter.** Le gate déployé est terminé.
+
 Date : 2026-07-20 (préparé en session, après-midi). Dépôts :
 `code/aithos-core` + `provider/`. État DISQUE = vérité. Mission : jouer le
 gate déployé du lot P7 (bascule control-plane DynamoDB) — plan lu

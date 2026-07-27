@@ -35,12 +35,12 @@ Feature: Normal delegated editions
 
     Scenario Outline: Manifest profiles fix the K1-B carrier presence
       Given a candidate manifest under "<profile>"
-      And its K1-B carrier state is "<carrier state>"
+      And its K1-B carrier state is "<carrier_state>"
       When Bundle validates signed manifest form before semantic replay
       Then the manifest is "<verdict>"
 
       Examples:
-        | profile | carrier state                                        | verdict  |
+        | profile | carrier_state                                        | verdict  |
         | draft.1 | operation_ref, changeset_ref and evidence_ref absent | accepted |
         | draft.1 | any K1-B carrier present                             | refused  |
         | draft.2 | all three exact top-level carriers present           | accepted |
@@ -52,15 +52,15 @@ Feature: Normal delegated editions
     Scenario Outline: Draft2 carrier references have one digest and one canonical sidecar key
       Given a complete derived "<carrier>" document D
       When Bundle addresses and pins D for a draft2 manifest
-      Then its reference has exactly "<profile member>" and digest
+      Then its reference has exactly "<profile_member>" and digest
       And digest is domain-separated SHA-256 of "<domain>", NUL and RFC8785-JCS of D
-      And its Store key is "<directory>/<digest suffix>.json"
+      And its Store key is "<directory>/<digest_suffix>.json"
       And files pins those exact JCS bytes with the historical bare SHA-256
 
       Examples:
-        | carrier   | profile member         | domain                     | directory  |
-        | changeset | aithos-changeset-core  | aithos-core/v1/changeset    | changesets |
-        | evidence  | aithos-evidence-core   | aithos-core/v1/evidence     | evidence   |
+        | carrier   | profile_member         | domain                     | directory  | digest_suffix                 |
+        | changeset | aithos-changeset-core  | aithos-core/v1/changeset    | changesets | derived lowercase SHA-256     |
+        | evidence  | aithos-evidence-core   | aithos-core/v1/evidence     | evidence   | derived lowercase SHA-256     |
 
     Scenario: A derived changeset has one closed commitment-only table
       Given parent and candidate states with contained operation occurrences

@@ -1,5 +1,8 @@
 # Handoff — finalisation protocolaire `aithos-core` + `aithos-bundle`
 
+> **ARCHIVE — plan antérieur à CB13.** Les écarts décrits ont été fermés par les
+> lots CB1–CB13 ; le gate final est enregistré par le commit `522dfcd`.
+
 **Date :** 2026-07-18
 
 **Dépôt :** `/Volumes/Math17/aithos/v2/code/aithos-core`

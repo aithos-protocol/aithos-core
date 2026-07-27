@@ -19,8 +19,7 @@ use aithos_core::ids::Sid;
 use aithos_core::jcs;
 use aithos_core::keys::{grantee_kex_secret, OwnerKeys};
 use aithos_core::mandate::{
-    covers_op, covers_section_op, verify_op, Mandate, MandateSpec, Op, PerimeterEntry, SectionOp,
-    Verb,
+    covers_op, covers_section_op, Mandate, MandateSpec, Op, PerimeterEntry, SectionOp, Verb,
 };
 use aithos_core::path::{Leaf, NodePath, Zone};
 use aithos_core::seal::{blob_aad, blob_open, blob_seal};
@@ -436,7 +435,11 @@ impl<S: Store> Bundle<S> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn prepare_generic_grant(
+    /// Resolve one owner grant, write its certificate and deliver every
+    /// required protected key, without publishing a manifest. This is the
+    /// assembly half used by clients that must place the grant and its Gamma
+    /// event inside the same externally signed draft.2 package.
+    pub fn prepare_generic_grant(
         &mut self,
         owner: &OwnerKeys,
         label: &str,
@@ -563,6 +566,26 @@ impl<S: Store> Bundle<S> {
                     GrantSelector::Id(display_path) => {
                         let (folders, sid) = if *zone == Zone::Self_ {
                             self.self_resolve(display_path, &owner.owner_kex)?
+                        } else if *zone == Zone::Public
+                            && self
+                                .store
+                                .get("indices/public.json")
+                                .map_err(io_err)?
+                                .is_some()
+                        {
+                            let index: crate::bundle::K1cPublicIndex =
+                                self.get_json("indices/public.json")?;
+                            let matching = index
+                                .sections
+                                .iter()
+                                .filter(|row| row.path == *display_path)
+                                .collect::<Vec<_>>();
+                            let [row] = matching.as_slice() else {
+                                return Err(Error::InvalidPath(format!(
+                                    "K1-C public path is absent or ambiguous: {display_path}"
+                                )));
+                            };
+                            (Vec::new(), Sid::parse(&row.sid)?)
                         } else {
                             let (row, folders) = self.resolve_clear(*zone, display_path)?;
                             (folders, Sid::parse(&row.sid)?)
@@ -627,7 +650,8 @@ impl<S: Store> Bundle<S> {
                 nonce: hex::encode(ent.e16()),
             },
         )?;
-        self.put_json(&format!("certs/{}.json", mandate.id), &mandate)?;
+        let certificate = aithos_core::jcs::canonical_bytes(&mandate)?;
+        self.write_object(&format!("certs/{}.json", mandate.id), &certificate)?;
         Ok(GenericGrantOutcome {
             mandate,
             deliveries,
@@ -712,7 +736,8 @@ impl<S: Store> Bundle<S> {
                 nonce: hex::encode(ent.e16()),
             },
         )?;
-        self.put_json(&format!("certs/{}.json", mandate.id), &mandate)?;
+        let certificate = aithos_core::jcs::canonical_bytes(&mandate)?;
+        self.write_object(&format!("certs/{}.json", mandate.id), &certificate)?;
         Ok(mandate)
     }
 
@@ -770,22 +795,23 @@ impl<S: Store> Bundle<S> {
         display_path: &str,
         at: &str,
     ) -> Result<String> {
-        let doc = self.did_doc()?;
-        let revs = self.active_revocations()?;
-        aithos_core::mandate::verify_chain_revocable(chain, &doc, at, &revs)?;
         let (row, folders) = self.resolve_clear(zone, display_path)?;
-        let op = Op {
-            verb: Verb::Read,
+        let sid = Sid::parse(&row.sid)?;
+        self.check_grantee_section(
+            chain,
+            agent_sk,
+            Verb::Read,
             zone,
-            folders: &folders,
-            tags: &row.tags,
-        };
-        verify_op(chain, &doc, at, &op)?;
+            sid,
+            &folders,
+            &row.tags,
+            at,
+            false,
+        )?;
 
         let leaf = chain.last().expect("non-empty chain");
         let kid = leaf.grantee.pubkey.clone();
         let kex = grantee_kex_secret(agent_sk);
-        let sid = Sid::parse(&row.sid)?;
         let section = NodePath::section(zone, folders.clone(), sid);
 
         let k_section = match self.agent_section_key(&kid, &kex, &folders, sid, row.key_version) {
@@ -832,6 +858,115 @@ impl<S: Store> Bundle<S> {
         let v: serde_json::Value = serde_json::from_slice(&pt)
             .map_err(|e| Error::SealRejected(format!("blob json: {e}")))?;
         Ok(v["md"].as_str().unwrap_or_default().to_owned())
+    }
+
+    /// Delegated-session read (gateway lot 1): the CERTIFICATE half is
+    /// the session chain (leaf grantee = the session signer, usually
+    /// the gateway key), verified exactly like an agent read; the
+    /// PHYSICS half may come from any of the `physics` candidates —
+    /// the session key's own line when one was delivered, or the
+    /// custodian agent's line (the gateway holds both keys). Whatever
+    /// candidate opens the body, the authority cited is the session
+    /// chain and nothing else.
+    #[allow(clippy::too_many_lines)]
+    pub fn read_section_as_delegated_session(
+        &self,
+        chain: &[Mandate],
+        session_sk: &SigningKey,
+        physics: &[(String, x25519_dalek::StaticSecret)],
+        zone: Zone,
+        display_path: &str,
+        at: &str,
+    ) -> Result<String> {
+        let (row, folders) = self.resolve_clear(zone, display_path)?;
+        let sid = Sid::parse(&row.sid)?;
+        self.check_grantee_section(
+            chain,
+            session_sk,
+            Verb::Read,
+            zone,
+            sid,
+            &folders,
+            &row.tags,
+            at,
+            false,
+        )?;
+        let leaf = chain.last().expect("non-empty chain");
+        let section = NodePath::section(zone, folders.clone(), sid);
+        let mut k_section = None;
+        for (kid, kex) in physics {
+            if let Ok(k) = self.agent_section_key(kid, kex, &folders, sid, row.key_version) {
+                k_section = Some(k);
+                break;
+            }
+            // Tag views granted to this leaf whose dir covers the section.
+            for entry in leaf.parsed_perimeter()? {
+                let PerimeterEntry::Ethos {
+                    zone: ez,
+                    dir,
+                    tag: Some(t),
+                    ..
+                } = entry
+                else {
+                    continue;
+                };
+                if ez != zone
+                    || folders.len() < dir.len()
+                    || folders[..dir.len()] != dir[..]
+                    || !row.tags.iter().any(|x| x == &t)
+                {
+                    continue;
+                }
+                let anchor = NodePath::tag_view(zone, dir, &t)?;
+                let Ok(anchor_key) = self.agent_node_key(kid, kex, &anchor) else {
+                    continue;
+                };
+                let wrap: Wrap = self.get_json(&wrap_file(zone, &anchor, &section))?;
+                k_section = Some(wrap.open(&self.did, &anchor_key)?);
+                break;
+            }
+            if k_section.is_some() {
+                break;
+            }
+        }
+        let k_section = k_section
+            .ok_or_else(|| Error::SealRejected(format!("no key path to {display_path}")))?;
+        let pt = self.open_blob_v(
+            &format!("e/{}/blobs/{}.enc", zone.as_str(), row.sid),
+            &k_section,
+            &section,
+            row.key_version,
+        )?;
+        let v: serde_json::Value = serde_json::from_slice(&pt)
+            .map_err(|e| Error::SealRejected(format!("blob json: {e}")))?;
+        Ok(v["md"].as_str().unwrap_or_default().to_owned())
+    }
+
+    /// Read one opaque self section by stable SID under the grantee's current
+    /// exact mandate, without resolving or exposing the sealed self tree.
+    pub fn read_self_section_as_agent(
+        &self,
+        chain: &[Mandate],
+        agent_sk: &SigningKey,
+        sid: Sid,
+        at: &str,
+    ) -> Result<String> {
+        self.check_grantee_section(
+            chain,
+            agent_sk,
+            Verb::Read,
+            Zone::Self_,
+            sid,
+            &[],
+            &[],
+            at,
+            false,
+        )?;
+        let (node, key) = self.self_section_with_agent(chain, agent_sk, sid)?;
+        let plaintext = self.open_blob(&format!("e/self/blobs/{sid}.enc"), &key, &node)?;
+        let section: SelfSection = serde_json::from_slice(&plaintext)
+            .map_err(|error| Error::SealRejected(format!("self section: {error}")))?;
+        Ok(section.md)
     }
 
     pub(crate) fn agent_section_key(
@@ -962,7 +1097,8 @@ impl<S: Store> Bundle<S> {
                 nonce: hex::encode(ent.e16()),
             },
         )?;
-        self.put_json(&format!("certs/{}.json", child.id), &child)?;
+        let certificate = aithos_core::jcs::canonical_bytes(&child)?;
+        self.write_object(&format!("certs/{}.json", child.id), &certificate)?;
         Ok(child)
     }
 

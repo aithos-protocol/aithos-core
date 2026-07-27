@@ -39,6 +39,43 @@ impl Keyholder {
     pub(crate) fn gateway_seed(&self) -> &[u8; 32] {
         &self.gateway_seed
     }
+
+    /// Run one closed `aithos-client` operation under the Gateway capability
+    /// named by delegated OAuth session leaves.
+    ///
+    /// The temporary client keyholder cannot escape this call: callers only
+    /// receive `T`, never the handle or seed. `aithos-client` itself exposes
+    /// purpose-bound session/content/publication/provider operations rather
+    /// than an arbitrary `sign(bytes)` primitive.
+    pub(crate) fn with_ethos_client_grantee<T>(
+        &self,
+        operation: impl FnOnce(&aithos_client::MemoryGranteeKeyholder) -> T,
+    ) -> T {
+        let keyholder = aithos_client::MemoryGranteeKeyholder::from_seed(self.gateway_seed);
+        operation(&keyholder)
+    }
+
+    /// Open one authenticated client session and keep both the temporary
+    /// keyholder and session proof inside this custody boundary.
+    pub(crate) fn with_ethos_client_session<T>(
+        &self,
+        snapshot: aithos_client::VerifiedSnapshot,
+        chain: Vec<aithos_core::mandate::Mandate>,
+        at: &str,
+        nonce: [u8; 32],
+        operation: impl FnOnce(
+            &aithos_client::GranteeSession<aithos_client::MemoryGranteeKeyholder>,
+        ) -> std::result::Result<T, aithos_client::ClientError>,
+    ) -> std::result::Result<T, aithos_client::ClientError> {
+        let keyholder = aithos_client::MemoryGranteeKeyholder::from_seed(self.gateway_seed);
+        let session = aithos_client::GranteeSession::open(
+            snapshot,
+            keyholder,
+            chain,
+            aithos_client::SessionContext::new(at, nonce),
+        )?;
+        operation(&session)
+    }
 }
 
 /// On-disk identity file — RUNNER custody only, never inside an ethos
@@ -102,5 +139,111 @@ impl std::fmt::Debug for Keyholder {
     /// Never print key material, even in debug output.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Keyholder(<sealed>)")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aithos_client::{
+        ArtifactSnapshot, GenesisEntropy, GenesisIntent, GenesisPlan, Keyholder as _,
+        MemoryGenesisKeyholder, MutationGrantIntent, MutationGrantTarget, MutationIntent,
+        ProviderEnvelopePlan, ProviderUploadIntent, PublicationEntropy, PublicationPlan,
+    };
+    use aithos_core::mandate::Verb;
+    use aithos_core::path::Zone;
+    use ed25519_dalek::SigningKey;
+
+    #[test]
+    fn ethos_client_grantee_is_operation_scoped_and_matches_the_gateway_leaf() {
+        let gateway = Keyholder::from_entropy([0x31; 32], [0x32; 32]);
+        let expected = aithos_core::wire::ed25519_pub_to_multibase(
+            &SigningKey::from_bytes(gateway.gateway_seed())
+                .verifying_key()
+                .to_bytes(),
+        );
+
+        let public = gateway
+            .with_ethos_client_grantee(|client| client.public_keys().expect("client public keys"));
+
+        assert_eq!(public.signing, expected);
+        assert_eq!(format!("{gateway:?}"), "Keyholder(<sealed>)");
+    }
+
+    #[test]
+    fn gateway_custody_builds_a_verified_circle_publication_and_envelopes_offline() {
+        let gateway = Keyholder::from_entropy([0xb2; 32], [0xb4; 32]);
+        gateway.with_ethos_client_grantee(|grantee| {
+            let owner = MemoryGenesisKeyholder::from_entropy([0xb1; 32], [0xb3; 32])
+                .expect("owner keyholder");
+            let genesis = GenesisPlan::build(
+                &owner,
+                GenesisIntent::new(
+                    "2026-07-25T06:00:00Z",
+                    "guide/welcome",
+                    "Welcome",
+                    "# Welcome\n",
+                ),
+                GenesisEntropy::new([0x11; 16], [0x12; 16]),
+            )
+            .expect("genesis");
+            let snapshot = ArtifactSnapshot::try_from_iter(
+                genesis
+                    .artifacts()
+                    .iter()
+                    .map(|(path, bytes)| (path.clone(), bytes.clone())),
+            )
+            .expect("snapshot")
+            .cold_verify()
+            .expect("verified snapshot");
+            let grant = PublicationPlan::build_mutation_grant_owner(
+                &owner,
+                grantee,
+                snapshot,
+                MutationGrantIntent::new(
+                    Zone::Circle,
+                    Verb::Append,
+                    MutationGrantTarget::Zone,
+                    "gateway-writer",
+                    "2026-07-25T05:59:00Z",
+                    "2026-07-26T00:00:00Z",
+                    "2026-07-25T06:01:00Z",
+                ),
+                PublicationEntropy::new([0x13; 16], [0x14; 16]),
+            )
+            .expect("published grant");
+            let plan = PublicationPlan::build_grantee(
+                grantee,
+                grant.chain(),
+                grant.publication().cold_verify().expect("grant snapshot"),
+                MutationIntent::create(
+                    Zone::Circle,
+                    "dry-run",
+                    "opaque delegated body",
+                    "2026-07-25T06:02:00Z",
+                ),
+                PublicationEntropy::new([0x15; 16], [0x16; 16]),
+            )
+            .expect("delegated plan");
+            plan.cold_verify().expect("publication cold verifies");
+
+            for (index, path) in plan.upload_order().iter().enumerate() {
+                let envelope = ProviderEnvelopePlan::for_grantee_publication(
+                    grantee,
+                    &plan,
+                    ProviderUploadIntent::new(
+                        "store.aithos.fr",
+                        "demo",
+                        path,
+                        "2026-07-25T06:03:00Z",
+                        [(index as u8).saturating_add(1); 16],
+                    ),
+                )
+                .expect("closed provider envelope");
+                assert_eq!(envelope.method(), "PUT");
+                assert_eq!(envelope.body(), &plan.artifacts()[path][..]);
+                assert!(!envelope.header_value().is_empty());
+            }
+        });
     }
 }

@@ -8,7 +8,14 @@
 
 **HEAD d'entrée :** `1c11bb1` (`fix(gateway): expose delegated hub and briefing tools`)
 
-**Statut :** plan de reprise consolidé ; aucune connexion SaaS réelle n'est encore qualifiée.
+**Statut réévalué le 2026-07-22 : plan d'implémentation historique, partiellement
+clos.** OAC-0 à OAC-5 ont une implémentation Gateway et des contrats locaux
+(`b211ffd`, qualification `92abb81`). Le canary live Notion est qualifié et son
+runbook est `DEMO-GATEWAY-NOTION-CLI.md`. Les profils Google Sheets et Gmail,
+l'outbox et les extensions compilées existent, mais leurs gates live fournisseur
+et la qualification production OAC-7 restent ouverts. Ne pas relancer ce document
+depuis OAC-0 ; utiliser `RUNBOOK-CONNECTOR-PROFILES-OAUTH-SAAS.md` et l'index
+`README.md`.
 
 Ce document reprend et actualise :
 

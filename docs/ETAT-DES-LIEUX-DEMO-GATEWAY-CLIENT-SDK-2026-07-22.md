@@ -1,8 +1,15 @@
 # État des lieux — démo Gateway, aithos-client et SDK v2
 
+> **ARCHIVE D'AUDIT — snapshot du début du 22 juillet 2026.** Les blocages P0-1
+> à P0-3 ont ensuite été fermés dans le Client, le SDK et le dashboard. P0-4
+> (CORS exact) et l'isolation d'audience ont une implémentation locale dans le
+> worktree Gateway/Provider ; le bundle de démo est présent, mais le gate live
+> navigateur reste à jouer. L'état de reprise courant est
+> `HANDOFF-GATEWAY-COMPAGNON-DEMO-INTEGREE-2026-07-22.md`.
+
 Date : 2026-07-22
 
-Statut : **démo locale prête ; démo navigateur intégrée à terminer**.
+Statut historique : **démo locale prête ; audit initial de la démo intégrée**.
 
 ## 1. Verdict exécutif
 

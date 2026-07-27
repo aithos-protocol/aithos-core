@@ -100,12 +100,12 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
     Scenario Outline: Each delegated consumption affects only its conceptual meters
       Given a mandate history containing one "<consumption>"
       When the verifier rebuilds action, Ethos-mutation and total-consumption tallies
-      Then the action tally changes by "<action delta>"
-      And the mutation tally changes by "<mutation delta>"
-      And the total delegated-consumption tally changes by "<total delta>"
+      Then the action tally changes by "<action_delta>"
+      And the mutation tally changes by "<mutation_delta>"
+      And the total delegated-consumption tally changes by "<total_delta>"
 
       Examples:
-        | consumption                | action delta | mutation delta | total delta |
+        | consumption                | action_delta | mutation_delta | total_delta |
         | connector action           | 1            | 0              | 1           |
         | metered inference          | 0            | 0              | 1           |
         | delegated Ethos mutation   | 0            | 1              | 1           |
@@ -134,8 +134,8 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
 
     Scenario Outline: Publication authority counts once across all of its evidence
       Given a grantee "<operation>" contains two semantically distinct already-counted mutations
-      And its publisher authority is evidenced by "<edition evidence>"
-      And the same publisher decision has "<Gamma evidence>"
+      And its publisher authority is evidenced by "<edition_evidence>"
+      And the same publisher decision has "<Gamma_evidence>"
       When semantic replay rebuilds the total delegated-consumption tally
       Then the two mutations and the publication contribute exactly three
       And the edition and Gamma evidence correlate to the same single publisher unit
@@ -144,7 +144,7 @@ Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
       And the closed Gamma kind registry gains no implicit publication entry
 
       Examples:
-        | operation          | edition evidence                    | Gamma evidence                         |
+        | operation          | edition_evidence                    | Gamma_evidence                         |
         | normal publication | signed manifest and changeset       | no Gamma publication entry             |
         | disjoint merge     | signed merge manifest and changeset | the existing kind:merge entry           |
         | fork resolution    | signed resolving manifest           | no distinct Gamma resolution entry       |

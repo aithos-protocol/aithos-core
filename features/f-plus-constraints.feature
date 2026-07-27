@@ -337,12 +337,12 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
   Rule: Mandate constraint semantics are versioned without rewriting history
 
     Scenario Outline: max_children omission is interpreted only by a homogeneous version
-      Given a "<parent version>" parent mandate with max_children 4
-      When it mints a "<child version>" chain leaf with "<child constraint>"
+      Given a "<parent_version>" parent mandate with max_children 4
+      When it mints a "<child_version>" chain leaf with "<child_constraint>"
       Then the child chain is "<verdict>"
 
       Examples:
-        | parent version | child version | child constraint | verdict  |
+        | parent_version | child_version | child_constraint | verdict  |
         | draft.1        | draft.1       | no max_children  | accepted |
         | draft.2        | draft.2       | no max_children  | rejected |
         | draft.1        | draft.2       | max_children 4   | rejected |
@@ -360,11 +360,11 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
 
     Scenario Outline: A child cannot widen its parent's max_children
       Given a draft.2 parent mandate with max_children 4 and issue depth 2
-      When it mints a child with "<child constraint>"
+      When it mints a child with "<child_constraint>"
       Then the child chain is "<verdict>"
 
       Examples:
-        | child constraint                    | verdict  |
+        | child_constraint                    | verdict  |
         | max_children 4                      | accepted |
         | max_children 2                      | accepted |
         | max_children 5                      | rejected |
@@ -382,12 +382,12 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
 
     Scenario Outline: Known and unknown root constraints have distinct structural outcomes
       Given a directly owner-issued mandate whose chain ends at that mandate
-      When its constraints contain "<constraint case>"
-      Then certificate validation is "<certificate verdict>"
-      And using it as a delegation parent is "<delegation verdict>"
+      When its constraints contain "<constraint_case>"
+      Then certificate validation is "<certificate_verdict>"
+      And using it as a delegation parent is "<delegation_verdict>"
 
       Examples:
-        | constraint case                  | certificate verdict | delegation verdict |
+        | constraint_case                  | certificate_verdict | delegation_verdict |
         | known well-formed max_actions    | accepted            | accepted            |
         | known malformed max_actions      | rejected            | rejected            |
         | unknown opaque quantum_cap       | preserved           | rejected            |
@@ -409,13 +409,13 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
   Rule: Every constraint family declares its operation applicability
 
     Scenario Outline: The pure verdict follows the constraint applicability matrix
-      Given a grantee mandate carrying "<constraint family>"
+      Given a grantee mandate carrying "<constraint_family>"
       When it attempts canonical operation "<operation>"
       Then that family is "<applicability>"
       And cold verification requires "<evidence>"
 
       Examples:
-        | constraint family                    | operation          | applicability        | evidence                         |
+        | constraint_family                    | operation          | applicability        | evidence                         |
         | validity window                      | Ethos mutation     | applicable           | signed time facts                |
         | freshness and heartbeat              | publication        | applicable           | revocation state and beacon      |
         | session binding                      | grant              | applicable           | signed session certificate       |

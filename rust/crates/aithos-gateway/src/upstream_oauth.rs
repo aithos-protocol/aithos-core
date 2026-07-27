@@ -353,11 +353,12 @@ impl UpstreamOAuthClient {
             url.query_pairs_mut()
                 .append_pair("include_granted_scopes", "true");
         }
-        if intent == ConsentIntent::Repair
-            && self
-                .config
-                .authorization_parameters
-                .prompt_consent_on_repair
+        if self.config.authorization_parameters.prompt_consent
+            || (intent == ConsentIntent::Repair
+                && self
+                    .config
+                    .authorization_parameters
+                    .prompt_consent_on_repair)
         {
             url.query_pairs_mut().append_pair("prompt", "consent");
         }

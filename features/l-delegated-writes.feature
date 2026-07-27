@@ -130,12 +130,12 @@ Feature: Delegated writes — the mandate is a pen, not just a key
   Rule: Authority and decryption remain independent fences
 
     Scenario Outline: A grantee needs both its chain and the exact content line
-      Given a grantee holds "<key material>" and presents "<authority>"
+      Given a grantee holds "<key_material>" and presents "<authority>"
       When it attempts to read the exact protected section
       Then the result is "<verdict>"
 
       Examples:
-        | key material                    | authority                | verdict                   |
+        | key_material                    | authority                | verdict                   |
         | exact valid section line        | valid covering chain      | readable and authorized   |
         | exact valid section line        | no mandate chain          | refused as unauthorized   |
         | no section line                 | valid covering chain      | authorized but unreadable |
@@ -153,11 +153,11 @@ Feature: Delegated writes — the mandate is a pen, not just a key
     Scenario Outline: A self mutation proves only an opaque state transition
       Given an agent with exact authority for self SID "opaque-note"
       When it performs "<operation>" and publishes
-      Then the edition proves "<state relation>" for that SID
+      Then the edition proves "<state_relation>" for that SID
       And reveals no name, path, title, tags, body, folder relation or key
 
       Examples:
-        | operation | state relation                    |
+        | operation | state_relation                    |
         | create    | prior absence and new inclusion   |
         | edit      | same-SID replacement              |
         | delete    | prior inclusion and new absence   |
@@ -166,19 +166,19 @@ Feature: Delegated writes — the mandate is a pen, not just a key
 
     Scenario Outline: Expiry or revocation after session open is checked before effect
       Given a grantee opened a local bundle session while its chain was valid
-      And the mandate becomes "<authority change>" before the candidate mutation
+      And the mandate becomes "<authority_change>" before the candidate mutation
       When the grantee attempts to commit that mutation
       Then the current pure verdict refuses it
       And the bundle, manifest and Gamma head remain byte-for-byte unchanged
 
       Examples:
-        | authority change |
+        | authority_change |
         | expired          |
         | revoked          |
 
     Scenario: Any delegated refusal rolls back content and Gamma together
       Given a published bundle snapshotted before a delegated edit
-      And the candidate fails an applicable constraint during Core validation
+      And late Gamma validation fails after cryptographic preparation
       When the bundle transaction is reopened
       Then every canonical byte equals the snapshot
       And no failed authorship proof, blob or Gamma entry remains reachable

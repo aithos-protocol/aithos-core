@@ -1,4 +1,6 @@
 # PROMPT DE REPRISE — Lot B : client RemoteStore (P3/P4) + gates perf §3.6
+
+> **ARCHIVE — ne pas exécuter.** P3/P4 sont déployés et clos.
 À coller en début de session (Cowork cloud, dossier /Volumes/Math17/aithos/v2 connecté).
 État DISQUE = vérité — ne fais confiance à AUCUN résumé, y compris celui-ci, sans vérification disque.
 

@@ -1,9 +1,15 @@
 # Handoff — Extension Aithos Gmail Send
 
+> **ARCHIVE — ne pas utiliser comme plan de reprise.** GSE-0 à GSE-2 ont été
+> absorbés par l'implémentation des profils OAuth SaaS et des extensions compilées.
+> Le gate live Gmail et les décisions owner restantes sont suivis dans
+> `GMAIL-SEND-EXTENSION-ARCHITECTURE.md` et
+> `RUNBOOK-CONNECTOR-PROFILES-OAUTH-SAAS.md`.
+
 **Date :** 2026-07-21
 
-**État :** plan actif mais subordonné au socle OAuth générique OAC-0/OAC-3 ;
-aucun code de l'extension n'est encore écrit.
+**État historique :** plan antérieur à l'implémentation ; l'affirmation « aucun
+code n'est encore écrit » est périmée.
 
 **Document d'architecture :** `GMAIL-SEND-EXTENSION-ARCHITECTURE.md`.
 

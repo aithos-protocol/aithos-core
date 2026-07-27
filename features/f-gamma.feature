@@ -161,14 +161,14 @@ Feature: The gamma log
   Rule: Gamma replays every protocol consumption semantically
 
     Scenario Outline: Each canonical operation is authorized before its entry joins history
-      Given a candidate Gamma entry for "<operation class>" by "<actor>"
+      Given a candidate Gamma entry for "<operation_class>" by "<actor>"
       When Core replays it against the exact historical prefix
       Then form, time, signer, actor authority and operation coverage are verified
       And applicable revocation, constraints, receipts and counters are consumed
       And only then does the entry join replay state
 
       Examples:
-        | operation class      | actor   |
+        | operation_class      | actor   |
         | Ethos create         | owner   |
         | Ethos edit           | grantee |
         | Ethos delete         | grantee |
@@ -181,12 +181,12 @@ Feature: The gamma log
 
     Scenario Outline: A structurally valid entry with invalid semantics is refused
       Given a hash-linked and correctly encoded candidate Gamma history
-      When replay encounters "<semantic defect>"
+      When replay encounters "<semantic_defect>"
       Then semantic replay is refused at that entry
       And no later entry or counter is accepted
 
       Examples:
-        | semantic defect                                  |
+        | semantic_defect                                  |
         | historical action N plus 1 beyond its limit      |
         | receipt replayed under another consumption       |
         | stale heartbeat or freshness state               |
@@ -358,14 +358,14 @@ Feature: The gamma log
         | vault-config | any registered | domain,verb,connector,record_key,before,after                             |
 
     Scenario Outline: K1.2-M-B fixes every mutation state transition
-      Given a closed mutation facts object for "<family verb>"
+      Given a closed mutation facts object for "<family_verb>"
       When Core validates its before and after states
       Then before is "<before>"
       And after is "<after>"
       And a present-to-present transition has different state reference digests
 
       Examples:
-        | family verb                    | before  | after   |
+        | family_verb                    | before  | after   |
         | every create                   | absent  | present |
         | every delete                   | present | absent  |
         | ethos edit or redact           | present | present |
@@ -476,37 +476,37 @@ Feature: The gamma log
         | revoke | mandate_id,certificate_digest,reason   |
 
     Scenario Outline: K1.2-GRRP-B represents a revocation reason without optional wire
-      Given the native revoke entry carries "<native reason>"
+      Given the native revoke entry carries "<native_reason>"
       When its closed reason fact is projected
       Then the variant is "<variant>"
       And null, empty text or a cross-view mismatch is refused
 
       Examples:
-        | native reason | variant                    |
+        | native_reason | variant                    |
         | absent        | state=absent               |
         | device_lost   | state=present,text exact   |
 
     Scenario Outline: K1.2-GRRP-B selects one standalone rotation domain
       Given a standalone rotation in "<domain>"
       When Core validates its closed target and state transition
-      Then its exact target members are "<target members>"
+      Then its exact target members are "<target_members>"
       And before and after are present with different state digests
 
       Examples:
-        | domain      | target members                                      |
+        | domain      | target_members                                      |
         | ethos-zone  | domain,zone,mode,before,after                        |
         | ethos-node  | domain,zone,sid,mode,before,after                    |
         | vault       | domain,connector,mode,before,after                   |
         | identity    | domain,previous_did,next_did,transition_digest,before,after |
 
     Scenario Outline: A derived rotation never creates a second occurrence
-      Given a rotation is a deterministic consequence of "<parent operation>"
+      Given a rotation is a deterministic consequence of "<parent_operation>"
       When the parent state and changeset are committed
       Then the rotation is covered by that same operation occurrence
       And no rotate operation_ref, Gamma consumption or counter unit is added
 
       Examples:
-        | parent operation      |
+        | parent_operation      |
         | revoke                |
         | structural move       |
         | vault mutation        |
@@ -643,12 +643,12 @@ Feature: The gamma log
         | heartbeat      | forbidden |
 
     Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
-      Given a parent manifest "<parent manifest>" whose Gamma predecessor is "<parent gamma>"
-      When a child manifest "<child manifest>" introduces a Gamma "<child gamma>" entry
+      Given a parent manifest "<parent_manifest>" whose Gamma predecessor is "<parent_gamma>"
+      When a child manifest "<child_manifest>" introduces a Gamma "<child_gamma>" entry
       Then the profile transition is "<verdict>"
 
       Examples:
-        | parent manifest | parent gamma | child manifest | child gamma | verdict  |
+        | parent_manifest | parent_gamma | child_manifest | child_gamma | verdict  |
         | draft.1         | v1           | draft.1        | v1          | accepted |
         | draft.1         | v1           | draft.2        | v2          | accepted |
         | draft.2         | v2           | draft.2        | v2          | accepted |

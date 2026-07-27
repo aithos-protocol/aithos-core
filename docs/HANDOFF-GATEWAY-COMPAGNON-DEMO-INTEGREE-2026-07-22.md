@@ -2,7 +2,12 @@
 
 Date : 2026-07-22
 
-Statut : **READY pour reprise par le développement Gateway en cours**.
+Statut réévalué le 22 juillet 2026 : **implémentation locale en cours de
+qualification**. Le worktree contient désormais la liaison byte-exacte de
+l'audience, le CORS fermé Gateway/Provider, leurs tests adversariaux et le bundle
+`demo/integrated`. Les tests ciblés de session déléguée et de publication distante
+sont verts. Restent avant clôture : revue/commit attribué de ce worktree, gate du
+bundle et E2E navigateur live avec Google Sheets et secrets hors Git.
 
 Ce handoff isole volontairement les changements Core/Gateway restants. Le
 Client, le SDK et le dashboard ont avancé sans modifier le code Gateway afin de
@@ -53,16 +58,19 @@ wasm   967281259bba49e5709a1eac1543f5fcef10184859a31890b0df6aba90e1661a
 - appel Sheets réel, tentative voisine `write_range`, puis preuve Gamma locale ;
 - logout abandonne OAuth, authorization, G4 et MCP et verrouille les handles.
 
-## 3. P0 — isolation exacte de l'audience Gateway
+## 3. P0 — isolation exacte de l'audience Gateway — implémentée localement
 
 Le Client publie déjà `gateway_audience` dans les faits signés de l'opération
 de grant (`aithos-client/src/publication.rs`). Aucun changement de wire ou de
 grammaire de mandat n'est demandé.
 
-Aujourd'hui `Runner::eligible_session_parents(delegate_pub, now)` filtre la
-chaîne, la révocation et `Issue`, mais ne consomme ni l'audience publiée ni la
-`resource` OAuth. `oauth_ceremony_prepare` possède pourtant
-`preparation.resource` avant d'appeler cette méthode.
+Le défaut de baseline était que
+`Runner::eligible_session_parents(delegate_pub, now)` filtrait la chaîne, la
+révocation et `Issue`, sans consommer l'audience publiée ni la `resource` OAuth.
+Le worktree courant fait désormais circuler la ressource dans la sélection,
+extrait le fait `gateway_audience` signé et refuse l'absence, l'ambiguïté ou une
+audience voisine. La couture Gateway appelle le front door Core délégué ; elle
+ne remplace pas sa décision cryptographique.
 
 Contrat obligatoire :
 
@@ -72,22 +80,23 @@ ceremony préparée sur resource      = https://gateway-b.example/mcp
 => parent absent de eligible_parents
 ```
 
-Attendu : faire circuler la resource exacte jusqu'à la sélection, rattacher le
-parent au fait d'opération signé et vérifié, puis comparer byte-exactement les
-audiences. Ne pas faire confiance à une audience fournie par le navigateur et
-ne pas élargir le mandat.
+Comportement désormais attendu et implémenté localement : la resource exacte
+est rattachée au fait d'opération signé et vérifié, puis comparée
+byte-exactement. Le navigateur n'est jamais la source d'autorité de cette valeur.
 
-Ajouter au minimum :
+Tests présents à conserver au minimum :
 
 - test positif audience identique ;
 - test négatif A/B ;
 - test fait absent, altéré ou ambigu => parent inéligible ;
 - régression multi-contexte et révocation.
 
-## 4. P0 — CORS exact pour le parcours navigateur
+## 4. P0 — CORS exact pour le parcours navigateur — implémenté localement
 
-Le control plane a déjà une allowlist exacte. Les routes OAuth/cérémonie/MCP
-n'en bénéficient pas et le Provider ne couvre que les GET publics anonymes.
+Le défaut de baseline était limité au control plane et aux GET publics. Le
+worktree courant applique maintenant une allowlist exacte aux routes
+OAuth/cérémonie/MCP et aux publications Provider signées. Les paragraphes
+suivants restent le contrat de non-régression de cette implémentation.
 
 ### Gateway OAuth et cérémonie
 
@@ -133,10 +142,11 @@ Pour toutes les surfaces :
 
 Une matrice de tests route × méthode × origine × headers est requise.
 
-## 5. Bundle et E2E encore nécessaires
+## 5. Bundle présent ; E2E live encore nécessaire
 
-Le code UI est intégré mais aucun succès réel ne peut être revendiqué avant le
-lot Gateway/CORS et une infrastructure reproductible :
+Le bundle sans secret `demo/integrated` et son preflight sont présents dans le
+worktree. Aucun succès réel ne peut cependant être revendiqué avant revue de ce
+lot et exécution avec une infrastructure et des credentials réels :
 
 - Gateway production AS et état OAuth durable ;
 - Provider, Vault et journal ;
@@ -170,4 +180,3 @@ page intégrée n'a été rapportée avant ces erreurs globales.
 - ne pas renvoyer les credentials Google au dashboard ;
 - ne pas journaliser code OAuth, verifier, state, bearer ou refresh token ;
 - ne pas accepter une origine ou une audience par défaut permissif.
-

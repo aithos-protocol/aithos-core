@@ -1,3 +1,6 @@
+> **ARCHIVE — ne pas exécuter.** G4 et l'extension Core pour les feuilles
+> non-root sont désormais implémentés.
+
 Tu prends la suite de la piste G : lot G4 (LA CÉRÉMONIE — le sous-mandat de
 session frappé en wasm, lié au token OAuth) — seul, en loopback, zéro AWS,
 dans UNE session (crates aithos-gateway + aithos-wasm ; jamais deux sessions

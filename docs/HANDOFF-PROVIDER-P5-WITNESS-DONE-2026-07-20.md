@@ -1,5 +1,8 @@
 # HANDOFF — Piste P / Lot A (P5 witness) : GATE DÉPLOYÉ — FAIT (2026-07-20)
 
+> **ARCHIVE DE PREUVE.** Gate witness clos ; les coordonnées de déploiement sont
+> historiques.
+
 Date : 2026-07-20 (nuit). Dépôts : code/aithos-core + provider/. État DISQUE = vérité.
 Statut : **le dernier contrat (C3) est SERVI et PROUVÉ en prod.** Gate contrat
 12 scénarios RED→GREEN (72 steps), gate déployé VERT — `aithos-witness` tourne sur
