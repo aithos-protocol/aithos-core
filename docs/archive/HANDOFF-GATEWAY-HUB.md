@@ -124,7 +124,7 @@
 
 > **Statut : PRÊT À LANCER — 2026-07-16.** Plan d'action exécutable côté
 > `aithos-gateway` (+ retouches core encadrées, lot G8). Se lit avec
-> [`INFRA-PROVIDER.md`](INFRA-PROVIDER.md) (contrats C1–C3) et en parallèle de
+> [`INFRA-PROVIDER.md`](../INFRA-PROVIDER.md) (contrats C1–C3) et en parallèle de
 > [`HANDOFF-PROVIDER-AWS.md`](HANDOFF-PROVIDER-AWS.md). Cible produit : le
 > scénario de [`GAPS-DEMO-E2E.md`](GAPS-DEMO-E2E.md) — une assistante commerciale
 > branche son Claude Cowork sur `<org>.mcp.aithos.fr` avec son mandat et agit sur

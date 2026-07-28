@@ -3,11 +3,11 @@
 > **Statut : DÉCIDÉ v1 — 2026-07-16 (arbitrages Mathieu).**
 > Ce document fixe la doctrine d'hébergement, le design du provider (store, témoin,
 > relay, dashboard) et les **contrats d'interface C1–C3** entre les deux plans
-> d'action parallèles : [`HANDOFF-PROVIDER-AWS.md`](HANDOFF-PROVIDER-AWS.md) et
-> [`HANDOFF-GATEWAY-HUB.md`](HANDOFF-GATEWAY-HUB.md). Il prolonge
+> d'action parallèles : [`HANDOFF-PROVIDER-AWS.md`](archive/HANDOFF-PROVIDER-AWS.md) et
+> [`HANDOFF-GATEWAY-HUB.md`](archive/HANDOFF-GATEWAY-HUB.md). Il prolonge
 > `GATEWAY-HANDOFF.md` §3bis.1, `DESIGN.md` §7 et `STANDARDS-COMPAT.md` (C1)
 > **sans modifier le core**. L'analyse de couverture produit est dans
-> [`GAPS-DEMO-E2E.md`](GAPS-DEMO-E2E.md).
+> [`GAPS-DEMO-E2E.md`](archive/GAPS-DEMO-E2E.md).
 > **Annexes normatives A–C gravées le 2026-07-16 (lot P0, en attente du gate)** :
 > wire `aithos-store` (C1, annexe A), tunnel `aithos-tunnel` (C2, annexe B),
 > checkpoint `aithos-witness` (C3, annexe C) ; vecteurs `vectors/p1…p4-*.json`.

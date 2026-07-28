@@ -72,8 +72,8 @@ intégrée.
 ## Archives — ne pas utiliser comme plans de reprise
 
 Chaque fichier ci-dessous porte désormais une bannière d'archive ou de
-supersession en tête. Ils restent en place pour préserver les liens, les preuves
-et l'historique de décision.
+supersession en tête. Ils vivent désormais dans [`archive/`](archive/) ; les liens des références
+vivantes ont été mis à jour, preuves et historique de décision préservés.
 
 ### Construction Core/Bundle
 

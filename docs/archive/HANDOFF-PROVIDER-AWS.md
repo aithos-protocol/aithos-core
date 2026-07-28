@@ -502,7 +502,7 @@ P1 : À LANCER dans un contexte dédié (prompt remis à Mathieu).**
 
 > **Statut : PRÊT À LANCER — 2026-07-16.** Plan d'action exécutable de la piste
 > provider (`store.aithos.fr`, `witness.aithos.fr`, relay `*.mcp.aithos.fr`,
-> control plane minimal). Se lit avec [`INFRA-PROVIDER.md`](INFRA-PROVIDER.md)
+> control plane minimal). Se lit avec [`INFRA-PROVIDER.md`](../INFRA-PROVIDER.md)
 > (doctrine, wire v0, contrats C1–C3) et en parallèle de
 > [`HANDOFF-GATEWAY-HUB.md`](HANDOFF-GATEWAY-HUB.md) (piste G). Les deux pistes ne
 > se parlent **que** par les contrats — toute dérive se corrige d'abord dans
