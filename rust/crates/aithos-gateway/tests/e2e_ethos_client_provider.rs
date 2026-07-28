@@ -776,21 +776,16 @@ async fn gateway_session_working_set_creates_circle_content_on_the_real_provider
     );
 }
 
-/// Documents the gap hit by the 2026-07 hosted demo (`folder: sales` on a
-/// freshly recreated Ethos): the owner path creates a missing folder on the
-/// way (`section_add` → `ensure_folder`, bundle.rs), while the delegated
-/// working-set path only resolves display paths against `e/<zone>/index.json`
-/// (`grantee_section_add` → `resolve_folder`, grants.rs) and refuses with
-/// `InvalidPath("no folder <seg>")`, surfaced to the caller as the generic
-/// `protocol verification failed`.
-///
-/// This test states the DESIRED behavior — a delegated working-set create
-/// targeting a named folder succeeds and the owner reads it back — and stays
-/// `#[ignore]`d until the asymmetry is resolved. Run it explicitly with:
-/// `cargo test -p aithos-gateway --test e2e_ethos_client_provider -- --ignored`
-/// See docs/REPRISE-INTEGRATION-AITHOS-CLIENT-GATEWAY-ETHOS-2026-07-25.md §2.
+/// The gap hit by the 2026-07 hosted demo (`folder: sales` on a freshly
+/// recreated Ethos), now closed by §04.2 amended: the delegated working-set
+/// create plans a fresh row for every missing folder segment
+/// (`plan_folder_chain`, grants.rs) and checks authority against the
+/// RESULTING chain, so a delegate grows the tree strictly below a covered
+/// root — matching the owner path (`ensure_folder`) for the covered case,
+/// while creation beside or above the covered root stays refused
+/// (`cb9_delegated_folder_growth_is_confined_to_the_granted_subtree`).
+/// See docs/REPRISE-INTEGRATION-AITHOS-CLIENT-GATEWAY-ETHOS-2026-07-25.md §5b.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "known gap: delegated grantee_section_add resolves folders via resolve_folder() and cannot create a missing named folder, unlike the owner path (ensure_folder); un-ignore with the fix"]
 async fn gateway_session_working_set_creates_named_folder_content_on_the_real_provider() {
     let start = epoch_seconds();
     let now = at(start);

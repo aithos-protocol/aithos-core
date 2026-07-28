@@ -192,6 +192,51 @@ impl<S: Store> Bundle<S> {
         Ok(chain)
     }
 
+    /// Resolve a display folder path, planning a fresh row for every
+    /// missing segment instead of refusing (§04.2 amended: an append
+    /// perimeter may grow the tree shape below a covered root). Nothing
+    /// is written here: the caller checks authority against the
+    /// RESULTING chain first, then commits the planned rows inside its
+    /// own index write. A `dir=` perimeter anchor can only be satisfied
+    /// by segments that already exist, so planned folders hang strictly
+    /// below a folder the delegate may write in — never beside or above
+    /// it. Entropy is drawn only for missing segments: the fully
+    /// existing case consumes exactly what `resolve_folder` did.
+    pub(crate) fn plan_folder_chain(
+        &self,
+        zone: Zone,
+        display: &str,
+        ent: &mut dyn EntropySource,
+    ) -> Result<(Vec<Sid>, Vec<crate::bundle::FolderRow>)> {
+        Self::gate_display_path(display, true)?;
+        let index: ZoneIndex = self.get_json(&format!("e/{}/index.json", zone.as_str()))?;
+        let mut parent: Option<String> = None;
+        let mut chain = Vec::new();
+        let mut planned: Vec<crate::bundle::FolderRow> = Vec::new();
+        for seg in display.split('/').filter(|s| !s.is_empty()) {
+            let found = index
+                .folders
+                .iter()
+                .find(|f| f.name == seg && f.parent_sid == parent)
+                .map(|f| f.sid.clone());
+            let sid = match found {
+                Some(sid) => sid,
+                None => {
+                    let sid = Self::new_sid(ent).to_string();
+                    planned.push(crate::bundle::FolderRow {
+                        sid: sid.clone(),
+                        name: seg.to_owned(),
+                        parent_sid: parent.clone(),
+                    });
+                    sid
+                }
+            };
+            chain.push(Sid::parse(&sid)?);
+            parent = Some(sid);
+        }
+        Ok((chain, planned))
+    }
+
     /// Every section whose folder chain starts with `dir` and which carries
     /// `tag` (if given). Returns (row folder-chain, section sid, tags).
     pub(crate) fn sections_under(
@@ -1201,8 +1246,13 @@ impl<S: Store> Bundle<S> {
     /// Delegated section creation (§04.2 `append` = create within
     /// perimeter). The blob is UNSIGNED (§02.11: owner signatures are the
     /// owner's; agent authorship is evidenced by the delegated gamma
-    /// entry, signed by the grantee key under its chain). The folder must
-    /// exist: an append perimeter grows content, never the tree shape.
+    /// entry, signed by the grantee key under its chain). Missing folder
+    /// segments are created on the way like the owner path
+    /// (`ensure_folder`), but only where the RESULTING chain stays
+    /// covered by the leaf perimeter — see `plan_folder_chain`: new
+    /// folders hang strictly below a covered root, never beside or above
+    /// it, and are evidenced in the SectionAdd payload
+    /// (`folders_created`).
     pub fn section_add_as_agent(
         &mut self,
         chain: &[Mandate],
@@ -1219,7 +1269,7 @@ impl<S: Store> Bundle<S> {
             body,
             now,
         } = *spec;
-        let folders = self.resolve_folder(zone, folder_path)?;
+        let (folders, planned_folders) = self.plan_folder_chain(zone, folder_path, ent)?;
         self.check_delegated_write(chain, Verb::Append, zone, &folders, tags, now)?;
         let leaf = chain.last().expect("checked non-empty");
         let kid = leaf.grantee.pubkey.clone();
@@ -1238,6 +1288,7 @@ impl<S: Store> Bundle<S> {
         )?;
         let index_path = "e/circle/index.json";
         let mut index: ZoneIndex = self.get_json(index_path)?;
+        index.folders.extend(planned_folders.iter().cloned());
         index.sections.push(crate::bundle::SectionRow {
             sid: sid.to_string(),
             name: name.to_owned(),
@@ -1250,12 +1301,19 @@ impl<S: Store> Bundle<S> {
             authorship: None,
         });
         self.put_json(index_path, &index)?;
+        let mut payload = serde_json::json!({ "blob_sha": sha, "name": name });
+        if !planned_folders.is_empty() {
+            payload["folders_created"] = serde_json::json!(planned_folders
+                .iter()
+                .map(|f| serde_json::json!({ "sid": f.sid, "name": f.name }))
+                .collect::<Vec<_>>());
+        }
         self.log_delegated_mutation(
             chain,
             agent_sk,
             aithos_core::gamma::Kind::SectionAdd,
             &node,
-            serde_json::json!({ "blob_sha": sha, "name": name }),
+            payload,
             now,
             ent,
         )?;
@@ -1839,7 +1897,24 @@ impl<S: Store> Bundle<S> {
         ent: &mut dyn EntropySource,
     ) -> Result<Sid> {
         Self::gate_display_name(name)?;
-        let (folders, folder_display) = self.resolved_clear_folder(zone, folder)?;
+        // §04.2 amended: a display-addressed create plans a fresh row for
+        // every missing folder segment; authority is checked against the
+        // RESULTING chain before anything is written, so a `dir=` anchor
+        // (satisfiable only by existing segments) confines new folders
+        // strictly below a covered root. Opaque FolderIds cannot name a
+        // missing folder and keep their exact former behavior.
+        let (folders, folder_display, planned_folders) = match folder {
+            GranteeTarget::Display(display) => {
+                let (chain_sids, planned) = self.plan_folder_chain(zone, display, ent)?;
+                (chain_sids, display.to_owned(), planned)
+            }
+            GranteeTarget::FolderIds(ids) => (ids.to_vec(), String::new(), Vec::new()),
+            GranteeTarget::Id(_) => {
+                return Err(Error::InvalidPath(
+                    "a folder target cannot be a section id".into(),
+                ));
+            }
+        };
         let sid = preallocated_sid.unwrap_or_else(|| Self::new_sid(ent));
         self.check_grantee_section(
             chain,
@@ -1866,6 +1941,7 @@ impl<S: Store> Bundle<S> {
                 let authorship_hash = Self::public_authorship_hash(&authorship)?;
                 self.write_object(&format!("e/public/{display_path}.md"), body.as_bytes())?;
                 let mut index: ZoneIndex = self.get_json("e/public/index.json")?;
+                index.folders.extend(planned_folders.iter().cloned());
                 index.sections.push(crate::bundle::SectionRow {
                     sid: sid.to_string(),
                     name: name.to_owned(),
@@ -1878,18 +1954,25 @@ impl<S: Store> Bundle<S> {
                     authorship: Some(authorship),
                 });
                 self.put_json("e/public/index.json", &index)?;
+                let mut payload = serde_json::json!({
+                    "authorship": authorship_hash,
+                    "blob_sha": content_hash,
+                    "name": name,
+                    "tags": tags,
+                });
+                if !planned_folders.is_empty() {
+                    payload["folders_created"] = serde_json::json!(planned_folders
+                        .iter()
+                        .map(|f| serde_json::json!({ "sid": f.sid, "name": f.name }))
+                        .collect::<Vec<_>>());
+                }
                 self.log_delegated_mutation_with_key(
                     chain,
                     agent_sk,
                     aithos_core::gamma::Kind::SectionAdd,
                     &node,
                     None,
-                    serde_json::json!({
-                        "authorship": authorship_hash,
-                        "blob_sha": content_hash,
-                        "name": name,
-                        "tags": tags,
-                    }),
+                    payload,
                     now,
                     ent,
                 )?;
@@ -1909,6 +1992,7 @@ impl<S: Store> Bundle<S> {
                     ent,
                 )?;
                 let mut index: ZoneIndex = self.get_json("e/circle/index.json")?;
+                index.folders.extend(planned_folders.iter().cloned());
                 index.sections.push(crate::bundle::SectionRow {
                     sid: sid.to_string(),
                     name: name.to_owned(),
@@ -1921,13 +2005,21 @@ impl<S: Store> Bundle<S> {
                     authorship: None,
                 });
                 self.put_json("e/circle/index.json", &index)?;
+                let mut payload =
+                    serde_json::json!({ "blob_sha": hash, "name": name, "tags": tags });
+                if !planned_folders.is_empty() {
+                    payload["folders_created"] = serde_json::json!(planned_folders
+                        .iter()
+                        .map(|f| serde_json::json!({ "sid": f.sid, "name": f.name }))
+                        .collect::<Vec<_>>());
+                }
                 self.log_delegated_mutation_with_key(
                     chain,
                     agent_sk,
                     aithos_core::gamma::Kind::SectionAdd,
                     &node,
                     Some(&key),
-                    serde_json::json!({ "blob_sha": hash, "name": name, "tags": tags }),
+                    payload,
                     now,
                     ent,
                 )?;

@@ -725,3 +725,183 @@ fn cb9_public_authorship_is_grantee_signed_and_committed_after_publication() {
         assert!(value.get(member).is_some(), "missing {member}");
     }
 }
+
+#[test]
+fn cb9_delegated_create_grows_missing_folders_under_a_zone_wide_grant() {
+    let (_root, mut bundle, owner, agent, mut entropy) = fixture("folder-growth");
+    let grant = bundle
+        .grant_generic(
+            &owner,
+            "cb9-folder-growth",
+            &agent.verifying_key(),
+            &[
+                GenericGrantRequest::ethos(Verb::Write, Zone::Circle, GrantSelector::Zone),
+                GenericGrantRequest::ethos(Verb::Write, Zone::Public, GrantSelector::Zone),
+            ],
+            "2026-07-18T13:03:00Z",
+            "2026-07-25T13:03:00Z",
+            0,
+            "2026-07-18T13:03:00Z",
+            &mut entropy,
+        )
+        .expect("issue zone-wide write grant");
+    let chain = vec![grant.mandate];
+
+    // The whole "archive/2026" chain is missing: both segments are created
+    // on the way, in the same transaction as the section (§04.2 amended).
+    let outcome = gamma_delta(&mut bundle, |bundle| {
+        bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Circle,
+            GranteeContentOperation::Create {
+                folder: GranteeTarget::Display("archive/2026"),
+                preallocated_sid: None,
+                name: "fresh",
+                title: "created in a named folder",
+                tags: &[],
+                body: "created by grantee inside a folder that did not exist",
+                now: "2026-07-18T13:10:00Z",
+            },
+            &mut entropy,
+        )
+    });
+    assert!(matches!(outcome, GranteeContentOutcome::Created(_)));
+    let folders = bundle
+        .resolve_folder(Zone::Circle, "archive/2026")
+        .expect("both segments now resolve");
+    assert_eq!(folders.len(), 2, "one row per created segment");
+    let (row, row_folders) = bundle
+        .resolve_clear(Zone::Circle, "archive/2026/fresh")
+        .expect("section resolves inside the created chain");
+    assert_eq!(row.name, "fresh");
+    assert_eq!(row_folders, folders);
+    let last = bundle
+        .gamma_entries()
+        .expect("gamma entries")
+        .last()
+        .cloned()
+        .expect("SectionAdd evidence");
+    assert!(
+        last.payload.is_none() && last.body_enc.is_some(),
+        "circle mutation evidence stays sealed"
+    );
+
+    // Public parity: the same growth in a clear zone leaves clear
+    // evidence — the SectionAdd payload names every created row.
+    let outcome = gamma_delta(&mut bundle, |bundle| {
+        bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Public,
+            GranteeContentOperation::Create {
+                folder: GranteeTarget::Display("archive/2026"),
+                preallocated_sid: None,
+                name: "fresh",
+                title: "created in a named public folder",
+                tags: &[],
+                body: "public growth leaves clear evidence",
+                now: "2026-07-18T13:12:00Z",
+            },
+            &mut entropy,
+        )
+    });
+    assert!(matches!(outcome, GranteeContentOutcome::Created(_)));
+    let last = bundle
+        .gamma_entries()
+        .expect("gamma entries")
+        .last()
+        .cloned()
+        .expect("public SectionAdd evidence");
+    let payload = last.payload.as_ref().expect("public payload is clear");
+    let created = payload
+        .get("folders_created")
+        .and_then(|v| v.as_array())
+        .expect("folders_created evidences the tree growth");
+    assert_eq!(created.len(), 2);
+    assert_eq!(created[0]["name"], "archive");
+    assert_eq!(created[1]["name"], "2026");
+}
+
+#[test]
+fn cb9_delegated_folder_growth_is_confined_to_the_granted_subtree() {
+    let (_root, mut bundle, owner, agent, mut entropy) = fixture("folder-fence");
+    let grant = bundle
+        .grant_generic(
+            &owner,
+            "cb9-folder-fence",
+            &agent.verifying_key(),
+            &[GenericGrantRequest::ethos(
+                Verb::Write,
+                Zone::Circle,
+                GrantSelector::Dir("projects".into()),
+            )],
+            "2026-07-18T13:03:00Z",
+            "2026-07-25T13:03:00Z",
+            0,
+            "2026-07-18T13:03:00Z",
+            &mut entropy,
+        )
+        .expect("issue dir-scoped circle write grant");
+    let chain = vec![grant.mandate];
+
+    // Below the covered root: the missing sub-chain is created.
+    let outcome = gamma_delta(&mut bundle, |bundle| {
+        bundle.grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Circle,
+            GranteeContentOperation::Create {
+                folder: GranteeTarget::Display("projects/reports/q3"),
+                preallocated_sid: None,
+                name: "fresh",
+                title: "created below the covered root",
+                tags: &[],
+                body: "grown strictly below the granted folder",
+                now: "2026-07-18T13:10:00Z",
+            },
+            &mut entropy,
+        )
+    });
+    assert!(matches!(outcome, GranteeContentOutcome::Created(_)));
+    assert_eq!(
+        bundle
+            .resolve_folder(Zone::Circle, "projects/reports/q3")
+            .expect("sub-chain created below the covered root")
+            .len(),
+        3
+    );
+
+    // Beside the covered root: the dir anchor cannot be satisfied by a
+    // fresh sid, so the RESULTING chain is not covered — refused, and
+    // the store is byte-identical afterwards.
+    let before = snapshot(&bundle.store);
+    let refusal = bundle
+        .grantee_content_operation(
+            &chain,
+            &agent,
+            Zone::Circle,
+            GranteeContentOperation::Create {
+                folder: GranteeTarget::Display("elsewhere"),
+                preallocated_sid: None,
+                name: "fresh",
+                title: "outside the covered root",
+                tags: &[],
+                body: "must not exist",
+                now: "2026-07-18T13:11:00Z",
+            },
+            &mut entropy,
+        )
+        .expect_err("creation beside the granted subtree is refused");
+    assert!(
+        refusal
+            .to_string()
+            .contains("not covered by the leaf perimeter"),
+        "refusal names the perimeter: {refusal}"
+    );
+    assert_eq!(snapshot(&bundle.store), before, "a refusal writes nothing");
+    assert!(
+        bundle.resolve_folder(Zone::Circle, "elsewhere").is_err(),
+        "no folder row survives a refused creation"
+    );
+}
