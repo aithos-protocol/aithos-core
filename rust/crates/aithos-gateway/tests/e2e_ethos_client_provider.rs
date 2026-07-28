@@ -775,3 +775,351 @@ async fn gateway_session_working_set_creates_circle_content_on_the_real_provider
         "the deleted section must no longer resolve"
     );
 }
+
+/// Documents the gap hit by the 2026-07 hosted demo (`folder: sales` on a
+/// freshly recreated Ethos): the owner path creates a missing folder on the
+/// way (`section_add` → `ensure_folder`, bundle.rs), while the delegated
+/// working-set path only resolves display paths against `e/<zone>/index.json`
+/// (`grantee_section_add` → `resolve_folder`, grants.rs) and refuses with
+/// `InvalidPath("no folder <seg>")`, surfaced to the caller as the generic
+/// `protocol verification failed`.
+///
+/// This test states the DESIRED behavior — a delegated working-set create
+/// targeting a named folder succeeds and the owner reads it back — and stays
+/// `#[ignore]`d until the asymmetry is resolved. Run it explicitly with:
+/// `cargo test -p aithos-gateway --test e2e_ethos_client_provider -- --ignored`
+/// See docs/REPRISE-INTEGRATION-AITHOS-CLIENT-GATEWAY-ETHOS-2026-07-25.md §2.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "known gap: delegated grantee_section_add resolves folders via resolve_folder() and cannot create a missing named folder, unlike the owner path (ensure_folder); un-ignore with the fix"]
+async fn gateway_session_working_set_creates_named_folder_content_on_the_real_provider() {
+    let start = epoch_seconds();
+    let now = at(start);
+    let not_before = at(start - 60);
+    let not_after = at(start + 7_200);
+    let owner =
+        MemoryGenesisKeyholder::from_entropy(OWNER_SEED, [0xc0; 32]).expect("owner keyholder");
+    let genesis = GenesisPlan::build(
+        &owner,
+        GenesisIntent::new(
+            now.clone(),
+            "guide/welcome",
+            "Welcome",
+            "# Gateway baseline\n",
+        ),
+        GenesisEntropy::new([0xc1; 16], [0xc2; 16]),
+    )
+    .expect("genesis plan");
+    let (provider_url, transport) = boot_provider(genesis.did()).await;
+    let mut nonce = 20_000_u128;
+    upload_genesis(&transport, &owner, &genesis, &now, &mut nonce).await;
+    let mut snapshot = ArtifactSnapshot::try_from_iter(
+        genesis
+            .artifacts()
+            .iter()
+            .map(|(path, bytes)| (path.clone(), bytes.clone())),
+    )
+    .expect("genesis snapshot")
+    .cold_verify()
+    .expect("verified genesis");
+
+    let agent = MemoryGranteeKeyholder::from_seed(AGENT_SEED);
+    let gateway = MemoryGranteeKeyholder::from_seed(GATEWAY_SEED);
+    let delegate = MemoryGranteeKeyholder::from_seed(DELEGATE_SEED);
+    let parent_intent = |id: &str, label: &str| {
+        SessionParentIntent::new(
+            RESOURCE,
+            vec![SessionParentAction::new("github-demo", "get_me")],
+            id,
+            label,
+            not_before.clone(),
+            not_after.clone(),
+            now.clone(),
+            3,
+        )
+        .with_ethos_scopes(vec![SessionParentEthosScope::new("circle", "write")])
+    };
+
+    let agent_parent = SessionParentPlan::issue_to_public_identity(
+        &owner,
+        &agent.public_keys().expect("agent public identity"),
+        &snapshot,
+        parent_intent("urn:aithos:agent:gateway-reader", "Gateway reader"),
+        SessionParentEntropy::new([0xc3; 16], [0xc4; 16]),
+    )
+    .expect("agent parent");
+    let agent_publication = PublicationPlan::build_session_parent_owner(
+        &owner,
+        snapshot,
+        &agent_parent,
+        now.clone(),
+        PublicationEntropy::new([0xc5; 16], [0xc6; 16]),
+    )
+    .expect("agent parent publication");
+    upload_owner_publication(&transport, &owner, &agent_publication, &now, &mut nonce).await;
+    snapshot = agent_publication
+        .cold_verify()
+        .expect("verified agent publication");
+
+    let gateway_parent = SessionParentPlan::issue_to_public_identity(
+        &owner,
+        &gateway.public_keys().expect("gateway public identity"),
+        &snapshot,
+        parent_intent("urn:aithos:agent:gateway-control", "Gateway control"),
+        SessionParentEntropy::new([0xc7; 16], [0xc8; 16]),
+    )
+    .expect("gateway parent");
+    let gateway_publication = PublicationPlan::build_session_parent_owner(
+        &owner,
+        snapshot,
+        &gateway_parent,
+        now.clone(),
+        PublicationEntropy::new([0xc9; 16], [0xca; 16]),
+    )
+    .expect("gateway parent publication");
+    upload_owner_publication(&transport, &owner, &gateway_publication, &now, &mut nonce).await;
+    snapshot = gateway_publication
+        .cold_verify()
+        .expect("verified gateway publication");
+
+    let delegate_parent = SessionParentPlan::issue_to_public_identity(
+        &owner,
+        &delegate.public_keys().expect("delegate public identity"),
+        &snapshot,
+        parent_intent("urn:aithos:agent:cowork", "Cowork"),
+        SessionParentEntropy::new([0xcb; 16], [0xcc; 16]),
+    )
+    .expect("delegate parent");
+    let delegate_publication = PublicationPlan::build_session_parent_owner(
+        &owner,
+        snapshot,
+        &delegate_parent,
+        now.clone(),
+        PublicationEntropy::new([0xcd; 16], [0xce; 16]),
+    )
+    .expect("delegate parent publication");
+    upload_owner_publication(&transport, &owner, &delegate_publication, &now, &mut nonce).await;
+    snapshot = delegate_publication
+        .cold_verify()
+        .expect("verified delegate publication");
+
+    // Mirror the hosted-demo shape: at least one owner-published connector
+    // binding exists before the delegated circle mutation is attempted.
+    let connector_binding = PublicationPlan::build_connector_binding_owner(
+        &owner,
+        snapshot,
+        ConnectorBindingIntent::set(
+            "github-demo",
+            aithos_core::wire::ed25519_pub_to_multibase(
+                &SigningKey::from_bytes(&GATEWAY_SEED)
+                    .verifying_key()
+                    .to_bytes(),
+            ),
+            serde_json::json!({
+                "version": "aithos-mcp-manifest-v1",
+                "server": "github-demo",
+                "tools": [{
+                    "name": "get_me",
+                    "exposed_name": "github-demo__get_me",
+                    "description": "Read the connected GitHub identity",
+                    "input_schema": {"type": "object", "properties": {}},
+                    "pin_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "risk_class": "read",
+                    "granted": true
+                }]
+            }),
+            at(start + 1),
+        ),
+        PublicationEntropy::new([0xd1; 16], [0xd2; 16]),
+    )
+    .expect("connector binding publication");
+    upload_owner_publication(
+        &transport,
+        &owner,
+        &connector_binding,
+        &at(start + 1),
+        &mut nonce,
+    )
+    .await;
+    connector_binding
+        .cold_verify()
+        .expect("verified connector binding publication");
+
+    let owner_delivery_keys = OwnerKeys::genesis(&MasterSeed::from_bytes(OWNER_SEED));
+    let delivery_now = now.clone();
+    let owner_delivery_remote = RemoteStore::new(
+        &provider_url,
+        TENANT,
+        genesis.did(),
+        Arc::new(KeySigner::owner(
+            "#root",
+            owner_delivery_keys.root_sign.clone(),
+        )),
+        Arc::new(move || delivery_now.clone()),
+        Box::new(aithos_bundle::entropy::OsEntropy),
+    )
+    .expect("owner delivery transport");
+    let mut delivery_bundle = Bundle::open(owner_delivery_remote).expect("owner delivery bundle");
+    delivery_bundle
+        .deliver_zone_line(
+            &owner_delivery_keys,
+            &SigningKey::from_bytes(&GATEWAY_SEED).verifying_key(),
+            Zone::Circle,
+            "",
+            None,
+            &mut SeqEntropy::default(),
+        )
+        .expect("Gateway circle delivery");
+
+    let sidecar = tempfile::tempdir().expect("sidecar");
+    std::fs::create_dir_all(sidecar.path().join("gateway")).expect("sidecar directory");
+    std::fs::write(
+        sidecar.path().join("gateway/state.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "agent_mandate": agent_parent.publication().mandate_id(),
+            "gateway_mandate": gateway_parent.publication().mandate_id(),
+        }))
+        .expect("state JSON"),
+    )
+    .expect("state sidecar");
+
+    let gateway_keyholder = Arc::new(GatewayKeyholder::from_entropy(AGENT_SEED, GATEWAY_SEED));
+    let remote_store = GatewayStore::from_config_with_identity(
+        &StoreConfig::Remote {
+            url: provider_url.clone(),
+            tenant: TENANT.to_owned(),
+            did: genesis.did().to_owned(),
+            mandate: vec![agent_parent.publication().mandate_id().to_owned()],
+            local: Some(sidecar.path().to_path_buf()),
+        },
+        &gateway_keyholder,
+        || Box::new(SeqEntropy::default()),
+    )
+    .expect("provider-primary Gateway store");
+    let context_bridge = Bridge::open(
+        remote_store.clone(),
+        Arc::clone(&gateway_keyholder),
+        Box::new(SeqEntropy::default()),
+    )
+    .expect("context bridge");
+    let journal_bridge = Bridge::open(
+        remote_store,
+        Arc::clone(&gateway_keyholder),
+        Box::new(SeqEntropy::default()),
+    )
+    .expect("journal bridge");
+    let mut runner = Runner::from_parts(
+        BTreeMap::from([(
+            "sales".to_owned(),
+            ContextRuntime {
+                policy: Policy::new(BTreeMap::new()),
+                bridge: context_bridge,
+            },
+        )]),
+        journal_bridge,
+    );
+
+    let parent: Mandate = delegate_parent.chain()[0].clone();
+    let delegate_signing = SigningKey::from_bytes(&DELEGATE_SEED);
+    let gateway_signing = SigningKey::from_bytes(&GATEWAY_SEED);
+    let gateway_pub = gateway_pub_multibase(&gateway_keyholder);
+    let gateway_kex_pub = gateway_kex_pub_multibase(&gateway_keyholder);
+    let session_now = at(start + 10);
+    let session_signing = SigningKey::from_bytes(&[0xcf; 32]);
+    let session_pub =
+        aithos_core::wire::ed25519_pub_to_multibase(&session_signing.verifying_key().to_bytes());
+    let mut constraints = parent.constraints.clone();
+    constraints["session_bind"] = serde_json::json!(session_pub);
+    let leaf = Mandate::build_sub(
+        &parent,
+        &delegate_signing,
+        &MandateSpec {
+            id: "mandate_01J000000000000000000000F2".to_owned(),
+            subject: genesis.did().to_owned(),
+            grantee_id: "urn:aithos:agent:gateway-session".to_owned(),
+            grantee_label: "Gateway session".to_owned(),
+            grantee_pub: &gateway_signing.verifying_key(),
+            perimeter: vec![
+                PerimeterEntry::parse("act.x.github-demo.get_me").expect("GitHub read"),
+                PerimeterEntry::parse("write.circle").expect("circle write"),
+            ],
+            constraints,
+            not_before: not_before.clone(),
+            not_after: not_after.clone(),
+            issued_at: session_now.clone(),
+            nonce: "c0".repeat(16),
+        },
+    )
+    .expect("session leaf");
+    let leaf_value = serde_json::to_value(&leaf).expect("leaf JSON");
+    let unsigned_grant = runner
+        .prepare_session_grant(
+            "sales",
+            &parent.id,
+            &delegate.public_keys().expect("delegate identity").signing,
+            &gateway_pub,
+            &gateway_kex_pub,
+            &session_pub,
+            RESOURCE,
+            &leaf_value,
+            &session_now,
+        )
+        .expect("prepared session grant");
+    let mut grant: Entry = serde_json::from_value(unsigned_grant).expect("grant entry");
+    let grant_preimage = serde_jcs::to_vec(&grant).expect("grant preimage");
+    grant.signature.value = hex::encode(delegate_signing.sign(&grant_preimage).to_bytes());
+    let authority = runner
+        .activate_session_leaf(
+            "sales",
+            &parent.id,
+            &delegate.public_keys().expect("delegate identity").signing,
+            &gateway_pub,
+            &gateway_kex_pub,
+            &session_pub,
+            RESOURCE,
+            &leaf_value,
+            &serde_json::to_value(grant).expect("signed grant"),
+            &session_now,
+        )
+        .expect("active session");
+
+    // The demo scenario: the target folder does not exist yet on this fresh
+    // Ethos. The owner path would create it on the way; the delegated path
+    // must behave the same for the working set to be usable by Cowork.
+    let prepared = runner
+        .prepare_ethos_client_create_for_session(
+            &authority.context,
+            &authority.leaf_id,
+            &authority.session_pub,
+            &authority.leaf,
+            "circle",
+            "sales",
+            "named-folder-proof",
+            "written into a named folder from the delegated working set",
+            &session_now,
+        )
+        .expect("closed Gateway mutation targeting a named folder");
+    let response: serde_json::Value =
+        serde_json::from_str(&prepared.execute().await.expect("Provider mutation"))
+            .expect("mutation response");
+    assert_eq!(response["path"], "sales/named-folder-proof");
+
+    let owner_keys = OwnerKeys::genesis(&MasterSeed::from_bytes(OWNER_SEED));
+    let read_now = at(start + 20);
+    let owner_remote = RemoteStore::new(
+        &provider_url,
+        TENANT,
+        genesis.did(),
+        Arc::new(KeySigner::owner("#root", owner_keys.root_sign.clone())),
+        Arc::new(move || read_now.clone()),
+        Box::new(aithos_bundle::entropy::OsEntropy),
+    )
+    .expect("owner Provider reader");
+    let stored = Bundle::open(owner_remote)
+        .expect("Provider bundle after named-folder mutation")
+        .read_section(Zone::Circle, "sales/named-folder-proof", &owner_keys)
+        .expect("owner reads the delegated named-folder mutation");
+    assert_eq!(
+        stored,
+        "written into a named folder from the delegated working set"
+    );
+}
