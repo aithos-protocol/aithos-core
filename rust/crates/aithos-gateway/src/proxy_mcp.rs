@@ -2552,7 +2552,9 @@ fn ethos_write_tools(append_covered: bool, delete_covered: bool) -> Vec<Value> {
         tools.push(json!({
             "name": ETHOS_CREATE,
             "description": "Create one new section in the governed Ethos (circle zone). \
-                            The folder must already exist. Every creation is a signed, \
+                            Missing folders on the path are created with the section, \
+                            within the mandate's perimeter (strictly below a covered \
+                            root). Every creation — folders included — is a signed, \
                             journalized delegated mutation.",
             "inputSchema": {
                 "type": "object",
