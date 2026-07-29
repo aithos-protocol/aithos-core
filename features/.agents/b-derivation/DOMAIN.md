@@ -13,6 +13,20 @@ This feature covers content-tree key derivation:
 
 The public audit is `docs/audits/features/b-derivation.md`.
 
+## Branch and evidence
+
+- Canonical audit branch: `codex/audit-b-derivation`.
+- Initial audit evidence revision: `891c808`.
+- Current `main` integration baseline:
+  `5c3a61852dee0886fb6fff008a6304e8ea2c71bb`.
+- Corrections use a dedicated
+  `codex/fix-b-derivation-<finding-or-scope>` descendant branch.
+
+The initial evidence remains tied to `891c808`. The A-Identity impact review
+classified `b-derivation` as `NONE`, allowing the audit record to move onto the
+new baseline without claiming that the newer revision was the original audit
+target.
+
 ## Protocol invariants
 
 1. `K(child folder) = derive_key("aithos-core/v1/d/" + sid, K(parent))`
@@ -47,13 +61,43 @@ The public audit is `docs/audits/features/b-derivation.md`.
 | Vectors | `vectors/b2-derivation.json` |
 | Specification | `spec/01-identity-and-keys.md` §1.3, `spec/02-content-tree.md` §2.1, §2.2, §2.5, §2.9 |
 
-## Minimum gates
+## Gate pyramid
+
+Canonical feature tag: `@b-derivation`.
+
+Run the static check from the repository root:
 
 ```text
-cargo test -p aithos-core --test b2_derivation
-cargo test -p aithos-bundle --test cucumber
-cargo test --workspace --no-fail-fast
-cargo fmt --all -- --check
+features/.agents/scripts/verify-feature-tags.sh
+```
+
+Run Cargo commands from the repository root with the workspace manifest.
+
+### Auditor evidence — once per immutable revision
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test cucumber -- --tags @b-derivation
+```
+
+The auditor runs no unfiltered Cucumber, broad regression, or workspace gate.
+It may run an exact focused or mutation test only to resolve a semantic
+contradiction.
+
+### Corrector focused and relevant regressions
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p aithos-core --test b2_derivation
+```
+
+Repeat only the focused RED/GREEN proof while implementation changes. Run the
+canonical feature gate once after the final correction.
+
+### Corrector final integration — once before review handoff
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test cucumber
+cargo test --manifest-path rust/Cargo.toml --workspace --no-fail-fast
+cargo fmt --manifest-path rust/Cargo.toml --all -- --check
 ```
 
 If a test does not exist on the examined baseline, report that fact instead of
@@ -61,7 +105,8 @@ turning its absence into success.
 
 The Cucumber runner scans all features not tagged `@wip`. Confirm the exact
 number of executed `b-derivation` scenarios in its output — three Rules, six
-scenarios — not only the global exit code.
+scenarios and 21 steps — not only the global exit code. Neither role runs a
+gate once per scenario or review unit.
 
 ## Surfaces and neighboring domains to inspect
 

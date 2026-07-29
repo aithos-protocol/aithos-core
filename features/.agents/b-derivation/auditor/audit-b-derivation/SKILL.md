@@ -7,8 +7,8 @@ description: Audit or review only features/b-derivation.feature using its BLAKE3
 
 1. Read `../../../shared/audit-gherkin-feature/SKILL.md` completely.
 2. Read `../../DOMAIN.md` completely.
-3. Read only mode, revision, assigned scope, and output routing from
-   `../../STATE.md`.
+3. Read only mode, branch, base revision, observed revision, assigned scope,
+   and output routing from `../../STATE.md`.
 4. Execute only the mode requested by state.
 
 Do not read the public audit, prior run conclusions, correction reports, or Git
@@ -45,7 +45,9 @@ history until the shared skill authorizes Pass B.
   behavior for the scenarios and surfaces assigned by state.
 - Freeze the Pass A verdict for each finding.
 - Then compare the baseline and candidate revisions from `../../STATE.md`.
-- Rerun the applicable gates from `DOMAIN.md`.
+- Run the canonical feature gate from `DOMAIN.md` once on the immutable
+  candidate. Run a focused test only to resolve a semantic contradiction.
+- Do not run the corrector's unfiltered Cucumber or workspace gates.
 - Verify that each new test would fail on the baseline for the intended reason.
 - Do not close a finding that was not explicitly assigned.
 - Do not modify Rust files.
