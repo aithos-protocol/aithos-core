@@ -11,7 +11,7 @@
 | Primary runner | `aithos-bundle --test cucumber` |
 | Primary implementation | `aithos-core::{keys,did,derive,wire}` |
 | Inspected surfaces | Core, Bundle, CLI, WASM, Gateway, Client, and Provider where Identity requirements apply |
-| Note status | **ROUND 2 REVIEW REQUESTED** — AID-001 has an `IMPLEMENTED` Provider candidate under the decided §10.4 model and requires a fresh two-pass review; AID-002 and AID-005 remain `VERIFIED` within pilot scope; AID-003 and AID-004 remain `OPEN` |
+| Note status | **ROUND 2 REVIEW ACCEPTED** — AID-001, AID-002, and AID-005 are `VERIFIED` within pilot scope; AID-003 and AID-004 remain `OPEN`; Gherkin impact review is requested |
 
 ## Method provenance
 
@@ -38,9 +38,9 @@ Any future review that claims full two-pass compliance must:
 
 ## Verdict
 
-### Round 2 correction candidate
+### Independent round 2 correction review
 
-- **AID-001 — `IMPLEMENTED`, review required.** Provider now sends every
+- **AID-001 — `VERIFIED` for the Provider remainder.** Provider sends every
   incoming DID document through strict Core `DidDocument::verify`, then uses
   the object store's atomic `put_once` verdict. Genesis and byte-identical
   re-deposit succeed; succession-signed `did.json` fails strict verification;
@@ -59,9 +59,13 @@ Any future review that claims full two-pass compliance must:
   refusals, plus a root-signed but unsupported-version genesis negative.
   P9 refusal scenarios assert absence of partial persistent effects.
 
-This status is a corrector claim, not an auditor verification. A fresh
-history-blind Pass A followed by differential Pass B is required before
-AID-001 can move to `VERIFIED`.
+The independent two-pass review accepted the exact immutable
+`dfb79c8..e6fc5dc` range. Its frozen history-blind Pass A traced strict
+verification, write-once persistence, and post-refusal storage assertions.
+Pass B established that the new replacement scenarios fail against the
+baseline behavior, pass against the candidate, and align with the binding
+protocol decision. The accepted conclusion is recorded in
+`features/.agents/a-identity/auditor/runs/2026-07-29-audit-review-02.md`.
 
 ### Independent round 1 correction review
 
@@ -321,7 +325,7 @@ initial verdict.
 
 ### AID-001 — Strict, closed DID verification
 
-**Priority: P1 — `IMPLEMENTED`, round 2; independent review required**
+**Priority: P1 — `VERIFIED`, round 2**
 
 #### Before correction
 
@@ -353,7 +357,7 @@ verified JCS reconstruction.
   against the Core verdict.
 - [x] Negative Core, wire, Bundle, and mandate-chain surface tests.
 
-#### Provider round 2 candidate
+#### Provider round 2 correction
 
 Provider `artifacts::deposit_did` no longer carries a parallel verifier:
 
@@ -528,29 +532,30 @@ implementation fixes them implicitly.
 This audit may become fully `VERIFIED` when:
 
 - [ ] AID-001 through AID-005 are closed or explicitly decided out of scope;
-  AID-002/AID-005 are verified within pilot scope, AID-001 has a round 2
-  implementation candidate pending review, and AID-003/AID-004 remain open;
+  AID-001/AID-002/AID-005 are verified within pilot scope, while
+  AID-003/AID-004 remain open;
 - [x] no `a-identity.feature` scenario is `@wip`, proxy, or empty;
 - [ ] an automated targeted gate enforces the expected Identity count; the
   current count of 30 was verified manually;
 - [x] positive A1/A2 tests remain byte-exact;
 - [x] new negatives are RED against old semantics and GREEN after correction,
   subject to the disclosed non-versioned-shim limitation;
-- [ ] Core, Bundle, WASM, Gateway, and Provider share the decided DID verdict;
-  the round 2 Provider candidate now reuses strict Core verification, pending
-  independent review;
+- [x] Core, Bundle, WASM, Gateway, and Provider share the decided DID verdict;
+  the round 2 Provider correction reuses strict Core verification and its
+  independent review is accepted;
 - [x] targeted A1/A2 tests pass (4 + 6);
 - [x] Bundle Cucumber passes (836 scenarios, 3,568 steps);
 - [ ] workspace and Clippy gates pass in a capable environment; the round 2
   workspace gate passed, Clippy was not rerun, and formatting differs only in
   a pre-existing out-of-diff Gateway file;
 - [x] exact revisions and results are recorded here;
-- [ ] any future full review follows the new isolated Pass A / Pass B process.
+- [x] the round 2 review followed the isolated Pass A / Pass B process.
 
 ## History
 
 | Date | State | Note |
 |---|---|---|
+| 2026-07-29 | `REVIEW_ACCEPTED — ROUND 2` | Independent two-pass review verifies the AID-001 Provider remainder on `dfb79c8..e6fc5dc`: strict Core verification, atomic write-once persistence, baseline-detecting regressions, and refusal rollback. Impact review requested; epoch-triplet transport remains undefined and fail-closed. |
 | 2026-07-29 | `REVIEW_REQUESTED — ROUND 2` | AID-001 Provider candidate removes succession-signed same-DID replacement, composes strict Core verification with atomic write-once storage, updates P9, and proves refusal rollback. Canonical epoch-triplet transport/storage remains explicitly undefined and fail-closed. |
 | 2026-07-29 | `CORRECTION_REQUESTED — ROUND 2` | Human protocol decision: Provider adopts §10.4 epoch transition. DID documents remain root-signed, succession signs only the separate transition, new root means new DID, and same-DID succession-signed replacement is forbidden. |
 | 2026-07-29 | `PROCESS_DISCLOSURE` | Audit artifacts translated to English. The new two-pass process is adopted; initial and round 1 runs are explicitly recorded as history-aware rather than retroactively claimed as clean Pass A. |

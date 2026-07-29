@@ -4,10 +4,10 @@ Feature: Identity genesis
 
   # Audit markers do not skip scenarios: they make a known semantic gap
   # visible while the current behavior keeps running as a regression test.
-  # Review round 1: AID-002 and AID-005 are verified within the pilot scope.
-  # AID-001 has a round 2 implementation candidate under the decided §10.4
-  # Provider model and awaits independent two-pass review. AID-003 and
-  # AID-004 remain open below.
+  # Review round 2: AID-001, AID-002, and AID-005 are verified within the
+  # pilot scope. The Provider remains fail-closed until a canonical epoch
+  # triplet transport/storage contract exists. AID-003 and AID-004 remain
+  # open below.
   # Tracking: docs/audits/features/a-identity.md
 
   Rule: Genesis is deterministic

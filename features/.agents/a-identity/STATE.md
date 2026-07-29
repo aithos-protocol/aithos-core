@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | `REVIEW_REQUESTED` |
-| Expected mode | `review` |
+| Status | `IMPACT_REVIEW_REQUESTED` |
+| Expected mode | `impact review` |
 | Round | 2 |
 | Initial audit baseline | `be2d098eeb79107c861462a6433df9ef45871265` |
 | Reviewed round 1 candidate | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
@@ -12,12 +12,12 @@
 | Candidate commit | `e6fc5dc206204038e4bac80dcd9dc5f4c4429bc1` |
 | Protocol decision | `decisions/2026-07-29-aid-001-provider-epoch-transition.md` |
 | Assigned finding | `AID-001` Provider remainder only |
-| Candidate finding status | `AID-001` is `IMPLEMENTED`, pending independent review |
+| Candidate finding status | `AID-001` Provider remainder is `VERIFIED` |
 | Findings already verified | `AID-002`, `AID-005` (pilot scope) |
 | Findings outside correction | `AID-003`, `AID-004` |
-| Next role | `audit-a-identity` |
+| Next role | `review-gherkin-impacts` |
 | Correction conclusion | `corrector/runs/2026-07-29-correction-02.md` |
-| Expected review conclusion | `auditor/runs/2026-07-29-audit-review-02.md` |
+| Accepted review conclusion | `auditor/runs/2026-07-29-audit-review-02.md` |
 
 ## Inputs
 
@@ -60,17 +60,27 @@ part of the triplet.
 `AID-002` and `AID-005` were not changed. `AID-003` and `AID-004` remain
 outside this correction.
 
-## Review handoff
+## Accepted review
 
-Run `audit-a-identity` in `review` mode on the exact immutable range:
+`audit-a-identity` reviewed the exact immutable range:
 
 ```text
 dfb79c87120caeb26737c81babd5cc2ad0dc0a3c..
 e6fc5dc206204038e4bac80dcd9dc5f4c4429bc1
 ```
 
-The reviewer must begin with fresh history-blind Pass A units and freeze those
-results before reading the correction report, prior audits, protocol decision,
-or `baseline..candidate` diff. Pass B may then inspect this handoff and exact
-range. Do not promote AID-001 above `IMPLEMENTED` until that two-pass review is
-complete.
+The fresh history-blind Pass A accepted the Provider remainder. Pass B
+reproduced the candidate gates, established that the new scenarios detect the
+baseline behavior, reconciled the protocol decision and exact diff, and
+retained the verdict. AID-001 is `VERIFIED` for the assigned Provider
+remainder.
+
+The canonical Provider transport/storage contract for the previous document /
+`EpochTransition` / successor document triplet remains undefined and
+fail-closed. `AID-003` and `AID-004` remain open.
+
+## Impact-review handoff
+
+Run `review-gherkin-impacts` against the accepted immutable range above.
+Classify affected Gherkin surfaces and produce the orchestrator impact report;
+do not reopen the accepted audit without new evidence.

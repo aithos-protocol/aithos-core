@@ -2,12 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Status | `WAITING_FOR_ACCEPTED_REVIEW` |
+| Status | `IMPACT_REVIEW_REQUESTED` |
 | Source feature | `a-identity.feature` |
-| Candidate baseline | `be2d098` |
-| Candidate correction | `56436f3` |
+| Candidate baseline | `dfb79c87120caeb26737c81babd5cc2ad0dc0a3c` |
+| Candidate correction | `e6fc5dc206204038e4bac80dcd9dc5f4c4429bc1` |
+| Accepted review | `a-identity/auditor/runs/2026-07-29-audit-review-02.md` |
 | Skill | `review-gherkin-impacts` |
 
-Do not start impact analysis until `a-identity/STATE.md` contains
-`IMPACT_REVIEW_REQUESTED` and an auditor conclusion has accepted at least one
-finding.
+The prerequisites are satisfied: `a-identity/STATE.md` requests impact review
+and the round 2 auditor conclusion is `REVIEW_ACCEPTED`. Run the impact review
+on the exact immutable range above.
