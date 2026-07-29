@@ -60,7 +60,7 @@ use aithos_core::receipts::{
 };
 use aithos_core::wire;
 use cucumber::{given, then, when, World};
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{Signer, SigningKey};
 use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
 
 // --- step D fixtures ---
@@ -348,6 +348,9 @@ pub struct ProtocolWorld {
     succession_entropy: Vec<[u8; 32]>,
     succession_pubs: Vec<String>,
     did_doc: Option<DidDocument>,
+    /// Raw JSON wire of the DID document, when the case is about parsing.
+    did_wire: Option<String>,
+    did_parsed: Option<Result<(), String>>,
     prev_doc: Option<DidDocument>,
     next_doc: Option<DidDocument>,
     transition: Option<Result<(), String>>,
@@ -7264,6 +7267,24 @@ impl ProtocolWorld {
     }
 }
 
+/// The instant every identity-epoch scenario uses.
+const EPOCH_AT: &str = "2026-07-09T00:00:00Z";
+
+/// Re-sign a mutated DID document under its own root key, so a rejection can
+/// only be attributed to the semantic control under test (AID-001).
+fn resign_did(doc: &mut DidDocument, root: &SigningKey) {
+    doc.signature.value = String::new();
+    let bytes = aithos_core::jcs::canonical_bytes(&*doc).expect("DID JCS");
+    doc.signature.value = hex::encode(root.sign(&bytes).to_bytes());
+}
+
+/// Same, for an epoch transition (AID-002).
+fn resign_transition(tr: &mut EpochTransition, succession: &SigningKey) {
+    tr.signature.value = String::new();
+    let bytes = aithos_core::jcs::canonical_bytes(&*tr).expect("transition JCS");
+    tr.signature.value = hex::encode(succession.sign(&bytes).to_bytes());
+}
+
 impl ProtocolWorld {
     fn derive_from(&mut self, seed_index: usize) {
         let seed = MasterSeed::from_slice(&self.seeds[seed_index]).expect("valid seed");
@@ -7635,10 +7656,61 @@ fn build_did_document(w: &mut ProtocolWorld) {
     w.did_doc = Some(w.build_doc(0, 0));
 }
 
-#[when("one byte of it is altered")]
+#[when("one byte of it is altered after signing")]
 fn tamper_document(w: &mut ProtocolWorld) {
     let doc = w.did_doc.as_mut().expect("a signed DID document");
     doc.revocations.push('x');
+}
+
+/// AID-001 — rebuild the document with ONE defect and re-sign it correctly
+/// under its own root key, so only the semantic control under test can
+/// explain the rejection.
+#[when(regex = r"^it is rebuilt and re-signed with (.+)$")]
+fn rebuild_did_with_defect(w: &mut ProtocolWorld, defect: String) {
+    let owner = w.owner(0);
+    let doc = w.did_doc.as_mut().expect("a signed DID document");
+    match defect.as_str() {
+        "a content key that is not multibase" => doc.keys.content = "not-a-key".to_owned(),
+        "a content key in the X25519 codec" => {
+            let bytes = wire::multibase_to_ed25519_pub(&doc.keys.content).expect("content key");
+            doc.keys.content = wire::x25519_pub_to_multibase(&bytes);
+        }
+        "a kex key in the Ed25519 codec" => {
+            let bytes = wire::multibase_to_x25519_pub(&doc.keys.kex).expect("kex key");
+            doc.keys.kex = wire::ed25519_pub_to_multibase(&bytes);
+        }
+        "a malformed succession key" => doc.keys.succession = "z6Mk".to_owned(),
+        "an unsupported document version" => doc.version = "9.9.9".to_owned(),
+        "an unsupported signature algorithm" => doc.signature.alg = "secp256k1".to_owned(),
+        "a signature fragment other than #root" => doc.signature.key = "#content".to_owned(),
+        other => panic!("unknown DID defect: {other}"),
+    }
+    resign_did(doc, &owner.root_sign);
+}
+
+/// AID-001 — a member the typed schema does not know must be REFUSED, not
+/// dropped on the way in: the verified JCS is rebuilt from the typed value.
+#[when(regex = r"^(an unknown .+ member) is added to its JSON wire$")]
+fn inject_unknown_did_member(w: &mut ProtocolWorld, member: String) {
+    let doc = w.did_doc.as_ref().expect("a signed DID document");
+    let text = aithos_core::jcs::canonicalize(doc).expect("DID JCS");
+    let (needle, replacement) = match member.as_str() {
+        "an unknown top-level member" => (
+            r#"{"aithos-did-core""#,
+            r#"{"aithos-extra":"x","aithos-did-core""#,
+        ),
+        "an unknown keys member" => (r#""keys":{"#, r#""keys":{"extra":"x","#),
+        "an unknown signature member" => (r#""signature":{"#, r#""signature":{"extra":"x","#),
+        other => panic!("unknown wire member: {other}"),
+    };
+    let wire_text = text.replacen(needle, replacement, 1);
+    assert_ne!(wire_text, text, "the {member} injection must apply");
+    w.did_parsed = Some(
+        serde_json::from_str::<DidDocument>(&wire_text)
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+    );
+    w.did_wire = Some(wire_text);
 }
 
 #[when("the transition is signed by the succession key")]
@@ -7648,11 +7720,15 @@ fn transition_by_succession(w: &mut ProtocolWorld) {
     let tr = EpochTransition::sign(
         &succession,
         prev.id.clone(),
-        next.id,
-        "2026-07-09T00:00:00Z".to_owned(),
+        next.id.clone(),
+        EPOCH_AT.to_owned(),
     )
     .expect("transition signs");
-    w.transition = Some(tr.verify(&prev).map_err(|e| e.to_string()));
+    // AID-002: the successor document is verified, not merely named.
+    w.transition = Some(
+        tr.verify_succession(&prev, &next)
+            .map_err(|e| e.to_string()),
+    );
 }
 
 #[when("the transition is signed by the root key itself")]
@@ -7663,11 +7739,129 @@ fn transition_by_root(w: &mut ProtocolWorld) {
         &owner.root_sign,
         "#root",
         prev.id.clone(),
-        next.id,
-        "2026-07-09T00:00:00Z".to_owned(),
+        next.id.clone(),
+        EPOCH_AT.to_owned(),
     )
     .expect("transition signs");
-    w.transition = Some(tr.verify(&prev).map_err(|e| e.to_string()));
+    w.transition = Some(
+        tr.verify_succession(&prev, &next)
+            .map_err(|e| e.to_string()),
+    );
+}
+
+#[when("the transition is signed by the root key claiming to be the succession key")]
+fn transition_by_root_claiming_succession(w: &mut ProtocolWorld) {
+    let (prev, next) = (w.prev_doc.clone().unwrap(), w.next_doc.clone().unwrap());
+    let owner = w.owner(0);
+    let tr = EpochTransition::sign_with(
+        &owner.root_sign,
+        "#succession",
+        prev.id.clone(),
+        next.id.clone(),
+        EPOCH_AT.to_owned(),
+    )
+    .expect("transition signs");
+    w.transition = Some(
+        tr.verify_succession(&prev, &next)
+            .map_err(|e| e.to_string()),
+    );
+}
+
+/// AID-002 — every way a correctly succession-signed transition can still
+/// fail to bind the successor document actually presented.
+#[when(regex = r"^the transition is signed by the succession key but (.+)$")]
+fn transition_succession_with_defect(w: &mut ProtocolWorld, defect: String) {
+    let (prev, next) = (w.prev_doc.clone().unwrap(), w.next_doc.clone().unwrap());
+    let succession = succession_from_entropy(w.succession_entropy[0]);
+    let sign = |prev_did: String, next_did: String, key: &SigningKey| {
+        EpochTransition::sign(key, prev_did, next_did, EPOCH_AT.to_owned())
+            .expect("transition signs")
+    };
+
+    let (tr, prev_presented, next_presented) = match defect.as_str() {
+        "another successor document is presented" => {
+            // A THIRD identity, unrelated to both and never named by the
+            // transition, is handed to the verifier instead.
+            let third_owner = OwnerKeys::genesis(&MasterSeed::from_bytes([0x5A; 32]));
+            let third_succession = succession_from_entropy([0x5B; 32]);
+            let third = DidDocument::build(
+                &third_owner,
+                &third_succession.verifying_key(),
+                vec![BUNDLE.to_owned()],
+                REVOCATIONS.to_owned(),
+            )
+            .expect("third DID document builds");
+            assert_ne!(third.id, next.id);
+            assert_ne!(third.id, prev.id);
+            (
+                sign(prev.id.clone(), next.id.clone(), &succession),
+                prev,
+                third,
+            )
+        }
+        "the successor document is altered after signing" => {
+            let mut broken = next.clone();
+            broken.revocations.push('x');
+            (
+                sign(prev.id.clone(), next.id.clone(), &succession),
+                prev,
+                broken,
+            )
+        }
+        "the successor document is re-signed while malformed" => {
+            let successor_owner = w.owner(1);
+            let mut malformed = next.clone();
+            malformed.keys.content = "not-a-key".to_owned();
+            resign_did(&mut malformed, &successor_owner.root_sign);
+            (
+                sign(prev.id.clone(), malformed.id.clone(), &succession),
+                prev,
+                malformed,
+            )
+        }
+        "it declares the previous identity as its successor" => (
+            sign(prev.id.clone(), prev.id.clone(), &succession),
+            prev.clone(),
+            prev,
+        ),
+        "it declares a malformed next_did" => (
+            sign(prev.id.clone(), "did:aithos:zzz".to_owned(), &succession),
+            prev,
+            next,
+        ),
+        "it declares a next_did that is not a did:aithos" => (
+            sign(prev.id.clone(), "nope".to_owned(), &succession),
+            prev,
+            next,
+        ),
+        "it is signed by another identity's succession key" => {
+            let foreign = succession_from_entropy(w.succession_entropy[1]);
+            (sign(prev.id.clone(), next.id.clone(), &foreign), prev, next)
+        }
+        "it names a previous identity it was not signed for" => (
+            sign(next.id.clone(), next.id.clone(), &succession),
+            prev,
+            next,
+        ),
+        "it declares an unsupported version" => {
+            let mut tr = sign(prev.id.clone(), next.id.clone(), &succession);
+            tr.version = "9.9.9".to_owned();
+            resign_transition(&mut tr, &succession);
+            (tr, prev, next)
+        }
+        "it declares an unsupported signature algorithm" => {
+            let mut tr = sign(prev.id.clone(), next.id.clone(), &succession);
+            tr.signature.alg = "secp256k1".to_owned();
+            resign_transition(&mut tr, &succession);
+            (tr, prev, next)
+        }
+        other => panic!("unknown transition defect: {other}"),
+    };
+
+    w.transition = Some(
+        tr.verify_succession(&prev_presented, &next_presented)
+            .map_err(|e| e.to_string()),
+    );
 }
 
 #[when("I derive the section key twice")]
@@ -11614,6 +11808,15 @@ fn doc_signature_verifies(w: &mut ProtocolWorld) {
 #[then("verification is rejected")]
 fn verification_rejected(w: &mut ProtocolWorld) {
     assert!(w.did_doc.as_ref().unwrap().verify().is_err());
+}
+
+#[then("the document does not parse as a DID document")]
+fn did_wire_does_not_parse(w: &mut ProtocolWorld) {
+    assert!(
+        w.did_parsed.as_ref().expect("a JSON wire attempt").is_err(),
+        "wire: {:?}",
+        w.did_wire
+    );
 }
 
 #[then("the successor DID document is accepted")]

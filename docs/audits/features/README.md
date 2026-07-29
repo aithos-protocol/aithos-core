@@ -69,4 +69,4 @@ Les tests unitaires, vecteurs et Gherkins sont complémentaires. Aucun ne doit
 
 | Feature | Note | Verdict courant |
 |---|---|---|
-| `a-identity.feature` | [`a-identity.md`](a-identity.md) | Corrections requises |
+| `a-identity.feature` | [`a-identity.md`](a-identity.md) | AID-001/002/005 implémentés ; AID-003/004 ouverts |
