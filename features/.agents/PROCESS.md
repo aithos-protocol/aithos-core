@@ -138,7 +138,7 @@ spawn fresh agents for the review units without changing the evidence model.
 
 | Artifact | Purpose |
 |---|---|
-| `features/<feature>.feature` | Contract and concise audit markers |
+| `features/<feature>.feature` | Contract and concise markers for unresolved audit findings |
 | `docs/audits/features/<feature>.md` | Public technical audit and stable findings |
 | `.agents/<feature>/DOMAIN.md` | Durable domain knowledge |
 | `.agents/<feature>/STATE.md` | Current stage and immutable revisions |
@@ -147,6 +147,27 @@ spawn fresh agents for the review units without changing the evidence model.
 The public audit is the stable technical source of truth. Run reports explain
 who did what, on which revision, with which evidence, and what must happen
 next.
+
+### Gherkin audit-marker lifecycle
+
+Audit tags and comments in a `.feature` file describe current, actionable
+gaps; they are not the permanent audit history.
+
+- Add them only to scenarios with an unresolved `PARTIAL`,
+  `SEMANTIC_FALSE_POSITIVE`, `PROXY`, `IMPLEMENTED`, or `DECISION_REQUIRED`
+  finding.
+- Keep the stable finding identifier and a link to the public audit while the
+  finding remains actionable.
+- Once a finding is independently `VERIFIED` or explicitly closed, remove its
+  `@audit-*` / `@aid-*` tags and adjacent audit comments from the Gherkin.
+- If one scenario refers to both resolved and unresolved findings, retain only
+  the unresolved identifiers and explanation.
+- Do not remove ordinary comments that explain the product contract rather
+  than audit history.
+
+The resolved trace remains available in the public audit, dated run reports,
+and Git commits. A resolved finding must not leave a `VERIFIED` banner in the
+executable feature.
 
 ## Manual lifecycle
 
@@ -172,7 +193,7 @@ The auditor:
 3. completes and freezes history-blind Pass A for every unit;
 4. completes Pass B and the shared-state integration pass;
 5. classifies every scenario;
-6. adds comments only to problematic scenarios;
+6. adds concise comments and tags only to unresolved problematic scenarios;
 7. writes or updates the public audit;
 8. writes a dated conclusion;
 9. sets `STATE.md` to `CORRECTION_REQUESTED`.
@@ -202,7 +223,8 @@ The auditor:
 6. checks public surfaces and partial effects;
 7. accepts or rejects each finding separately;
 8. marks `VERIFIED` only after independent proof;
-9. records affected files, symbols, formats, and surfaces.
+9. removes Gherkin audit markers for findings accepted as `VERIFIED`;
+10. records affected files, symbols, formats, and surfaces.
 
 A rejected review returns to the corrector. After three rejections for the
 same finding, stop the automatic cycle and request human direction.

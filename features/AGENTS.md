@@ -34,6 +34,7 @@ The current audit scope is limited to the semantic truth of existing passing
 scenarios. Searching for entirely missing scenarios is out of scope.
 Additional tests needed to prove a requested correction remain in scope.
 
-Comments in `.feature` files point to the public audits under
-`docs/audits/features/`. Operational conclusions and handoffs stay under
-`.agents/`.
+Live audit comments in `.feature` files point to the public audits under
+`docs/audits/features/`. Remove those comments when the finding is verified;
+the resolved history remains in the public audit, dated run reports, and Git.
+Operational conclusions and handoffs stay under `.agents/`.
