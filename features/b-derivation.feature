@@ -6,11 +6,13 @@ Feature: Content-tree derivation
 
   # Unresolved audit markers remain executable.
   # Detail: docs/audits/features/b-derivation.md
+  # BDER-011 — repo-wide, not specific to this feature: the aithos-bundle
+  # Cucumber runner exits 0 even when scenarios fail. Read the printed
+  # scenario and step counts; the exit code of this feature's gate proves
+  # nothing until BDER-011 is closed.
 
   Rule: Derivation is deterministic and per-segment
 
-    @audit-implemented @bder-001
-    # AUDIT BDER-001 — IMPLEMENTED, awaiting independent review.
     Scenario: The same path always yields the same key
       Given a zone key
       And a path of three nested folders ending in a section
@@ -19,8 +21,9 @@ Feature: Content-tree derivation
       And the key equals the B2 vector's deep section key byte for byte
       And each segment contributed exactly one labelled derivation
 
-    @audit-implemented @bder-002
-    # AUDIT BDER-002 — IMPLEMENTED, awaiting independent review.
+    @audit-partial @bder-012
+    # AUDIT BDER-012 — PARTIAL; "any production label" is proved over 21
+    # sampled labels, and only the first sibling is anchored to the vector.
     Scenario: Sibling nodes get unrelated keys
       Given a zone key
       When I derive the keys of two sibling folders
@@ -29,8 +32,6 @@ Feature: Content-tree derivation
 
   Rule: Holding a folder yields its subtree, nothing else
 
-    @audit-implemented @bder-005
-    # AUDIT BDER-005 — IMPLEMENTED, awaiting independent review.
     Scenario: A folder holder derives every descendant
       Given a zone key
       And a folder three levels deep containing a section
@@ -38,8 +39,6 @@ Feature: Content-tree derivation
       Then the folder key alone derives the section beneath it
       And it alone derives a grandchild section and a tag anchor beneath it
 
-    @audit-implemented @bder-003
-    # AUDIT BDER-003 — IMPLEMENTED, awaiting independent review.
     Scenario: A folder holder cannot reach sideways
       Given a zone key
       And two sibling folders each containing a section
@@ -48,8 +47,6 @@ Feature: Content-tree derivation
       And no derivation from it yields the second folder's section key
       And no derivation from it yields its own parent or the zone key
 
-    @audit-implemented @bder-004
-    # AUDIT BDER-004 — IMPLEMENTED, awaiting independent review.
     Scenario: Renaming never re-keys
       Given a published bundle with section "note1" in circle "projets/perso"
       And the derived key of "projets/perso/note1" is recorded

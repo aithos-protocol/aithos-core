@@ -105,8 +105,14 @@ turning its absence into success.
 
 The Cucumber runner scans all features not tagged `@wip`. Confirm the exact
 number of executed `b-derivation` scenarios in its output — three Rules, six
-scenarios and 21 steps — not only the global exit code. Neither role runs a
-gate once per scenario or review unit.
+scenarios and 30 steps since the round 1 correction (21 before) — not only the
+global exit code. Neither role runs a gate once per scenario or review unit.
+
+Reading the printed counts is not a style preference here. Until `BDER-011` is
+closed, this runner exits 0 even when scenarios fail
+(`aithos-bundle/tests/cucumber.rs` calls `filter_run`, not
+`filter_run_and_exit`, under `harness = false`), so the printed block is the
+only evidence the gate produces.
 
 ## Surfaces and neighboring domains to inspect
 

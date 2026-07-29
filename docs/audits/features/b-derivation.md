@@ -12,7 +12,7 @@
 | Implémentation principale | `aithos-core::{derive,path,ids}` |
 | Surfaces contrôlées | Core, Bundle, CLI ; vecteurs `vectors/` et leurs générateurs |
 | Méthode | Deux passes, Pass A aveugle à l'historique en trois unités de revue isolées (une par `Rule`), puis passe d'intégration, revue challenger adverse, et Pass B différentielle |
-| Statut de la note | **OUVERTE — correction candidate de la ronde 1 en attente de revue indépendante** |
+| Statut de la note | **OUVERTE — ronde 1 revue et acceptée ; deux écarts nouveaux, une décision en attente** |
 
 ## Verdict
 
@@ -143,7 +143,7 @@ Les sondes et leurs artefacts ne font pas partie du dépôt.
 
 ### BDER-001 — Ancrer le déterminisme à une valeur attendue indépendante
 
-**Priorité : P1 — IMPLEMENTED (ronde 1, non vérifié)**
+**Priorité : P1 — `VERIFIED` (revue 01, 2026-07-29)**
 
 #### Constat
 
@@ -183,7 +183,7 @@ inchangé.
 
 ### BDER-002 — Prouver l'absence de relation, pas l'inégalité
 
-**Priorité : P2 — IMPLEMENTED (ronde 1, non vérifié)**
+**Priorité : P2 — `VERIFIED` (revue 01, 2026-07-29) — résidu suivi en `BDER-012`**
 
 #### Constat
 
@@ -217,7 +217,7 @@ M4 et M5 font échouer ce scénario.
 
 ### BDER-003 — Lier le négatif universel à la clé réellement détenue
 
-**Priorité : P1 — IMPLEMENTED (ronde 1, non vérifié) — écart le plus grave**
+**Priorité : P1 — `VERIFIED` (revue 01, 2026-07-29) — écart le plus grave**
 
 #### Constat
 
@@ -265,7 +265,7 @@ celle du dossier 1.
 
 ### BDER-004 — Renommer réellement quelque chose
 
-**Priorité : P1 — IMPLEMENTED (ronde 1, non vérifié)**
+**Priorité : P1 — `VERIFIED` (revue 01, 2026-07-29)**
 
 #### Constat
 
@@ -313,7 +313,7 @@ la section après renommage.
 
 ### BDER-005 — Élargir « every descendant »
 
-**Priorité : P3 — IMPLEMENTED (ronde 1, non vérifié)**
+**Priorité : P3 — `VERIFIED` (revue 01, 2026-07-29) — résidu suivi en `BDER-012`**
 
 #### Constat
 
@@ -345,7 +345,7 @@ Au moins trois formes de descendants distinctes, toujours 5 mutants sur 5.
 
 ### BDER-009 — Épingler la forme de l'accumulateur `node_keys`
 
-**Priorité : P4 — IMPLEMENTED (ronde 1, non vérifié)**
+**Priorité : P4 — `VERIFIED` (revue 01, 2026-07-29)**
 
 #### Constat
 
@@ -374,11 +374,24 @@ feature ne sont partagés avec aucune autre).
 Toute composition future de steps échoue bruyamment au lieu de comparer la
 mauvaise paire.
 
-## Correction candidate — ronde 1 (2026-07-29)
+## Correction ronde 1 — revue indépendante, acceptée (2026-07-29)
 
-**Statut : `IMPLEMENTED`, non vérifié.** Écrit par `correct-b-derivation`, à
-valider par une revue indépendante. Le détail figure dans
-`features/.agents/b-derivation/corrector/runs/2026-07-29-correction-01.md`.
+**Statut : les six écarts assignés sont `VERIFIED`.** Correction écrite par
+`correct-b-derivation` (`3d6fa51`, candidat `1ab331a`), revue par
+`audit-b-derivation` en mode revue. Détail de la correction dans
+`features/.agents/b-derivation/corrector/runs/2026-07-29-correction-01.md`,
+détail de la revue dans
+`features/.agents/b-derivation/auditor/runs/2026-07-29-audit-review-01.md`.
+
+La revue a exécuté sa Pass A dans quatre unités fraîches sur un export
+`git archive` **sans `.git`, sans `docs/audits/`, sans aucun rapport de run** —
+l'aveuglement à l'historique est structurel, pas déclaratif. L'auditeur de
+feature déclare sa propre contamination et n'a pas exécuté la Pass A lui-même.
+
+L'identité byte-à-byte revendiquée par le correcteur a été vérifiée
+indépendamment : `derive.rs`, `path.rs`, `ids.rs`, `bundle.rs`, `structure.rs`,
+`grants.rs` et `vectors/b2-derivation.json` sont identiques à `fa8fa79`, et
+l'ensemble des fichiers modifiés se limite exactement aux six déclarés.
 
 - Baseline : `fa8fa79` (tête réelle de `codex/audit-b-derivation` au moment de
   la correction, et non le `9c3c9bc` inscrit dans l'état).
@@ -393,14 +406,23 @@ valider par une revue indépendante. Le détail figure dans
 Sondes rejouées sur la feature corrigée, mutants appliqués à une copie
 jetable, jamais au dépôt :
 
-| Mutant | Scénarios `b-derivation` en échec |
-|---|---:|
-| M1 constante | 5 / 6 |
-| M2 ignore le chemin | 5 / 6 |
-| M3 hash monolithique | 3 / 6 |
-| M4 31 octets de zone recopiés | 4 / 6 |
-| M5 étape XOR | **4 / 6** (2 avant, dont aucun de ces quatre) |
-| R1 renommage = supprimer-recréer avec sid neuf | 1 / 6 (0 avant) |
+| Mutant | Correcteur | **Rejoué par la revue** |
+|---|---:|---:|
+| M1 constante | 5 / 6 | **5 / 6** |
+| M2 ignore le chemin | 5 / 6 | **5 / 6** |
+| M3 hash monolithique | 3 / 6 | **4 / 6** (instance de mutant différente) |
+| M4 31 octets de zone recopiés | 4 / 6 | **4 / 6** |
+| M5a étape XOR dans `node_key` | 4 / 6 | **4 / 6** |
+| M5b `derive_key` lui-même en XOR | non rapporté | **3 / 6** |
+| R1 renommage = supprimer-recréer avec sid neuf | 1 / 6 | **1 / 6** |
+
+M5b est l'apport de la revue. Le mutant de référence nommé par l'état est décrit
+au niveau de `node_key` ; porté sur `derive_key` lui-même, il **survit** au
+scénario « A folder holder derives every descendant », dont le `Then` compare
+deux routes qui passent par la même primitive et se déplacent donc ensemble.
+Le critère de clôture de `BDER-005` est écrit contre le jeu M1-M5 de l'audit
+initial, et contre ce jeu le scénario fait bien 5 / 5 ; le résidu est suivi en
+`BDER-012`.
 
 Pouvoir discriminant par scénario, avant → après :
 
@@ -429,6 +451,69 @@ Deux lectures que cette note ne lisse pas :
 La feature exécute maintenant 3 Rules, 6 scénarios et **30 steps** (21 avant) ;
 aucun scénario n'a été supprimé.
 
+## Écarts ouverts par la revue de la ronde 1
+
+### BDER-011 — Le gate Cucumber d'`aithos-bundle` ne peut pas rapporter d'échec
+
+**Priorité : P1 — OUVERT — préexistant à `fa8fa79` — portée dépôt entier**
+
+`rust/crates/aithos-bundle/tests/cucumber.rs:19716` appelle
+`ProtocolWorld::cucumber().filter_run(...)` et jette l'écrivain retourné. Avec
+`harness = false`, `main` retourne `()` et le processus sort en 0 quoi qu'aient
+fait les steps. `.fail_on_skipped()` est également absent : un step non apparié
+n'est pas une erreur non plus. Les deux runners frères du même dépôt font
+l'inverse — `aithos-gateway/tests/cucumber.rs` et
+`aithos-provider/tests/cucumber.rs` utilisent tous deux
+`.fail_on_skipped().filter_run_and_exit(...)`.
+
+Observé trois fois pendant la revue : avec quatre scénarios en échec (M5a),
+avec trois (M5b) et avec un (R1), `cargo test ... --test cucumber` est sorti
+en 0 à chaque fois.
+
+Conséquences :
+
+- le gate canonique de `DOMAIN.md` ne prouve rien par son code de sortie ; seuls
+  les compteurs imprimés portent de l'information — c'est précisément pourquoi
+  `PROCESS.md` et `DOMAIN.md` imposent déjà de compter le bloc nommément, et
+  cette consigne est aujourd'hui la seule chose qui sépare cette suite d'un vert
+  silencieux ;
+- la même chose vaut pour le gate Cucumber global du correcteur, pour le gate
+  workspace sur cette cible de test, et pour la CI, qui lance
+  `cargo test --workspace` ;
+- les 18 features sont concernées, pas seulement `b-derivation`.
+
+`fn main()` est **identique octet pour octet entre `fa8fa79` et `1ab331a`** : la
+correction de la ronde 1 n'en est ni la cause ni l'aggravation, et ce n'est pas
+à un correcteur `b-derivation` de le trancher. La remise en état peut faire
+rougir des scénarios aujourd'hui « verts » dans d'autres features. Routé à la
+revue d'impact comme premier point.
+
+### BDER-012 — Les négatifs corrigés restent des échantillons bornés
+
+**Priorité : P3 — OUVERT — non assigné à une ronde**
+
+Les corrections sont réelles et mesurées ; cet écart décrit ce qui reste après
+elles, pour que la ronde suivante parte d'une base honnête.
+
+1. Le `Then` du scénario 2 dit « under any production label » alors que la
+   recherche porte sur 21 labels de fixture, en avant seulement. Le scénario 4
+   est honnête sur ce point parce que son step asserte la taille de l'espace
+   exploré (`13 332`) ; le scénario 2 ne qualifie sa portée nulle part.
+2. Le scénario 2 n'ancre que le premier frère au vecteur. Le second n'a aucune
+   valeur attendue : une mutation confinée à lui passe.
+3. La sonde de fuite de zone utilise une fenêtre contiguë de 16 octets ; une
+   fuite de 15 octets de matériel parent passe.
+4. La recherche vers le haut du scénario 4 est de profondeur 1 quand sa
+   recherche latérale est de profondeur 3.
+5. Les routes petit-enfant et ancre de tag du scénario 3 comparent de la
+   production à de la production sans ancre externe — c'est ce qui laisse
+   survivre M5b.
+6. `cucumber.rs:149-152` annonce que seuls les champs de vecteur corroborés par
+   un générateur indépendant servent d'autorité externe ; `cucumber.rs:12190-12194`
+   utilise ensuite `sibling_section_key_hex`, qu'aucun `vectors/gen-*.py` ne
+   recalcule. Le pouvoir discriminant de cette valeur est réel, la revendication
+   du commentaire ne l'est pas. À clore avec `BDER-007` et `BDER-008`.
+
 ## Écarts hors ronde de correction
 
 ### BDER-006 — Périmètre de la `Rule` « Tag views anchor at folders »
@@ -451,6 +536,14 @@ un défaut :
 - **B** — la `Rule` couvre l'ancrage, et un step piloté par `aithos-bundle`
   prouve qu'une section taguée sous un dossier frère n'est **pas** pontée dans
   la vue locale alors qu'elle l'est dans la vue racine.
+
+Fait ajouté par la revue 01, pour l'arbitre : `DOMAIN.md` route « tag-view
+rebuild and the wraps that populate an anchor » vers `d-bundle.feature`, et
+**cette feature ne contient aucun scénario de vue de tag ni de `wrap`**. Sous
+l'option A, la moitié `wrap` de §02.9 est donc renvoyée vers une destination qui
+ne la couvre pas aujourd'hui ; sa seule couverture exécutable est le sens
+positif dans `e-mandates.feature:28-32` et `:48-52`. L'option A laisse un trou
+réel si `d-bundle` n'est pas étendue dans le même mouvement.
 
 Un correcteur ne doit pas trancher cela implicitement. Owner attendu : le
 propriétaire du protocole.
