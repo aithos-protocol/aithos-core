@@ -2,18 +2,19 @@
 
 | Champ | Valeur |
 |---|---|
-| Statut | `CORRECTION_REQUESTED` |
-| Mode attendu | `correction` |
+| Statut | `DECISION_REQUIRED` |
+| Mode attendu | `décision protocolaire manuelle` |
 | Round | 2 |
 | Baseline d'audit initiale | `be2d098eeb79107c861462a6433df9ef45871265` |
 | Commit revu | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
 | Baseline de correction round 2 | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
 | Branche revue | `fix/aid-001-002-005-identity-fail-closed` |
-| Findings vérifiés | `AID-002` |
-| Findings redemandés | `AID-001`, `AID-005` |
+| Findings vérifiés | `AID-002`, `AID-005` (périmètre du pilote) |
+| Finding en décision | `AID-001` |
 | Findings hors correction | `AID-003`, `AID-004` |
-| Prochain rôle | `correct-a-identity` |
-| Conclusion attendue | `corrector/runs/<date>-correction-02.md` |
+| Prérequis bloquant | sémantique du remplacement Provider `did.json` |
+| Prochain rôle | propriétaire du protocole |
+| Conclusion attendue | décision Provider, puis `corrector/runs/<date>-correction-02.md` si correction |
 
 ## Entrées
 
@@ -27,14 +28,14 @@
 
 ## Instruction courante
 
-Corriger uniquement les refus de review AID-001 et AID-005 :
+Obtenir d'abord une décision protocolaire explicite pour AID-001 :
 
-- aligner ou faire arbitrer explicitement le remplacement Provider
-  `did.json` afin qu'il ne puisse pas persister un document que le verdict
-  Core strict refuse ;
-- livrer les preuves AID-005 encore requises ou obtenir un arbitrage explicite
-  de leur périmètre ;
-- conserver AID-002 inchangé, désormais `VÉRIFIÉ` ;
+- choisir si le remplacement Provider `did.json` reste une succession même-DID
+  spécifique ou adopte la transition d'époque du §10.4 ;
+- ne lancer une correction round 2 qu'après cette décision, et uniquement pour
+  mettre en œuvre la sémantique retenue ;
+- conserver AID-002 et AID-005 inchangés, désormais `VÉRIFIÉS` dans le
+  périmètre du pilote ;
 - ne pas corriger AID-003 ou AID-004 dans ce round.
 
 Le commit `56436f3` reste une entrée immuable et devient la baseline du round 2.

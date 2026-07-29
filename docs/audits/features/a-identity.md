@@ -11,13 +11,13 @@
 | Runner principal | `aithos-bundle --test cucumber` |
 | Implémentation principale | `aithos-core::{keys,did,derive,wire}` |
 | Surfaces contrôlées | Core, Bundle, CLI, WASM, Gateway et Provider lorsque l'exigence Identity les concerne |
-| Statut de la note | **CORRECTION REDEMANDÉE APRÈS REVIEW** — AID-002 `VÉRIFIÉ` ; AID-001 et AID-005 refusés séparément ; AID-003 et AID-004 restent `OUVERT` |
+| Statut de la note | **DÉCISION PROTOCOLAIRE REQUISE** — AID-002 et AID-005 `VÉRIFIÉ` dans le périmètre du pilote ; AID-001 attend l'arbitrage Provider ; AID-003 et AID-004 restent `OUVERT` |
 
 ## Verdict
 
 ### Review indépendante du round 1 (2026-07-29)
 
-- **AID-001 — REFUSÉ.** Le durcissement Core, la fermeture du wire et les
+- **AID-001 — DÉCISION PROTOCOLAIRE REQUISE.** Le durcissement Core, la fermeture du wire et les
   chemins Bundle, WASM/mandates, Catalog, Gateway et client satisfont les
   critères ciblés. Le chemin Provider
   `artifacts::deposit_did`, en revanche, conserve un parseur/vérificateur
@@ -27,29 +27,33 @@
   persister un document que `DidDocument::verify` refusera ensuite. La réserve
   documentaire ne satisfait pas le critère initial « même verdict strict,
   aucun parseur permissif parallèle » et expose un effet partiel durable.
+  Comme ce comportement est figé par P9 et dépend de la décision Provider déjà
+  listée par l'audit initial, un correcteur ne doit pas choisir seul entre
+  remplacement sous le même DID et transition d'époque.
 - **AID-002 — VÉRIFIÉ.** `verify_succession(prev, next)` valide les deux
   documents, la déclaration, les deux liaisons DID et la distinction des
   identités. Le `Then` Gherkin transmet effectivement `next_doc`; les négatifs
   ont chacun leur propre verdict. Le remplacement Provider sous le même DID
   reste explicitement nommé comme une opération distincte qui ne prétend pas
   implémenter la transition d'époque §10.4.
-- **AID-005 — REFUSÉ.** Les 21 cas Gherkin ajoutés sont honnêtes, sélectionnés
-  et verts, mais le finding initial n'est pas entièrement livré : aucun
-  vecteur A2 négatif généré indépendamment n'a été ajouté, aucun gate ciblé ne
-  fait échouer le run sur un compte autre que 30, et le scénario de cérémonie
-  réelle reste reporté sur AID-003. Les nombres RED obtenus avec des shims
-  temporaires sont seulement rapportés par le correcteur ; ils ne sont pas
-  reproductibles depuis les deux commits immuables sans modifier le Rust.
+- **AID-005 — VÉRIFIÉ DANS LE PÉRIMÈTRE DU PILOTE.** Les 21 cas Gherkin
+  ajoutés sont honnêtes, sélectionnés et verts ; leurs paramètres atteignent
+  chacun l'API et le verdict attendus. La cérémonie réelle appartient au
+  finding AID-003/AID-004 explicitement hors round. Les vecteurs A2 négatifs
+  indépendants et un gate automatisé de comptage restent des renforcements
+  utiles, mais le processus exige ici le comptage effectif par l'auditeur, pas
+  la conception générale d'un nouvel outillage. Ils ne bloquent donc pas la
+  clôture procédurale d'AID-005.
 
-La review renvoie donc AID-001 et AID-005 au correcteur. AID-003 et AID-004
-n'ont été ni fermés ni modifiés.
+La review transmet donc AID-001 au propriétaire du protocole avant toute
+nouvelle correction. AID-003 et AID-004 n'ont été ni fermés ni modifiés.
 
 ### Après correctif (2026-07-29)
 
 La feature compte désormais **30 scénarios** — les 9 d'origine plus 21 cas
 négatifs — tous sélectionnés et exécutant du vrai code de production :
 
-- AID-001 `IMPLÉMENTÉ, REVIEW REFUSÉE` — `DidDocument::verify` valide la version, les
+- AID-001 `IMPLÉMENTÉ, DÉCISION REQUISE` — `DidDocument::verify` valide la version, les
   métadonnées de signature et les quatre clés sous leur codec propre ; le
   schéma wire est fermé (`deny_unknown_fields`) sur `DidDocument`, `DidKeys`,
   `SignatureBlock` et `EpochTransition`. Le remplacement Provider reste un
@@ -58,10 +62,10 @@ négatifs — tous sélectionnés et exécutant du vrai code de production :
   `verify_declaration(prev)` (déclaration seule, nommée comme telle) et
   `verify_succession(prev, next)` (triplet complet). Le `Then` Gherkin
   transmet et vérifie réellement `next_doc` : le faux positif est levé.
-- AID-005 `IMPLÉMENTÉ EN PARTIE, REVIEW REFUSÉE` — chaque ligne Gherkin
+- AID-005 `VÉRIFIÉ DANS LE PÉRIMÈTRE` — chaque ligne Gherkin
   livrée construit son défaut propre, appelle l'API de production
-  correspondante et vérifie son verdict propre, mais trois exigences initiales
-  restent ouvertes.
+  correspondante et vérifie son verdict propre. Les renforcements résiduels
+  sont reclassés hors critère de clôture du pilote.
 - AID-003 et AID-004 restent `OUVERT` : hors périmètre du correctif, ils
   exigent une décision d'architecture (source d'entropie de succession pour
   les créations Gateway, définition normative de la garde froide). Leurs
@@ -296,7 +300,7 @@ Statuts **après correctif**. La colonne « avant » rappelle l'audit initial.
 
 ### AID-001 — Vérification DID stricte et fermée
 
-**Priorité : P1 — REVIEW REFUSÉE, ROUND 1 (2026-07-29)**
+**Priorité : P1 — DÉCISION PROTOCOLAIRE REQUISE, ROUND 1 (2026-07-29)**
 
 #### Constat (avant correctif)
 
@@ -358,20 +362,20 @@ l'algorithme cessent d'être des littéraux dispersés : `SIGNATURE_ALG`,
 #### Review indépendante
 
 Les cas négatifs Core sont refusés, A2 positif reste byte-identique et les
-chemins Bundle/WASM/Catalog/Gateway/client rejoignent le verdict strict.
-Le finding n'est toutefois pas clos : le remplacement Provider
-`artifacts::deposit_did` conserve un vérificateur `Value` parallèle sous
-`#succession`, sans contrôle de version ni de `kex`, et sans validation des
-points Ed25519 entrants. Il peut persister un `did.json` que
+chemins Bundle/WASM/Catalog/Gateway/client rejoignent le verdict strict. Cette
+partie Core du finding est acceptée. Le remplacement Provider
+`artifacts::deposit_did` conserve toutefois un vérificateur `Value` parallèle
+sous `#succession`, sans contrôle de version ni de `kex`, et sans validation
+des points Ed25519 entrants. Il peut persister un `did.json` que
 `DidDocument::verify` refusera ensuite.
 
-**Blocage à corriger ou arbitrer explicitement :** le remplacement `did.json` du
-Provider (`artifacts::deposit_did`) reste une vérification distincte, signée
-sous `#succession` du document stocké, et n'appelle donc pas `verify()` sur le
-document entrant. C'est l'arbitrage nommé de la décision 2 ci-dessous, laissé
-inchangé : le durcir ici aurait cassé le fixture P9 `did_rotation_ok` sans
-décision préalable. Une réserve dans l'audit ne suffit pas à satisfaire le
-critère de clôture AID-001.
+**Décision requise avant correction :** le remplacement `did.json` du Provider
+reste une vérification distincte, signée sous `#succession` du document stocké,
+et n'appelle donc pas `verify()` sur le document entrant. Le fixture P9
+`did_rotation_ok` codifie cette sémantique. Le propriétaire du protocole doit
+choisir entre une succession même-DID spécifique au Provider et une transition
+d'époque conforme au §10.4. Le correcteur ne doit pas fixer implicitement ce
+choix d'architecture.
 
 ### AID-002 — Lier la transition au document successeur réel
 
@@ -540,7 +544,7 @@ par les surfaces, et pas seulement un commentaire dans `keys.rs`.
 
 ### AID-005 — Renforcer le contrat Gherkin et les vecteurs
 
-**Priorité : P2 — REVIEW REFUSÉE, ROUND 1 (2026-07-29)**
+**Priorité : P2 — VÉRIFIÉ DANS LE PÉRIMÈTRE DU PILOTE, ROUND 1 (2026-07-29)**
 
 #### Implémentation livrée
 
@@ -554,16 +558,16 @@ par les surfaces, et pas seulement un commentaire dans `keys.rs`.
   précédent/transition/successeur.
 - [x] Scenario Outline des négatifs AID-002 (10 lignes) plus le cas root
   prétendant `#succession`.
-- [ ] **Reste ouvert** — scénario de cérémonie de succession utilisant l'API
+- [ ] **Dépendance AID-003/AID-004, hors round** — scénario de cérémonie de succession utilisant l'API
   réelle de création d'identité plutôt que deux constantes choisies dans le
   step. Dépend d'AID-003 : tant que `owner_init_journal` et
   `owner_init_context` dérivent la succession du master, exercer « la vraie
   surface de création » figerait précisément le comportement à corriger.
-- [ ] **Reste ouvert** — extension d'A2 avec des cas négatifs générés
+- [ ] **Amélioration non bloquante** — extension d'A2 avec des cas négatifs générés
   indépendamment en Python. Les négatifs livrés sont dérivés en test des
   positifs A2 figés ; ils prouvent le verdict, pas l'indépendance
   d'implémentation.
-- [ ] **Reste ouvert** — gate ciblé échouant si le nombre exécuté n'est pas
+- [ ] **Amélioration non bloquante** — gate ciblé échouant si le nombre exécuté n'est pas
   exactement celui attendu. Le runner Cucumber du dépôt n'expose pas de
   filtre ciblé ni d'assertion de compte ; l'ajouter touche l'outillage de
   test commun à 18 features et sortait du périmètre « aucune régression ».
@@ -577,10 +581,15 @@ production correspondante et vérifie son verdict propre. Aucun step n'est
 `@wip`, vide, mocké ni adossé à un verdict `OnceLock`. Les tests A1/A2
 autonomes restent des preuves complémentaires et A2 positif est inchangé.
 
-Le finding initial reste néanmoins incomplet : les trois cases encore ouvertes
-ci-dessus ne sont ni livrées ni arbitrées hors périmètre. En outre, les nombres
-RED du correcteur reposent sur des shims temporaires absents des commits
-immuables. AID-005 reste donc demandé pour un round 2.
+Les 21 cas ajoutés sont honnêtes, sélectionnés et verts. La cérémonie réelle
+dépend d'AID-003/AID-004, explicitement hors de ce round. Des vecteurs négatifs
+indépendants et un gate automatisé de comptage renforceraient la suite, mais ne
+sont pas nécessaires pour établir la vérité des scénarios corrigés : le
+processus demande à l'auditeur de compter les scénarios, ce qui a été fait. Les
+nombres RED obtenus avec des shims temporaires restent rapportés, non
+reproductibles depuis les commits immuables, sans bloquer la preuve statique de
+l'ancienne sémantique ni les gates GREEN. AID-005 est donc vérifié dans le
+périmètre du pilote.
 
 ## Décisions à trancher
 
@@ -607,8 +616,8 @@ avant que l'implémentation ne les fige implicitement.
 La note pourra passer à **VÉRIFIÉE** lorsque :
 
 - [ ] AID-001 à AID-005 sont clôturés ou explicitement arbitrés hors périmètre
-  — **AID-002 vérifié ; AID-001 et AID-005 refusés en review ; AID-003 et
-  AID-004 restent ouverts** ;
+  — **AID-002 et AID-005 vérifiés dans le périmètre du pilote ; AID-001 attend
+  une décision protocolaire ; AID-003 et AID-004 restent ouverts** ;
 - [x] aucun scénario `a-identity.feature` n'est `@wip`, proxy ou vide ;
 - [ ] le runner ciblé exécute exactement le nombre attendu de scénarios
   — compte contrôlé à la main (30), pas encore par un gate ;
@@ -632,7 +641,7 @@ La note pourra passer à **VÉRIFIÉE** lorsque :
 
 | Date | État | Note |
 |---|---|---|
-| 2026-07-29 | `REVIEW REFUSÉE — ROUND 1` | Review indépendante de `be2d098..56436f3` : AID-002 `VÉRIFIÉ`; AID-001 refusé sur le vérificateur parallèle de remplacement Provider ; AID-005 refusé car trois exigences initiales restent ouvertes et les RED à shims ne sont pas reproductibles depuis les commits immuables. Gates ciblés verts : A1 4, A2 6, surfaces 2, Cucumber 836/836 dont 30 Identity. Workspace non concluant sous sandbox ; formatage préexistant hors diff. |
+| 2026-07-29 | `DÉCISION PROTOCOLAIRE REQUISE — ROUND 1` | Review indépendante de `be2d098..56436f3` : AID-002 et AID-005 `VÉRIFIÉS` dans le périmètre du pilote ; AID-001 attend une décision explicite sur la sémantique de remplacement Provider avant correction. Gates ciblés verts : A1 4, A2 6, surfaces 2, Cucumber 836/836 dont 30 Identity. Workspace non concluant sous sandbox ; formatage préexistant hors diff. |
 | 2026-07-29 | `PARTIELLEMENT CLÔTURÉE` | Correctif AID-001, AID-002 et AID-005 sur `fix/aid-001-002-005-identity-fail-closed`. `DidDocument::verify` durcie et schéma wire fermé ; `EpochTransition::verify` remplacée par `verify_declaration` + `verify_succession` ; feature portée de 9 à 30 scénarios ; nouveau test de rejeu de surfaces. Baseline 627 tests / 815 scénarios → 632 tests / 836 scénarios, 0 échec, aucune régression. AID-003 et AID-004 restent ouverts et leurs marqueurs restent dans la feature. |
 | 2026-07-29 | `ANNOTÉE` | Marqueurs inline ajoutés sans exclusion : `@audit-partial` sur AID-001/AID-003/AID-004 et `@audit-false-positive` sur AID-002 ; rejeu ciblé inchangé, 9 scénarios et 30 steps passés. |
 | 2026-07-29 | `OUVERTE` | Audit initial : neuf scénarios verts, trois écarts d'implémentation principaux et deux renforcements de preuve requis. |

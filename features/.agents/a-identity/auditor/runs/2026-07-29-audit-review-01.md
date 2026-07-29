@@ -11,15 +11,16 @@
 | Commit candidat | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
 | Client frère inspecté | `c6f615123ca3dc83708ba029b898375409551719` |
 | État initial du worktree | propre |
-| Résultat | `CORRECTION_REQUESTED` |
+| Résultat | `DECISION_REQUIRED` |
+| Prérequis bloquant | sémantique du remplacement Provider `did.json` |
 
 ## Verdict
 
 | Finding | Verdict de review | Motif |
 |---|---|---|
-| `AID-001` | `REFUSÉ` | Core et les surfaces ordinaires sont durcis, mais le remplacement Provider `artifacts::deposit_did` conserve un vérificateur parallèle qui peut persister un `did.json` refusé par `DidDocument::verify`. |
+| `AID-001` | `DÉCISION PROTOCOLAIRE REQUISE` | Core et les surfaces ordinaires sont durcis. Le remplacement Provider `artifacts::deposit_did` conserve une sémantique même-DID distincte ; décider si elle reste spécifique ou adopte §10.4 relève du propriétaire du protocole, pas du correcteur. |
 | `AID-002` | `VÉRIFIÉ` | Le triplet précédent/transition/successeur est réellement reçu et validé ; les liaisons, signatures, métadonnées et identités distinctes sont couvertes. |
-| `AID-005` | `REFUSÉ` | Les 21 scénarios ajoutés sont honnêtes et verts, mais trois exigences initiales restent ouvertes et les nombres RED à shims ne sont pas reproductibles depuis les commits immuables. |
+| `AID-005` | `VÉRIFIÉ DANS LE PÉRIMÈTRE DU PILOTE` | Les 21 scénarios ajoutés sont honnêtes, sélectionnés et verts. La cérémonie dépend d'AID-003/AID-004 hors round ; les vecteurs indépendants et le gate automatisé de comptage sont des améliorations, pas des preuves indispensables à ce pilote. |
 | `AID-003` | non traité | Hors correction du round 1 ; reste ouvert. |
 | `AID-004` | non traité | Hors correction du round 1 ; reste ouvert. |
 
@@ -66,7 +67,7 @@ Les chemins suivants rejoignent ce verdict :
 - le client frère `c6f6151`, dont les chargements DID appellent
   `DidDocument::verify`.
 
-### Motif de refus
+### Décision protocolaire requise
 
 Le remplacement Provider de `did.json` reste parallèle :
 
@@ -79,9 +80,11 @@ Le remplacement Provider de `did.json` reste parallèle :
   persisté alors que le verdict Core exige `#root`.
 
 Cette surface peut donc commettre durablement un objet que les consommateurs
-Core/Bundle refuseront à la réouverture. La réserve documentaire et la décision
-Provider encore ouverte ne ferment pas le critère initial « même verdict
-strict, aucun parseur permissif parallèle ».
+Core/Bundle refuseront à la réouverture. Cependant, P9 codifie une succession
+même-DID distincte de la transition d'époque §10.4. Choisir entre ces deux
+sémantiques est une décision de protocole : la partie Core d'AID-001 est
+acceptée, mais aucune correction Provider ne doit être demandée avant cet
+arbitrage explicite.
 
 ## AID-002
 
@@ -115,19 +118,23 @@ Les éléments livrés sont réels :
 - 10 transitions mal liées et 1 signature root prétendant la succession ;
 - aucun step Identity n'est vide, proxy, `@wip` ou adossé à un `OnceLock`.
 
-Les exigences de l'audit initial encore absentes sont :
+Les éléments de l'audit initial encore absents se répartissent ainsi :
 
 1. un scénario de cérémonie passant par la surface réelle de création
-   d'identité, actuellement dépendant d'AID-003 ;
-2. des négatifs A2 générés indépendamment ;
-3. un gate ciblé échouant si le nombre exécuté diffère de 30.
+   d'identité : dépendance AID-003/AID-004, explicitement hors round ;
+2. des négatifs A2 générés indépendamment : amélioration de robustesse ;
+3. un gate ciblé échouant si le nombre exécuté diffère de 30 : amélioration
+   d'outillage. Le processus demande ici le comptage effectif par l'auditeur,
+   qui a été réalisé.
 
 Le correcteur rapporte en outre 3 tests A2 et 18 scénarios RED au moyen de
 shims temporaires. Ces shims ne sont pas versionnés ; l'auditeur n'a pas
 modifié le Rust pour reconstruire ces nombres. Le diff de baseline prouve
-statiquement les anciens défauts, mais pas ces comptes exacts.
+statiquement les anciens défauts, mais pas ces comptes exacts. Cette limite est
+rapportée et ne bloque pas la vérité des scénarios corrigés ni leurs gates
+GREEN.
 
-Verdict : `AID-005` reste demandé au round 2.
+Verdict : `AID-005` passe à `VÉRIFIÉ DANS LE PÉRIMÈTRE DU PILOTE`.
 
 ## Commandes réellement exécutées
 
@@ -206,11 +213,12 @@ hors du diff Identity.
 
 ## Handoff
 
-Passer à `correct-a-identity`, round 2, baseline `56436f3` :
+Passer d'abord au propriétaire du protocole :
 
-1. fermer ou faire arbitrer explicitement le bypass Provider d'AID-001, sans
-   conserver une possibilité de commit partiel d'un DID refusé par Core ;
-2. livrer les exigences restantes d'AID-005 ou obtenir un arbitrage explicite
-   de leur périmètre ;
-3. conserver AID-002 inchangé et `VÉRIFIÉ` ;
+1. décider si le remplacement Provider `did.json` reste une succession
+   même-DID spécifique ou adopte la transition d'époque §10.4 ;
+2. après cette décision seulement, passer à `correct-a-identity`, round 2,
+   baseline `56436f3`, si une correction est requise ;
+3. conserver AID-002 et AID-005 inchangés et `VÉRIFIÉS` dans le périmètre du
+   pilote ;
 4. ne pas traiter AID-003/AID-004 dans ce round.
