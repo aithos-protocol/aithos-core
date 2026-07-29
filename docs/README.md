@@ -20,6 +20,10 @@ même lorsqu'ils contiennent un résultat de test valable à leur date.
 
 ## Chantiers courants
 
+- [`audits/features/`](audits/features/) : audits d'implémentation vivants,
+  fichier par fichier, des contrats `features/*.feature` ; ils distinguent
+  scénario exécuté, appel de production réel et conformité effectivement
+  prouvée ;
 - [`HANDOFF-GATEWAY-COMPAGNON-DEMO-INTEGREE-2026-07-22.md`](HANDOFF-GATEWAY-COMPAGNON-DEMO-INTEGREE-2026-07-22.md) :
   audience G4, CORS Gateway/Provider et bundle de démo ; implémentation locale
   présente, gate navigateur live et intégration Git encore à clore ;
