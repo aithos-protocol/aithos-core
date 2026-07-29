@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit a-identity"
+  short_description: "Auditer sémantiquement a-identity.feature"
+  default_prompt: "Use $audit-a-identity to run the current audit or correction review for features/a-identity.feature."

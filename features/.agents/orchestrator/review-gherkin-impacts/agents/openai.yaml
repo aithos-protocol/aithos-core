@@ -1,0 +1,4 @@
+interface:
+  display_name: "Gherkin Impact Review"
+  short_description: "Détecter les impacts entre features Gherkin"
+  default_prompt: "Use $review-gherkin-impacts to identify other feature audits potentially affected by an accepted correction."

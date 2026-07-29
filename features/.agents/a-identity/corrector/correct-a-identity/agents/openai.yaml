@@ -1,0 +1,4 @@
+interface:
+  display_name: "Correction a-identity"
+  short_description: "Corriger les findings de a-identity.feature"
+  default_prompt: "Use $correct-a-identity to implement the correction round requested by the a-identity semantic audit."

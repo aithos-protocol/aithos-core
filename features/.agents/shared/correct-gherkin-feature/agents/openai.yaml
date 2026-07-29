@@ -1,0 +1,4 @@
+interface:
+  display_name: "Correction Gherkin Feature"
+  short_description: "Corriger les scénarios faussement verts"
+  default_prompt: "Use $correct-gherkin-feature to implement only the reviewed semantic corrections requested by a feature audit."
