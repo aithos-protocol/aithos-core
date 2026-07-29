@@ -13,6 +13,8 @@ description: Implémenter les corrections demandées par un audit sémantique Gh
 4. Figer la baseline avant la première modification.
 5. Limiter le travail aux findings assignés.
 
+Arrêter sans modifier le code si l'état porte `DECISION_REQUIRED`.
+
 ## Exécution
 
 1. Reproduire chaque défaut sur le chemin de production indiqué.

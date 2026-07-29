@@ -29,7 +29,7 @@ description: Auditer ou reviewer exclusivement features/a-identity.feature avec 
   effectivement reproduits.
 - Écrire `../runs/<date>-audit-review-01.md`.
 - Positionner l'état sur `CORRECTION_REQUESTED` ou
-  `IMPACT_REVIEW_REQUESTED`.
+  `DECISION_REQUIRED` ou `IMPACT_REVIEW_REQUESTED`.
 
 La conclusion du correcteur est informative. Reconstruire le verdict depuis le
 diff, le code et les tests.

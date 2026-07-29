@@ -52,6 +52,9 @@ AUDIT_INITIAL
   → CORRECTION_REQUESTED
   → REVIEW_REQUESTED
       → CORRECTION_REQUESTED
+      → ou DECISION_REQUIRED
+           → CORRECTION_REQUESTED
+           → ou REVIEW_ACCEPTED
       → ou REVIEW_ACCEPTED
            → IMPACT_REVIEW_REQUESTED
            → COMPLETE
@@ -99,6 +102,19 @@ L'auditeur :
 Une review refusée renvoie au correcteur. Après trois refus pour le même
 finding, arrêter l'automatisme et demander une décision humaine.
 
+### Décision requise
+
+Utiliser `DECISION_REQUIRED` lorsqu'un finding ne peut pas être fermé sans
+choisir entre plusieurs sémantiques de protocole, de sécurité ou de produit.
+
+Dans cet état :
+
+1. l'auditeur documente les comportements en conflit et leurs preuves ;
+2. aucun correcteur ne choisit implicitement la sémantique ;
+3. `STATE.md` désigne le propriétaire de la décision comme prochain rôle ;
+4. la décision est enregistrée avant tout nouveau round ;
+5. l'état passe ensuite à `CORRECTION_REQUESTED` ou `REVIEW_ACCEPTED`.
+
 ### Review des impacts
 
 Après acceptation seulement, le reviewer global :
@@ -122,6 +138,7 @@ La décision de relancer un audit reste manuelle.
 | `PROXY` | Le scénario consomme un verdict partagé sans jouer son cas |
 | `IMPLÉMENTÉ` | Un correctif candidat existe, review requise |
 | `VÉRIFIÉ` | L'auditeur a reproduit et accepté le correctif |
+| `DECISION_REQUIRED` | Un propriétaire humain doit trancher avant correction |
 
 ## Conclusion obligatoire
 
