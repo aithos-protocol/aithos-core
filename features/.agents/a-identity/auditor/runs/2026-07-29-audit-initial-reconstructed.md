@@ -1,50 +1,55 @@
-# Conclusion reconstruite — audit initial de `a-identity.feature`
+# Reconstructed conclusion — initial audit of `a-identity.feature`
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
-| Type | `RECONSTRUIT` |
-| Rôle source | auditeur sémantique |
-| Date de l'audit | 2026-07-29 |
-| Révision observée | `2fee855` avec worktree signalé sale |
-| Commit documentaire produit | `be2d098` |
-| Audit public | `docs/audits/features/a-identity.md` |
-| Résultat | `CORRECTION_REQUESTED` |
+| Type | `RECONSTRUCTED` |
+| Source role | semantic auditor |
+| Audit date | 2026-07-29 |
+| Observed revision | `2fee855`, with a reported dirty worktree |
+| Documentation commit | `be2d098` |
+| Public audit | `docs/audits/features/a-identity.md` |
+| Result | `CORRECTION_REQUESTED` |
 
-## Provenance
+## Provenance and two-pass limitation
 
-Cette conclusion a été reconstruite après l'audit à partir du commit
-`be2d098`, des commentaires ajoutés à la feature, de l'audit public et des
-résultats consignés. Elle n'a pas été générée nativement par le skill
-`audit-a-identity`.
+This conclusion was reconstructed after the audit from commit `be2d098`,
+feature comments, the public audit, and recorded results. It was not produced
+natively by `audit-a-identity`.
 
-## Conclusion de l'audit
+The original work traced the current Rust paths and used Git state for
+reproducibility, but it did not freeze formally isolated history-blind review
+units before consulting existing context. It must therefore not be presented
+retroactively as an uncontaminated Pass A under the newer two-pass process.
+The observable technical findings remain valid inputs to a fresh review.
 
-Les neuf scénarios étaient sélectionnés et exécutaient du code Rust réel.
-Aucun step n'était vide, `@wip` ou remplacé par un verdict global `OnceLock`.
+## Audit conclusion
 
-Le vert n'établissait toutefois pas tout le contrat :
+All nine scenarios were selected and executed real Rust production code. No
+step was empty, tagged `@wip`, or replaced by a global `OnceLock` verdict.
 
-- 6 scénarios `PROUVÉ` ;
-- 2 scénarios `PARTIEL` ;
-- 1 scénario `FAUX POSITIF`.
+The green result did not establish the complete contract:
 
-## Findings ouverts
+- 6 scenarios were `PROVEN`;
+- 2 scenarios were `PARTIAL`;
+- 1 scenario was a `SEMANTIC_FALSE_POSITIVE`.
 
-| Finding | Verdict | Correction demandée |
+## Open findings
+
+| Finding | Verdict | Requested correction |
 |---|---|---|
-| `AID-001` | `PARTIEL` | Fermer le schéma DID, valider version, signature et codecs des quatre clés |
-| `AID-002` | `FAUX POSITIF` | Vérifier réellement précédent + transition + document successeur |
-| `AID-003` | `PARTIEL` | Supprimer les dérivations de succession depuis le master owner |
-| `AID-004` | `DÉCISION REQUISE` | Définir et appliquer une custody réellement froide |
-| `AID-005` | preuve insuffisante | Ajouter les tests nécessaires pour démontrer AID-001 et AID-002 |
+| `AID-001` | `PARTIAL` | Close the DID schema and validate version, signature metadata, and all four key codecs |
+| `AID-002` | `SEMANTIC_FALSE_POSITIVE` | Actually verify the previous document, transition, and presented successor document |
+| `AID-003` | `PARTIAL` | Remove succession derivation from the owner master secret |
+| `AID-004` | `DECISION_REQUIRED` | Define and enforce genuinely cold custody |
+| `AID-005` | insufficient proof | Add the tests required to demonstrate AID-001 and AID-002 |
 
-AID-005 est inclus uniquement comme preuve corrective des scénarios existants,
-pas comme campagne générale de recherche de tests manquants.
+AID-005 is included only as correction evidence for existing scenarios, not as
+a general search for missing tests.
 
-## Preuves consignées
+## Recorded evidence
 
 ```text
-Runner ciblé :
+Targeted runner:
 1 feature
 6 rules
 9 scenarios (9 passed)
@@ -55,7 +60,7 @@ a1_genesis: 4 passed
 a2_did:     3 passed
 ```
 
-Des sondes négatives temporaires ont rapporté :
+Temporary negative probes reported:
 
 ```text
 signed malformed non-root keys accepted: true
@@ -65,18 +70,18 @@ transition to malformed DID accepted: true
 transition to same DID accepted: true
 ```
 
-Les sondes temporaires n'ont pas été conservées dans le dépôt ; les tests RED
-durables faisaient partie de la correction demandée.
+The temporary probes were not retained in the repository. Durable RED tests
+were part of the requested correction.
 
-## Artefacts produits
+## Produced artifacts
 
-- commentaires et tags d'audit dans `features/a-identity.feature` ;
-- audit public `docs/audits/features/a-identity.md` ;
-- identifiants stables AID-001 à AID-005 ;
-- critères de clôture et tests RED attendus.
+- audit comments and tags in `features/a-identity.feature`;
+- public audit `docs/audits/features/a-identity.md`;
+- stable identifiers AID-001 through AID-005;
+- closure criteria and expected RED tests.
 
-## Handoff demandé
+## Requested handoff
 
-Lancer `correct-a-identity` sur AID-001, AID-002 et les preuves AID-005.
-Ne pas traiter AID-003/AID-004 sans décision d'architecture. Demander ensuite
-une review indépendante à `audit-a-identity`.
+Run `correct-a-identity` for AID-001, AID-002, and the AID-005 evidence.
+Do not address AID-003/AID-004 without an architecture decision. Then request
+an independent review from `audit-a-identity`.

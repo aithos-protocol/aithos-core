@@ -1,31 +1,31 @@
-# État du domaine `a-identity`
+# Domain state — `a-identity`
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
-| Statut | `REVIEW_REQUESTED` |
-| Mode attendu | `review` |
+| Status | `REVIEW_REQUESTED` |
+| Expected mode | `review` |
 | Round | 1 |
-| Baseline d'audit | `be2d098eeb79107c861462a6433df9ef45871265` |
-| Commit de correction | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
-| Branche du correcteur | `fix/aid-001-002-005-identity-fail-closed` |
-| Findings candidats | `AID-001`, `AID-002`, `AID-005` |
-| Findings hors correction | `AID-003`, `AID-004` |
-| Prochain rôle | `audit-a-identity` |
-| Conclusion attendue | `auditor/runs/<date>-audit-review-01.md` |
+| Audit baseline | `be2d098eeb79107c861462a6433df9ef45871265` |
+| Correction commit | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
+| Corrector branch | `fix/aid-001-002-005-identity-fail-closed` |
+| Candidate findings | `AID-001`, `AID-002`, `AID-005` |
+| Findings outside correction | `AID-003`, `AID-004` |
+| Next role | `audit-a-identity` |
+| Expected conclusion | `auditor/runs/<date>-audit-review-01.md` |
 
-## Entrées
+## Inputs
 
-- audit public : `docs/audits/features/a-identity.md` ;
-- audit initial reconstruit :
-  `auditor/runs/2026-07-29-audit-initial-reconstructed.md` ;
-- correction reconstruite :
+- public audit: `docs/audits/features/a-identity.md`;
+- reconstructed initial audit:
+  `auditor/runs/2026-07-29-audit-initial-reconstructed.md`;
+- reconstructed correction:
   `corrector/runs/2026-07-29-correction-01-reconstructed.md`.
 
-## Instruction courante
+## Current instruction
 
-Reviewer le commit de correction contre la baseline. Ne pas implémenter de
-changement. Reproduire les preuves, accepter ou refuser chaque finding
-séparément, puis mettre à jour cet état.
+Review the correction commit against the baseline. Do not implement changes.
+Reproduce the evidence, accept or reject each finding independently, then
+update this state.
 
-Le commit `56436f3` est une entrée immuable. Toute modification ultérieure doit
-produire un nouveau commit et un nouveau round.
+Commit `56436f3` is an immutable input. Any later modification must produce a
+new commit and a new round.

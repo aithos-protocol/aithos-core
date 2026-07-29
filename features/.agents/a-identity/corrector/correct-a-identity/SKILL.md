@@ -1,28 +1,30 @@
 ---
 name: correct-a-identity
-description: Corriger exclusivement les findings Identity explicitement demandés dans features/.agents/a-identity/STATE.md. Utiliser ce skill pour modifier les chemins DID, succession ou transition d'époque et leurs tests après un audit a-identity, sans élargir le périmètre ni auto-valider la correction.
+description: Correct only the Identity findings explicitly assigned by features/.agents/a-identity/STATE.md. Use this skill after an a-identity audit to change DID, succession, or epoch-transition paths and their tests without broadening scope or self-verifying the correction.
 ---
 
-# Corriger `a-identity.feature`
+# Correct `a-identity.feature`
 
-1. Lire complètement `../../../shared/correct-gherkin-feature/SKILL.md`.
-2. Lire complètement `../../DOMAIN.md` et `../../STATE.md`.
-3. Lire l'audit public et la dernière conclusion de l'auditeur.
-4. Traiter uniquement les findings assignés par l'état.
+1. Read `../../../shared/correct-gherkin-feature/SKILL.md` completely.
+2. Read `../../DOMAIN.md` and `../../STATE.md` completely.
+3. Read the public audit and the auditor's latest conclusion.
+4. Address only the findings assigned by state.
 
-## Règles du domaine
+## Domain rules
 
-- Porter les invariants DID partagés dans `aithos-core`, pas dans un step.
-- Fermer le parsing wire avant toute reconstruction du JCS vérifié.
-- Lier explicitement précédent, transition et successeur.
-- Vérifier les surfaces qui consomment le verdict Core.
-- Préserver les vecteurs positifs byte-exacts sauf décision normative contraire.
-- Ne pas traiter AID-003 ou AID-004 sans assignation explicite.
+- Put shared DID invariants in `aithos-core`, not in a step definition.
+- Close wire parsing before reconstructing verified JCS.
+- Bind the previous document, transition declaration, and successor
+  explicitly.
+- Check the public surfaces that consume the Core verdict.
+- Preserve byte-exact positive vectors unless a normative decision says
+  otherwise.
+- Do not address AID-003 or AID-004 without explicit assignment.
 
 ## Handoff
 
-- Écrire la conclusion dans `../runs/`.
-- Consigner baseline, commit, RED, GREEN et fichiers modifiés.
-- Marquer les findings au plus `IMPLÉMENTÉ`.
-- Demander une review à `audit-a-identity`.
-- Positionner `STATE.md` sur `REVIEW_REQUESTED`.
+- Write the conclusion under `../runs/`.
+- Record baseline, candidate commit, RED, GREEN, and changed files.
+- Move findings at most to `IMPLEMENTED`.
+- Request review from `audit-a-identity`.
+- Set `STATE.md` to `REVIEW_REQUESTED`.

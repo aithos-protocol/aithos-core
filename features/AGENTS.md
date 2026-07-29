@@ -1,41 +1,39 @@
-# Domaine des features Gherkin
+# Gherkin feature domain
 
-Ces instructions s'appliquent à tout travail initié depuis `features/`.
+These instructions apply to all work started from `features/`.
 
-## Routage obligatoire
+## Mandatory routing
 
-Avant d'auditer ou de corriger une feature :
+Before auditing or correcting a feature:
 
-1. lire `.agents/PROCESS.md` ;
-2. trouver son domaine sous `.agents/<nom-de-feature>/` ;
-3. lire `DOMAIN.md` et `STATE.md` ;
-4. charger le skill spécialisé indiqué par `STATE.md` ;
-5. respecter le rôle demandé sans anticiper l'étape suivante.
+1. read `.agents/PROCESS.md`;
+2. locate its domain under `.agents/<feature-name>/`;
+3. read `DOMAIN.md` and the routing fields in `STATE.md`;
+4. load the specialized skill named by `STATE.md`;
+5. respect the requested role and do not anticipate the next stage.
 
-Pour `a-identity.feature` :
+For `a-identity.feature`:
 
-- audit ou review :
-  `.agents/a-identity/auditor/audit-a-identity/SKILL.md` ;
-- correction :
+- audit or review:
+  `.agents/a-identity/auditor/audit-a-identity/SKILL.md`;
+- correction:
   `.agents/a-identity/corrector/correct-a-identity/SKILL.md`.
 
-## Frontières des rôles
+## Role boundaries
 
-- L'auditeur inspecte, classe, documente et review. Il ne corrige pas le code
-  de production.
-- Le correcteur implémente les findings demandés. Il peut marquer un finding
-  `IMPLÉMENTÉ`, jamais `VÉRIFIÉ`.
-- Le reviewer d'impacts intervient uniquement après une review acceptée. Il
-  signale les autres features potentiellement touchées sans les modifier ni
-  les relancer.
-- Si une review découvre un choix de protocole ou de produit, positionner le
-  domaine sur `DECISION_REQUIRED`. Aucun correcteur ne doit trancher ce choix.
+- The auditor inspects, classifies, documents, and reviews. It does not correct
+  production code.
+- The corrector implements only the requested findings. It may mark a finding
+  `IMPLEMENTED`, never `VERIFIED`.
+- The impact reviewer runs only after an accepted review. It reports other
+  features that may be affected without changing or restarting them.
+- If a review exposes a protocol or product choice, set the domain to
+  `DECISION_REQUIRED`. A corrector must not make that choice implicitly.
 
-L'audit courant porte uniquement sur la vérité sémantique des scénarios
-existants qui passent. La recherche de scénarios entièrement manquants est
-hors périmètre. Les tests supplémentaires nécessaires pour prouver un
-correctif demandé restent dans le périmètre.
+The current audit scope is limited to the semantic truth of existing passing
+scenarios. Searching for entirely missing scenarios is out of scope.
+Additional tests needed to prove a requested correction remain in scope.
 
-Les commentaires des `.feature` pointent vers les audits publics de
-`docs/audits/features/`. Les conclusions opérationnelles et les handoffs
-restent sous `.agents/`.
+Comments in `.feature` files point to the public audits under
+`docs/audits/features/`. Operational conclusions and handoffs stay under
+`.agents/`.
