@@ -24,6 +24,9 @@ même lorsqu'ils contiennent un résultat de test valable à leur date.
   fichier par fichier, des contrats `features/*.feature` ; ils distinguent
   scénario exécuté, appel de production réel et conformité effectivement
   prouvée ;
+- [`audits/protocol/delegated-self-orphan-index.md`](audits/protocol/delegated-self-orphan-index.md) :
+  défaut confirmé de désynchronisation possible entre l'index `self` et ses
+  descripteurs lors d'une création déléguée ;
 - [`HANDOFF-GATEWAY-COMPAGNON-DEMO-INTEGREE-2026-07-22.md`](HANDOFF-GATEWAY-COMPAGNON-DEMO-INTEGREE-2026-07-22.md) :
   audience G4, CORS Gateway/Provider et bundle de démo ; implémentation locale
   présente, gate navigateur live et intégration Git encore à clore ;
@@ -72,6 +75,31 @@ intégrée.
   explicitement une preuve live datée, pas une sonde actuelle ;
 - [`CONFORMANCE.md`](CONFORMANCE.md), mesure du jalon K du 11 juillet, antérieure
   à CB13 et aux surfaces WASM/Gateway actuelles.
+
+## Propositions non adoptées
+
+Les documents de [`proposals/`](proposals/) sont des entrées de décision. Ils
+ne modifient ni la spécification, ni le périmètre revendiqué, ni
+l'implémentation tant qu'un décideur et des gates d'acceptation ne sont pas
+enregistrés.
+
+- [`proposals/mvp-profile-draft2.md`](proposals/mvp-profile-draft2.md) :
+  limiter explicitement le profil de mandat revendiqué par le MVP ;
+- [`proposals/index-sharding.md`](proposals/index-sharding.md) : évolution du
+  layout des index, avec compatibilité et migration encore à concevoir ;
+- [`proposals/header-rotation-authority.md`](proposals/header-rotation-authority.md) :
+  rendre vérifiable l'autorité du signataire d'une rotation ;
+- [`proposals/scoped-self-writes.md`](proposals/scoped-self-writes.md) :
+  étendre éventuellement les scopes d'écriture `self`, après fermeture du
+  défaut d'orphelin.
+
+## Recherche non vérifiée
+
+[`research/topology-2026-07-28-unverified/`](research/topology-2026-07-28-unverified/)
+conserve l'inventaire manuel de 1 140 capacités produit le 28 juillet. Ses
+agrégats et verdicts ne sont pas une preuve de conformité. La synthèse, le plan
+MVP et le CSV dérivé ont été retirés car leurs classifications et leurs totaux
+n'étaient pas reproductibles.
 
 ## Archives — ne pas utiliser comme plans de reprise
 
