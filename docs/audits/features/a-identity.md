@@ -6,30 +6,62 @@
 |---|---|
 | Feature auditée | `features/a-identity.feature` |
 | Date | 2026-07-29 |
-| Révision Git observée | `2fee855` (audit initial) ; `be2d098` + correctif AID-001/002/005 (cette révision) |
-| État observé | Correctif appliqué sur la branche `fix/aid-001-002-005-identity-fail-closed`, baseline `be2d098` propre pour les gates rejoués |
+| Révision Git observée | `2fee855` (audit initial) ; review de `be2d098..56436f3` depuis `0601b9f` |
+| État observé | Worktree `codex/review-a-identity` propre avant review ; commit candidat `56436f3` immuable, rejoué dans une archive exacte avec `aithos-client` `c6f6151` disposé en dépendance sœur |
 | Runner principal | `aithos-bundle --test cucumber` |
 | Implémentation principale | `aithos-core::{keys,did,derive,wire}` |
 | Surfaces contrôlées | Core, Bundle, CLI, WASM, Gateway et Provider lorsque l'exigence Identity les concerne |
-| Statut de la note | **PARTIELLEMENT CLÔTURÉE** — AID-001, AID-002 et AID-005 `IMPLÉMENTÉ` ; AID-003 et AID-004 restent `OUVERT` |
+| Statut de la note | **CORRECTION REDEMANDÉE APRÈS REVIEW** — AID-002 `VÉRIFIÉ` ; AID-001 et AID-005 refusés séparément ; AID-003 et AID-004 restent `OUVERT` |
 
 ## Verdict
+
+### Review indépendante du round 1 (2026-07-29)
+
+- **AID-001 — REFUSÉ.** Le durcissement Core, la fermeture du wire et les
+  chemins Bundle, WASM/mandates, Catalog, Gateway et client satisfont les
+  critères ciblés. Le chemin Provider
+  `artifacts::deposit_did`, en revanche, conserve un parseur/vérificateur
+  parallèle pour le remplacement de `did.json` : il accepte une signature
+  `#succession`, ne valide pas la version, ne valide pas `kex`, et ne construit
+  pas de `VerifyingKey` pour les trois champs Ed25519 entrants. Il peut donc
+  persister un document que `DidDocument::verify` refusera ensuite. La réserve
+  documentaire ne satisfait pas le critère initial « même verdict strict,
+  aucun parseur permissif parallèle » et expose un effet partiel durable.
+- **AID-002 — VÉRIFIÉ.** `verify_succession(prev, next)` valide les deux
+  documents, la déclaration, les deux liaisons DID et la distinction des
+  identités. Le `Then` Gherkin transmet effectivement `next_doc`; les négatifs
+  ont chacun leur propre verdict. Le remplacement Provider sous le même DID
+  reste explicitement nommé comme une opération distincte qui ne prétend pas
+  implémenter la transition d'époque §10.4.
+- **AID-005 — REFUSÉ.** Les 21 cas Gherkin ajoutés sont honnêtes, sélectionnés
+  et verts, mais le finding initial n'est pas entièrement livré : aucun
+  vecteur A2 négatif généré indépendamment n'a été ajouté, aucun gate ciblé ne
+  fait échouer le run sur un compte autre que 30, et le scénario de cérémonie
+  réelle reste reporté sur AID-003. Les nombres RED obtenus avec des shims
+  temporaires sont seulement rapportés par le correcteur ; ils ne sont pas
+  reproductibles depuis les deux commits immuables sans modifier le Rust.
+
+La review renvoie donc AID-001 et AID-005 au correcteur. AID-003 et AID-004
+n'ont été ni fermés ni modifiés.
 
 ### Après correctif (2026-07-29)
 
 La feature compte désormais **30 scénarios** — les 9 d'origine plus 21 cas
 négatifs — tous sélectionnés et exécutant du vrai code de production :
 
-- AID-001 `IMPLÉMENTÉ` — `DidDocument::verify` valide la version, les
+- AID-001 `IMPLÉMENTÉ, REVIEW REFUSÉE` — `DidDocument::verify` valide la version, les
   métadonnées de signature et les quatre clés sous leur codec propre ; le
   schéma wire est fermé (`deny_unknown_fields`) sur `DidDocument`, `DidKeys`,
-  `SignatureBlock` et `EpochTransition`.
-- AID-002 `IMPLÉMENTÉ` — `EpochTransition::verify(prev)` est remplacée par
+  `SignatureBlock` et `EpochTransition`. Le remplacement Provider reste un
+  contournement parallèle du verdict strict.
+- AID-002 `VÉRIFIÉ` — `EpochTransition::verify(prev)` est remplacée par
   `verify_declaration(prev)` (déclaration seule, nommée comme telle) et
   `verify_succession(prev, next)` (triplet complet). Le `Then` Gherkin
   transmet et vérifie réellement `next_doc` : le faux positif est levé.
-- AID-005 `IMPLÉMENTÉ` — chaque ligne Gherkin construit son défaut propre,
-  appelle l'API de production correspondante et vérifie son verdict propre.
+- AID-005 `IMPLÉMENTÉ EN PARTIE, REVIEW REFUSÉE` — chaque ligne Gherkin
+  livrée construit son défaut propre, appelle l'API de production
+  correspondante et vérifie son verdict propre, mais trois exigences initiales
+  restent ouvertes.
 - AID-003 et AID-004 restent `OUVERT` : hors périmètre du correctif, ils
   exigent une décision d'architecture (source d'entropie de succession pour
   les créations Gateway, définition normative de la garde froide). Leurs
@@ -53,9 +85,64 @@ contrat :
 
 ## Preuves rejouées
 
-### Après correctif — RED puis GREEN
+### Review indépendante du commit candidat
 
-Les gates ci-dessous ont été rejoués sur un environnement Linux
+Le worktree de review ne pouvait pas résoudre directement le lockfile : le
+`aithos-client` frère à `c6f6151` référence le worktree principal
+`../aithos-core`, ce qui crée deux packages `aithos-bundle` de même
+nom/version. Les tests ont donc été rejoués sans modifier le dépôt dans une
+archive exacte de `56436f3`, accompagnée d'une archive exacte du client
+`c6f6151` sous le layout frère attendu.
+
+```text
+cargo test -p aithos-core --test a1_genesis --test a2_did
+  a1_genesis : 4 passed
+  a2_did     : 6 passed
+
+cargo test -p aithos-bundle --test aid_identity_surfaces
+  2 passed
+
+cargo test -p aithos-bundle --test cucumber
+  18 features
+  836 scenarios (836 passed)
+  3568 steps (3568 passed)
+```
+
+La sortie Cucumber énumère les **30 scénarios Identity** et leurs 93 steps,
+tous exécutés et passés.
+
+```text
+cargo test --workspace --no-fail-fast
+  EXIT=101
+  28 cibles en échec sur `Operation not permitted`
+```
+
+Le gate workspace a compilé Core, Bundle, WASM, le client, Gateway et Provider.
+Les cibles Identity sont vertes dans ce run. Les échecs concernent les tests
+CLI/Gateway/Provider qui ouvrent des sockets ou services locaux interdits par
+le sandbox. Une relance hors sandbox a été demandée puis refusée par la
+politique d'exécution ; ce gate global reste donc **non concluant pour raison
+environnementale**, et non transformé en succès.
+
+```text
+cargo fmt --all -- --check
+  EXIT=1
+  rust/crates/aithos-gateway/src/core_bridge.rs:1355
+```
+
+Le blob concerné est byte-identique entre `be2d098` et `56436f3`
+(`774672a0…`) : l'écart de formatage est préexistant et hors du diff candidat.
+
+Les nombres RED « 3 tests A2 » et « 18 scénarios sur 21 » ci-dessous restent
+des résultats rapportés par le correcteur. Les shims utilisés pour les obtenir
+ne sont pas versionnés ; l'auditeur n'a donc pas présenté ces nombres comme
+reproduits. Le diff de baseline établit néanmoins statiquement les défauts :
+l'ancien `DidDocument::verify` n'examinait que root/id/signature, et l'ancien
+`EpochTransition::verify` ne recevait aucun document successeur.
+
+### Résultats rapportés par le correcteur — RED puis GREEN
+
+Le handoff de correction rapporte que les gates ci-dessous ont été rejoués sur un environnement Linux
 (`rustc 1.95.0`), avec `aithos-client` monté en dépendance sœur à sa révision
 `c6f6151`.
 
@@ -209,7 +296,7 @@ Statuts **après correctif**. La colonne « avant » rappelle l'audit initial.
 
 ### AID-001 — Vérification DID stricte et fermée
 
-**Priorité : P1 — IMPLÉMENTÉ (2026-07-29)**
+**Priorité : P1 — REVIEW REFUSÉE, ROUND 1 (2026-07-29)**
 
 #### Constat (avant correctif)
 
@@ -268,23 +355,27 @@ l'algorithme cessent d'être des littéraux dispersés : `SIGNATURE_ALG`,
 - [x] Rejeu de tous ces cas via `Bundle::open`, `Bundle::verify` et
   `verify_chain` (`aithos-bundle/tests/aid_identity_surfaces.rs`).
 
-#### Clôture
+#### Review indépendante
 
-Tous les cas négatifs sont refusés par le même verdict Core. A2 positif reste
-byte-identique (`a2_did_document_matches_and_verifies` inchangé). Aucune
-surface ne réinterprète ni ne supprime silencieusement un champ avant
-vérification.
+Les cas négatifs Core sont refusés, A2 positif reste byte-identique et les
+chemins Bundle/WASM/Catalog/Gateway/client rejoignent le verdict strict.
+Le finding n'est toutefois pas clos : le remplacement Provider
+`artifacts::deposit_did` conserve un vérificateur `Value` parallèle sous
+`#succession`, sans contrôle de version ni de `kex`, et sans validation des
+points Ed25519 entrants. Il peut persister un `did.json` que
+`DidDocument::verify` refusera ensuite.
 
-**Réserve, à trancher hors de ce correctif :** le remplacement `did.json` du
+**Blocage à corriger ou arbitrer explicitement :** le remplacement `did.json` du
 Provider (`artifacts::deposit_did`) reste une vérification distincte, signée
 sous `#succession` du document stocké, et n'appelle donc pas `verify()` sur le
 document entrant. C'est l'arbitrage nommé de la décision 2 ci-dessous, laissé
 inchangé : le durcir ici aurait cassé le fixture P9 `did_rotation_ok` sans
-décision préalable.
+décision préalable. Une réserve dans l'audit ne suffit pas à satisfaire le
+critère de clôture AID-001.
 
 ### AID-002 — Lier la transition au document successeur réel
 
-**Priorité : P1 — IMPLÉMENTÉ (2026-07-29)**
+**Priorité : P1 — VÉRIFIÉ, ROUND 1 (2026-07-29)**
 
 #### Constat (avant correctif)
 
@@ -349,7 +440,7 @@ changement d'API ne casse donc aucune surface.
 - [x] Cas positif complet : le JCS A2 de la transition reste byte-identique et
   `verify_succession(doc1, doc2)` l'accepte.
 
-#### Clôture
+#### Review indépendante
 
 Le `Then` Gherkin transmet et valide réellement `next_doc`. La différence du
 Provider est explicitement nommée (voir la réserve AID-001 et la décision 2) et
@@ -449,7 +540,7 @@ par les surfaces, et pas seulement un commentaire dans `keys.rs`.
 
 ### AID-005 — Renforcer le contrat Gherkin et les vecteurs
 
-**Priorité : P2 — IMPLÉMENTÉ EN MAJEURE PARTIE (2026-07-29)**
+**Priorité : P2 — REVIEW REFUSÉE, ROUND 1 (2026-07-29)**
 
 #### Implémentation livrée
 
@@ -479,12 +570,17 @@ par les surfaces, et pas seulement un commentaire dans `keys.rs`.
   Le compte est pour l'instant contrôlé à la main : 30 scénarios pour
   `a-identity.feature`, 836 pour le runner `aithos-bundle`.
 
-#### Clôture partielle
+#### Review indépendante
 
 Chaque ligne Gherkin ajoutée construit son défaut propre, appelle l'API de
 production correspondante et vérifie son verdict propre. Aucun step n'est
 `@wip`, vide, mocké ni adossé à un verdict `OnceLock`. Les tests A1/A2
 autonomes restent des preuves complémentaires et A2 positif est inchangé.
+
+Le finding initial reste néanmoins incomplet : les trois cases encore ouvertes
+ci-dessus ne sont ni livrées ni arbitrées hors périmètre. En outre, les nombres
+RED du correcteur reposent sur des shims temporaires absents des commits
+immuables. AID-005 reste donc demandé pour un round 2.
 
 ## Décisions à trancher
 
@@ -511,8 +607,8 @@ avant que l'implémentation ne les fige implicitement.
 La note pourra passer à **VÉRIFIÉE** lorsque :
 
 - [ ] AID-001 à AID-005 sont clôturés ou explicitement arbitrés hors périmètre
-  — **AID-001, AID-002 et AID-005 (majeure partie) faits ; AID-003 et AID-004
-  restent ouverts** ;
+  — **AID-002 vérifié ; AID-001 et AID-005 refusés en review ; AID-003 et
+  AID-004 restent ouverts** ;
 - [x] aucun scénario `a-identity.feature` n'est `@wip`, proxy ou vide ;
 - [ ] le runner ciblé exécute exactement le nombre attendu de scénarios
   — compte contrôlé à la main (30), pas encore par un gate ;
@@ -520,20 +616,23 @@ La note pourra passer à **VÉRIFIÉE** lorsque :
 - [x] les nouveaux négatifs échouent avant correction puis passent après
   — 18 des 21 scénarios ajoutés et 3 des 6 tests `a2_did` sont RED contre
   l'ancienne sémantique ; les autres sont des non-régressions assumées ;
-- [x] Core, Bundle, WASM (via `verify_chain`), Gateway et Provider partagent le
-  même verdict pour les objets DID — à la réserve nommée du remplacement
-  `did.json` Provider (décision 2) ;
+- [ ] Core, Bundle, WASM (via `verify_chain`), Gateway et Provider partagent le
+  même verdict pour les objets DID — le remplacement `did.json` Provider reste
+  un vérificateur parallèle qui peut persister un document refusé par Core ;
 - [x] `cargo test -p aithos-core --test a1_genesis --test a2_did` passe
   (4 + 6 tests) ;
 - [x] le runner Cucumber passe (836 scénarios, 3568 steps) ;
-- [x] les gates workspace et Clippy passent ; le formatage passe hors d'un
-  écart préexistant et hors périmètre dans `aithos-gateway` ;
+- [ ] les gates workspace et Clippy passent — le workspace gate de review est
+  non concluant à cause des sockets interdites par le sandbox ; Clippy n'a pas
+  été rejoué ; le formatage échoue uniquement sur un écart préexistant et hors
+  diff dans `aithos-gateway` ;
 - [x] la révision Git de clôture et les résultats exacts sont inscrits ici.
 
 ## Historique
 
 | Date | État | Note |
 |---|---|---|
+| 2026-07-29 | `REVIEW REFUSÉE — ROUND 1` | Review indépendante de `be2d098..56436f3` : AID-002 `VÉRIFIÉ`; AID-001 refusé sur le vérificateur parallèle de remplacement Provider ; AID-005 refusé car trois exigences initiales restent ouvertes et les RED à shims ne sont pas reproductibles depuis les commits immuables. Gates ciblés verts : A1 4, A2 6, surfaces 2, Cucumber 836/836 dont 30 Identity. Workspace non concluant sous sandbox ; formatage préexistant hors diff. |
 | 2026-07-29 | `PARTIELLEMENT CLÔTURÉE` | Correctif AID-001, AID-002 et AID-005 sur `fix/aid-001-002-005-identity-fail-closed`. `DidDocument::verify` durcie et schéma wire fermé ; `EpochTransition::verify` remplacée par `verify_declaration` + `verify_succession` ; feature portée de 9 à 30 scénarios ; nouveau test de rejeu de surfaces. Baseline 627 tests / 815 scénarios → 632 tests / 836 scénarios, 0 échec, aucune régression. AID-003 et AID-004 restent ouverts et leurs marqueurs restent dans la feature. |
 | 2026-07-29 | `ANNOTÉE` | Marqueurs inline ajoutés sans exclusion : `@audit-partial` sur AID-001/AID-003/AID-004 et `@audit-false-positive` sur AID-002 ; rejeu ciblé inchangé, 9 scénarios et 30 steps passés. |
 | 2026-07-29 | `OUVERTE` | Audit initial : neuf scénarios verts, trois écarts d'implémentation principaux et deux renforcements de preuve requis. |
