@@ -74,4 +74,4 @@ presented as a silent substitute for another.
 
 | Feature | Note | Current verdict |
 |---|---|---|
-| `a-identity.feature` | [`a-identity.md`](a-identity.md) | Round 1 review: protocol decision required for AID-001; AID-002/005 verified within pilot scope; AID-003/004 open |
+| `a-identity.feature` | [`a-identity.md`](a-identity.md) | Round 2 audit and impact review complete; AID-001/002/005 verified within pilot scope; AID-003 open; AID-004 decision required |

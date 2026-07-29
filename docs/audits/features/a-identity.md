@@ -11,7 +11,7 @@
 | Primary runner | `aithos-bundle --test cucumber` |
 | Primary implementation | `aithos-core::{keys,did,derive,wire}` |
 | Inspected surfaces | Core, Bundle, CLI, WASM, Gateway, Client, and Provider where Identity requirements apply |
-| Note status | **ROUND 2 REVIEW ACCEPTED** — AID-001, AID-002, and AID-005 are `VERIFIED` within pilot scope; AID-003 and AID-004 remain `OPEN`; Gherkin impact review is requested |
+| Note status | **ROUND 2 IMPACT REVIEW COMPLETE** — AID-001, AID-002, and AID-005 are `VERIFIED` within pilot scope; AID-003 remains `OPEN`; AID-004 remains `DECISION_REQUIRED`; no cross-feature `FULL_AUDIT` is required |
 
 ## Method provenance
 
@@ -555,6 +555,7 @@ This audit may become fully `VERIFIED` when:
 
 | Date | State | Note |
 |---|---|---|
+| 2026-07-29 | `IMPACT_REVIEW_COMPLETE — ROUND 2` | Human-accepted impact review classified all 52 other Gherkin files: no `FULL_AUDIT`, one already-covered Provider target, and two non-blocking manual follow-ups. AID-003/AID-004 remain unresolved and visible. |
 | 2026-07-29 | `REVIEW_ACCEPTED — ROUND 2` | Independent two-pass review verifies the AID-001 Provider remainder on `dfb79c8..e6fc5dc`: strict Core verification, atomic write-once persistence, baseline-detecting regressions, and refusal rollback. Impact review requested; epoch-triplet transport remains undefined and fail-closed. |
 | 2026-07-29 | `REVIEW_REQUESTED — ROUND 2` | AID-001 Provider candidate removes succession-signed same-DID replacement, composes strict Core verification with atomic write-once storage, updates P9, and proves refusal rollback. Canonical epoch-triplet transport/storage remains explicitly undefined and fail-closed. |
 | 2026-07-29 | `CORRECTION_REQUESTED — ROUND 2` | Human protocol decision: Provider adopts §10.4 epoch transition. DID documents remain root-signed, succession signs only the separate transition, new root means new DID, and same-DID succession-signed replacement is forbidden. |

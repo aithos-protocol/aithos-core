@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | `IMPACT_REVIEW_REQUESTED` |
-| Expected mode | `impact review` |
+| Status | `COMPLETE` (round 2 audit and impact-review cycle) |
+| Expected mode | none |
 | Round | 2 |
 | Initial audit baseline | `be2d098eeb79107c861462a6433df9ef45871265` |
 | Reviewed round 1 candidate | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
@@ -15,9 +15,10 @@
 | Candidate finding status | `AID-001` Provider remainder is `VERIFIED` |
 | Findings already verified | `AID-002`, `AID-005` (pilot scope) |
 | Findings outside correction | `AID-003`, `AID-004` |
-| Next role | `review-gherkin-impacts` |
+| Next role | manual follow-up owner for `AID-003` / `AID-004` or a new explicitly requested round |
 | Correction conclusion | `corrector/runs/2026-07-29-correction-02.md` |
 | Accepted review conclusion | `auditor/runs/2026-07-29-audit-review-02.md` |
+| Accepted impact review | `../orchestrator/runs/2026-07-29-a-identity-impact-review.md` |
 
 ## Inputs
 
@@ -79,8 +80,12 @@ The canonical Provider transport/storage contract for the previous document /
 `EpochTransition` / successor document triplet remains undefined and
 fail-closed. `AID-003` and `AID-004` remain open.
 
-## Impact-review handoff
+## Completed impact review
 
-Run `review-gherkin-impacts` against the accepted immutable range above.
-Classify affected Gherkin surfaces and produce the orchestrator impact report;
-do not reopen the accepted audit without new evidence.
+The accepted impact review classified all other Gherkin surfaces and found no
+`FULL_AUDIT` dependency. It recommends only the separately tracked §10.4
+wording clarification and narrow Gateway replication regressions.
+
+This completes the round 2 audit and impact-review cycle. It does not relabel
+`AID-003` or `AID-004`: they remain visible, unresolved findings and require a
+new explicit decision/correction round before their markers may be removed.
