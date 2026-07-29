@@ -1,8 +1,7 @@
 # Runbook — suite locale OLR OAuth libs (amont)
 
 Date : 2026-07-22
-Worktree officiel isolé : `_isolated/aithos-core-official-olr-oauth-libs`
-Branche : `codex/olr-oauth-libs-upstream`
+Branche d'intégration : `codex/integrate-olr-oauth-libs`
 
 ## Ce qui est livré
 
@@ -14,7 +13,8 @@ Branche : `codex/olr-oauth-libs-upstream`
 ## Lancer la suite
 
 ```bash
-cd /Volumes/Math17/aithos/v2/_isolated/aithos-core-official-olr-oauth-libs
+cd /chemin/vers/aithos-core
+git switch codex/integrate-olr-oauth-libs
 chmod +x scripts/run-olr-oauth-local.sh
 ./scripts/run-olr-oauth-local.sh
 ```
@@ -26,6 +26,10 @@ cd rust
 cargo test -p aithos-gateway --features olr-oauth-libs oauth_protocol --lib
 cargo test -p aithos-gateway --features olr-oauth-libs \
   --test olr_oauth2_e2e -- --nocapture
+cargo test -p aithos-gateway --features olr-oauth-libs \
+  --test oac_protocol -- --nocapture
+cargo test -p aithos-gateway --features olr-oauth-libs \
+  --test olr_oidc_e2e -- --nocapture
 ```
 
 Cucumber historique (moteur native, optionnel) :
@@ -43,6 +47,9 @@ cargo test -p aithos-gateway --test cucumber -- \
 2. Client public + refresh `invalid_grant` fail-closed / `reauth_required`
 3. Override env `AITHOS_UPSTREAM_OAUTH_ENGINE=oauth2` malgré config `native`
 4. PKCE S256 RFC 7636 appendix B
+5. OIDC : issuer, audience, signature, nonce, expiration et taille JWKS hostiles
+6. Refresh multi-instance : une seule rotation par lease CAS Vault
+7. Commit Vault perdu après rotation : aucun bearer et reprise fail-closed
 
 Le callback consomme le pending par CAS avant l'échange. Vault KV v2 est
 supporté nativement ; un broker OAuth alternatif doit implémenter
@@ -64,4 +71,4 @@ servers:
 
 - Provider / relai `aithos.fr`
 - OAuth entrant G3/G4 (OLR-6)
-- Live Google / OIDC réel (OLR-3+)
+- Live Google / OIDC réel (gate OLR-5)

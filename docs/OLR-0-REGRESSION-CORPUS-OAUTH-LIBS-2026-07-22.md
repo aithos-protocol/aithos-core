@@ -1,7 +1,7 @@
 # OLR-0 — Corpus de régression OAuth libs (amont)
 
 Date : 2026-07-22
-Branche : `codex/olr-oauth-libs-upstream`
+Branche d'intégration : `codex/integrate-olr-oauth-libs`
 Base locale seed : `044c497`
 Suite BDD ancre : `gateway-upstream-oauth.feature`
 
@@ -44,8 +44,8 @@ verifier ne doit apparaître dans les artefacts publics listés.
 | ID | Intention | Preuve |
 | --- | --- | --- |
 | C-01 | Deux instances gateway, callbacks parallèles même `state` | CAS Vault : un seul succès ; second = rejeu avant token endpoint |
-| C-02 | Refresh concurrent sur access expiré | une rotation gagnante ; Vault cohérent |
-| C-03 | Échec d'écriture Vault après token endpoint | ancien état conservé (pas de half-apply) |
+| C-02 | Deux instances refreshent le même access expiré | lease CAS Vault : un seul appel token ; la seconde instance refuse pendant la rotation |
+| C-03 | Échec d'écriture Vault après rotation fournisseur | état `refreshing` fail-closed ; aucun bearer ancien/nouveau ; reprise après lease puis `reauth_required` si l'ancien refresh a été invalidé |
 
 ## 4. Matrice fournisseur (à remplir aux live gates)
 
@@ -63,6 +63,10 @@ cargo test -p aithos-gateway --test cucumber -- \
   --input tests/features/gateway-upstream-oauth.feature
 cargo check -p aithos-gateway
 cargo check -p aithos-gateway --features olr-oauth-libs
+cargo test -p aithos-gateway --features olr-oauth-libs \
+  --test oac_protocol
+cargo test -p aithos-gateway --features olr-oauth-libs \
+  --test olr_oidc_e2e
 ```
 
 Les tests de parité OLR-1 (ancien vs nouveau moteur sur les mêmes vecteurs)

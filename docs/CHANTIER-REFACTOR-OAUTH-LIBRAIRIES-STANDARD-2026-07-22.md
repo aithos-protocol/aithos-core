@@ -2,8 +2,9 @@
 
 Date : 2026-07-22
 
-Statut : **OLR-0 → OLR-4 et gates de code OLR-5 verts localement** sur
-`codex/olr-oauth-libs-upstream` (seam, oauth2, OIDC, discovery JWKS).
+Statut : **OLR-0 → OLR-4 et gates de code OLR-5 intégrés localement** sur
+`codex/integrate-olr-oauth-libs` (seam, oauth2, OIDC, discovery JWKS,
+refresh CAS inter-instance).
 **OLR-5 prêt pour rollout canari, live gates encore requis. OLR-6 borné seulement.**
 Hors provider / relai `aithos.fr`.
 
@@ -87,8 +88,8 @@ La migration doit conserver au minimum :
 5. aucune valeur de token, secret, code, verifier ou réponse sensible dans les
    logs et les erreurs publiques ;
 6. aucun token durable hors Vault ;
-7. rotation du refresh token atomique, avec conservation de l'ancien état si la
-   nouvelle écriture échoue ;
+7. rotation du refresh token sérialisée par lease CAS inter-instance ; aucun
+   ancien ou nouveau bearer n'est utilisable si le commit final échoue ;
 8. réponses réseau bornées avant parsing ;
 9. timeouts, refus TLS hors loopback et politique de redirection HTTP explicite ;
 10. séparation stricte entre identité OAuth/OIDC et autorité Aithos.

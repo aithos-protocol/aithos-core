@@ -145,6 +145,60 @@ impl CredentialBroker for TrackingVault {
         })
     }
 
+    fn compare_and_store<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+        expected: SecretValue,
+        replacement: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<CredentialCompareAndStoreOutcome>> + Send + 'a>> {
+        Box::pin(async move {
+            self.stores
+                .lock()
+                .unwrap()
+                .push((reference.path.clone(), reference.field.clone()));
+            if self.fail_all.load(Ordering::SeqCst)
+                || self.fail_paths.lock().unwrap().contains(&reference.path)
+            {
+                return Err(GatewayError::CredentialUnavailable(
+                    INTERNAL_SENTINEL.to_owned(),
+                ));
+            }
+            let key = (reference.path.clone(), reference.field.clone());
+            let mut values = self.values.lock().unwrap();
+            if values.get(&key).map(String::as_str) != Some(expected.expose()) {
+                return Ok(CredentialCompareAndStoreOutcome::Mismatch);
+            }
+            values.insert(key, replacement.expose().to_owned());
+            Ok(CredentialCompareAndStoreOutcome::Stored)
+        })
+    }
+
+    fn resolve_optional<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<SecretValue>>> + Send + 'a>> {
+        Box::pin(async move {
+            self.resolves
+                .lock()
+                .unwrap()
+                .push((reference.path.clone(), reference.field.clone()));
+            if self.fail_all.load(Ordering::SeqCst)
+                || self.fail_paths.lock().unwrap().contains(&reference.path)
+            {
+                return Err(GatewayError::CredentialUnavailable(
+                    INTERNAL_SENTINEL.to_owned(),
+                ));
+            }
+            Ok(self
+                .values
+                .lock()
+                .unwrap()
+                .get(&(reference.path.clone(), reference.field.clone()))
+                .cloned()
+                .map(SecretValue::new))
+        })
+    }
+
     fn readiness<'a>(
         &'a self,
     ) -> Pin<Box<dyn Future<Output = CredentialBrokerReadiness> + Send + 'a>> {

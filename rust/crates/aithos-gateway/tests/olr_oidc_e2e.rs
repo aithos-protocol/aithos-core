@@ -132,12 +132,37 @@ fn jwks_json() -> String {
     serde_json::to_string(&jwks).unwrap()
 }
 
-fn mint_id_token(issuer: &str, nonce: Option<&str>) -> String {
+#[derive(Clone, Copy, Default)]
+enum IdTokenMode {
+    #[default]
+    Valid,
+    WrongIssuer,
+    WrongAudience,
+    Expired,
+    CorruptSignature,
+}
+
+fn mint_id_token(issuer: &str, nonce: Option<&str>, mode: IdTokenMode) -> String {
+    let issuer = match mode {
+        IdTokenMode::WrongIssuer => "https://attacker.example.test",
+        _ => issuer,
+    };
+    let audience = match mode {
+        IdTokenMode::WrongAudience => "another-client",
+        _ => CLIENT_ID,
+    };
+    let (expires_at, issued_at) = match mode {
+        IdTokenMode::Expired => (
+            Utc::now() - ChronoDuration::seconds(300),
+            Utc::now() - ChronoDuration::seconds(600),
+        ),
+        _ => (Utc::now() + ChronoDuration::seconds(300), Utc::now()),
+    };
     let claims = CoreIdTokenClaims::new(
         IssuerUrl::new(issuer.to_owned()).unwrap(),
-        vec![Audience::new(CLIENT_ID.into())],
-        Utc::now() + ChronoDuration::seconds(300),
-        Utc::now(),
+        vec![Audience::new(audience.into())],
+        expires_at,
+        issued_at,
         StandardClaims::new(SubjectIdentifier::new(SUBJECT.into()))
             .set_email(Some(EndUserEmail::new(EMAIL.into()))),
         EmptyAdditionalClaims {},
@@ -154,14 +179,25 @@ fn mint_id_token(issuer: &str, nonce: Option<&str>) -> String {
         None,
     )
     .expect("sign id_token");
-    id_token.to_string()
+    let mut encoded = id_token.to_string();
+    if matches!(mode, IdTokenMode::CorruptSignature) {
+        let signature_start = encoded.rfind('.').expect("JWT signature separator") + 1;
+        let replacement = if encoded.as_bytes()[signature_start] == b'A' {
+            "B"
+        } else {
+            "A"
+        };
+        encoded.replace_range(signature_start..=signature_start, replacement);
+    }
+    encoded
 }
 
 #[derive(Clone)]
 struct FakeOidc {
     issuer: String,
     nonces: Arc<Mutex<Vec<String>>>,
-    jwks: String,
+    id_token_mode: Arc<Mutex<IdTokenMode>>,
+    jwks: Arc<Mutex<String>>,
 }
 
 async fn spawn_fake_oidc() -> (String, FakeOidc, tokio::task::JoinHandle<()>) {
@@ -170,7 +206,8 @@ async fn spawn_fake_oidc() -> (String, FakeOidc, tokio::task::JoinHandle<()>) {
     let state = FakeOidc {
         issuer: base.clone(),
         nonces: Arc::new(Mutex::new(Vec::new())),
-        jwks: jwks_json(),
+        id_token_mode: Arc::new(Mutex::new(IdTokenMode::Valid)),
+        jwks: Arc::new(Mutex::new(jwks_json())),
     };
     let app = Router::new()
         .route(
@@ -178,7 +215,7 @@ async fn spawn_fake_oidc() -> (String, FakeOidc, tokio::task::JoinHandle<()>) {
             get(|State(state): State<FakeOidc>| async move {
                 (
                     [(axum::http::header::CONTENT_TYPE, "application/json")],
-                    state.jwks,
+                    state.jwks.lock().unwrap().clone(),
                 )
             }),
         )
@@ -221,7 +258,8 @@ async fn spawn_fake_oidc() -> (String, FakeOidc, tokio::task::JoinHandle<()>) {
                             .cloned()
                             .unwrap_or_else(|| "missing-nonce".into())
                     });
-                    let id_token = mint_id_token(&state.issuer, nonce.as_deref());
+                    let mode = *state.id_token_mode.lock().unwrap();
+                    let id_token = mint_id_token(&state.issuer, nonce.as_deref(), mode);
                     Json(json!({
                         "access_token": if is_refresh { "oidc-access-refreshed" } else { "oidc-access" },
                         "refresh_token": "oidc-refresh",
@@ -406,4 +444,75 @@ async fn e2e_discovery_captures_jwks_uri_and_ignores_vendor_fields() {
         .await
         .expect_err("JWKS pin drift");
     assert!(format!("{err:?}").contains("JWKS endpoint changed"));
+}
+
+#[tokio::test]
+async fn e2e_oidc_rejects_hostile_standard_claims_and_signature() {
+    let (base, fake, _task) = spawn_fake_oidc().await;
+    for mode in [
+        IdTokenMode::WrongIssuer,
+        IdTokenMode::WrongAudience,
+        IdTokenMode::Expired,
+        IdTokenMode::CorruptSignature,
+    ] {
+        *fake.id_token_mode.lock().unwrap() = mode;
+        let token_broker = Arc::new(MemoryBroker::default());
+        let client = UpstreamOAuthClient::new(
+            oidc_config(&base, OAuthProtocolEngine::Oauth2),
+            None,
+            None,
+            token_broker.clone() as Arc<dyn CredentialBroker>,
+            Box::new(SeqEntropy::default()),
+            Arc::new(|| NOW),
+        )
+        .unwrap();
+        let consent = client.build_consent_url().await.unwrap();
+        let query: BTreeMap<_, _> = reqwest::Url::parse(&consent.authorization_url)
+            .unwrap()
+            .query_pairs()
+            .into_owned()
+            .collect();
+        fake.nonces
+            .lock()
+            .unwrap()
+            .push(query.get("nonce").cloned().unwrap());
+        let err = client
+            .exchange_callback(query.get("state").unwrap(), "hostile-code")
+            .await
+            .expect_err("hostile ID token must fail closed");
+        assert!(format!("{err:?}").contains("verification failed"));
+        assert!(token_broker.value(&credential("token")).is_none());
+    }
+}
+
+#[tokio::test]
+async fn e2e_oidc_rejects_oversized_jwks_before_token_custody() {
+    let (base, fake, _task) = spawn_fake_oidc().await;
+    *fake.jwks.lock().unwrap() = "x".repeat(64 * 1024 + 1);
+    let token_broker = Arc::new(MemoryBroker::default());
+    let client = UpstreamOAuthClient::new(
+        oidc_config(&base, OAuthProtocolEngine::Oauth2),
+        None,
+        None,
+        token_broker.clone() as Arc<dyn CredentialBroker>,
+        Box::new(SeqEntropy::default()),
+        Arc::new(|| NOW),
+    )
+    .unwrap();
+    let consent = client.build_consent_url().await.unwrap();
+    let query: BTreeMap<_, _> = reqwest::Url::parse(&consent.authorization_url)
+        .unwrap()
+        .query_pairs()
+        .into_owned()
+        .collect();
+    fake.nonces
+        .lock()
+        .unwrap()
+        .push(query.get("nonce").cloned().unwrap());
+    let err = client
+        .exchange_callback(query.get("state").unwrap(), "oversized-jwks")
+        .await
+        .expect_err("oversized JWKS must fail closed");
+    assert!(format!("{err:?}").contains("JWKS document is malformed"));
+    assert!(token_broker.value(&credential("token")).is_none());
 }

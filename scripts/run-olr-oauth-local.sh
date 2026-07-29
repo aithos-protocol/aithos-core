@@ -12,6 +12,9 @@ cargo test -p aithos-gateway --features olr-oauth-libs oauth_rollout --lib
 echo "== e2e: oauth2 engine =="
 cargo test -p aithos-gateway --features olr-oauth-libs --test olr_oauth2_e2e
 
+echo "== integration: custody, callback CAS and refresh lease =="
+cargo test -p aithos-gateway --features olr-oauth-libs --test oac_protocol
+
 echo "== e2e: oidc + discovery jwks =="
 cargo test -p aithos-gateway --features olr-oauth-libs --test olr_oidc_e2e
 

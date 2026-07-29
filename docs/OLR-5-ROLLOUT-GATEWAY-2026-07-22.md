@@ -7,10 +7,26 @@ Date : 2026-07-22
 Rollout du moteur amont `oauth2` / OIDC **sur la gateway uniquement**.
 Aucun changement Terraform / Fargate / `aithos.fr`.
 
-La suite locale de sortie est verte au commit `608b392` : package Gateway
-complet avec `--features olr-oauth-libs`, 296 scénarios Cucumber / 1406 étapes,
-`clippy -D warnings`, format et build release. Le live gate Notion/Gmail reste
-une condition de bascule, pas une condition de compilation.
+La qualification historique du prototype était verte au commit `608b392`.
+Avant toute bascule, la suite locale complète doit être rejouée sur le commit
+courant de `codex/integrate-olr-oauth-libs` et ses résultats archivés. Le live
+gate Notion/Gmail reste une condition de bascule, pas une condition de
+compilation.
+
+## Qualification d'intégration locale — 2026-07-29
+
+- `cargo test -p aithos-gateway --features olr-oauth-libs` : vert ;
+- Cucumber : **299 scénarios / 1 422 étapes**, tous verts ;
+- `oac_protocol` : **16/16**, dont refresh CAS inter-instance et panne du
+  commit Vault final ;
+- OAuth2 E2E : **4/4** ; OIDC E2E : **4/4**, dont issuer, audience,
+  expiration, signature, nonce et taille JWKS hostiles ;
+- `cargo clippy -p aithos-gateway --all-targets --features olr-oauth-libs
+  -- -D warnings` : vert ;
+- compilation `--all-targets` sans la feature, format ciblé des fichiers
+  modifiés et `git diff --check` : verts.
+
+Cette qualification est locale et ne remplace pas les gates live ci-dessous.
 
 ## Étapes
 

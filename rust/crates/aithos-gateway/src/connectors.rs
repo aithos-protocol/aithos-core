@@ -2579,6 +2579,7 @@ impl ConnectorControl {
             // single-origin discovery policy.
             endpoints: OAuthEndpointStrategy::Static,
             client_authentication: OAuthClientAuthentication::ClientSecretPost,
+            protocol_engine: Default::default(),
             registration: OAuthRegistrationStrategy::Static,
             authorization_parameters: OAuthAuthorizationParameters {
                 access_type: Some(OAuthAccessType::Offline),

@@ -1,8 +1,10 @@
 # ADR — OLR : OAuth amont sur bibliothèques standard
 
 Date : 2026-07-22
-Statut : **ACCEPTÉE pour OLR-0** (spike deps + cartographie + corpus).
-Périmètre de cette branche : **client OAuth amont gateway uniquement**.
+Statut : **INTÉGRÉE localement pour OLR-0 → OLR-5 code** ; les gates live
+OLR-5 restent requis avant activation en production.
+Branche d'intégration : `codex/integrate-olr-oauth-libs`.
+Périmètre : **client OAuth amont gateway uniquement**.
 Hors périmètre : provider / relai `aithos.fr`, OAuth entrant G3/G4 (OLR-6).
 
 Référence chantier :
@@ -94,7 +96,7 @@ Politique de mise à jour :
 | SSRF / issuer movable | discovery bornée, no-redirect, pins resource/issuer |
 | Fuite secrets | zeroize + redaction logs/erreurs publiques |
 | Token hors custody | Vault only pour l'état durable |
-| Refresh partiel | rotation atomique ; conserver l'ancien état si l'écriture échoue |
+| Refresh concurrent / partiel | lease CAS inter-instance ; aucun bearer pendant la rotation ; échec du commit final conservé en `refreshing` fail-closed |
 | Confusion identité ≠ autorité | OIDC validé ≠ mandat / Gamma Aithos |
 
 ## 5. Conséquences
@@ -106,6 +108,10 @@ Politique de mise à jour :
 - Aucun impact attendu sur le provider / relai `aithos.fr`.
 - Le broker Vault KV v2 de référence porte le CAS inter-instance ; tout broker
   OAuth alternatif doit implémenter `CredentialBroker::compare_and_store`.
+- La rotation d'un refresh token n'est pas transactionnelle avec le
+  fournisseur. Si le fournisseur répond puis que le commit Vault échoue,
+  l'ancien token ne peut pas être déclaré sûr : la lease reste fermée jusqu'à
+  reprise, puis une réponse `invalid_grant` exige une nouvelle authentification.
 
 ## 6. Sortie OLR-0
 

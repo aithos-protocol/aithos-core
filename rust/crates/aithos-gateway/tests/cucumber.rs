@@ -10834,7 +10834,9 @@ fn g7a_status_is_bounded(w: &mut GatewayWorld) {
         status["relay"].as_str(),
         Some("ready" | "connecting" | "unavailable" | "disabled")
     ));
-    assert_eq!(status.as_object().unwrap().len(), 4);
+    assert!(status["upstream_oauth"]["native_success"].is_u64());
+    assert!(status["upstream_oauth"]["oauth2_failure"].is_u64());
+    assert_eq!(status.as_object().unwrap().len(), 5);
 }
 
 #[then("no sentinel or upstream error detail appears in the response or logs")]

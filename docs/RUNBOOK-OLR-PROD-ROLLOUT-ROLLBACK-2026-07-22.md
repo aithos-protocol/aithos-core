@@ -1,7 +1,7 @@
 # OLR OAuth — rollout production et rollback
 
 Date : 2026-07-22  
-Branche Gateway : `codex/olr-oauth-libs-upstream`  
+Branche Gateway : `codex/integrate-olr-oauth-libs`
 Branche garde-fous Provider : `codex/provider-immutable-rollout`
 
 ## Décision d'architecture
@@ -14,15 +14,16 @@ Le premier rollout sûr conserve le Provider actuellement déployé et change un
 seule Gateway de démonstration. Une évolution Provider distincte ne doit être
 mélangée à ce gate que si une incompatibilité de transport est démontrée.
 
-## Artefact qualifié localement
+## Qualification locale
 
-- commit de stabilisation : `608b392`
+- la qualification historique du prototype OLR portait sur `608b392` ;
+- toute activation doit utiliser le commit d'intégration courant et conserver
+  son identifiant exact dans la fiche de rollout ;
 - feature : `olr-oauth-libs`
 - binaire release local macOS arm64 :
   `fd13e219201dffb1289d8ed481293a741a9c4f5c81fd6b85327b2d24bcc4ba0f`
-- package Gateway complet : vert
-- Cucumber : 296 scénarios, 1406 étapes, 0 échec
-- `cargo fmt --check` et `cargo clippy -- -D warnings` : verts
+- package Gateway complet, corpus OLR, Cucumber et `clippy -D warnings` doivent
+  être rejoués et archivés pour ce commit d'intégration ;
 
 Le binaire de production doit être reconstruit pour sa plateforme cible avec
 `--locked` et sa propre somme SHA-256 doit être conservée avec le commit.
@@ -90,7 +91,8 @@ Ordre recommandé :
 5. maintien du tunnel Relay et des écritures Store attendues par la démo.
 
 Critères de GO : aucun fallback implicite, aucune fuite de secret, callback
-one-shot, refresh atomique et comportement fonctionnel identique au moteur
+one-shot, refresh sérialisé par lease CAS inter-instance, refus de bearer
+pendant une rotation incomplète et comportement fonctionnel identique au moteur
 native. Étendre ensuite profil par profil pendant la fenêtre d'observation.
 
 ## Rollback Gateway

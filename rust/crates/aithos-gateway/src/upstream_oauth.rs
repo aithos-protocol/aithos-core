@@ -45,6 +45,10 @@ use crate::{GatewayError, Result};
 const TOKEN_TIMEOUT: Duration = Duration::from_secs(10);
 const EXPIRY_SKEW_SECS: i64 = 30;
 const PENDING_TTL_SECS: i64 = 600;
+/// Longer than the token endpoint timeout. A crashed claimant can be
+/// recovered after this lease, while two live gateway instances never send
+/// the same refresh token concurrently.
+const REFRESH_LEASE_SECS: i64 = 30;
 const MAX_OAUTH_RESPONSE_BYTES: usize = 64 * 1024;
 
 pub type OAuthClock = Arc<dyn Fn() -> i64 + Send + Sync>;
@@ -77,7 +81,7 @@ fn zeroize_json(value: &mut serde_json::Value) {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 enum VaultRecord {
     Pending {
@@ -89,6 +93,22 @@ enum VaultRecord {
         nonce: Option<String>,
     },
     Connected {
+        access_token: String,
+        refresh_token: String,
+        expires_at: i64,
+        scopes: Vec<String>,
+        #[serde(default)]
+        issuer: Option<String>,
+        #[serde(default)]
+        subject: Option<String>,
+        #[serde(default)]
+        account: Option<String>,
+    },
+    /// A CAS-owned refresh lease. The previous token set remains encrypted in
+    /// Vault for deterministic recovery, but no caller may use it while this
+    /// state is present.
+    Refreshing {
+        started_at: i64,
         access_token: String,
         refresh_token: String,
         expires_at: i64,
@@ -125,6 +145,15 @@ impl Drop for VaultRecord {
                 nonce.zeroize();
             }
             Self::Connected {
+                access_token,
+                refresh_token,
+                scopes,
+                issuer,
+                subject,
+                account,
+                ..
+            }
+            | Self::Refreshing {
                 access_token,
                 refresh_token,
                 scopes,
@@ -234,14 +263,24 @@ impl UpstreamOAuthClient {
             .unwrap_or(&self.config.token_vault)
     }
 
-    async fn read_record(&self, reference: &CredentialRef) -> Result<VaultRecord> {
+    async fn read_record_with_encoding(
+        &self,
+        reference: &CredentialRef,
+    ) -> Result<(VaultRecord, SecretValue)> {
         let value = self
             .token_broker
             .resolve(reference)
             .await
             .map_err(|_| unavailable("OAuth token record is unavailable"))?;
-        serde_json::from_str(value.expose())
-            .map_err(|_| unavailable("OAuth token record is malformed"))
+        let record = serde_json::from_str(value.expose())
+            .map_err(|_| unavailable("OAuth token record is malformed"))?;
+        Ok((record, value))
+    }
+
+    async fn read_record(&self, reference: &CredentialRef) -> Result<VaultRecord> {
+        self.read_record_with_encoding(reference)
+            .await
+            .map(|(record, _encoding)| record)
     }
 
     async fn write_record(&self, reference: &CredentialRef, record: &VaultRecord) -> Result<()> {
@@ -253,20 +292,14 @@ impl UpstreamOAuthClient {
             .map_err(|_| unavailable("cannot persist OAuth token record"))
     }
 
-    async fn consume_pending_record(&self, record: &VaultRecord) -> Result<()> {
-        let expected = serde_json::to_string(record)
-            .map_err(|_| unavailable("cannot encode OAuth pending record"))?;
+    async fn consume_pending_record(&self, expected: SecretValue) -> Result<()> {
         let consumed = serde_json::to_string(&VaultRecord::Consumed {
             consumed_at: (self.clock)(),
         })
         .map_err(|_| unavailable("cannot encode OAuth consumed record"))?;
         match self
             .token_broker
-            .compare_and_store(
-                self.pending_vault(),
-                SecretValue::new(expected),
-                SecretValue::new(consumed),
-            )
+            .compare_and_store(self.pending_vault(), expected, SecretValue::new(consumed))
             .await
             .map_err(|_| unavailable("cannot consume OAuth callback state"))?
         {
@@ -278,6 +311,124 @@ impl UpstreamOAuthClient {
                 "OAuth token Vault does not support atomic callback state",
             )),
         }
+    }
+
+    async fn replace_token_record(
+        &self,
+        expected: &VaultRecord,
+        replacement: &VaultRecord,
+        mismatch: &'static str,
+    ) -> Result<()> {
+        let expected = serde_json::to_string(expected)
+            .map_err(|_| unavailable("cannot encode OAuth token state"))?;
+        self.replace_encoded_token_record(SecretValue::new(expected), replacement, mismatch)
+            .await
+    }
+
+    async fn replace_encoded_token_record(
+        &self,
+        expected: SecretValue,
+        replacement: &VaultRecord,
+        mismatch: &'static str,
+    ) -> Result<()> {
+        let replacement = serde_json::to_string(replacement)
+            .map_err(|_| unavailable("cannot encode OAuth token state"))?;
+        match self
+            .token_broker
+            .compare_and_store(
+                &self.config.token_vault,
+                expected,
+                SecretValue::new(replacement),
+            )
+            .await
+            .map_err(|_| unavailable("cannot update OAuth token state atomically"))?
+        {
+            CredentialCompareAndStoreOutcome::Stored => Ok(()),
+            CredentialCompareAndStoreOutcome::Mismatch => Err(unavailable(mismatch)),
+            CredentialCompareAndStoreOutcome::Unsupported => Err(unavailable(
+                "OAuth token Vault does not support atomic refresh state",
+            )),
+        }
+    }
+
+    async fn claim_refresh(
+        &self,
+        observed: &VaultRecord,
+        observed_encoding: SecretValue,
+    ) -> Result<(VaultRecord, VaultRecord)> {
+        let now = (self.clock)();
+        let previous = match observed {
+            VaultRecord::Connected {
+                access_token,
+                refresh_token,
+                expires_at,
+                scopes,
+                issuer,
+                subject,
+                account,
+            }
+            | VaultRecord::Refreshing {
+                access_token,
+                refresh_token,
+                expires_at,
+                scopes,
+                issuer,
+                subject,
+                account,
+                ..
+            } => VaultRecord::Connected {
+                access_token: access_token.clone(),
+                refresh_token: refresh_token.clone(),
+                expires_at: *expires_at,
+                scopes: scopes.clone(),
+                issuer: issuer.clone(),
+                subject: subject.clone(),
+                account: account.clone(),
+            },
+            VaultRecord::Pending { .. } | VaultRecord::Consumed { .. } => {
+                return Err(unavailable("OAuth consent is not complete"));
+            }
+            VaultRecord::ReauthRequired { .. } => {
+                return Err(unavailable("OAuth consent must be renewed"));
+            }
+        };
+        if let VaultRecord::Refreshing { started_at, .. } = observed {
+            let age = now.saturating_sub(*started_at);
+            if age <= REFRESH_LEASE_SECS {
+                return Err(unavailable("OAuth token refresh is already in progress"));
+            }
+        }
+        let claimed = match &previous {
+            VaultRecord::Connected {
+                access_token,
+                refresh_token,
+                expires_at,
+                scopes,
+                issuer,
+                subject,
+                account,
+            } => VaultRecord::Refreshing {
+                started_at: now,
+                access_token: access_token.clone(),
+                refresh_token: refresh_token.clone(),
+                expires_at: *expires_at,
+                scopes: scopes.clone(),
+                issuer: issuer.clone(),
+                subject: subject.clone(),
+                account: account.clone(),
+            },
+            VaultRecord::Pending { .. }
+            | VaultRecord::Refreshing { .. }
+            | VaultRecord::Consumed { .. }
+            | VaultRecord::ReauthRequired { .. } => unreachable!(),
+        };
+        self.replace_encoded_token_record(
+            observed_encoding,
+            &claimed,
+            "OAuth token refresh was claimed concurrently",
+        )
+        .await?;
+        Ok((previous, claimed))
     }
 
     async fn write_revocation_marker(&self, reference: &CredentialRef) -> Result<()> {
@@ -355,6 +506,7 @@ impl UpstreamOAuthClient {
         let state = match &pending {
             VaultRecord::Pending { state, .. } => state,
             VaultRecord::Connected { .. }
+            | VaultRecord::Refreshing { .. }
             | VaultRecord::Consumed { .. }
             | VaultRecord::ReauthRequired { .. } => unreachable!(),
         };
@@ -699,12 +851,13 @@ impl UpstreamOAuthClient {
         if self.config.pending_vault.is_some()
             && matches!(
                 self.read_record(&self.config.token_vault).await,
-                Ok(VaultRecord::Connected { .. })
+                Ok(VaultRecord::Connected { .. } | VaultRecord::Refreshing { .. })
             )
         {
             return Err(unavailable("no OAuth consent is pending"));
         }
-        let record = self.read_record(self.pending_vault()).await?;
+        let (record, record_encoding) =
+            self.read_record_with_encoding(self.pending_vault()).await?;
         let (expected_state, verifier, created_at, oidc_nonce) = match &record {
             VaultRecord::Pending {
                 state,
@@ -713,6 +866,9 @@ impl UpstreamOAuthClient {
                 nonce,
             } => (state, code_verifier, *created_at, nonce.clone()),
             VaultRecord::Connected { .. } => {
+                return Err(unavailable("no OAuth consent is pending"));
+            }
+            VaultRecord::Refreshing { .. } => {
                 return Err(unavailable("no OAuth consent is pending"));
             }
             VaultRecord::Consumed { .. } => {
@@ -732,7 +888,7 @@ impl UpstreamOAuthClient {
         // Consume the state durably before contacting the token endpoint.
         // Vault CAS makes this one-shot across gateway processes, not merely
         // across tasks sharing this client's lifecycle mutex.
-        self.consume_pending_record(&record).await?;
+        self.consume_pending_record(record_encoding).await?;
         let answer = self
             .token_request(vec![
                 ("grant_type", "authorization_code".into()),
@@ -768,7 +924,7 @@ impl UpstreamOAuthClient {
     pub async fn is_connected(&self) -> bool {
         matches!(
             self.read_record(&self.config.token_vault).await,
-            Ok(VaultRecord::Connected { .. })
+            Ok(VaultRecord::Connected { .. } | VaultRecord::Refreshing { .. })
         )
     }
 
@@ -781,6 +937,7 @@ impl UpstreamOAuthClient {
                     UpstreamOAuthState::Expired
                 }
             }
+            Ok(VaultRecord::Refreshing { .. }) => return UpstreamOAuthState::Expired,
             Ok(VaultRecord::Pending { created_at, .. }) if self.config.pending_vault.is_none() => {
                 let expires_at = created_at.saturating_add(PENDING_TTL_SECS);
                 return if (self.clock)() <= expires_at {
@@ -810,39 +967,31 @@ impl UpstreamOAuthClient {
     /// request builder can be sent.
     pub async fn access_token(&self) -> Result<SecretValue> {
         let _lifecycle = self.lifecycle_lock.lock().await;
-        let record = self.read_record(&self.config.token_vault).await?;
-        let (access_token, refresh_token, expires_at, scopes, issuer, subject, account) =
-            match &record {
-                VaultRecord::Connected {
-                    access_token,
-                    refresh_token,
-                    expires_at,
-                    scopes,
-                    issuer,
-                    subject,
-                    account,
-                } => (
-                    access_token,
-                    refresh_token,
-                    *expires_at,
-                    scopes,
-                    issuer,
-                    subject,
-                    account,
-                ),
-                VaultRecord::Pending { .. } => {
-                    return Err(unavailable("OAuth consent is not complete"));
-                }
-                VaultRecord::Consumed { .. } => {
-                    return Err(unavailable("OAuth consent is not complete"));
-                }
-                VaultRecord::ReauthRequired { .. } => {
-                    return Err(unavailable("OAuth consent must be renewed"));
-                }
-            };
-        if expires_at > (self.clock)().saturating_add(EXPIRY_SKEW_SECS) {
-            return Ok(SecretValue::new(access_token.clone()));
+        let (record, record_encoding) = self
+            .read_record_with_encoding(&self.config.token_vault)
+            .await?;
+        if let VaultRecord::Connected {
+            access_token,
+            expires_at,
+            ..
+        } = &record
+        {
+            if *expires_at > (self.clock)().saturating_add(EXPIRY_SKEW_SECS) {
+                return Ok(SecretValue::new(access_token.clone()));
+            }
         }
+        let (previous, claimed) = self.claim_refresh(&record, record_encoding).await?;
+        let VaultRecord::Connected {
+            refresh_token,
+            scopes,
+            issuer,
+            subject,
+            account,
+            ..
+        } = &previous
+        else {
+            unreachable!()
+        };
 
         let answer = match self
             .token_request(vec![
@@ -853,20 +1002,24 @@ impl UpstreamOAuthClient {
         {
             Ok(answer) => answer,
             Err(error) => {
-                if matches!(
+                let invalid_grant = matches!(
                     &error,
                     GatewayError::UpstreamOauthUnavailable(reason)
                         if reason == "OAuth token endpoint refused the grant"
-                ) {
-                    let _ = self
-                        .write_record(
-                            &self.config.token_vault,
-                            &VaultRecord::ReauthRequired {
-                                changed_at: (self.clock)(),
-                            },
-                        )
-                        .await;
-                }
+                );
+                let replacement = if invalid_grant {
+                    VaultRecord::ReauthRequired {
+                        changed_at: (self.clock)(),
+                    }
+                } else {
+                    previous.clone()
+                };
+                self.replace_token_record(
+                    &claimed,
+                    &replacement,
+                    "OAuth token refresh state changed before failure recovery",
+                )
+                .await?;
                 return Err(error);
             }
         };
@@ -884,14 +1037,14 @@ impl UpstreamOAuthClient {
         let (next_scopes, next_identity) = match (next_scopes, next_identity) {
             (Ok(scopes), Ok(identity)) => (scopes, identity),
             (Err(error), _) | (_, Err(error)) => {
-                let _ = self
-                    .write_record(
-                        &self.config.token_vault,
-                        &VaultRecord::ReauthRequired {
-                            changed_at: (self.clock)(),
-                        },
-                    )
-                    .await;
+                self.replace_token_record(
+                    &claimed,
+                    &VaultRecord::ReauthRequired {
+                        changed_at: (self.clock)(),
+                    },
+                    "OAuth token refresh state changed before refusal",
+                )
+                .await?;
                 return Err(error);
             }
         };
@@ -904,8 +1057,12 @@ impl UpstreamOAuthClient {
             subject: next_identity.1,
             account: next_identity.2,
         };
-        self.write_record(&self.config.token_vault, &connected)
-            .await?;
+        self.replace_token_record(
+            &claimed,
+            &connected,
+            "OAuth token refresh state changed before commit",
+        )
+        .await?;
         Ok(SecretValue::new(next_access))
     }
 

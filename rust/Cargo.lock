@@ -72,7 +72,7 @@ version = "0.1.0-alpha.2-dev"
 dependencies = [
  "aithos-bundle",
  "aithos-core",
- "base64",
+ "base64 0.22.1",
  "blake3",
  "ed25519-dalek",
  "hex",
