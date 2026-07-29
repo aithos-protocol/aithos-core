@@ -2,42 +2,51 @@
 
 | Field | Value |
 |---|---|
-| Status | `DECISION_REQUIRED` |
-| Expected mode | `manual protocol decision` |
+| Status | `CORRECTION_REQUESTED` |
+| Expected mode | `correction` |
 | Round | 2 |
 | Initial audit baseline | `be2d098eeb79107c861462a6433df9ef45871265` |
-| Reviewed commit | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
-| Round 2 correction baseline | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
-| Reviewed branch | `fix/aid-001-002-005-identity-fail-closed` |
-| Verified findings | `AID-002`, `AID-005` (pilot scope) |
-| Finding awaiting decision | `AID-001` |
+| Reviewed round 1 candidate | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
+| Round 2 protocol baseline | `083c1a197a39f7a8efde957eddf5af05b825e3ea` |
+| Protocol decision | `decisions/2026-07-29-aid-001-provider-epoch-transition.md` |
+| Assigned finding | `AID-001` Provider remainder only |
+| Findings already verified | `AID-002`, `AID-005` (pilot scope) |
 | Findings outside correction | `AID-003`, `AID-004` |
-| Blocking prerequisite | Provider `did.json` replacement semantics |
-| Next role | protocol owner |
-| Expected conclusion | Provider decision, then `corrector/runs/<date>-correction-02.md` if correction is required |
+| Next role | `correct-a-identity` |
+| Expected conclusion | `corrector/runs/2026-07-29-correction-02.md` |
 
 ## Inputs
 
 - public audit: `docs/audits/features/a-identity.md`;
-- reconstructed initial audit:
-  `auditor/runs/2026-07-29-audit-initial-reconstructed.md`;
-- reconstructed correction:
-  `corrector/runs/2026-07-29-correction-01-reconstructed.md`;
+- binding protocol decision:
+  `decisions/2026-07-29-aid-001-provider-epoch-transition.md`;
 - independent round 1 review:
-  `auditor/runs/2026-07-29-audit-review-01.md`.
+  `auditor/runs/2026-07-29-audit-review-01.md`;
+- reconstructed round 1 correction:
+  `corrector/runs/2026-07-29-correction-01-reconstructed.md`.
 
-## Current instruction
+## Required round 2 outcome
 
-First obtain an explicit protocol decision for AID-001:
+Implement only the decided Provider semantics for AID-001:
 
-- decide whether Provider same-DID `did.json` replacement remains a
-  Provider-specific succession operation or adopts the §10.4 epoch
-  transition;
-- start correction round 2 only after that decision, and only to implement
-  the selected semantics;
-- leave AID-002 and AID-005 unchanged; they are now `VERIFIED` within the
-  pilot scope;
-- do not correct AID-003 or AID-004 in this round.
+1. a DID document remains root-signed and must pass strict Core verification;
+2. succession signs only a separate `EpochTransition`;
+3. a new root creates a distinct successor DID;
+4. same-DID succession-signed `did.json` replacement is refused;
+5. Provider reuses Core triplet verification for epoch acceptance;
+6. every refusal proves the absence of partial persistent effects;
+7. P9 vectors and scenarios express the decided behavior.
 
-Commit `56436f3` remains an immutable input and becomes the baseline for round
-2. Any correction must produce a new commit.
+If a canonical public storage/transport path for the transition cannot be
+derived from the current protocol without inventing new wire semantics, remove
+the invalid same-DID path, keep the behavior fail-closed, and report the
+remaining transport decision explicitly.
+
+Do not change AID-002/AID-005 and do not address AID-003/AID-004.
+
+## Handoff requirement
+
+The corrector must record its immutable starting commit before its first code
+change, produce a distinct candidate commit, mark AID-001 at most
+`IMPLEMENTED`, set this state to `REVIEW_REQUESTED`, and request a fresh
+two-pass review from `audit-a-identity`.
