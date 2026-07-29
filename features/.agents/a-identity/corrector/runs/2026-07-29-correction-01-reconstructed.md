@@ -1,55 +1,54 @@
-# Conclusion reconstruite — correction Identity, round 1
+# Reconstructed conclusion — Identity correction, round 1
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
-| Type | `RECONSTRUIT` |
-| Rôle source | agent de correction externe |
-| Date du commit | 2026-07-29 |
+| Type | `RECONSTRUCTED` |
+| Source role | external correction agent |
+| Commit date | 2026-07-29 |
 | Baseline | `be2d098` |
-| Commit candidat | `56436f3` |
-| Branche | `fix/aid-001-002-005-identity-fail-closed` |
-| Findings annoncés | `AID-001`, `AID-002`, majeure partie de `AID-005` |
-| Résultat | `REVIEW_REQUESTED` |
+| Candidate commit | `56436f3` |
+| Branch | `fix/aid-001-002-005-identity-fail-closed` |
+| Claimed findings | `AID-001`, `AID-002`, most of `AID-005` |
+| Result | `REVIEW_REQUESTED` |
 
 ## Provenance
 
-Cette conclusion a été reconstruite depuis le commit `56436f3`, son message,
-son diff et les résultats écrits par le correcteur dans l'audit public. Elle
-ne constitue pas une review indépendante et ne transforme aucun finding en
-`VÉRIFIÉ`.
+This conclusion was reconstructed from commit `56436f3`, its message and diff,
+and results written by the corrector into the public audit. It is not an
+independent review and does not move any finding to `VERIFIED`.
 
-## Correctifs candidats observables
+## Observable candidate corrections
 
 ### AID-001
 
-- validation explicite de la version DID et des métadonnées de signature ;
-- validation des quatre clés avec leurs codecs attendus ;
-- fermeture des schémas wire avec refus des membres inconnus ;
-- cas négatifs correctement re-signés afin d'isoler la sémantique.
+- explicit validation of DID version and signature metadata;
+- validation of all four keys with their expected codecs;
+- closed wire schemas that reject unknown members;
+- correctly re-signed negative cases that isolate semantics.
 
 ### AID-002
 
-- séparation entre `verify_declaration(prev)` et
-  `verify_succession(prev, next)` ;
-- validation des deux documents DID ;
-- liaison de `prev_did` et `next_did` aux documents présentés ;
-- refus d'une transition vers la même identité ;
-- modification du `Then` pour transmettre réellement le successeur.
+- separation between `verify_declaration(prev)` and
+  `verify_succession(prev, next)`;
+- validation of both DID documents;
+- binding of `prev_did` and `next_did` to the presented documents;
+- rejection of a transition to the same identity;
+- a `Then` step that actually passes the successor document.
 
 ### AID-005
 
-- passage annoncé de 9 à 30 scénarios ;
-- ajout de cas wire, documents correctement signés mais invalides et
-  transitions mal liées ;
-- ajout d'un test de surfaces Bundle/WASM ;
-- conservation des vecteurs A2 positifs annoncée byte-identique.
+- claimed increase from 9 to 30 scenarios;
+- added wire cases, correctly signed but invalid documents, and incorrectly
+  bound transitions;
+- added Bundle/WASM surface tests;
+- claimed byte-identical preservation of positive A2 vectors.
 
 ## Diff
 
 ```text
-7 fichiers modifiés
+7 files changed
 1130 insertions
-158 suppressions
+158 deletions
 
 M docs/audits/features/README.md
 M docs/audits/features/a-identity.md
@@ -60,38 +59,37 @@ M rust/crates/aithos-core/src/did.rs
 M rust/crates/aithos-core/tests/a2_did.rs
 ```
 
-## Résultats rapportés par le correcteur
+## Results reported by the corrector
 
-Ces résultats doivent être reproduits par l'auditeur :
+The auditor must reproduce these results:
 
 ```text
-Avant correctif :
+Before correction:
 workspace 627 tests
-cucumber bundle 815 scénarios
+bundle cucumber 815 scenarios
 
-RED :
-a2_did : 3 échecs sémantiques attendus
-cucumber : 18 des 21 nouveaux scénarios en échec
+RED:
+a2_did: 3 expected semantic failures
+cucumber: 18 of 21 new scenarios failed
 
-Après correctif :
-workspace 632 tests, 0 échec
-cucumber bundle 836 scénarios, 0 échec
+After correction:
+workspace 632 tests, 0 failures
+bundle cucumber 836 scenarios, 0 failures
 ```
 
-Le correcteur signale un écart `cargo fmt --check` préexistant dans
-`aithos-gateway/src/core_bridge.rs`. Sa qualification doit être vérifiée sans
-l'inclure silencieusement dans ce correctif.
+The corrector reported a pre-existing `cargo fmt --check` deviation in
+`aithos-gateway/src/core_bridge.rs`. The reviewer must verify that
+classification without silently including it in this correction.
 
-## Hors périmètre déclaré
+## Declared out of scope
 
-- `AID-003` : non traité ;
-- `AID-004` : non traité ;
-- aucune revendication de garde froide ;
-- aucune validation indépendante de la conclusion présente.
+- `AID-003`: not addressed;
+- `AID-004`: not addressed;
+- no cold-custody claim;
+- no independent validation of this conclusion.
 
-## Handoff demandé
+## Requested handoff
 
-Lancer `audit-a-identity` en mode `review` sur le diff
-`be2d098..56436f3`. Accepter ou refuser AID-001, AID-002 et AID-005
-séparément. Ne promouvoir un finding à `VÉRIFIÉ` qu'après reproduction des
-preuves et inspection des surfaces.
+Run `audit-a-identity` in `review` mode on `be2d098..56436f3`. Accept or reject
+AID-001, AID-002, and AID-005 separately. Promote a finding to `VERIFIED` only
+after reproducing the evidence and inspecting the public surfaces.

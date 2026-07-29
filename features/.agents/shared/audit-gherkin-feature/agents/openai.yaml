@@ -1,4 +1,4 @@
 interface:
   display_name: "Audit Gherkin Feature"
-  short_description: "Auditer la preuve sémantique d’une feature"
-  default_prompt: "Use $audit-gherkin-feature to audit whether every passing scenario in the selected feature proves its stated behavior through real production code."
+  short_description: "Audit a feature's semantic proof"
+  default_prompt: "Use $audit-gherkin-feature to run a history-blind code trace followed by a separate Git pass and determine whether every passing scenario proves its stated behavior."

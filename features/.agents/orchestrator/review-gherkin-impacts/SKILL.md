@@ -1,38 +1,38 @@
 ---
 name: review-gherkin-impacts
-description: Analyser les effets de bord possibles d'un correctif Gherkin déjà accepté par son auditeur spécialisé. Utiliser ce skill après une review VÉRIFIÉE pour croiser le diff avec les autres features, steps, helpers, API, formats, vecteurs et sections de spec, puis produire un rapport manuel sans modifier ni relancer les autres audits.
+description: Analyze possible cross-feature effects of a Gherkin correction already accepted by its specialized auditor. Use this skill after a VERIFIED review to compare the accepted diff with other features, steps, helpers, APIs, formats, vectors, and specification sections, then write a manual report without modifying or restarting other audits.
 ---
 
-# Reviewer les impacts entre features
+# Review cross-feature impacts
 
-## Conditions d'entrée
+## Entry conditions
 
-1. Lire complètement `../../../PROCESS.md`.
-2. Exiger une conclusion d'audit portant `REVIEW_ACCEPTED`.
-3. Exiger une baseline et un commit corrigé immuables.
-4. Arrêter si la correction n'est qu'`IMPLÉMENTÉE`.
+1. Read `../../../PROCESS.md` completely.
+2. Require an auditor conclusion containing `REVIEW_ACCEPTED`.
+3. Require immutable baseline and accepted candidate revisions.
+4. Stop if the correction is only `IMPLEMENTED`.
 
-## Analyse
+## Analysis
 
-1. Examiner le diff accepté.
-2. Extraire les fichiers, fonctions, types, steps, formats et vecteurs changés.
-3. Rechercher leurs usages dans tous les runners et fichiers `.feature`.
-4. Croiser les sections de spec citées par les autres audits.
-5. Distinguer un simple voisinage textuel d'une dépendance sémantique.
-6. Classer chaque feature :
-   - `AUCUN` : aucune dépendance crédible ;
-   - `CIBLÉ` : quelques scénarios précis à revoir ;
-   - `AUDIT COMPLET` : helper, API, format ou invariant partagé.
+1. Inspect the accepted diff.
+2. Extract changed files, functions, types, steps, formats, and vectors.
+3. Search for their use in all runners and `.feature` files.
+4. Cross-reference specification sections cited by other audits.
+5. Distinguish textual proximity from a semantic dependency.
+6. Classify each feature:
+   - `NONE`: no credible dependency;
+   - `TARGETED`: a few specific scenarios should be reviewed;
+   - `FULL_AUDIT`: a shared helper, API, format, or invariant changed.
 
-## Sortie
+## Output
 
-Écrire un rapport daté sous `../runs/` avec :
+Write a dated report under `../runs/` containing:
 
-- baseline et commit accepté ;
-- audit et review sources ;
-- éléments modifiés ;
-- recherches effectuées ;
-- features potentiellement touchées et preuves ;
-- recommandation manuelle.
+- baseline and accepted candidate;
+- source audit and review;
+- changed elements;
+- searches performed;
+- potentially affected features and evidence;
+- manual recommendation.
 
-Ne modifier aucun code, audit ou fichier feature. Ne lancer aucun autre agent.
+Do not change code, audits, or feature files. Do not launch another agent.

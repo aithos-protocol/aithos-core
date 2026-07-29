@@ -1,51 +1,51 @@
-# Domaine — `a-identity.feature`
+# Domain — `a-identity.feature`
 
-## Contrat
+## Contract
 
-La feature couvre la genèse de l'identité Aithos :
+This feature covers Aithos identity genesis:
 
-- déterminisme depuis un master seed owner de 32 octets ;
-- séparation des clés root, content et kex ;
-- indépendance de la succession ;
-- publication et vérification du document DID ;
-- transition vers une nouvelle identité sous autorité de succession.
+- determinism from a 32-byte owner master seed;
+- separation of root, content, and key-exchange keys;
+- independence of the succession secret;
+- publication and verification of the DID document;
+- transition to a new identity under succession authority.
 
-L'audit public est `docs/audits/features/a-identity.md`.
+The public audit is `docs/audits/features/a-identity.md`.
 
-## Invariants protocolaires
+## Protocol invariants
 
-1. Le DID est lié à la clé root et signé par elle.
-2. Root, content et succession utilisent le codec Ed25519 attendu.
-3. Kex utilise le codec X25519 attendu.
-4. La version, l'algorithme et le fragment de signature sont fermés.
-5. Les membres wire inconnus ne doivent pas être supprimés avant vérification.
-6. Une transition d'époque doit lier le document précédent, la déclaration et
-   le document successeur effectivement présenté.
-7. Les identités précédente et suivante doivent être distinctes.
-8. La succession ne doit pas être dérivable depuis le master owner.
-9. La garde froide doit être une propriété testable des surfaces qui la
-   revendiquent.
+1. The DID is bound to the root key and signed by that key.
+2. Root, content, and succession use the expected Ed25519 codec.
+3. Key exchange uses the expected X25519 codec.
+4. Version, algorithm, and signature fragment are closed to known values.
+5. Unknown wire members must not be dropped before verification.
+6. An epoch transition must bind the previous document, declaration, and
+   successor document actually presented.
+7. Previous and successor identities must be distinct.
+8. The succession secret must not be derivable from the owner master seed.
+9. Cold-custody claims must be testable properties of the surfaces that make
+   those claims.
 
-## Sources principales
+## Primary sources
 
-| Objet | Chemin |
+| Subject | Path |
 |---|---|
-| Contrat | `features/a-identity.feature` |
+| Contract | `features/a-identity.feature` |
 | Steps | `rust/crates/aithos-bundle/tests/cucumber.rs` |
-| Clés | `rust/crates/aithos-core/src/keys.rs` |
-| DID et transition | `rust/crates/aithos-core/src/did.rs` |
-| Dérivation et wire | `rust/crates/aithos-core/src/{derive,wire}.rs` |
-| Consommation Bundle | `rust/crates/aithos-bundle/src/bundle.rs` |
-| Création Gateway | `rust/crates/aithos-gateway/src/core_bridge.rs` |
-| Custody CLI | `rust/crates/aithos-cli/src/{main,custody}.rs` |
-| Dépôt Provider | `rust/crates/aithos-provider/src/artifacts.rs` |
-| Tests Core | `rust/crates/aithos-core/tests/{a1_genesis,a2_did}.rs` |
-| Vecteurs | `vectors/{a1-genesis,a2-did}.json` |
+| Keys | `rust/crates/aithos-core/src/keys.rs` |
+| DID and transition | `rust/crates/aithos-core/src/did.rs` |
+| Derivation and wire | `rust/crates/aithos-core/src/{derive,wire}.rs` |
+| Bundle consumer | `rust/crates/aithos-bundle/src/bundle.rs` |
+| Gateway creation | `rust/crates/aithos-gateway/src/core_bridge.rs` |
+| CLI custody | `rust/crates/aithos-cli/src/{main,custody}.rs` |
+| Provider storage | `rust/crates/aithos-provider/src/artifacts.rs` |
+| Core tests | `rust/crates/aithos-core/tests/{a1_genesis,a2_did}.rs` |
+| Vectors | `vectors/{a1-genesis,a2-did}.json` |
 
-Après le correctif AID-001/002/005, contrôler aussi
+After the AID-001/002/005 candidate correction, also inspect
 `rust/crates/aithos-bundle/tests/aid_identity_surfaces.rs`.
 
-## Gates minimaux
+## Minimum gates
 
 ```text
 cargo test -p aithos-core --test a1_genesis --test a2_did
@@ -55,25 +55,25 @@ cargo test --workspace --no-fail-fast
 cargo fmt --all -- --check
 ```
 
-Si un test n'existe pas sur la baseline examinée, le signaler au lieu de
-transformer son absence en succès.
+If a test does not exist on the examined baseline, report that fact instead of
+turning its absence into success.
 
-Le runner Cucumber parcourt toutes les features non `@wip`. Contrôler dans sa
-sortie le nombre exact de scénarios de `a-identity`, pas seulement son code de
-sortie global.
+The Cucumber runner scans all features not tagged `@wip`. Confirm the exact
+number of executed `a-identity` scenarios in its output, not only the global
+exit code.
 
-## Surfaces et voisinages à inspecter
+## Surfaces and neighboring domains to inspect
 
-- Bundle : parsing de `did.json` et cold verification ;
-- WASM/client : vérification publique des mandats et DID ;
-- Gateway : création de l'identité et source de succession ;
-- Provider : remplacement et distribution de `did.json` ;
-- `f-gamma.feature` : faits `rotate identity`, distincts de la transition
-  d'époque mais susceptibles de partager les invariants DID.
+- Bundle: `did.json` parsing and cold verification;
+- WASM/client: public mandate and DID verification;
+- Gateway: identity creation and succession source;
+- Provider: replacement and distribution of `did.json`;
+- `f-gamma.feature`: `rotate identity` facts, distinct from epoch transition
+  but potentially sharing DID invariants.
 
-## Limites du pilote
+## Pilot limits
 
-Auditer uniquement la vérité des scénarios existants et des tests ajoutés pour
-fermer AID-001, AID-002 et AID-005. Ne pas concevoir de nouveaux scénarios
-généraux. AID-003 et AID-004 restent ouverts tant qu'ils ne sont pas assignés
-explicitement à un round de correction.
+Audit only the semantic truth of existing scenarios and the tests added to
+close AID-001, AID-002, and AID-005. Do not design new general scenarios.
+AID-003 and AID-004 remain open until explicitly assigned to a correction
+round.

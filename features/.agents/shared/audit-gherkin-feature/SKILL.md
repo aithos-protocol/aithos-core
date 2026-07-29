@@ -1,62 +1,81 @@
 ---
 name: audit-gherkin-feature
-description: Auditer la vérité sémantique d'une feature Gherkin existante ou reviewer un correctif issu de cet audit. Utiliser ce skill pour vérifier que des scénarios verts sont réellement sélectionnés, transmettent leurs paramètres, appellent du code de production et prouvent exactement leur contrat, ou pour décider si des findings implémentés peuvent passer à VÉRIFIÉ.
+description: Audit the semantic truth of an existing Gherkin feature or independently review a correction produced by that audit. Use this skill to verify, through a history-blind code trace followed by a separate Git/differential pass, that passing scenarios are selected, propagate their parameters, call real production code, and prove their exact contract.
 ---
 
-# Auditer une feature Gherkin
+# Audit a Gherkin feature
 
-## Préparation
+## Preparation
 
-1. Lire complètement `../../PROCESS.md`.
-2. Lire le domaine et l'état de la feature spécialisée.
-3. Relever le SHA, la branche, le worktree et le mode demandé.
-4. Refuser de confondre un état sale avec une baseline reproductible.
-5. Ne pas rechercher les scénarios entièrement manquants.
+1. Read `../../PROCESS.md` completely.
+2. Read the specialized feature domain.
+3. Read only the routing fields from its state: mode, revision, assigned
+   scope, and output path.
+4. Record the revision, branch, worktree state, and requested mode.
+5. Do not search for entirely missing scenarios.
 
-## Audit initial
+Do not read prior audit conclusions, corrector reports, commit history, or
+diffs before the history-blind pass is frozen. If they are already present in
+the active context, disclose that contamination and use a fresh review unit
+when practical.
 
-1. Inventorier les Rules, Scenarios, Outlines, Examples et tags.
-2. Identifier le runner et confirmer qu'il sélectionne la feature.
-3. Compter les scénarios et steps réellement exécutés.
-4. Résoudre chaque phrase vers sa définition de step.
-5. Vérifier que les paramètres atteignent l'appel de production.
-6. Suivre le retour jusqu'à l'assertion propre au scénario.
-7. Contrôler les frontières annoncées : parsing wire, store, reopen, restart,
-   réseau, signature, mutation et absence d'effet partiel.
-8. Comparer le résultat au texte Gherkin et aux sections de spec concernées.
-9. Renforcer les cas cryptographiques byte-exacts par les vecteurs pertinents.
-10. Classer chaque scénario `PROUVÉ`, `PARTIEL`, `FAUX POSITIF` ou `PROXY`.
+## Initial audit
 
-Ne pas classer `PROUVÉ` parce qu'une fonction existe, qu'un vecteur porte un
-nom proche ou que le runner global est vert.
+### Pass A — history-blind current-code proof
 
-## Review d'un correctif
+1. Inventory Rules, Scenarios, Outlines, Examples, and tags.
+2. Divide the feature into independent review units as defined by the process.
+3. Confirm that the runner selects and executes the feature.
+4. Resolve every phrase to its exact step definition.
+5. Trace every scenario parameter into the production call graph.
+6. Follow return values and scenario state into the exact assertion.
+7. Inspect stated boundaries: wire parsing, stores, reopen/restart, network,
+   signatures, mutations, and absence of partial effects.
+8. Compare current behavior with the Gherkin text and normative protocol.
+9. Strengthen byte-exact cryptographic cases with relevant vectors.
+10. Freeze a per-scenario provisional verdict with direct evidence.
 
-1. Lire la baseline et le commit candidat depuis l'état de la feature.
-2. Examiner le diff exact sans modifier le code de production.
-3. Relier chaque changement à un finding et à son critère de clôture.
-4. Vérifier que les nouveaux tests auraient détecté l'ancien comportement.
-5. Rejouer les gates annoncés dans un contexte propre.
-6. Vérifier les chemins publics et les refus sans effet partiel.
-7. Rechercher les contournements parallèles dans les surfaces du domaine.
-8. Accepter ou refuser chaque finding séparément.
-9. Ne jamais promouvoir un finding non traité ou hors périmètre.
-10. Utiliser `DECISION_REQUIRED`, plutôt qu'une demande de correction, si le
-    changement imposerait de choisir une sémantique de protocole ou de produit.
+Do not classify a scenario as `PROVEN` because a function exists, a vector has
+a similar name, or the global runner is green.
 
-Traiter la conclusion du correcteur comme un handoff à vérifier, pas comme une
-preuve.
+### Pass B — history and differential evidence
 
-## Sorties
+1. Read the prior public audit and run reports, if any.
+2. Inspect relevant Git history and exact revision ranges.
+3. Check whether history reveals missed paths, regressions, or intent.
+4. Re-open the current code trace for any new path.
+5. Reconcile Pass A and Pass B explicitly.
+6. Run the final shared-state and cross-scenario integration check.
 
-- Mettre à jour l'audit public.
-- Garder les identifiants de finding stables.
-- Ajouter ou mettre à jour les marqueurs Gherkin nécessaires.
-- Écrire une conclusion datée dans le dossier `runs` du rôle spécialisé.
-- Mettre à jour l'état avec la prochaine action.
-- En cas d'acceptation, énumérer les fichiers, symboles, formats, sections de
-  spec et surfaces susceptibles d'avoir un effet transverse.
-- En cas de décision requise, exposer les comportements concurrents, leurs
-  preuves et le propriétaire attendu sans choisir à sa place.
+## Correction review
 
-Ne pas implémenter le correctif pendant l'audit ou la review.
+1. In a clean review unit, inspect the candidate's scenario, steps, production
+   paths, protocol, and public surfaces without reading the correction diff or
+   corrector conclusion.
+2. Freeze Pass A behavioral verdicts for each assigned finding.
+3. Read the immutable baseline and candidate revisions from state.
+4. Inspect the exact diff and corrector report.
+5. Map each change to a finding and its closure criteria.
+6. verify that new tests would detect the old behavior.
+7. Reproduce the announced gates in a clean context.
+8. Check public paths, rejection paths, and partial effects.
+9. Search for parallel bypasses in domain surfaces.
+10. Accept or reject each finding independently.
+11. Use `DECISION_REQUIRED` if closure requires a protocol or product choice.
+
+Treat the corrector's conclusion as a handoff to verify, never as proof.
+
+## Outputs
+
+- Update the public audit.
+- Keep finding identifiers stable.
+- Add or update required Gherkin markers.
+- Write a dated conclusion under the specialized role's `runs` directory.
+- Include frozen Pass A verdicts, Pass B evidence, and reconciliation.
+- Update state with the next action.
+- On acceptance, enumerate files, symbols, formats, specification sections,
+  and surfaces that may have cross-feature impact.
+- On a required decision, present competing behaviors, evidence, and expected
+  owner without choosing for them.
+
+Do not implement production corrections during an audit or review.
