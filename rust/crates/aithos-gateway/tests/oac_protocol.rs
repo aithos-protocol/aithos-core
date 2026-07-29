@@ -12,7 +12,9 @@ use aithos_gateway::config::{
     OAuthEndpointStrategy, OAuthIdentitySource, OAuthRegistrationStrategy, UpstreamOAuthConfig,
 };
 use aithos_gateway::core_bridge::SeqEntropy;
-use aithos_gateway::credentials::{CredentialBroker, CredentialRef, SecretValue};
+use aithos_gateway::credentials::{
+    CredentialBroker, CredentialCompareAndStoreOutcome, CredentialRef, SecretValue,
+};
 use aithos_gateway::oauth_discovery::{OAuthDiscoveryClient, ResolvedOAuthEndpoints};
 use aithos_gateway::oauth_registration::{ClientCredentialSource, OAuthRegistrationClient};
 use aithos_gateway::proxy_mcp::Upstream;
@@ -36,6 +38,7 @@ struct MemoryBroker {
     values: Mutex<BTreeMap<(String, String), String>>,
     resolves: Mutex<Vec<CredentialRef>>,
     stores: Mutex<Vec<CredentialRef>>,
+    fail_refresh_commit: AtomicUsize,
 }
 
 impl MemoryBroker {
@@ -60,6 +63,10 @@ impl MemoryBroker {
 
     fn store_count(&self) -> usize {
         self.stores.lock().unwrap().len()
+    }
+
+    fn fail_next_refresh_commit(&self) {
+        self.fail_refresh_commit.store(1, Ordering::SeqCst);
     }
 }
 
@@ -97,6 +104,31 @@ impl CredentialBroker for MemoryBroker {
             Ok(())
         })
     }
+
+    fn compare_and_store<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+        expected: SecretValue,
+        replacement: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<CredentialCompareAndStoreOutcome>> + Send + 'a>> {
+        Box::pin(async move {
+            if expected.expose().contains(r#""status":"refreshing""#)
+                && replacement.expose().contains(r#""status":"connected""#)
+                && self.fail_refresh_commit.swap(0, Ordering::SeqCst) == 1
+            {
+                return Err(GatewayError::CredentialUnavailable(
+                    "simulated refresh commit outage".into(),
+                ));
+            }
+            let key = (reference.path.clone(), reference.field.clone());
+            let mut values = self.values.lock().unwrap();
+            if values.get(&key).map(String::as_str) != Some(expected.expose()) {
+                return Ok(CredentialCompareAndStoreOutcome::Mismatch);
+            }
+            values.insert(key, replacement.expose().to_owned());
+            Ok(CredentialCompareAndStoreOutcome::Stored)
+        })
+    }
 }
 
 fn credential(path: &str) -> CredentialRef {
@@ -118,6 +150,7 @@ fn static_config(base: &str, authentication: OAuthClientAuthentication) -> Upstr
         redirect_uri: REDIRECT_URI.into(),
         endpoints: OAuthEndpointStrategy::Static,
         client_authentication: authentication,
+        protocol_engine: Default::default(),
         registration: OAuthRegistrationStrategy::Static,
         authorization_parameters: OAuthAuthorizationParameters::default(),
         resource: None,
@@ -144,6 +177,7 @@ fn discovery_config(base: &str) -> UpstreamOAuthConfig {
             issuer: base.into(),
         },
         client_authentication: OAuthClientAuthentication::ClientSecretPost,
+        protocol_engine: Default::default(),
         registration: OAuthRegistrationStrategy::Static,
         authorization_parameters: OAuthAuthorizationParameters::default(),
         resource: None,
@@ -427,6 +461,7 @@ fn resolved_endpoints(base: &str) -> ResolvedOAuthEndpoints {
         token_endpoint: format!("{base}/token"),
         registration_endpoint: Some(format!("{base}/register")),
         revocation_endpoint: None,
+        jwks_uri: None,
     }
 }
 
@@ -763,19 +798,30 @@ async fn callback_state_is_one_shot_under_concurrency() {
         }),
     );
     let (base, task) = spawn(app).await;
-    let broker: Arc<dyn CredentialBroker> = Arc::new(MemoryBroker::default());
-    let client = Arc::new(
+    let broker = Arc::new(MemoryBroker::default());
+    let first_client = Arc::new(
         UpstreamOAuthClient::new(
             static_config(&base, OAuthClientAuthentication::None),
             None,
             None,
-            broker,
+            broker.clone() as Arc<dyn CredentialBroker>,
             Box::new(SeqEntropy::default()),
             Arc::new(|| NOW),
         )
         .unwrap(),
     );
-    let consent = client.build_consent_url().await.unwrap();
+    let second_client = Arc::new(
+        UpstreamOAuthClient::new(
+            static_config(&base, OAuthClientAuthentication::None),
+            None,
+            None,
+            broker as Arc<dyn CredentialBroker>,
+            Box::new(SeqEntropy::default()),
+            Arc::new(|| NOW),
+        )
+        .unwrap(),
+    );
+    let consent = first_client.build_consent_url().await.unwrap();
     let state = reqwest::Url::parse(&consent.authorization_url)
         .unwrap()
         .query_pairs()
@@ -784,17 +830,203 @@ async fn callback_state_is_one_shot_under_concurrency() {
         .1
         .into_owned();
     let first = {
-        let client = Arc::clone(&client);
+        let client = Arc::clone(&first_client);
         let state = state.clone();
         tokio::spawn(async move { client.exchange_callback(&state, "code-a").await })
     };
     let second = {
-        let client = Arc::clone(&client);
+        let client = Arc::clone(&second_client);
         tokio::spawn(async move { client.exchange_callback(&state, "code-b").await })
     };
     let outcomes = [first.await.unwrap(), second.await.unwrap()];
     assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
     assert_eq!(hits.load(Ordering::SeqCst), 1);
+    task.abort();
+}
+
+#[tokio::test]
+async fn refresh_is_single_writer_across_two_gateway_clients() {
+    let refresh_hits = Arc::new(AtomicUsize::new(0));
+    let app = Router::new().route(
+        "/token",
+        post({
+            let refresh_hits = Arc::clone(&refresh_hits);
+            move |Form(form): Form<BTreeMap<String, String>>| {
+                let refresh_hits = Arc::clone(&refresh_hits);
+                async move {
+                    if form.get("grant_type").map(String::as_str) == Some("authorization_code") {
+                        return Json(json!({
+                            "access_token": "single-access-1",
+                            "refresh_token": "single-refresh-1",
+                            "expires_in": 1,
+                            "token_type": "Bearer",
+                            "scope": "resource.read"
+                        }))
+                        .into_response();
+                    }
+                    refresh_hits.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    Json(json!({
+                        "access_token": "single-access-2",
+                        "refresh_token": "single-refresh-2",
+                        "expires_in": 3600,
+                        "token_type": "Bearer",
+                        "scope": "resource.read"
+                    }))
+                    .into_response()
+                }
+            }
+        }),
+    );
+    let (base, task) = spawn(app).await;
+    let now = Arc::new(AtomicI64::new(NOW));
+    let clock: Arc<dyn Fn() -> i64 + Send + Sync> = {
+        let now = Arc::clone(&now);
+        Arc::new(move || now.load(Ordering::SeqCst))
+    };
+    let broker = Arc::new(MemoryBroker::default());
+    let config = static_config(&base, OAuthClientAuthentication::None);
+    let first_client = UpstreamOAuthClient::new(
+        config.clone(),
+        None,
+        None,
+        broker.clone() as Arc<dyn CredentialBroker>,
+        Box::new(SeqEntropy::default()),
+        Arc::clone(&clock),
+    )
+    .unwrap();
+    let second_client = UpstreamOAuthClient::new(
+        config,
+        None,
+        None,
+        broker.clone() as Arc<dyn CredentialBroker>,
+        Box::new(SeqEntropy::default()),
+        clock,
+    )
+    .unwrap();
+    let consent = first_client.build_consent_url().await.unwrap();
+    let state = reqwest::Url::parse(&consent.authorization_url)
+        .unwrap()
+        .query_pairs()
+        .find(|(name, _)| name == "state")
+        .unwrap()
+        .1
+        .into_owned();
+    first_client
+        .exchange_callback(&state, "approved-code")
+        .await
+        .unwrap();
+    now.store(NOW + 120, Ordering::SeqCst);
+
+    let (first, second) = tokio::join!(first_client.access_token(), second_client.access_token());
+    let outcomes = [first, second];
+    assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+    assert_eq!(refresh_hits.load(Ordering::SeqCst), 1);
+    let stored = broker.value(&credential("token")).unwrap();
+    assert!(stored.contains(r#""status":"connected""#));
+    assert!(stored.contains("single-access-2"));
+    assert!(stored.contains("single-refresh-2"));
+    assert!(!stored.contains("single-access-1"));
+    task.abort();
+}
+
+#[tokio::test]
+async fn failed_vault_commit_leaves_a_closed_recoverable_refresh_lease() {
+    let refresh_hits = Arc::new(AtomicUsize::new(0));
+    let app = Router::new().route(
+        "/token",
+        post({
+            let refresh_hits = Arc::clone(&refresh_hits);
+            move |Form(form): Form<BTreeMap<String, String>>| {
+                let refresh_hits = Arc::clone(&refresh_hits);
+                async move {
+                    if form.get("grant_type").map(String::as_str) == Some("authorization_code") {
+                        return Json(json!({
+                            "access_token": "commit-access-1",
+                            "refresh_token": "commit-refresh-1",
+                            "expires_in": 1,
+                            "token_type": "Bearer",
+                            "scope": "resource.read"
+                        }))
+                        .into_response();
+                    }
+                    let attempt = refresh_hits.fetch_add(1, Ordering::SeqCst);
+                    if attempt == 0 {
+                        Json(json!({
+                            "access_token": "commit-access-2",
+                            "refresh_token": "commit-refresh-2",
+                            "expires_in": 3600,
+                            "token_type": "Bearer",
+                            "scope": "resource.read"
+                        }))
+                        .into_response()
+                    } else {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({"error": "invalid_grant"})),
+                        )
+                            .into_response()
+                    }
+                }
+            }
+        }),
+    );
+    let (base, task) = spawn(app).await;
+    let now = Arc::new(AtomicI64::new(NOW));
+    let clock: Arc<dyn Fn() -> i64 + Send + Sync> = {
+        let now = Arc::clone(&now);
+        Arc::new(move || now.load(Ordering::SeqCst))
+    };
+    let broker = Arc::new(MemoryBroker::default());
+    let client = UpstreamOAuthClient::new(
+        static_config(&base, OAuthClientAuthentication::None),
+        None,
+        None,
+        broker.clone() as Arc<dyn CredentialBroker>,
+        Box::new(SeqEntropy::default()),
+        clock,
+    )
+    .unwrap();
+    let consent = client.build_consent_url().await.unwrap();
+    let state = reqwest::Url::parse(&consent.authorization_url)
+        .unwrap()
+        .query_pairs()
+        .find(|(name, _)| name == "state")
+        .unwrap()
+        .1
+        .into_owned();
+    client
+        .exchange_callback(&state, "approved-code")
+        .await
+        .unwrap();
+    now.store(NOW + 120, Ordering::SeqCst);
+    broker.fail_next_refresh_commit();
+
+    assert!(client.access_token().await.is_err());
+    let claimed = broker.value(&credential("token")).unwrap();
+    assert!(claimed.contains(r#""status":"refreshing""#));
+    assert!(claimed.contains("commit-access-1"));
+    assert!(!claimed.contains("commit-access-2"));
+    assert_eq!(
+        client.public_state().await,
+        aithos_gateway::upstream_oauth::UpstreamOAuthState::Expired
+    );
+    assert!(client.access_token().await.is_err());
+    assert_eq!(refresh_hits.load(Ordering::SeqCst), 1);
+
+    // Once the lease is stale, one new claimant retries. If the provider
+    // already rotated the old refresh token, invalid_grant closes custody.
+    now.store(NOW + 181, Ordering::SeqCst);
+    assert!(client.access_token().await.is_err());
+    assert_eq!(refresh_hits.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        client.public_state().await,
+        aithos_gateway::upstream_oauth::UpstreamOAuthState::ReauthRequired
+    );
+    let closed = broker.value(&credential("token")).unwrap();
+    assert!(closed.contains(r#""status":"reauth_required""#));
+    assert!(!closed.contains("commit-access-1"));
+    assert!(!closed.contains("commit-refresh-1"));
     task.abort();
 }
 

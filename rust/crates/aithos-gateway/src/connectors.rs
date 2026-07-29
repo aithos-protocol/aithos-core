@@ -2537,6 +2537,7 @@ impl ConnectorControl {
             redirect_uri: oauth.redirect_uri.clone(),
             endpoints: template.oauth.endpoints.clone(),
             client_authentication: template.oauth.client_authentication,
+            protocol_engine: template.oauth.protocol_engine,
             registration: template.oauth.registration.clone(),
             authorization_parameters: template.oauth.authorization_parameters.clone(),
             resource: template.oauth.resource.clone(),
@@ -2578,6 +2579,7 @@ impl ConnectorControl {
             // single-origin discovery policy.
             endpoints: OAuthEndpointStrategy::Static,
             client_authentication: OAuthClientAuthentication::ClientSecretPost,
+            protocol_engine: Default::default(),
             registration: OAuthRegistrationStrategy::Static,
             authorization_parameters: OAuthAuthorizationParameters {
                 access_type: Some(OAuthAccessType::Offline),

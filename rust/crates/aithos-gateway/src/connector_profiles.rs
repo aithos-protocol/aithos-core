@@ -173,6 +173,7 @@ impl ConnectorProfileCatalog {
             redirect_uri: oauth.redirect_uri.clone(),
             endpoints: oauth.endpoints.clone(),
             client_authentication: oauth.client_authentication,
+            protocol_engine: oauth.protocol_engine,
             registration,
             authorization_parameters: oauth.authorization_parameters.clone(),
             resource: oauth.resource.clone(),
@@ -211,7 +212,7 @@ mod tests {
     use super::*;
     use crate::config::{
         ConnectorProfileOAuth, ConnectorRiskClass, OAuthAuthorizationParameters,
-        OAuthEndpointStrategy,
+        OAuthEndpointStrategy, OAuthProtocolEngine,
     };
 
     #[test]
@@ -265,6 +266,7 @@ mod tests {
                 redirect_uri: "https://gateway.example.test/oauth/callback".into(),
                 endpoints: OAuthEndpointStrategy::Static,
                 client_authentication: OAuthClientAuthentication::None,
+                protocol_engine: OAuthProtocolEngine::Oauth2,
                 registration: ConnectorProfileRegistration::Static,
                 authorization_parameters: OAuthAuthorizationParameters::default(),
                 resource: None,
@@ -292,6 +294,21 @@ mod tests {
         assert_ne!(
             first.pin(&reference).unwrap(),
             drifted.pin(&reference).unwrap()
+        );
+        let key = ConnectorInstanceKey::new(
+            "sales",
+            "did:aithos:owner:alice",
+            "notion-alice",
+            "acct_01j00000000000000000000000",
+        )
+        .unwrap();
+        let layout = OAuthVaultLayout::derive("enterprise", &key);
+        assert_eq!(
+            first
+                .materialize_oauth(&reference, &layout)
+                .unwrap()
+                .protocol_engine,
+            OAuthProtocolEngine::Oauth2
         );
     }
 }

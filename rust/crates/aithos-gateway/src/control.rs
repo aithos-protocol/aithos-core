@@ -40,6 +40,7 @@ use crate::credentials::{CredentialBroker, CredentialBrokerReadiness};
 use crate::ethos_catalog::{
     EthosEnrollmentControl, EthosEnrollmentFailure, EthosEnrollmentRequest,
 };
+use crate::oauth_rollout::{UpstreamOAuthRolloutSnapshot, ROLLOUT_METRICS};
 use crate::relay::{RelayHealth, RelayReadiness};
 use crate::{GatewayError, Result};
 
@@ -842,6 +843,7 @@ async fn status(State(state): State<Arc<ControlState>>) -> Json<StatusResponse> 
             RelayReadiness::Ready => "ready",
             RelayReadiness::Unavailable => "unavailable",
         },
+        upstream_oauth: ROLLOUT_METRICS.snapshot(),
     })
 }
 
@@ -1366,6 +1368,7 @@ struct StatusResponse {
     process: &'static str,
     vault: &'static str,
     relay: &'static str,
+    upstream_oauth: UpstreamOAuthRolloutSnapshot,
 }
 
 #[derive(Serialize)]

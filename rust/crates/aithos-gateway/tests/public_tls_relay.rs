@@ -13,7 +13,9 @@ use aithos_gateway::config::{
     GatewayConfig, RelayCertificateConfig, RelayConfig, RelayReconnectConfig,
 };
 use aithos_gateway::core_bridge::gateway_pub_multibase;
-use aithos_gateway::credentials::{CredentialBroker, CredentialRef, SecretValue};
+use aithos_gateway::credentials::{
+    CredentialBroker, CredentialCompareAndStoreOutcome, CredentialRef, SecretValue,
+};
 use aithos_gateway::keyholder::Keyholder;
 use aithos_gateway::proxy_mcp::{HttpUpstream, Upstream};
 use aithos_gateway::public_tls::{load_private_pem, public_tls_slot, PublicTlsAcceptor};
@@ -432,6 +434,23 @@ impl CredentialBroker for OAuthVault {
         Box::pin(async move {
             self.put(&reference.path, &reference.field, value.expose());
             Ok(())
+        })
+    }
+
+    fn compare_and_store<'a>(
+        &'a self,
+        reference: &'a CredentialRef,
+        expected: SecretValue,
+        replacement: SecretValue,
+    ) -> Pin<Box<dyn Future<Output = Result<CredentialCompareAndStoreOutcome>> + Send + 'a>> {
+        Box::pin(async move {
+            let key = (reference.path.clone(), reference.field.clone());
+            let mut values = self.values.lock().unwrap();
+            if values.get(&key).map(String::as_str) != Some(expected.expose()) {
+                return Ok(CredentialCompareAndStoreOutcome::Mismatch);
+            }
+            values.insert(key, replacement.expose().to_owned());
+            Ok(CredentialCompareAndStoreOutcome::Stored)
         })
     }
 }
