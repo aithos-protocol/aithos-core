@@ -11,7 +11,7 @@
 | Primary runner | `aithos-bundle --test cucumber` |
 | Primary implementation | `aithos-core::{keys,did,derive,wire}` |
 | Inspected surfaces | Core, Bundle, CLI, WASM, Gateway, Client, and Provider where Identity requirements apply |
-| Note status | **PROTOCOL DECISION REQUIRED** — AID-002 and AID-005 are `VERIFIED` within pilot scope; AID-001 awaits a Provider decision; AID-003 and AID-004 remain `OPEN` |
+| Note status | **CORRECTION ROUND 2 REQUESTED** — the Provider decision for AID-001 selects §10.4 epoch transition; AID-002 and AID-005 are `VERIFIED` within pilot scope; AID-003 and AID-004 remain `OPEN` |
 
 ## Method provenance
 
@@ -40,15 +40,16 @@ Any future review that claims full two-pass compliance must:
 
 ### Independent round 1 correction review
 
-- **AID-001 — `DECISION_REQUIRED`.** Core, closed-wire parsing, Bundle,
+- **AID-001 — `CORRECTION_REQUESTED`, round 2.** Core, closed-wire parsing, Bundle,
   WASM/mandates, Catalog, Gateway, and Client satisfy the targeted strict DID
   criteria. Provider `artifacts::deposit_did` preserves a parallel
   same-DID replacement verifier: it accepts `#succession`, does not validate
   version or key exchange, and does not construct `VerifyingKey` values for
   the incoming Ed25519 fields. It may persist a document that
   `DidDocument::verify` later rejects. P9 explicitly codifies that behavior,
-  so a corrector must not silently choose between same-DID Provider
-  replacement and §10.4 epoch transition.
+  The protocol owner selected §10.4: a DID document remains root-signed, the
+  succession key signs only `EpochTransition`, and Provider must reject the
+  current same-DID succession-signed replacement.
 - **AID-002 — `VERIFIED`.** `verify_succession(prev, next)` validates both
   documents, transition metadata and signature, DID bindings, and distinct
   identities. The Gherkin `Then` passes the real `next_doc`; every negative
@@ -237,7 +238,7 @@ initial verdict.
 
 ### AID-001 — Strict, closed DID verification
 
-**Priority: P1 — `DECISION_REQUIRED`, round 1**
+**Priority: P1 — `CORRECTION_REQUESTED`, round 2**
 
 #### Before correction
 
@@ -269,7 +270,7 @@ verified JCS reconstruction.
   against the Core verdict.
 - [x] Negative Core, wire, Bundle, and mandate-chain surface tests.
 
-#### Outstanding protocol decision
+#### Provider discrepancy
 
 Provider `artifacts::deposit_did` intentionally verifies replacement under
 the stored document's `#succession` authority rather than calling
@@ -277,13 +278,23 @@ the stored document's `#succession` authority rather than calling
 that behavior. It does not validate version/key exchange or all incoming
 Ed25519 points and can persist a document Core later rejects.
 
-The protocol owner must choose whether:
+#### Binding protocol decision — 2026-07-29
 
-1. same-DID Provider replacement remains a distinct protocol operation with
-   its own fully specified verifier and reopen guarantees; or
-2. Provider adopts the §10.4 transition to a different DID.
+The protocol owner selected the §01.4/§10.4 model:
 
-No round 2 correction should begin until this is decided.
+- a DID document is always root-signed and passes `DidDocument::verify`;
+- the succession key signs only `EpochTransition`;
+- a new root creates a distinct successor DID;
+- Provider accepts succession only by verifying the complete previous
+  document / transition / successor document triplet through Core;
+- a refusal leaves no partial persistent effect.
+
+Same-DID metadata updates, if supported, remain root-signed and preserve the
+root and succession authority. If the existing edition/CAS contract cannot
+prove such an update, Provider rejects byte-different replacement fail-closed.
+
+Decision record:
+`features/.agents/a-identity/decisions/2026-07-29-aid-001-provider-epoch-transition.md`.
 
 ### AID-002 — Bind transition to the actual successor document
 
@@ -408,8 +419,9 @@ No Identity step is empty, proxy, mocked, `@wip`, or backed by a global
 1. **Transition API — DECIDED 2026-07-29.** Remove ambiguous `verify(prev)`;
    retain `verify_declaration(prev)` for declaration-only proof and
    `verify_succession(prev, next)` for the full successor verdict.
-2. **Provider — OPEN.** Keep same-DID `did.json` replacement as a distinct
-   operation, or adopt epoch transition to a new DID?
+2. **Provider — DECIDED 2026-07-29.** Adopt the §10.4 transition to a new DID.
+   A DID document remains root-signed; succession signs only the separate
+   transition. Same-DID succession-signed replacement is forbidden.
 3. **Cold custody — OPEN.** Is separation technically enforced by Aithos or
    documented as an operator responsibility?
 4. **Bounded capability — OPEN.** Must the private succession key stay behind
@@ -423,8 +435,9 @@ implementation fixes them implicitly.
 This audit may become fully `VERIFIED` when:
 
 - [ ] AID-001 through AID-005 are closed or explicitly decided out of scope;
-  AID-002/AID-005 are verified within pilot scope, AID-001 awaits a protocol
-  decision, and AID-003/AID-004 remain open;
+  AID-002/AID-005 are verified within pilot scope, AID-001 is assigned to
+  correction round 2 under the decided semantics, and AID-003/AID-004 remain
+  open;
 - [x] no `a-identity.feature` scenario is `@wip`, proxy, or empty;
 - [ ] an automated targeted gate enforces the expected Identity count; the
   current count of 30 was verified manually;
@@ -445,6 +458,7 @@ This audit may become fully `VERIFIED` when:
 
 | Date | State | Note |
 |---|---|---|
+| 2026-07-29 | `CORRECTION_REQUESTED — ROUND 2` | Human protocol decision: Provider adopts §10.4 epoch transition. DID documents remain root-signed, succession signs only the separate transition, new root means new DID, and same-DID succession-signed replacement is forbidden. |
 | 2026-07-29 | `PROCESS_DISCLOSURE` | Audit artifacts translated to English. The new two-pass process is adopted; initial and round 1 runs are explicitly recorded as history-aware rather than retroactively claimed as clean Pass A. |
 | 2026-07-29 | `DECISION_REQUIRED — ROUND 1` | Independent `be2d098..56436f3` review: AID-002/AID-005 verified within pilot scope; AID-001 awaits explicit Provider semantics. Targeted gates: A1 4, A2 6, surfaces 2, Cucumber 836/836 including 30 Identity. Workspace sandbox-inconclusive; pre-existing formatting issue outside diff. |
 | 2026-07-29 | `PARTIALLY_CLOSED` | Candidate correction hardened `DidDocument::verify`, closed wire schemas, replaced ambiguous transition verification, grew feature from 9 to 30 scenarios, and added public-surface replay. AID-003/AID-004 remain open. |

@@ -25,6 +25,16 @@ The public audit is `docs/audits/features/a-identity.md`.
 8. The succession secret must not be derivable from the owner master seed.
 9. Cold-custody claims must be testable properties of the surfaces that make
    those claims.
+10. A DID document is always root-signed; the succession key signs only an
+    `EpochTransition`.
+11. A new root creates a new DID. Same-DID succession-signed `did.json`
+    replacement is invalid.
+12. Provider must verify the complete previous/transition/successor triplet
+    through Core before accepting an epoch successor, with no partial write on
+    refusal.
+
+The binding decision for invariants 10–12 is recorded in
+`decisions/2026-07-29-aid-001-provider-epoch-transition.md`.
 
 ## Primary sources
 
@@ -67,7 +77,8 @@ exit code.
 - Bundle: `did.json` parsing and cold verification;
 - WASM/client: public mandate and DID verification;
 - Gateway: identity creation and succession source;
-- Provider: replacement and distribution of `did.json`;
+- Provider: strict `did.json` deposit, epoch-transition acceptance, and
+  successor distribution;
 - `f-gamma.feature`: `rotate identity` facts, distinct from epoch transition
   but potentially sharing DID invariants.
 
