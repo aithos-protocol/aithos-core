@@ -41,6 +41,8 @@ nom proche ou que le runner global est vert.
 7. Rechercher les contournements parallèles dans les surfaces du domaine.
 8. Accepter ou refuser chaque finding séparément.
 9. Ne jamais promouvoir un finding non traité ou hors périmètre.
+10. Utiliser `DECISION_REQUIRED`, plutôt qu'une demande de correction, si le
+    changement imposerait de choisir une sémantique de protocole ou de produit.
 
 Traiter la conclusion du correcteur comme un handoff à vérifier, pas comme une
 preuve.
@@ -54,5 +56,7 @@ preuve.
 - Mettre à jour l'état avec la prochaine action.
 - En cas d'acceptation, énumérer les fichiers, symboles, formats, sections de
   spec et surfaces susceptibles d'avoir un effet transverse.
+- En cas de décision requise, exposer les comportements concurrents, leurs
+  preuves et le propriétaire attendu sans choisir à sa place.
 
 Ne pas implémenter le correctif pendant l'audit ou la review.

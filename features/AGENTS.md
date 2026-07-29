@@ -28,6 +28,8 @@ Pour `a-identity.feature` :
 - Le reviewer d'impacts intervient uniquement après une review acceptée. Il
   signale les autres features potentiellement touchées sans les modifier ni
   les relancer.
+- Si une review découvre un choix de protocole ou de produit, positionner le
+  domaine sur `DECISION_REQUIRED`. Aucun correcteur ne doit trancher ce choix.
 
 L'audit courant porte uniquement sur la vérité sémantique des scénarios
 existants qui passent. La recherche de scénarios entièrement manquants est
