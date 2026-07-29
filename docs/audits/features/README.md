@@ -1,72 +1,77 @@
-# Audits d'implémentation des features Gherkin
+# Gherkin feature implementation audits
 
-Ce répertoire contient une note vivante par fichier `features/*.feature`.
-L'objectif est de distinguer précisément :
+This directory contains one living audit note per `features/*.feature` file.
+The objective is to distinguish precisely between:
 
-1. un scénario réellement exécuté ;
-2. un scénario qui appelle bien du code de production ;
-3. un scénario qui prouve effectivement tout ce que son texte affirme ;
-4. une capacité conforme sur les surfaces qui l'utilisent réellement.
+1. a scenario that is actually executed;
+2. a scenario that calls real production code;
+3. a scenario that proves everything its text claims;
+4. a capability that remains compliant on the real surfaces that use it.
 
-Un runner vert ne suffit pas, à lui seul, à satisfaire les quatre niveaux.
+A green runner does not establish all four levels by itself.
 
 ## Convention
 
-- Un fichier stable par feature : `a-identity.md`, `b-derivation.md`, etc.
-- Une date d'audit et la révision Git observée sont toujours indiquées.
-- L'audit porte sur l'état disque observé. Un worktree sale est signalé ; il
-  n'est jamais présenté comme une baseline reproductible propre.
-- Chaque écart reçoit un identifiant stable dérivé de la feature :
-  `AID-001`, `BDER-001`, `CHDR-001`, etc.
-- Les constats ne sont pas supprimés après correction. Leur statut passe de
-  `OUVERT` à `IMPLÉMENTÉ`, puis à `VÉRIFIÉ`, avec la preuve de clôture.
+- One stable file per feature: `a-identity.md`, `b-derivation.md`, and so on.
+- Every audit records its date and observed Git revision.
+- The audit describes the observed on-disk state. A dirty worktree is
+  disclosed and is never presented as a clean reproducible baseline.
+- Every discrepancy receives a stable feature-derived identifier:
+  `AID-001`, `BDER-001`, `CHDR-001`, and so on.
+- Findings are not deleted after correction. Their state moves from `OPEN` to
+  `IMPLEMENTED`, then to `VERIFIED`, with closure evidence.
+- Every audit separates a frozen history-blind current-code pass from the
+  later Git/history pass. See `features/.agents/PROCESS.md`.
 
-## Statuts de couverture
+## Coverage statuses
 
-| Statut | Signification |
+| Status | Meaning |
 |---|---|
-| `PROUVÉ` | Les entrées du scénario pilotent une API de production et ses assertions vérifient exactement le résultat annoncé. |
-| `PARTIEL` | Une partie du contrat est réelle, mais une frontière ou un invariant annoncé n'est pas exercé. |
-| `FAUX POSITIF` | Le scénario passe sans vérifier le résultat qu'il affirme. |
-| `NON COUVERT` | Aucun scénario sélectionné ne porte l'exigence. |
-| `PROXY` | Le scénario réutilise un verdict global sans exécuter son cas propre. |
+| `PROVEN` | Scenario inputs drive a production API and its assertions verify the exact stated outcome. |
+| `PARTIAL` | Part of the contract is real, but a stated boundary or invariant is not exercised. |
+| `SEMANTIC_FALSE_POSITIVE` | The scenario passes without proving the outcome it claims. |
+| `NOT_COVERED` | No selected scenario carries the requirement. |
+| `PROXY` | The scenario reuses a global verdict without executing its own case. |
 
-## Structure obligatoire d'une note
+## Required structure
 
-Chaque note contient :
+Every note contains:
 
-1. **Métadonnées** — feature, date, révision, état du worktree et périmètre.
-2. **Verdict** — résultat synthétique et compte exact des scénarios/steps.
-3. **Preuves rejouées** — commandes et résultats observés.
-4. **Matrice scénario par scénario** — statut et chemin de production.
-5. **Écarts ordonnés** — impact, preuve et comportement attendu.
-6. **Plan d'implémentation** — changement minimal, tests RED attendus et
-   critères de clôture.
-7. **Décisions à trancher** — choix de protocole ou de produit qui ne doivent
-   pas être décidés silencieusement dans le code.
-8. **Définition de terminé** — gates communs nécessaires pour fermer la note.
+1. **Metadata** — feature, date, revision, worktree state, and scope.
+2. **Method provenance** — review units, Pass A isolation, contamination
+   status, Pass B inputs, and reconciliation.
+3. **Verdict** — concise outcome and exact scenario/step counts.
+4. **Reproduced evidence** — commands and observed results.
+5. **Scenario matrix** — status and production path for every scenario.
+6. **Ordered findings** — impact, evidence, and expected behavior.
+7. **Implementation plan** — minimal change, expected RED tests, and closure
+   criteria.
+8. **Decisions required** — protocol or product choices that code must not
+   decide silently.
+9. **Definition of done** — common gates required to close the note.
 
-## Règles de preuve
+## Evidence rules
 
-Un scénario n'est classé `PROUVÉ` que si :
+A scenario is `PROVEN` only when:
 
-- aucun `@wip` ou filtre ne l'exclut ;
-- le runner exécute un nombre non nul et attendu de scénarios ;
-- le `When` appelle l'implémentation de production ou une façade publique
-  réelle ;
-- les paramètres de la ligne Gherkin atteignent cet appel ;
-- le `Then` vérifie le résultat propre au scénario, pas un succès global ;
-- un refus vérifie l'absence d'effet partiel quand une mutation est en jeu ;
-- les frontières annoncées — parsing wire, store frais, reopen, réseau,
-  restart — sont réellement franchies ;
-- les cas cryptographiques structurants sont renforcés par des vecteurs
-  indépendants lorsque la conformité byte-exacte est requise.
+- no `@wip` tag or filter excludes it;
+- the runner executes a non-zero, expected scenario count;
+- the `When` calls production code or a real public facade;
+- the Gherkin parameters reach that call;
+- the `Then` verifies the scenario-specific result, not a global success;
+- a rejected mutation proves the absence of partial effects;
+- stated boundaries — wire parsing, fresh store, reopen, network, restart —
+  are actually crossed;
+- structural cryptographic cases are backed by independent vectors when
+  byte-exact compliance is required;
+- the verdict first survives a current-code trace without Git history or
+  previous conclusions, then a separate differential review.
 
-Les tests unitaires, vecteurs et Gherkins sont complémentaires. Aucun ne doit
-être présenté comme le substitut silencieux d'un autre.
+Unit tests, vectors, and Gherkin scenarios are complementary. None may be
+presented as a silent substitute for another.
 
 ## Index
 
-| Feature | Note | Verdict courant |
+| Feature | Note | Current verdict |
 |---|---|---|
-| `a-identity.feature` | [`a-identity.md`](a-identity.md) | Review round 1 : décision protocolaire requise pour AID-001 ; AID-002/005 vérifiés dans le périmètre du pilote ; AID-003/004 ouverts |
+| `a-identity.feature` | [`a-identity.md`](a-identity.md) | Round 1 review: protocol decision required for AID-001; AID-002/005 verified within pilot scope; AID-003/004 open |

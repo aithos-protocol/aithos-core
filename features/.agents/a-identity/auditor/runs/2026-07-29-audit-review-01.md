@@ -1,157 +1,168 @@
-# Conclusion — review indépendante Identity, round 1
+# Conclusion — independent Identity review, round 1
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
 | Type | `REVIEW` |
-| Rôle | auditeur `audit-a-identity` |
+| Role | `audit-a-identity` auditor |
 | Date | 2026-07-29 |
-| Branche de review | `codex/review-a-identity` |
-| HEAD observé | `0601b9f9106988385c2b38ed9d4a2e2370ab728a` |
-| Baseline d'audit | `be2d098eeb79107c861462a6433df9ef45871265` |
-| Commit candidat | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
-| Client frère inspecté | `c6f615123ca3dc83708ba029b898375409551719` |
-| État initial du worktree | propre |
-| Résultat | `DECISION_REQUIRED` |
-| Prérequis bloquant | sémantique du remplacement Provider `did.json` |
+| Review branch | `codex/review-a-identity` |
+| Observed HEAD | `0601b9f9106988385c2b38ed9d4a2e2370ab728a` |
+| Audit baseline | `be2d098eeb79107c861462a6433df9ef45871265` |
+| Candidate commit | `56436f33d427dbaf5f55813ed0febb981ea43dca` |
+| Inspected sibling client | `c6f615123ca3dc83708ba029b898375409551719` |
+| Initial worktree state | clean |
+| Result | `DECISION_REQUIRED` |
+| Blocking prerequisite | Provider `did.json` replacement semantics |
+
+## Method provenance
+
+This review predates the formal two-pass rule now defined in
+`features/.agents/PROCESS.md`.
+
+The auditor independently inspected current Rust paths, public surfaces, and
+test behavior rather than trusting the corrector's report. However, the
+baseline, candidate diff, prior findings, and correction context were already
+known before those code traces were written. This run is therefore
+**history-aware and Pass-A-contaminated** under the newer process. It must not
+be relabeled as a clean history-blind Pass A after the fact.
+
+The technical evidence and reproduced results below remain valid. A future
+round that claims full compliance with the new process must start fresh review
+units, freeze their current-code verdicts, and only then inspect this run and
+the Git diff.
 
 ## Verdict
 
-| Finding | Verdict de review | Motif |
+| Finding | Review verdict | Reason |
 |---|---|---|
-| `AID-001` | `DÉCISION PROTOCOLAIRE REQUISE` | Core et les surfaces ordinaires sont durcis. Le remplacement Provider `artifacts::deposit_did` conserve une sémantique même-DID distincte ; décider si elle reste spécifique ou adopte §10.4 relève du propriétaire du protocole, pas du correcteur. |
-| `AID-002` | `VÉRIFIÉ` | Le triplet précédent/transition/successeur est réellement reçu et validé ; les liaisons, signatures, métadonnées et identités distinctes sont couvertes. |
-| `AID-005` | `VÉRIFIÉ DANS LE PÉRIMÈTRE DU PILOTE` | Les 21 scénarios ajoutés sont honnêtes, sélectionnés et verts. La cérémonie dépend d'AID-003/AID-004 hors round ; les vecteurs indépendants et le gate automatisé de comptage sont des améliorations, pas des preuves indispensables à ce pilote. |
-| `AID-003` | non traité | Hors correction du round 1 ; reste ouvert. |
-| `AID-004` | non traité | Hors correction du round 1 ; reste ouvert. |
+| `AID-001` | `DECISION_REQUIRED` | Core and ordinary consumers are hardened. Provider `artifacts::deposit_did` preserves distinct same-DID replacement semantics; whether that remains Provider-specific or adopts §10.4 is a protocol-owner decision. |
+| `AID-002` | `VERIFIED` | The previous/transition/successor triplet is received and validated; bindings, signatures, metadata, and distinct identities are covered. |
+| `AID-005` | `VERIFIED_WITHIN_PILOT_SCOPE` | All 21 added scenarios are honest, selected, and green. The ceremony depends on out-of-round AID-003/AID-004; independent negative vectors and an automated count gate are improvements rather than prerequisites for this pilot. |
+| `AID-003` | not addressed | Outside round 1 correction; remains open. |
+| `AID-004` | not addressed | Outside round 1 correction; remains open. |
 
-## Diff revu
+## Reviewed diff
 
-Le diff exact `be2d098..56436f3` contient 7 fichiers, 1130 insertions et
-158 suppressions :
+The exact `be2d098..56436f3` diff contains 7 files, 1,130 insertions, and
+158 deletions:
 
-- `rust/crates/aithos-core/src/did.rs` :
+- `rust/crates/aithos-core/src/did.rs`:
   `DidDocument::verify`, `EpochTransition::{verify_declaration,
-  verify_succession}`, fermeture serde et constantes de signature ;
-- `rust/crates/aithos-core/tests/a2_did.rs` :
-  trois tests AID-001/AID-002 supplémentaires ;
-- `rust/crates/aithos-bundle/tests/cucumber.rs` :
-  steps Identity et verdicts propres à chaque scénario ;
-- `rust/crates/aithos-bundle/tests/aid_identity_surfaces.rs` :
-  rejeu Bundle et chaîne de mandats/WASM ;
-- `features/a-identity.feature` : 21 exemples/scénarios supplémentaires ;
-- `docs/audits/features/{README.md,a-identity.md}` : documentation de
-  correction.
+  verify_succession}`, closed serde schemas, and signature constants;
+- `rust/crates/aithos-core/tests/a2_did.rs`:
+  three additional AID-001/AID-002 tests;
+- `rust/crates/aithos-bundle/tests/cucumber.rs`:
+  Identity steps and scenario-specific verdicts;
+- `rust/crates/aithos-bundle/tests/aid_identity_surfaces.rs`:
+  Bundle and mandate-chain/WASM replay;
+- `features/a-identity.feature`: 21 additional examples/scenarios;
+- `docs/audits/features/{README.md,a-identity.md}`: correction evidence.
 
-`git diff --check be2d098..56436f3` est propre.
+`git diff --check be2d098..56436f3` is clean.
 
 ## AID-001
 
-### Preuves acceptées
+### Accepted evidence
 
-`DidDocument::verify` contrôle maintenant :
+`DidDocument::verify` now validates:
 
-- `DID_VERSION`, `ed25519` et `#root` ;
-- root, content et succession sous codec Ed25519 avec construction de
-  `VerifyingKey` ;
-- kex sous codec X25519 ;
-- la liaison `id ↔ root` et la signature root ;
-- le refus des membres wire inconnus sur `DidDocument`, `DidKeys` et
+- `DID_VERSION`, `ed25519`, and `#root`;
+- root, content, and succession as Ed25519 keys with `VerifyingKey`
+  construction;
+- key exchange with the X25519 codec;
+- the `id ↔ root` binding and root signature;
+- unknown wire-member rejection on `DidDocument`, `DidKeys`, and
   `SignatureBlock`.
 
-Les chemins suivants rejoignent ce verdict :
+The following ordinary consumption paths converge on that verdict:
 
-- `Bundle::open` et `Bundle::verify` ;
-- WASM `verify_mandate_chain` via `mandate::verify_chain` ;
-- Catalog `verified_owner_did` ;
-- Gateway, notamment `Bundle::open` et les snapshots de contrôle ;
-- le client frère `c6f6151`, dont les chargements DID appellent
-  `DidDocument::verify`.
+- `Bundle::open` and `Bundle::verify`;
+- WASM `verify_mandate_chain` through `mandate::verify_chain`;
+- Catalog `verified_owner_did`;
+- Gateway, including `Bundle::open` and control snapshots;
+- sibling client `c6f6151`, whose DID loads call `DidDocument::verify`.
 
-### Décision protocolaire requise
+### Protocol decision required
 
-Le remplacement Provider de `did.json` reste parallèle :
+Provider `did.json` replacement remains a parallel path:
 
-- `artifacts::deposit_did` accepte le remplacement sous la succession du
-  document stocké et n'appelle pas `doc.verify()` ;
-- il ne contrôle pas `doc.version` ni `doc.keys.kex` ;
-- il décode root/content/succession mais ne construit pas leurs
-  `VerifyingKey` ;
-- le fixture P9 `did_rotation_ok` confirme que ce document `#succession` est
-  persisté alors que le verdict Core exige `#root`.
+- `artifacts::deposit_did` accepts replacement under the stored document's
+  succession authority and does not call `doc.verify()`;
+- it does not validate `doc.version` or `doc.keys.kex`;
+- it decodes root/content/succession but does not construct their
+  `VerifyingKey` values;
+- P9 fixture `did_rotation_ok` confirms that a `#succession` document is
+  persisted even though the Core verdict requires `#root`.
 
-Cette surface peut donc commettre durablement un objet que les consommateurs
-Core/Bundle refuseront à la réouverture. Cependant, P9 codifie une succession
-même-DID distincte de la transition d'époque §10.4. Choisir entre ces deux
-sémantiques est une décision de protocole : la partie Core d'AID-001 est
-acceptée, mais aucune correction Provider ne doit être demandée avant cet
-arbitrage explicite.
+This surface can durably commit an object that Core/Bundle consumers reject on
+reopen. P9, however, codifies same-DID succession distinct from the §10.4
+epoch transition. Choosing between those semantics is a protocol decision.
+The Core portion of AID-001 is accepted, but no Provider correction should be
+requested before an explicit decision.
 
 ## AID-002
 
-`EpochTransition::verify_succession(prev_doc, next_doc)` :
+`EpochTransition::verify_succession(prev_doc, next_doc)`:
 
-- appelle le validateur strict sur les deux documents ;
-- valide version, algorithme et `#succession` ;
-- lie `prev_did` et `next_did` aux documents présentés ;
-- refuse les identités identiques ;
-- vérifie la signature sous la succession précédente.
+- calls the strict validator on both documents;
+- validates version, algorithm, and `#succession`;
+- binds `prev_did` and `next_did` to the presented documents;
+- rejects identical identities;
+- verifies the signature under the previous succession authority.
 
-Le step « transition is signed by the succession key » transmet désormais
-`next_doc`. Les 10 défauts de l'Outline et le cas root prétendant
-`#succession` construisent chacun leur transition/document puis consomment
-leur propre résultat.
+The step “transition is signed by the succession key” now passes `next_doc`.
+Each of the 10 Outline defects and the root-claiming-`#succession` case builds
+its own transition/document and consumes its own result.
 
-La sémantique Provider « remplacement sous le même DID » reste nommée comme
-distincte et ne prétend pas implémenter §10.4. Aucun appelant de production
-n'utilisait l'ancienne `EpochTransition::verify`.
+Provider same-DID replacement remains explicitly named as a different
+operation and does not claim to implement §10.4. No production caller used the
+old `EpochTransition::verify`.
 
-Verdict : `AID-002` passe à `VÉRIFIÉ`.
+Verdict: AID-002 moves to `VERIFIED`.
 
 ## AID-005
 
-Les éléments livrés sont réels :
+The delivered evidence is real:
 
-- le scénario d'altération post-signature est nommé précisément ;
-- 7 documents correctement re-signés mais invalides ;
-- 3 membres wire inconnus ;
-- le `Then` positif vérifie le triplet complet ;
-- 10 transitions mal liées et 1 signature root prétendant la succession ;
-- aucun step Identity n'est vide, proxy, `@wip` ou adossé à un `OnceLock`.
+- the post-signature alteration scenario now has a precise name;
+- 7 correctly re-signed but invalid documents;
+- 3 unknown wire-member cases;
+- a positive `Then` that verifies the full triplet;
+- 10 incorrectly bound transitions and 1 root signature claiming succession;
+- no Identity step is empty, proxy, `@wip`, or backed by a `OnceLock`.
 
-Les éléments de l'audit initial encore absents se répartissent ainsi :
+Remaining initial-audit requests are:
 
-1. un scénario de cérémonie passant par la surface réelle de création
-   d'identité : dépendance AID-003/AID-004, explicitement hors round ;
-2. des négatifs A2 générés indépendamment : amélioration de robustesse ;
-3. un gate ciblé échouant si le nombre exécuté diffère de 30 : amélioration
-   d'outillage. Le processus demande ici le comptage effectif par l'auditeur,
-   qui a été réalisé.
+1. a ceremony scenario through the real identity-creation surface — dependent
+   on out-of-round AID-003/AID-004;
+2. independently generated A2 negative vectors — robustness improvement;
+3. a targeted gate that fails unless exactly 30 scenarios run — tooling
+   improvement. This review manually verified the count.
 
-Le correcteur rapporte en outre 3 tests A2 et 18 scénarios RED au moyen de
-shims temporaires. Ces shims ne sont pas versionnés ; l'auditeur n'a pas
-modifié le Rust pour reconstruire ces nombres. Le diff de baseline prouve
-statiquement les anciens défauts, mais pas ces comptes exacts. Cette limite est
-rapportée et ne bloque pas la vérité des scénarios corrigés ni leurs gates
-GREEN.
+The corrector also reported 3 A2 RED tests and 18 RED scenarios through
+temporary shims. Those shims are not versioned; the auditor did not change
+Rust to reconstruct the exact counts. The baseline diff statically establishes
+the old defects, but not those counts. This limitation does not undermine the
+corrected scenarios or their GREEN gates.
 
-Verdict : `AID-005` passe à `VÉRIFIÉ DANS LE PÉRIMÈTRE DU PILOTE`.
+Verdict: AID-005 moves to `VERIFIED_WITHIN_PILOT_SCOPE`.
 
-## Commandes réellement exécutées
+## Commands actually executed
 
-### Limite du worktree direct
+### Direct-worktree limitation
 
 ```text
 cargo test -p aithos-core --test a1_genesis --test a2_did
 EXIT=101
 package collision in the lockfile:
-aithos-bundle du worktree de review et aithos-bundle du worktree principal
+aithos-bundle from the review worktree and aithos-bundle from the main worktree
 ```
 
-Le client frère `c6f6151` référence `../aithos-core`. Pour tester le commit
-immuable sans modifier aucun fichier Rust/Cargo, des archives Git exactes de
-`56436f3` et `c6f6151` ont été extraites sous un layout frère temporaire.
+Sibling client `c6f6151` references `../aithos-core`. To test the immutable
+candidate without modifying Rust or Cargo files, exact Git archives of
+`56436f3` and `c6f6151` were extracted under a temporary sibling layout.
 
-### Gates ciblés sur les archives exactes
+### Targeted gates on exact archives
 
 ```text
 cargo test -p aithos-core --test a1_genesis --test a2_did
@@ -171,9 +182,9 @@ EXIT=0
 3568 steps (3568 passed)
 ```
 
-La sortie énumère les 30 scénarios Identity et leurs 93 steps, tous passés.
+The output enumerated all 30 Identity scenarios and their 93 steps as passed.
 
-### Gate workspace
+### Workspace gate
 
 ```text
 cargo test --workspace --no-fail-fast
@@ -181,17 +192,16 @@ EXIT=101
 28 targets failed
 ```
 
-Les cibles Identity sont vertes dans ce run. Les 28 cibles échouent lorsqu'un
-test CLI/Gateway/Provider tente d'ouvrir une socket ou un service local :
-`Operation not permitted`. Une relance hors sandbox a été demandée et refusée
-par la politique d'exécution. Le gate workspace est donc non concluant pour
-raison environnementale ; il n'est pas présenté comme vert.
+Identity targets were green. The 28 failures occurred when
+CLI/Gateway/Provider tests attempted to open local sockets or services:
+`Operation not permitted`. An outside-sandbox retry was requested and denied
+by execution policy. The workspace gate is environmentally inconclusive and
+is not presented as green.
 
-Le runner Provider non réseau a, lui, terminé vert avec 151/151 scénarios et
-992/992 steps, dont le cas P9 `did_rotation_ok` utilisé dans le verdict
-AID-001.
+The non-network Provider runner passed 151/151 scenarios and 992/992 steps,
+including P9 `did_rotation_ok`, which informs AID-001.
 
-### Formatage
+### Formatting
 
 ```text
 cargo fmt --all -- --check
@@ -199,26 +209,26 @@ EXIT=1
 rust/crates/aithos-gateway/src/core_bridge.rs:1355
 ```
 
-Le blob `core_bridge.rs` est identique dans la baseline et le candidat
-(`774672a0e2d4db1e866d3eb1d85106e53f684f80`). L'écart est préexistant et
-hors du diff Identity.
+The `core_bridge.rs` blob is identical in baseline and candidate
+(`774672a0e2d4db1e866d3eb1d85106e53f684f80`). The deviation is pre-existing
+and outside the Identity diff.
 
-## Limites
+## Limits
 
-- Le workspace gate n'a pas pu être rejoué hors sandbox.
-- Clippy n'a pas été rejoué par l'auditeur.
-- Les nombres RED à shims restent rapportés, non reproduits.
-- Aucun fichier Rust n'a été modifié.
-- AID-003 et AID-004 n'ont pas été fermés, corrigés ou élargis.
+- This run is history-aware and cannot serve as a clean Pass A.
+- The workspace gate could not be rerun outside the sandbox.
+- The auditor did not rerun Clippy.
+- RED counts obtained with temporary shims are reported, not reproduced.
+- No Rust file was modified.
+- AID-003 and AID-004 were not closed, corrected, or broadened.
 
 ## Handoff
 
-Passer d'abord au propriétaire du protocole :
+Route first to the protocol owner:
 
-1. décider si le remplacement Provider `did.json` reste une succession
-   même-DID spécifique ou adopte la transition d'époque §10.4 ;
-2. après cette décision seulement, passer à `correct-a-identity`, round 2,
-   baseline `56436f3`, si une correction est requise ;
-3. conserver AID-002 et AID-005 inchangés et `VÉRIFIÉS` dans le périmètre du
-   pilote ;
-4. ne pas traiter AID-003/AID-004 dans ce round.
+1. decide whether Provider `did.json` replacement remains a Provider-specific
+   same-DID succession operation or adopts the §10.4 epoch transition;
+2. only then route to `correct-a-identity`, round 2, baseline `56436f3`, if a
+   correction is required;
+3. leave AID-002 and AID-005 unchanged and verified within pilot scope;
+4. do not address AID-003/AID-004 in this round.
