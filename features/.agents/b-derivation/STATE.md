@@ -10,7 +10,8 @@
 | Current `main` integration baseline | `5c3a61852dee0886fb6fff008a6304e8ea2c71bb` |
 | Rebased audit record | `9c3c9bc` |
 | Correction baseline (frozen, immutable) | `fa8fa797b897a762a0dfd7fc20910f053ce349ed` |
-| Correction candidate | `CANDIDATE_SHA` |
+| Correction commit | `3d6fa51aaf9049e0deb81873242103c49f86de08` |
+| Correction candidate (tip) | this record's own commit, child of `3d6fa51` |
 | Corrector branch | `codex/fix-b-derivation-bder-001-005-honest-assertions` |
 | Correction run | `corrector/runs/2026-07-29-correction-01.md` |
 | Findings moved to `IMPLEMENTED` | `BDER-001`, `BDER-002`, `BDER-003`, `BDER-004`, `BDER-005`, `BDER-009` |
@@ -31,7 +32,9 @@
 Review the candidate independently. Run the canonical feature gate once on the
 candidate, complete a history-blind Pass A against its current code, and
 **freeze that verdict before reading the correction diff or the corrector's
-report**. Then run Pass B on `fa8fa79..CANDIDATE_SHA`. Do not rerun the global
+report**. Then run Pass B on `fa8fa79..3d6fa51`, plus this record's commit,
+which only fills in the revisions the correction could not know before it
+existed. Do not rerun the global
 Cucumber or workspace gates: the corrector owns them, and their results are in
 its report as a claim to check, not as evidence.
 
