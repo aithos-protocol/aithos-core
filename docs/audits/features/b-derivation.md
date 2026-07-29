@@ -12,7 +12,7 @@
 | Implémentation principale | `aithos-core::{derive,path,ids}` |
 | Surfaces contrôlées | Core, Bundle, CLI ; vecteurs `vectors/` et leurs générateurs |
 | Méthode | Deux passes, Pass A aveugle à l'historique en trois unités de revue isolées (une par `Rule`), puis passe d'intégration, revue challenger adverse, et Pass B différentielle |
-| Statut de la note | **OUVERTE — corrections requises** |
+| Statut de la note | **OUVERTE — correction candidate de la ronde 1 en attente de revue indépendante** |
 
 ## Verdict
 
@@ -143,7 +143,7 @@ Les sondes et leurs artefacts ne font pas partie du dépôt.
 
 ### BDER-001 — Ancrer le déterminisme à une valeur attendue indépendante
 
-**Priorité : P1 — OUVERT — assigné à la ronde 1**
+**Priorité : P1 — IMPLEMENTED (ronde 1, non vérifié)**
 
 #### Constat
 
@@ -183,7 +183,7 @@ inchangé.
 
 ### BDER-002 — Prouver l'absence de relation, pas l'inégalité
 
-**Priorité : P2 — OUVERT — assigné à la ronde 1**
+**Priorité : P2 — IMPLEMENTED (ronde 1, non vérifié)**
 
 #### Constat
 
@@ -217,7 +217,7 @@ M4 et M5 font échouer ce scénario.
 
 ### BDER-003 — Lier le négatif universel à la clé réellement détenue
 
-**Priorité : P1 — OUVERT — assigné à la ronde 1 — écart le plus grave**
+**Priorité : P1 — IMPLEMENTED (ronde 1, non vérifié) — écart le plus grave**
 
 #### Constat
 
@@ -265,7 +265,7 @@ celle du dossier 1.
 
 ### BDER-004 — Renommer réellement quelque chose
 
-**Priorité : P1 — OUVERT — assigné à la ronde 1**
+**Priorité : P1 — IMPLEMENTED (ronde 1, non vérifié)**
 
 #### Constat
 
@@ -313,7 +313,7 @@ la section après renommage.
 
 ### BDER-005 — Élargir « every descendant »
 
-**Priorité : P3 — OUVERT — assigné à la ronde 1**
+**Priorité : P3 — IMPLEMENTED (ronde 1, non vérifié)**
 
 #### Constat
 
@@ -345,7 +345,7 @@ Au moins trois formes de descendants distinctes, toujours 5 mutants sur 5.
 
 ### BDER-009 — Épingler la forme de l'accumulateur `node_keys`
 
-**Priorité : P4 — OUVERT — assigné à la ronde 1**
+**Priorité : P4 — IMPLEMENTED (ronde 1, non vérifié)**
 
 #### Constat
 
@@ -373,6 +373,61 @@ feature ne sont partagés avec aucune autre).
 
 Toute composition future de steps échoue bruyamment au lieu de comparer la
 mauvaise paire.
+
+## Correction candidate — ronde 1 (2026-07-29)
+
+**Statut : `IMPLEMENTED`, non vérifié.** Écrit par `correct-b-derivation`, à
+valider par une revue indépendante. Le détail figure dans
+`features/.agents/b-derivation/corrector/runs/2026-07-29-correction-01.md`.
+
+- Baseline : `fa8fa79` (tête réelle de `codex/audit-b-derivation` au moment de
+  la correction, et non le `9c3c9bc` inscrit dans l'état).
+- `derive.rs` n'est pas modifié. Aucun fichier de production n'est modifié.
+- `vectors/b2-derivation.json` est inchangé, octet pour octet ; il est
+  désormais *lu* par la couche Gherkin, ce qui est précisément la correction.
+- `BDER-006` n'est pas touché. `BDER-007`, `BDER-008` et `BDER-010` restent
+  ouverts.
+
+### Ce que le vert prouve maintenant
+
+Sondes rejouées sur la feature corrigée, mutants appliqués à une copie
+jetable, jamais au dépôt :
+
+| Mutant | Scénarios `b-derivation` en échec |
+|---|---:|
+| M1 constante | 5 / 6 |
+| M2 ignore le chemin | 5 / 6 |
+| M3 hash monolithique | 3 / 6 |
+| M4 31 octets de zone recopiés | 4 / 6 |
+| M5 étape XOR | **4 / 6** (2 avant, dont aucun de ces quatre) |
+| R1 renommage = supprimer-recréer avec sid neuf | 1 / 6 (0 avant) |
+
+Pouvoir discriminant par scénario, avant → après :
+
+| Scénario | Avant | Après |
+|---|---:|---:|
+| The same path always yields the same key | 0 / 5 | **5 / 5** |
+| Sibling nodes get unrelated keys | 2 / 5 | **4 / 5** |
+| A folder holder derives every descendant | 5 / 5 | 5 / 5 |
+| A folder holder cannot reach sideways | 2 / 5 | **5 / 5** |
+| Renaming never re-keys | 0 / 5 | 0 / 5 sur `node_key`, **R1 tué** |
+| A folder-local tag view is its own lock | 2 / 5 | 2 / 5 (`BDER-006`) |
+
+Deux lectures que cette note ne lisse pas :
+
+1. M3 survit au scénario des frères — un hash monolithique produit toujours
+   des frères sans relation et reste unidirectionnel. M3 est tué par les
+   scénarios 1 et 3, et l'assertion par segment de `BDER-001` est exactement
+   l'assertion qui existe pour l'attraper.
+2. Le scénario de renommage ne tue aucun mutant de `node_key`, par
+   construction : il compare une paire avant/après dans la même exécution, un
+   `node_key` muté déplace les deux côtés ensemble. C'est la bonne forme — la
+   régression plausible que `BDER-004` nomme est `Bundle::rename_folder`
+   implémenté en supprimer-recréer, que R1 reproduit et que le scénario
+   attrape désormais.
+
+La feature exécute maintenant 3 Rules, 6 scénarios et **30 steps** (21 avant) ;
+aucun scénario n'a été supprimé.
 
 ## Écarts hors ronde de correction
 

@@ -9,45 +9,54 @@ Feature: Content-tree derivation
 
   Rule: Derivation is deterministic and per-segment
 
-    @audit-false-positive @bder-001
-    # AUDIT BDER-001 — SEMANTIC_FALSE_POSITIVE; see the public audit.
+    @audit-implemented @bder-001
+    # AUDIT BDER-001 — IMPLEMENTED, awaiting independent review.
     Scenario: The same path always yields the same key
       Given a zone key
       And a path of three nested folders ending in a section
-      When I derive the section key twice
+      When I derive the section key twice, the second time from its canonical path text
       Then both derivations yield the same key
+      And the key equals the B2 vector's deep section key byte for byte
+      And each segment contributed exactly one labelled derivation
 
-    @audit-false-positive @bder-002
-    # AUDIT BDER-002 — SEMANTIC_FALSE_POSITIVE; see the public audit.
+    @audit-implemented @bder-002
+    # AUDIT BDER-002 — IMPLEMENTED, awaiting independent review.
     Scenario: Sibling nodes get unrelated keys
       Given a zone key
       When I derive the keys of two sibling folders
-      Then the two folder keys are unrelated
+      Then neither sibling key derives the other under any production label
+      And neither sibling key yields the zone key back
 
   Rule: Holding a folder yields its subtree, nothing else
 
-    @audit-partial @bder-005
-    # AUDIT BDER-005 — PARTIAL; see the public audit.
+    @audit-implemented @bder-005
+    # AUDIT BDER-005 — IMPLEMENTED, awaiting independent review.
     Scenario: A folder holder derives every descendant
       Given a zone key
       And a folder three levels deep containing a section
       When I derive the folder's key from the zone key
       Then the folder key alone derives the section beneath it
+      And it alone derives a grandchild section and a tag anchor beneath it
 
-    @audit-false-positive @bder-003
-    # AUDIT BDER-003 — SEMANTIC_FALSE_POSITIVE; see the public audit.
+    @audit-implemented @bder-003
+    # AUDIT BDER-003 — IMPLEMENTED, awaiting independent review.
     Scenario: A folder holder cannot reach sideways
       Given a zone key
       And two sibling folders each containing a section
       When I hold only the first folder's key
-      Then no derivation from it yields the second folder's section key
+      Then the held key is exactly the first folder's key
+      And no derivation from it yields the second folder's section key
+      And no derivation from it yields its own parent or the zone key
 
-    @audit-false-positive @bder-004
-    # AUDIT BDER-004 — SEMANTIC_FALSE_POSITIVE; see the public audit.
+    @audit-implemented @bder-004
+    # AUDIT BDER-004 — IMPLEMENTED, awaiting independent review.
     Scenario: Renaming never re-keys
-      Given a zone key and a folder containing a section
-      When the folder is renamed
-      Then every derived key is unchanged
+      Given a published bundle with section "note1" in circle "projets/perso"
+      And the derived key of "projets/perso/note1" is recorded
+      When the folder "perso" is renamed to "intime"
+      And the edition is republished
+      Then the derived key of "projets/intime/note1" is unchanged
+      And the owner reads the same section at "projets/intime/note1"
 
   Rule: Tag views anchor at folders
 

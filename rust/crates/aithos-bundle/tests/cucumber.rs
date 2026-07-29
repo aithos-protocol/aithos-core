@@ -34,7 +34,7 @@ use aithos_core::constraints::{
     ConstraintOperation, ConstraintRequirement,
 };
 use aithos_core::delegated_counts::{verify_delegated_count_mandates, verify_delegated_counts};
-use aithos_core::derive::{derive_key, node_key, section_label};
+use aithos_core::derive::{derive_key, folder_label, node_key, section_label, tag_label};
 use aithos_core::did::{DidDocument, EpochTransition};
 use aithos_core::gamma_replay::GammaReplayState;
 use aithos_core::gamma_v2::{
@@ -136,6 +136,123 @@ fn tag_spec(dir: &str, tag: &str) -> GrantSpec {
 
 fn sid(n: u128) -> Sid {
     Sid(ulid::Ulid::from(n))
+}
+
+// --- step B fixtures: conformance vector B2 (spec 01.3, 02.5) ---
+//
+// BDER-001: the Gherkin layer and the byte-exact vector must share ONE zone
+// DK and ONE set of sids. While the feature carried its own `[0xAB; 32]`
+// fixture there was not even a compile-time link between the readable
+// contract and the only independently corroborated expected values in the
+// repository, so "always" meant "twice in the same process".
+//
+// BDER-007 is NOT silently closed here: `folder1_key_hex` is corroborated by
+// five Python generators and `deep_section_key_hex` by one, while the two tag
+// anchors have no witness outside `derive.rs`. Only the corroborated fields
+// are used below as external authority.
+#[derive(serde::Deserialize)]
+struct B2Vector {
+    zone_dk_hex: String,
+    folder_sids: Vec<String>,
+    section_sid: String,
+    sibling_section_sid: String,
+    tag: String,
+    folder1_key_hex: String,
+    deep_section_key_hex: String,
+    sibling_section_key_hex: String,
+}
+
+impl B2Vector {
+    fn load() -> Self {
+        serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../vectors/b2-derivation.json"
+        )))
+        .expect("vectors/b2-derivation.json parses")
+    }
+
+    fn zone_dk(&self) -> [u8; 32] {
+        b2_key32(&self.zone_dk_hex)
+    }
+
+    fn folder_sid(&self, index: usize) -> Sid {
+        Sid::parse(&self.folder_sids[index]).expect("vector folder sid")
+    }
+
+    fn folder_spine(&self) -> Vec<Sid> {
+        (0..self.folder_sids.len())
+            .map(|i| self.folder_sid(i))
+            .collect()
+    }
+
+    fn section_sid(&self) -> Sid {
+        Sid::parse(&self.section_sid).expect("vector section sid")
+    }
+
+    fn sibling_section_sid(&self) -> Sid {
+        Sid::parse(&self.sibling_section_sid).expect("vector sibling section sid")
+    }
+}
+
+fn b2_key32(hex_str: &str) -> [u8; 32] {
+    hex::decode(hex_str)
+        .expect("vector hex")
+        .try_into()
+        .expect("32 bytes")
+}
+
+/// Every label the production code can build in this feature's fixture space:
+/// folder and section labels over sids 0..9, plus the tag-anchor label. The
+/// held node's OWN label is deliberately included — an invertible derivation
+/// step is exploited by replaying the label that produced the key.
+fn b2_production_labels(tag: &str) -> Vec<String> {
+    let mut labels = Vec::new();
+    for n in 0u128..10 {
+        labels.push(folder_label(&sid(n)));
+        labels.push(section_label(&sid(n)));
+    }
+    labels.push(tag_label(tag));
+    labels
+}
+
+/// Every canonical path the production code can build from a held key in that
+/// same space: folder spines of length 0..=3 over sids 0..9, each terminated
+/// by nothing, by `s/<sid 0..9>` or by `t/<tag>`.
+/// (1 + 10 + 100 + 1000) spines x 12 terminals = 13_332 derivations.
+fn b2_reachable_paths(tag: &str) -> Vec<NodePath> {
+    let mut spines: Vec<Vec<Sid>> = vec![vec![]];
+    let mut frontier: Vec<Vec<Sid>> = vec![vec![]];
+    for _ in 0..3 {
+        let mut next = Vec::new();
+        for spine in &frontier {
+            for n in 0u128..10 {
+                let mut deeper = spine.clone();
+                deeper.push(sid(n));
+                next.push(deeper);
+            }
+        }
+        spines.extend(next.iter().cloned());
+        frontier = next;
+    }
+    let mut paths = Vec::new();
+    for spine in spines {
+        paths.push(NodePath::folder(Zone::Circle, spine.clone()));
+        for n in 0u128..10 {
+            paths.push(NodePath::section(Zone::Circle, spine.clone(), sid(n)));
+        }
+        paths.push(
+            NodePath::tag_view(Zone::Circle, spine.clone(), tag).expect("fixture tag is valid"),
+        );
+    }
+    paths
+}
+
+/// True when any contiguous `window`-byte run of `parent` reappears anywhere
+/// in `child`: a derived key must carry none of its parent's material.
+fn b2_shares_window(child: &[u8; 32], parent: &[u8; 32], window: usize) -> bool {
+    parent
+        .windows(window)
+        .any(|needle| child.windows(window).any(|hay| hay == needle))
 }
 
 // --- step C fixtures: header seals (behavioral; byte-exactness lives in C1) ---
@@ -359,6 +476,13 @@ pub struct ProtocolWorld {
     deep_path: Option<NodePath>,
     node_keys: Vec<[u8; 32]>,
     folder_key: Option<[u8; 32]>,
+    /// BDER-003: the two sibling spines are built by the `Given` and read by
+    /// the `When` and the `Then`; no step reinvents its own sids.
+    sibling_paths: Vec<NodePath>,
+    /// BDER-004: the section key derived from sids before a real rename, and
+    /// the sid it was derived from.
+    rename_key_before: Option<[u8; 32]>,
+    renamed_section_sid: Option<String>,
     // --- step C: headers ---
     header: Option<Header>,
     saved_line: Option<Line>,
@@ -7350,33 +7474,55 @@ fn identity_and_successor(w: &mut ProtocolWorld) {
     w.next_doc = Some(w.build_doc(1, 1));
 }
 
+// BDER-001: the zone DK is the vector's, so every derivation this feature
+// performs is comparable to an expected value that exists outside the runner.
 #[given("a zone key")]
 fn a_zone_key(w: &mut ProtocolWorld) {
-    w.zone_dk = Some([0xAB; 32]);
+    w.zone_dk = Some(B2Vector::load().zone_dk());
 }
 
 #[given("a path of three nested folders ending in a section")]
 #[given("a folder three levels deep containing a section")]
 fn a_deep_path(w: &mut ProtocolWorld) {
+    let v = B2Vector::load();
     w.deep_path = Some(NodePath::section(
         Zone::Circle,
-        vec![sid(1), sid(2), sid(3)],
-        sid(7),
+        v.folder_spine(),
+        v.section_sid(),
     ));
 }
 
+// BDER-003: this `Given` had an empty body and the two scenarios below
+// reinvented their sids independently. The spines are now built once, from
+// the vector, and read by both.
 #[given("two sibling folders each containing a section")]
-fn sibling_folders(_w: &mut ProtocolWorld) {
-    // Fixed sids (folder 1 / section 7, folder 2 / section 8), used below.
+fn sibling_folders(w: &mut ProtocolWorld) {
+    let v = B2Vector::load();
+    w.sibling_paths = vec![
+        NodePath::section(Zone::Circle, vec![v.folder_sid(0)], v.section_sid()),
+        NodePath::section(Zone::Circle, vec![v.folder_sid(1)], v.sibling_section_sid()),
+    ];
 }
 
-#[given("a zone key and a folder containing a section")]
-fn zone_folder_section(w: &mut ProtocolWorld) {
-    a_zone_key(w);
-    w.deep_path = Some(NodePath::section(Zone::Circle, vec![sid(1)], sid(7)));
-    // Key BEFORE the rename.
-    w.node_keys
-        .push(node_key(&w.zone_dk.unwrap(), w.deep_path.as_ref().unwrap()));
+// BDER-004: the derived key of a REAL published section, taken from the sids
+// the bundle actually stores, before any rename touches the display names.
+#[given(expr = "the derived key of {string} is recorded")]
+fn record_derived_key(w: &mut ProtocolWorld, display_path: String) {
+    let owner = w.owner(0);
+    let bundle = w.bundle.as_ref().expect("a published bundle");
+    let zone_dk = bundle
+        .zone_dk(Zone::Circle, &owner)
+        .expect("circle zone dk");
+    let (row, folders) = bundle
+        .resolve_clear(Zone::Circle, &display_path)
+        .expect("the section resolves before the rename");
+    let path = NodePath::section(
+        Zone::Circle,
+        folders,
+        Sid::parse(&row.sid).expect("section sid"),
+    );
+    w.renamed_section_sid = Some(row.sid.clone());
+    w.rename_key_before = Some(node_key(&zone_dk, &path));
 }
 
 #[given("a zone key and a folder")]
@@ -7864,20 +8010,30 @@ fn transition_succession_with_defect(w: &mut ProtocolWorld, defect: String) {
     );
 }
 
-#[when("I derive the section key twice")]
+// BDER-001: the second derivation must not reuse the first `NodePath` value.
+// "The same path" is rebuilt from its canonical text through
+// `NodePath::parse`, which is the surface another implementation would use.
+#[when("I derive the section key twice, the second time from its canonical path text")]
 fn derive_section_twice(w: &mut ProtocolWorld) {
     let (zone, path) = (w.zone_dk.unwrap(), w.deep_path.clone().unwrap());
     w.node_keys.push(node_key(&zone, &path));
-    w.node_keys.push(node_key(&zone, &path));
+
+    let canonical = path.to_string();
+    let reparsed = NodePath::parse(&canonical).expect("the canonical path parses");
+    assert_eq!(
+        reparsed, path,
+        "the canonical text must rebuild the same path"
+    );
+    w.node_keys.push(node_key(&zone, &reparsed));
 }
 
 #[when("I derive the keys of two sibling folders")]
 fn derive_siblings(w: &mut ProtocolWorld) {
-    let zone = w.zone_dk.unwrap();
-    for n in [1u128, 2] {
+    let (zone, v) = (w.zone_dk.unwrap(), B2Vector::load());
+    for index in [0usize, 1] {
         w.node_keys.push(node_key(
             &zone,
-            &NodePath::folder(Zone::Circle, vec![sid(n)]),
+            &NodePath::folder(Zone::Circle, vec![v.folder_sid(index)]),
         ));
     }
 }
@@ -7891,20 +8047,20 @@ fn derive_folder_key(w: &mut ProtocolWorld) {
     ));
 }
 
+// BDER-003: the held key comes from the spine the `Given` built, not from a
+// sid invented here.
 #[when("I hold only the first folder's key")]
 fn hold_first_folder(w: &mut ProtocolWorld) {
+    let first = w
+        .sibling_paths
+        .first()
+        .expect("two sibling folders")
+        .folders
+        .clone();
     w.folder_key = Some(node_key(
         &w.zone_dk.unwrap(),
-        &NodePath::folder(Zone::Circle, vec![sid(1)]),
+        &NodePath::folder(Zone::Circle, first),
     ));
-}
-
-#[when("the folder is renamed")]
-fn rename_folder(w: &mut ProtocolWorld) {
-    // Names are metadata (§02.2): they are not even an input of the key
-    // functions. Re-derive after the "rename" — sids unchanged.
-    w.node_keys
-        .push(node_key(&w.zone_dk.unwrap(), w.deep_path.as_ref().unwrap()));
 }
 
 #[when(expr = "I derive the tag view {string} at the folder and at the zone root")]
@@ -11829,14 +11985,124 @@ fn transition_rejected(w: &mut ProtocolWorld) {
     assert!(w.transition.as_ref().unwrap().is_err());
 }
 
-#[then("both derivations yield the same key")]
-fn same_key(w: &mut ProtocolWorld) {
-    assert_eq!(w.node_keys[0], w.node_keys[1]);
+// BDER-009: every positional reader of `node_keys` states its precondition,
+// so composing this feature's `Given`s can never silently shift the pair
+// being compared.
+fn b2_pair(w: &ProtocolWorld) -> ([u8; 32], [u8; 32]) {
+    assert_eq!(
+        w.node_keys.len(),
+        2,
+        "this Then reads exactly two derivations"
+    );
+    (w.node_keys[0], w.node_keys[1])
 }
 
-#[then("the two folder keys are unrelated")]
-fn sibling_keys_unrelated(w: &mut ProtocolWorld) {
-    assert_ne!(w.node_keys[0], w.node_keys[1]);
+#[then("both derivations yield the same key")]
+fn same_key(w: &mut ProtocolWorld) {
+    let (first, second) = b2_pair(w);
+    assert_eq!(first, second);
+}
+
+// BDER-001: the determinism claim is anchored to an expected value that
+// exists outside this process — no mutant of `node_key` can satisfy it by
+// being consistent with itself.
+#[then("the key equals the B2 vector's deep section key byte for byte")]
+fn deep_key_matches_vector(w: &mut ProtocolWorld) {
+    let (first, second) = b2_pair(w);
+    let expected = B2Vector::load().deep_section_key_hex;
+    assert_eq!(hex::encode(first), expected, "vector B2 deep section key");
+    assert_eq!(hex::encode(second), expected, "and the rebuilt path agrees");
+}
+
+// BDER-001: one labelled derivation per segment, with the literal label forms
+// of §02.5 pinned. A monolithic hash over the whole path satisfies neither.
+#[then("each segment contributed exactly one labelled derivation")]
+fn chain_is_per_segment(w: &mut ProtocolWorld) {
+    let (first, _) = b2_pair(w);
+    let path = w.deep_path.as_ref().expect("the deep path");
+    let aithos_core::path::Leaf::Section(section) = &path.leaf else {
+        panic!("path must end in a section");
+    };
+
+    for folder in &path.folders {
+        assert_eq!(folder_label(folder), format!("aithos-core/v1/d/{folder}"));
+    }
+    assert_eq!(
+        section_label(section),
+        format!("aithos-core/v1/s/{section}")
+    );
+
+    let mut key = w.zone_dk.unwrap();
+    let mut derivations = 0usize;
+    for folder in &path.folders {
+        key = derive_key(&folder_label(folder), &key);
+        derivations += 1;
+    }
+    key = derive_key(&section_label(section), &key);
+    derivations += 1;
+
+    assert_eq!(
+        derivations,
+        path.folders.len() + 1,
+        "reading at depth d costs exactly d derivations"
+    );
+    assert_eq!(derivations, 4, "three folder segments and one section");
+    assert_eq!(
+        key, first,
+        "node_key must be exactly this per-segment chain"
+    );
+}
+
+// BDER-002: `assert_ne!` on two arrays was the weakest possible reading of
+// "unrelated". Neither key may be reachable from the other by any label the
+// production code can build.
+#[then("neither sibling key derives the other under any production label")]
+fn siblings_not_mutually_derivable(w: &mut ProtocolWorld) {
+    let (first, second) = b2_pair(w);
+    assert_ne!(first, second, "sibling sids must reach the derivation");
+
+    let v = B2Vector::load();
+    assert_eq!(
+        hex::encode(first),
+        v.folder1_key_hex,
+        "the first sibling is the vector's folder 1"
+    );
+
+    let mut reachable = 0usize;
+    for label in b2_production_labels(&v.tag) {
+        if derive_key(&label, &first) == second {
+            reachable += 1;
+        }
+        if derive_key(&label, &second) == first {
+            reachable += 1;
+        }
+    }
+    assert_eq!(reachable, 0, "no label bridges one sibling to the other");
+}
+
+// BDER-002: "unrelated" also means neither key hands back the parent. A step
+// that can be undone with a public label is not one-way, however different
+// the two outputs look.
+#[then("neither sibling key yields the zone key back")]
+fn siblings_do_not_reveal_zone(w: &mut ProtocolWorld) {
+    let (first, second) = b2_pair(w);
+    let zone = w.zone_dk.unwrap();
+    let labels = b2_production_labels(&B2Vector::load().tag);
+
+    for key in [first, second] {
+        assert_ne!(key, zone, "a child key is never its parent");
+        for label in &labels {
+            assert_ne!(
+                derive_key(label, &key),
+                zone,
+                "no public label walks a child key back to the zone key"
+            );
+        }
+        assert!(
+            !b2_shares_window(&key, &zone, 16),
+            "no 16-byte run of the zone key survives into a child key"
+        );
+    }
 }
 
 #[then("the folder key alone derives the section beneath it")]
@@ -11850,35 +12116,176 @@ fn folder_derives_section(w: &mut ProtocolWorld) {
     assert_eq!(via_folder, via_zone, "no need to touch the zone key again");
 }
 
+// BDER-005: "every descendant" was one section, one depth, one shape. Two
+// further shapes are added, each keeping what gives this scenario its power —
+// the `Then` crosses `derive_key` from the held key against `node_key` from
+// the zone key, two distinct routes rather than one value compared to itself.
+//
+// `node_key` is a pure function of a path with no notion of node existence,
+// so "future descendant" is not a distinguishable case at this layer; the
+// operational claim belongs to `e-mandates.feature`.
+#[then("it alone derives a grandchild section and a tag anchor beneath it")]
+fn folder_derives_more_descendants(w: &mut ProtocolWorld) {
+    let (zone, v) = (w.zone_dk.unwrap(), B2Vector::load());
+    let folder_key = w.folder_key.expect("a held folder key");
+    let spine = w.deep_path.as_ref().unwrap().folders.clone();
+
+    // A grandchild: a section under a sub-folder of the held folder.
+    let (child_folder, grandchild_section) = (sid(4), sid(9));
+    let mut deeper = spine.clone();
+    deeper.push(child_folder);
+    let grandchild_via_zone = node_key(
+        &zone,
+        &NodePath::section(Zone::Circle, deeper, grandchild_section),
+    );
+    let grandchild_via_folder = derive_key(
+        &section_label(&grandchild_section),
+        &derive_key(&folder_label(&child_folder), &folder_key),
+    );
+    assert_eq!(
+        grandchild_via_folder, grandchild_via_zone,
+        "two derivations from the folder key reach its grandchild"
+    );
+
+    // A tag anchor anchored at the held folder.
+    let anchor_via_zone = node_key(
+        &zone,
+        &NodePath::tag_view(Zone::Circle, spine, &v.tag).expect("fixture tag is valid"),
+    );
+    let anchor_via_folder = derive_key(&tag_label(&v.tag), &folder_key);
+    assert_eq!(
+        anchor_via_folder, anchor_via_zone,
+        "one derivation from the folder key reaches its tag anchor"
+    );
+
+    let section_key = derive_key(&section_label(&v.section_sid()), &folder_key);
+    let shapes: BTreeSet<[u8; 32]> = [section_key, grandchild_via_folder, anchor_via_folder].into();
+    assert_eq!(
+        shapes.len(),
+        3,
+        "three distinct descendant shapes, three distinct keys"
+    );
+}
+
+// BDER-003: three `assert_ne!` on a key nobody proved was folder 1's key made
+// the whole Rule vacuous — substituting `[0x00; 32]` left it green. The held
+// key is now pinned to the vector's `folder1_key_hex`, the only field five
+// independent Python generators corroborate.
+#[then("the held key is exactly the first folder's key")]
+fn held_key_is_folder_one(w: &mut ProtocolWorld) {
+    let held = w.folder_key.expect("a held folder key");
+    assert_eq!(
+        hex::encode(held),
+        B2Vector::load().folder1_key_hex,
+        "the negatives below prove nothing unless the held key is the right one"
+    );
+}
+
+// BDER-003: the `Then` is universally quantified, so the explored space is
+// enumerated and its size is stated instead of being three hand-picked shots.
 #[then("no derivation from it yields the second folder's section key")]
 fn no_sideways_reach(w: &mut ProtocolWorld) {
-    let zone = w.zone_dk.unwrap();
-    let target = node_key(
-        &zone,
-        &NodePath::section(Zone::Circle, vec![sid(2)], sid(8)),
+    let (zone, v) = (w.zone_dk.unwrap(), B2Vector::load());
+    let sibling = w.sibling_paths.get(1).expect("the second sibling section");
+    let target = node_key(&zone, sibling);
+    assert_eq!(
+        hex::encode(target),
+        v.sibling_section_key_hex,
+        "the target is the vector's sibling section key"
     );
-    let from_f1 = w.folder_key.unwrap();
-    // Candidate derivations an attacker holding folder 1 could attempt:
-    let candidates = [
-        derive_key(&section_label(&sid(8)), &from_f1),
-        node_key(
-            &from_f1,
-            &NodePath::section(Zone::Circle, vec![sid(2)], sid(8)),
-        ),
-        derive_key(&aithos_core::derive::folder_label(&sid(2)), &from_f1),
-    ];
-    for c in candidates {
-        assert_ne!(c, target, "sideways derivation must never reach a sibling");
+
+    let held = w.folder_key.expect("a held folder key");
+    let paths = b2_reachable_paths(&v.tag);
+    assert_eq!(
+        paths.len(),
+        13_332,
+        "the explored space is stated, not implied: folder spines of length \
+         0..=3 over sids 0..9, each optionally terminated by a section or the \
+         tag anchor"
+    );
+    for path in &paths {
+        assert_ne!(
+            node_key(&held, path),
+            target,
+            "sideways derivation must never reach a sibling subtree: {path}"
+        );
     }
 }
 
-#[then("every derived key is unchanged")]
-fn keys_unchanged(w: &mut ProtocolWorld) {
-    assert_eq!(w.node_keys[0], w.node_keys[1], "rename must never re-key");
+// BDER-003: §02.5 says "never anything ABOVE or beside it", and no scenario
+// asserted the upward half. A derivation step that a public label can undo
+// hands the zone key — and therefore the whole zone — to any leaf holder.
+#[then("no derivation from it yields its own parent or the zone key")]
+fn no_upward_reach(w: &mut ProtocolWorld) {
+    let (zone, v) = (w.zone_dk.unwrap(), B2Vector::load());
+    let held = w.folder_key.expect("a held folder key");
+    let labels = b2_production_labels(&v.tag);
+
+    assert_ne!(held, zone, "a folder key is never the zone key");
+    for label in &labels {
+        assert_ne!(
+            derive_key(label, &held),
+            zone,
+            "no label walks the folder key back up to the zone key"
+        );
+    }
+
+    let child = derive_key(&section_label(&v.section_sid()), &held);
+    assert_ne!(child, held);
+    for label in &labels {
+        assert_ne!(
+            derive_key(label, &child),
+            held,
+            "no label walks a section key back up to its folder"
+        );
+        assert_ne!(derive_key(label, &child), zone);
+    }
+}
+
+// BDER-004: the old step re-derived an unchanged path and called it a rename.
+// This one re-resolves the section after a real `Bundle::rename_folder`, so a
+// rename implemented as delete-and-recreate hands back a fresh sid and the
+// derived key moves.
+#[then(expr = "the derived key of {string} is unchanged")]
+fn derived_key_unchanged(w: &mut ProtocolWorld, display_path: String) {
+    let owner = w.owner(0);
+    let bundle = w.bundle.as_ref().expect("a published bundle");
+    let zone_dk = bundle
+        .zone_dk(Zone::Circle, &owner)
+        .expect("circle zone dk");
+    let (row, folders) = bundle
+        .resolve_clear(Zone::Circle, &display_path)
+        .expect("the section resolves at its new display path");
+
+    assert_eq!(
+        Some(&row.sid),
+        w.renamed_section_sid.as_ref(),
+        "the rename must keep the section's sid, not recreate the node"
+    );
+    let after = node_key(
+        &zone_dk,
+        &NodePath::section(
+            Zone::Circle,
+            folders,
+            Sid::parse(&row.sid).expect("section sid"),
+        ),
+    );
+    assert_eq!(
+        after,
+        w.rename_key_before
+            .expect("a key recorded before the rename"),
+        "rename must never re-key"
+    );
 }
 
 #[then("the two anchors differ from each other and from the folder key")]
 fn anchors_distinct(w: &mut ProtocolWorld) {
+    // BDER-009: the cardinal reader states its precondition too.
+    assert_eq!(
+        w.node_keys.len(),
+        3,
+        "this Then reads exactly three derivations"
+    );
     let unique: std::collections::BTreeSet<_> = w.node_keys.iter().collect();
     assert_eq!(
         unique.len(),
