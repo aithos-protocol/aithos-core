@@ -1891,9 +1891,7 @@ async fn tool_call_delegated<U: Upstream>(
             }
         };
     }
-    let ctx = if native_briefing {
-        session.context.clone()
-    } else if runner.tool_available_in_context(&session.context, &tool) {
+    let ctx = if native_briefing || runner.tool_available_in_context(&session.context, &tool) {
         session.context.clone()
     } else if let Some(context) = runner.resolve(&tool).map(str::to_owned) {
         context

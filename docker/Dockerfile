@@ -1,5 +1,8 @@
+# syntax=docker/dockerfile:1
 # aithos-core — static CLI in a FROM scratch image (< 15 MB, plan §K).
-# Build from the repo root:  docker build -f docker/Dockerfile -t aithos-core:0.1.0 .
+# Build from the repo root:
+#   docker build --build-context aithos-client=../aithos-client \
+#     -f docker/Dockerfile -t aithos-core:0.1.0 .
 # Everything in the image comes from this repository; the image is pushed
 # nowhere (bounded packaging, decided 2026-07-11).
 
@@ -8,6 +11,7 @@ FROM rust:1.96-alpine AS build
 RUN apk add --no-cache musl-dev
 WORKDIR /src
 COPY rust/ rust/
+COPY --from=aithos-client . /aithos-client/
 RUN cargo build --release --locked --manifest-path rust/Cargo.toml -p aithos-cli \
  && cp rust/target/release/aithos /aithos
 

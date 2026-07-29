@@ -1730,11 +1730,11 @@ fn now_secs() -> u64 {
 /// issuer origin when `as:` is configured — that is where the ceremony
 /// HTML lives, and browsers send it as `Origin` on prepare/complete.
 fn browser_origins_for_mcp(cfg: &GatewayConfig) -> BTreeSet<String> {
-    let mut origins = cfg
+    let mut origins: BTreeSet<String> = cfg
         .dashboard
         .as_ref()
         .map(|dashboard| dashboard.allowed_origins.iter().cloned().collect())
-        .unwrap_or_else(BTreeSet::new);
+        .unwrap_or_default();
     if let Some(as_cfg) = &cfg.oauth_as {
         if let Some(origin) = issuer_origin(&as_cfg.issuer) {
             origins.insert(origin);

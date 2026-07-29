@@ -29,8 +29,20 @@ jobs:
   test:
     name: Tests du crate (BDD + rejeu des vecteurs)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aithos-core
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout aithos-core
+        uses: actions/checkout@v4
+        with:
+          path: aithos-core
+      - name: Checkout pinned aithos-client
+        uses: actions/checkout@v4
+        with:
+          repository: aithos-protocol/aithos-client
+          ref: c6f615123ca3dc83708ba029b898375409551719
+          path: aithos-client
       - uses: dtolnay/rust-toolchain@stable
       - name: cargo test -p aithos-provider
         run: cargo test -p aithos-provider --manifest-path rust/Cargo.toml
@@ -40,8 +52,20 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     environment: provider-deploy
+    defaults:
+      run:
+        working-directory: aithos-core
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout aithos-core
+        uses: actions/checkout@v4
+        with:
+          path: aithos-core
+      - name: Checkout pinned aithos-client
+        uses: actions/checkout@v4
+        with:
+          repository: aithos-protocol/aithos-client
+          ref: c6f615123ca3dc83708ba029b898375409551719
+          path: aithos-client
       - uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_PROVIDER_DEPLOY_ROLE_ARN }}
@@ -58,7 +82,8 @@ jobs:
               "$(echo "${{ vars.PROVIDER_ECR_REPOSITORY }}" | cut -d/ -f1)"
       - name: Build static image (FROM scratch)
         run: |
-          docker build -f docker/store-api.Dockerfile \
+          docker build --build-context aithos-client=../aithos-client \
+            -f docker/store-api.Dockerfile \
             -t "${{ vars.PROVIDER_ECR_REPOSITORY }}:prod" \
             -t "${{ vars.PROVIDER_ECR_REPOSITORY }}:${GITHUB_SHA}" \
             .

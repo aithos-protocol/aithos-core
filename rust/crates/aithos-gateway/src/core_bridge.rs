@@ -1355,10 +1355,7 @@ impl Bridge {
     /// "no certificate in this view", "certificate present but its chain
     /// is unresolvable here" and "certificate published for another key"
     /// — three different defective stages behind one silent zero.
-    fn walk_cert_chains_censused(
-        &self,
-        grantee_pub: &str,
-    ) -> (Vec<Vec<Mandate>>, CertWalkCensus) {
+    fn walk_cert_chains_censused(&self, grantee_pub: &str) -> (Vec<Vec<Mandate>>, CertWalkCensus) {
         let mut census = CertWalkCensus::default();
         let Ok(paths) = self.bundle.store.list("certs/") else {
             return (Vec::new(), census);
@@ -2110,6 +2107,7 @@ impl Bridge {
     /// Folder SIDs and tags are resolved through the long-lived read client,
     /// so the preflight checks the exact same target as the bundle mutation.
     /// The mutation rechecks this authorization inside the scoped bundle.
+    #[allow(clippy::too_many_arguments)]
     fn verify_delegated_write_target(
         &self,
         chain: &[Mandate],
@@ -2188,6 +2186,7 @@ impl Bridge {
     }
 
     /// Delegated section creation under the session chain (ethos.create).
+    #[allow(clippy::too_many_arguments)]
     pub fn ethos_create_for_chain(
         &mut self,
         chain: &[Mandate],
@@ -2400,6 +2399,7 @@ impl Bridge {
     /// runner catalogue. This is deliberately a Core-side verdict: the HTTP
     /// request contributes identifiers only, never trust or provider
     /// coordinates.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn validate_hot_enrollment(
         &self,
         expected_did: &str,
@@ -4222,6 +4222,7 @@ impl Runner {
 
     /// One section body under the session chain — same response shape
     /// as [`Runner::ethos_read`], the session's own context imposed.
+    #[allow(clippy::too_many_arguments)]
     pub fn ethos_read_for_session(
         &mut self,
         context: &str,
@@ -4253,6 +4254,7 @@ impl Runner {
     /// It performs its own cold verification, session proof, chain
     /// verification, authorization and content opening, but writes no Gamma
     /// entry and therefore cannot replace the serving path yet.
+    #[allow(clippy::too_many_arguments)]
     pub fn ethos_client_read_probe_for_session(
         &mut self,
         context: &str,

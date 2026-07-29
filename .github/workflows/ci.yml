@@ -10,8 +10,20 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aithos-core
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout aithos-core
+        uses: actions/checkout@v4
+        with:
+          path: aithos-core
+      - name: Checkout pinned aithos-client
+        uses: actions/checkout@v4
+        with:
+          repository: aithos-protocol/aithos-client
+          ref: c6f615123ca3dc83708ba029b898375409551719
+          path: aithos-client
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -24,8 +36,20 @@ jobs:
 
   wasm:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aithos-core
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout aithos-core
+        uses: actions/checkout@v4
+        with:
+          path: aithos-core
+      - name: Checkout pinned aithos-client
+        uses: actions/checkout@v4
+        with:
+          repository: aithos-protocol/aithos-client
+          ref: c6f615123ca3dc83708ba029b898375409551719
+          path: aithos-client
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown

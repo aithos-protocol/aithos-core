@@ -707,6 +707,7 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
+    #[allow(clippy::type_complexity)]
     struct Capture(Arc<Mutex<Vec<(String, HeaderMap, Vec<u8>)>>>);
 
     async fn capture_request(

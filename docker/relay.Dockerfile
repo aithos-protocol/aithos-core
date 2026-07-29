@@ -1,6 +1,8 @@
+# syntax=docker/dockerfile:1
 # aithos-relay — static musl binary in a FROM scratch image (piste P,
 # lot P6 jalon M1). Build from the repo root:
-#   docker build -f docker/relay.Dockerfile -t aithos-relay:prod .
+#   docker build --build-context aithos-client=../aithos-client \
+#     -f docker/relay.Dockerfile -t aithos-relay:prod .
 # Pushed to the provider relay ECR by CI. NO secret: DynamoDB access rides
 # the Fargate task role. The relay holds no client key.
 
@@ -13,6 +15,7 @@ RUN apk add --no-cache musl-dev cmake make g++ perl ca-certificates
 WORKDIR /src
 COPY rust/ rust/
 COPY vectors/ vectors/
+COPY --from=aithos-client . /aithos-client/
 RUN cargo build --release --locked --manifest-path rust/Cargo.toml \
       -p aithos-provider --bin aithos-relay \
  && cp rust/target/release/aithos-relay /aithos-relay

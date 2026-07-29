@@ -1690,7 +1690,7 @@ mod tests {
         let replay = outbox.enqueue(payload).unwrap();
         assert_eq!(first.approval_id, replay.approval_id);
         let inbox = outbox.owner_list().unwrap();
-        assert_eq!(inbox, [first.clone()]);
+        assert_eq!(inbox.as_slice(), std::slice::from_ref(&first));
         assert_eq!(
             outbox.owner_review(&first.approval_id).unwrap().text_body,
             "body"

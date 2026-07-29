@@ -1,7 +1,9 @@
+# syntax=docker/dockerfile:1
 # aithos-store-api — static musl binary in a FROM scratch image (piste P,
 # lot P1; même doctrine que docker/Dockerfile : tout vient de ce dépôt).
 # Build from the repo root:
-#   docker build -f docker/store-api.Dockerfile -t aithos-store-api:prod .
+#   docker build --build-context aithos-client=../aithos-client \
+#     -f docker/store-api.Dockerfile -t aithos-store-api:prod .
 # Pushed to the provider ECR by .github/workflows/provider-image.yml; the
 # image carries NO secret — the bootstrap embarks public did.json material
 # only, DynamoDB access rides the Fargate task role.
@@ -17,6 +19,7 @@ RUN apk add --no-cache musl-dev cmake make g++ perl ca-certificates
 WORKDIR /src
 COPY rust/ rust/
 COPY vectors/ vectors/
+COPY --from=aithos-client . /aithos-client/
 RUN cargo build --release --locked --manifest-path rust/Cargo.toml \
       -p aithos-provider --bin aithos-store-api \
  && cp rust/target/release/aithos-store-api /aithos-store-api

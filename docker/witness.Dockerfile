@@ -1,7 +1,9 @@
+# syntax=docker/dockerfile:1
 # aithos-witness — static musl binary in a FROM scratch image (piste P,
 # lot A / P5; même doctrine que store-api.Dockerfile : tout vient de ce
 # dépôt). Build from the repo root:
-#   docker build -f docker/witness.Dockerfile -t aithos-witness:prod .
+#   docker build --build-context aithos-client=../aithos-client \
+#     -f docker/witness.Dockerfile -t aithos-witness:prod .
 # Pushed to the provider ECR; the image carries NO secret — the signing
 # key lives in KMS and never enters the process (annexe C.1); AWS access
 # rides the Fargate task role.
@@ -17,6 +19,7 @@ RUN apk add --no-cache musl-dev cmake make g++ perl ca-certificates
 WORKDIR /src
 COPY rust/ rust/
 COPY vectors/ vectors/
+COPY --from=aithos-client . /aithos-client/
 RUN cargo build --release --locked --manifest-path rust/Cargo.toml \
       -p aithos-provider --bin aithos-witness \
  && cp rust/target/release/aithos-witness /aithos-witness

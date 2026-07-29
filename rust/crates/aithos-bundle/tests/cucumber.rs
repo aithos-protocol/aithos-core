@@ -557,6 +557,7 @@ pub struct ProtocolWorld {
     core_constraint_replay: Option<Result<(), String>>,
     core_constraint_parent_version: String,
     core_constraint_case_result: Option<Result<(), String>>,
+    #[allow(dead_code)]
     core_constraint_expected: String,
     core_constraint_certificate_result: Option<Result<(), String>>,
     core_constraint_delegation_result: Option<Result<(), String>>,
@@ -1097,8 +1098,11 @@ fn cb4_acceptance() -> Result<(), String> {
 }
 
 static CB4_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+#[allow(dead_code)]
 static CB5_CONSTRAINTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+#[allow(dead_code)]
 static CB5_COUNTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
+#[allow(dead_code)]
 static CB5_RECEIPTS_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB5_CATALOG_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
 static CB6_ACCEPTANCE: OnceLock<Result<(), String>> = OnceLock::new();
@@ -1500,10 +1504,10 @@ impl<S> CoreAtomicFaultStore<S> {
 
     fn injection_error<T>(&self) -> io::Result<T> {
         self.injected.set(self.injected.get() + 1);
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("CORE-OWN-002 injected {:?} failure", self.fault),
-        ))
+        Err(io::Error::other(format!(
+            "CORE-OWN-002 injected {:?} failure",
+            self.fault
+        )))
     }
 }
 
@@ -2204,10 +2208,9 @@ fn core_edition_actor_scenario(
                 context.actor.authority_references().to_vec(),
             );
             let capability = keyless.manifest_capability();
-            let result = keyless
+            keyless
                 .assemble_draft2(&capability, &context, evidence)
-                .ok();
-            result
+                .ok()
         }
         other => return Err(format!("CORE-ED-001 unknown authority {other}")),
     };
@@ -2623,9 +2626,11 @@ fn core_cold_package(
     } else {
         wire::ed25519_pub_to_multibase(&owner.root_sign.verifying_key().to_bytes())
     };
-    let authority_refs = grantee_actor
-        .then(|| vec![authority_ref.clone()])
-        .unwrap_or_default();
+    let authority_refs = if grantee_actor {
+        vec![authority_ref.clone()]
+    } else {
+        Vec::new()
+    };
     let operation_authority = if grantee_actor {
         serde_json::json!({
             "actor": "grantee", "key": actor_key,
@@ -2669,9 +2674,11 @@ fn core_cold_package(
         contained_operations: vec![mutation_ref.clone()],
         operation_projections: vec![mutation_projection],
         operation_facts: vec![mutation_facts],
-        authority_documents: grantee_actor
-            .then(|| vec![mandate_value.clone()])
-            .unwrap_or_default(),
+        authority_documents: if grantee_actor {
+            vec![mandate_value.clone()]
+        } else {
+            Vec::new()
+        },
         publication_projection: serde_json::Value::Null,
         publication_facts: serde_json::Value::Null,
         publication_ref: serde_json::Value::Null,
@@ -2911,7 +2918,7 @@ fn core_capability_reintroduction_scenario() -> Result<CoreEditionObservation, S
         .verify()
         .map_err(|error| format!("CORE-COLD keyless-first verification failed: {error}"))?;
     let keyless_snapshot = bundle.store.clone();
-    let mut with_capability = Bundle::open(keyless_snapshot.clone())
+    let with_capability = Bundle::open(keyless_snapshot.clone())
         .map_err(|error| format!("CORE-COLD capability reopen failed: {error}"))?;
     let body = with_capability
         .read_section_as_agent(
@@ -3290,7 +3297,6 @@ fn core_path_fs_scenario(
         bundle
             .store
             .get(invalid_input)
-            .map(|bytes| bytes)
             .map_err(|error| aithos_core::Error::InvalidPath(error.to_string()))
     };
     let rejected = result.is_err();
@@ -6329,6 +6335,7 @@ fn core_revocation_replay_scenario() -> Result<CoreRevocationReplayObservation, 
     })
 }
 
+#[allow(dead_code)]
 fn cb9_acceptance() -> Result<(), String> {
     let vector: serde_json::Value = serde_json::from_str(CB8_AUTHORITY_FLOWS)
         .map_err(|error| format!("CB9 authority-flow vector does not parse: {error}"))?;
@@ -6749,6 +6756,7 @@ fn cb10_acceptance() -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn cb5_constraints_acceptance() -> Result<(), String> {
     let mandates = cb5_parsed(CB2_MANDATE_CONTRACTS)?;
     let root_cases = mandates["constraints"]["root_leaf_cases"]
@@ -6897,6 +6905,7 @@ fn cb5_constraints_acceptance() -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn cb5_counts_acceptance() -> Result<(), String> {
     let vector = cb5_parsed(CB5_DELEGATED_COUNTS)?;
     let positive = &vector["positive"];
@@ -6994,6 +7003,7 @@ fn core_count_consumption_scenario(consumption: &str) -> Result<(u64, u64, u64),
     Ok((action, mutation, u64::from(delegated)))
 }
 
+#[allow(dead_code)]
 fn cb5_receipts_acceptance() -> Result<(), String> {
     let vector = cb5_parsed(CB5_RECEIPTS)?;
     let positives = &vector["positive_receipts"];
@@ -7253,6 +7263,7 @@ fn cb5_catalog_acceptance() -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn cb5_constraints_result(w: &mut ProtocolWorld) {
     w.cb5_result = Some(
         CB5_CONSTRAINTS_ACCEPTANCE
@@ -7269,6 +7280,7 @@ fn cb4_assert_green(w: &ProtocolWorld) {
     assert_eq!(w.cb4_result, Some(Ok(())));
 }
 
+#[allow(dead_code)]
 fn cb5_counts_result(w: &mut ProtocolWorld) {
     w.cb5_result = Some(
         CB5_COUNTS_ACCEPTANCE
@@ -7277,6 +7289,7 @@ fn cb5_counts_result(w: &mut ProtocolWorld) {
     );
 }
 
+#[allow(dead_code)]
 fn cb5_receipts_result(w: &mut ProtocolWorld) {
     w.cb5_result = Some(
         CB5_RECEIPTS_ACCEPTANCE
@@ -10366,6 +10379,7 @@ fn cb5_direct_children_verdict(w: &mut ProtocolWorld) {
     assert_eq!(w.core_constraint_case_result, Some(Ok(())));
 }
 
+#[allow(clippy::type_complexity)]
 fn cb5_root_constraint_case(
     name: &str,
 ) -> Result<(Result<(), String>, Result<(), String>), String> {
