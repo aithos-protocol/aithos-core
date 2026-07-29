@@ -63,9 +63,10 @@ pub trait ObjectStore: Send + Sync {
         bytes: Vec<u8>,
     ) -> StoreFuture<'a, ()>;
 
-    /// The ⑧b write-once deposit: store iff nothing is stored under this
-    /// chemin; an identical re-deposit is idempotent; different bytes
-    /// conflict. The S3 backend backs the absence check with a
+    /// The ⑧b write-once deposit (`did.json` until canonical same-DID
+    /// editions exist, certs, changesets, evidence): store iff nothing is
+    /// stored under this chemin; an identical re-deposit is idempotent;
+    /// different bytes conflict. The S3 backend backs the absence check with a
     /// conditional `If-None-Match` PUT — multi-instance safe without ever
     /// pretending to be the A.5 CAS.
     fn put_once<'a>(

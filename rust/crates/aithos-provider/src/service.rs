@@ -549,8 +549,9 @@ async fn decide(
             }
         },
         // did.json deposit (A.4, étape 5): genesis under the deposited
-        // root key (the #7 exception already resolved it), replacement
-        // under the stored succession key.
+        // root key (the #7 exception already resolved it), then
+        // byte-identical idempotence only. Succession authorizes a
+        // separate epoch transition, never a same-DID replacement.
         (TargetKind::Object(ObjectPath::DidJson), "PUT") => match &principal {
             Principal::Anonymous => refuse(Refusal::NotCovered, now_ms),
             Principal::Owner | Principal::Mandated(_) => {

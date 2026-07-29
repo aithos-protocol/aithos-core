@@ -66,9 +66,10 @@ pub enum ArtifactReason {
     /// segment as a prefix — a replica never rewrites history (A.4/A.5;
     /// the ONE reason added by the gate-contrat-5 arbitrage ④).
     PrefixMismatch,
-    /// A byte-different deposit under a stored immutable id (certs,
-    /// changesets, evidence) — the ⑧b write-once (étape 6): an identical
-    /// re-deposit is idempotent, different bytes never rewrite history.
+    /// A byte-different deposit under a stored immutable id (`did.json`
+    /// until same-DID edition/CAS semantics exist, certs, changesets,
+    /// evidence) — the ⑧b write-once (étape 6): an identical re-deposit
+    /// is idempotent, different bytes never rewrite history.
     /// Micro-redline A.7 carried to the étape-6 gate.
     ImmutableConflict,
 }
@@ -643,16 +644,17 @@ pub async fn deposit_cert(
 
 // ------------------------------------------------------------- did.json
 
-/// PUT `did.json` (étape 5, A.4): **genesis** — the first document of a
-/// bound DID, accepted when it parses, `id == <did>` of the path
-/// (== multibase of its own root, core's rule) and it self-verifies
-/// (`DidDocument::verify`, §01.4) — the ENVELOPE was already resolved
+/// PUT `did.json` (étape 5, A.4): the first document of a bound DID is
+/// accepted when it parses, `id == <did>` of the path (== multibase of
+/// its own root, core's rule) and passes the strict Core
+/// [`DidDocument::verify`] verdict. The ENVELOPE was already resolved
 /// against this same deposited document (the A.2 #7 genesis exception).
-/// **Replacement** — the successor document (same id) verifies under the
-/// STORED document's `succession` key (`#succession` — a stolen root can
-/// never steal the identity's future, §01.4). Interim reading acted at
-/// the gate contrat 5: the §10.4 epoch-artifact (`next_did`) question
-/// stays a named arbitrage.
+///
+/// Succession signs only a separate §10.4 `EpochTransition`; it never
+/// signs `did.json`. This Provider has no canonical triplet transport or
+/// cross-DID atomic storage contract yet, so a byte-different same-DID
+/// replacement is refused fail-closed. An identical re-deposit remains
+/// idempotent.
 pub async fn deposit_did(
     objects: &dyn ObjectStore,
     tenant: &str,
@@ -671,34 +673,16 @@ pub async fn deposit_did(
     if doc.id != did {
         return Err(DepositRefusal::Artifact(ArtifactReason::IdMismatch));
     }
+    doc.verify()
+        .map_err(|_| DepositRefusal::Artifact(ArtifactReason::Signature))?;
     match objects
-        .get(tenant, did, "did.json")
+        .put_once(tenant, did, "did.json", body.to_vec())
         .await
         .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?
     {
-        // Genesis: id ↔ root binding + auto-signature, core's own check.
-        None => doc
-            .verify()
-            .map_err(|_| DepositRefusal::Artifact(ArtifactReason::Signature))?,
-        // Replacement: only the stored succession key authorizes it.
-        Some(stored_bytes) if stored_bytes == body => return Ok(()),
-        Some(stored_bytes) => {
-            let stored: DidDocument = serde_json::from_slice(&stored_bytes)
-                .map_err(|_| DepositRefusal::Artifact(ArtifactReason::Form))?;
-            // The successor's keys must still be well-formed material.
-            for key in [&doc.keys.root, &doc.keys.content, &doc.keys.succession] {
-                aithos_core::wire::multibase_to_ed25519_pub(key)
-                    .map_err(|_| DepositRefusal::Artifact(ArtifactReason::Form))?;
-            }
-            verify_blank_value_signature(body, &stored.keys.succession, "#succession")
-                .map_err(|()| DepositRefusal::Artifact(ArtifactReason::Signature))?;
-        }
+        PutOnce::Stored | PutOnce::Identical => Ok(()),
+        PutOnce::Conflict => Err(DepositRefusal::Artifact(ArtifactReason::ImmutableConflict)),
     }
-    objects
-        .put(tenant, did, "did.json", body.to_vec())
-        .await
-        .map_err(|_| DepositRefusal::Plain(Refusal::Unavailable))?;
-    Ok(())
 }
 
 // -------------------------------------------------------------- replica
@@ -893,6 +877,7 @@ mod tests {
             (ArtifactReason::EntrySignature, "entry_signature"),
             (ArtifactReason::PrevMismatch, "prev_mismatch"),
             (ArtifactReason::PrefixMismatch, "prefix_mismatch"),
+            (ArtifactReason::ImmutableConflict, "immutable_conflict"),
         ] {
             assert_eq!(reason.code(), code);
             assert!(code.len() <= 20 && code.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'));

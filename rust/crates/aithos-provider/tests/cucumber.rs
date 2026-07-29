@@ -2290,6 +2290,17 @@ async fn load_genesis_did_json(world: &mut StoreWorld) {
     );
 }
 
+#[given(expr = "a root-signed genesis did.json with an unsupported version is loaded")]
+async fn load_invalid_genesis_did_json(world: &mut StoreWorld) {
+    world.loaded_body = Some(
+        p9()["fixtures"]["genesis"]["unsupported_version_jcs"]
+            .as_str()
+            .unwrap()
+            .as_bytes()
+            .to_vec(),
+    );
+}
+
 #[given(expr = "a genesis did.json whose id names a foreign DID is loaded")]
 async fn load_foreign_did_json(world: &mut StoreWorld) {
     // The committed p1 document: perfectly self-consistent, wrong path.
@@ -2309,10 +2320,10 @@ async fn holds_vector_did_json(world: &mut StoreWorld) {
     assert_eq!(stored, f.did_json.as_bytes());
 }
 
-#[given(expr = "a successor did.json signed under the stored succession key is loaded")]
+#[given(expr = "a same-DID replacement signed under the stored succession key is loaded")]
 async fn load_successor_succession(world: &mut StoreWorld) {
     world.loaded_body = Some(
-        p9()["fixtures"]["rotation"]["succession_signed_jcs"]
+        p9()["fixtures"]["same_did_replacement"]["succession_signed_jcs"]
             .as_str()
             .unwrap()
             .as_bytes()
@@ -2320,10 +2331,10 @@ async fn load_successor_succession(world: &mut StoreWorld) {
     );
 }
 
-#[given(expr = "a successor did.json signed under the stored root key is loaded")]
+#[given(expr = "a same-DID replacement signed under the stored root key is loaded")]
 async fn load_successor_root(world: &mut StoreWorld) {
     world.loaded_body = Some(
-        p9()["fixtures"]["rotation"]["root_signed_jcs"]
+        p9()["fixtures"]["same_did_replacement"]["root_signed_jcs"]
             .as_str()
             .unwrap()
             .as_bytes()
@@ -2880,6 +2891,35 @@ async fn response_with_reason(world: &mut StoreWorld, status: u16, code: String,
         body["reason"].as_str(),
         Some(reason.as_str()),
         "the closed short reason"
+    );
+}
+
+#[then(expr = "no did.json was stored for the p9 genesis DID")]
+async fn genesis_did_json_remains_absent(world: &mut StoreWorld) {
+    let genesis_did = p9()["fixtures"]["genesis"]["did"].as_str().unwrap();
+    let stored = world
+        .state
+        .objects
+        .get(&fixtures().tenant, genesis_did, "did.json")
+        .await
+        .unwrap();
+    assert!(stored.is_none(), "a refused genesis deposit wrote did.json");
+}
+
+#[then(expr = "the stored did.json remains the original root-signed document")]
+async fn stored_did_json_remains_original(world: &mut StoreWorld) {
+    let f = fixtures();
+    let stored = world
+        .state
+        .objects
+        .get(&f.tenant, &f.did, "did.json")
+        .await
+        .unwrap()
+        .expect("the original did.json remains stored");
+    assert_eq!(
+        stored,
+        f.did_json.as_bytes(),
+        "a refused same-DID replacement partially rewrote did.json"
     );
 }
 

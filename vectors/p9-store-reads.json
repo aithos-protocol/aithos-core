@@ -810,8 +810,32 @@
   },
   {
    "group": "did",
-   "name": "did_rotation_ok",
-   "note": "a replacement verifies under the STORED succession key (interim A.4 reading — named arbitrage)",
+   "name": "did_genesis_semantically_invalid",
+   "note": "a root-signed document still passes strict Core semantics; an unsupported DID version fails before storage",
+   "state": {
+    "bind_did": "did:aithos:z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE",
+    "extra_objects": {},
+    "heads": null,
+    "use_base_objects": false
+   },
+   "steps": [
+    {
+     "body_utf8": "{\"aithos-did-core\":\"9.9.9\",\"bundle\":[\"https://store.aithos.fr/t/acme/did:aithos:z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE\"],\"id\":\"did:aithos:z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE\",\"keys\":{\"content\":\"z6Mkk5GewPNGPSdY4iLCCo4CUYymkBLgieaQ2TyizSZi5FPn\",\"kex\":\"z6LSpf5H9ms5WGALJ7gvTMAhBGcyQoCr56bcR5fmt1z8eiui\",\"root\":\"z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE\",\"succession\":\"z6MkmnhZECQ2mPrH66Rf6qCHnEJqbSfv5Rs8c6HonPxRgfTk\"},\"revocations\":\"gamma/gamma.jsonl\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"979e049a6f65089cefa273e79e32eb610d3cac7e1d677dc1d8f3855f283492e59ff8259131d3bf595b35bb29f7ba59746da5a3bfe085ae74e140fcfa4e52360c\"}}",
+     "expect": {
+      "error": "artifact_invalid",
+      "reason": "signature",
+      "status": 400
+     },
+     "method": "PUT",
+     "path_rel": "did.json",
+     "signer": "genesis_owner"
+    }
+   ]
+  },
+  {
+   "group": "did",
+   "name": "did_same_did_succession_signer_refused",
+   "note": "succession signs only EpochTransition, never did.json; the stored root-signed bytes remain unchanged",
    "state": {
     "extra_objects": {},
     "heads": null,
@@ -821,8 +845,9 @@
     {
      "body_utf8": "{\"aithos-did-core\":\"1.0.0-draft.1\",\"bundle\":[\"https://store.aithos.fr/t/acme/did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"],\"id\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"keys\":{\"content\":\"z6MkmUJQTqCBUAzz87K7uNtHwiSc68HdNk2e8Hw9jz8vXnwM\",\"kex\":\"z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS\",\"root\":\"z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"succession\":\"z6Mkv1o2GEgtXjFdEMfLtupcKhGRydM8V7VHzii7Uh4aHoqH\"},\"revocations\":\"gamma/gamma.jsonl\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#succession\",\"value\":\"82ae87ebb116f8b66e73d48a1abc8dfe18b8e5ec1ce09414e9f7b23d687dd4b294cac4e052d7ec5c6168a475bf0416893d1d0e060d079a7e470c4a21ac3d8100\"}}",
      "expect": {
-      "code": 204,
-      "status": "accept"
+      "error": "artifact_invalid",
+      "reason": "signature",
+      "status": 400
      },
      "method": "PUT",
      "path_rel": "did.json",
@@ -832,8 +857,8 @@
   },
   {
    "group": "did",
-   "name": "did_rotation_root_signer",
-   "note": "a stolen root can never steal the identity's future (§01.4)",
+   "name": "did_same_did_root_signer_refused",
+   "note": "the document passes strict Core verification, but byte-different same-DID replacement has no canonical edition/CAS contract",
    "state": {
     "extra_objects": {},
     "heads": null,
@@ -844,7 +869,7 @@
      "body_utf8": "{\"aithos-did-core\":\"1.0.0-draft.1\",\"bundle\":[\"https://store.aithos.fr/t/acme/did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"],\"id\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"keys\":{\"content\":\"z6MkmUJQTqCBUAzz87K7uNtHwiSc68HdNk2e8Hw9jz8vXnwM\",\"kex\":\"z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS\",\"root\":\"z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"succession\":\"z6Mkv1o2GEgtXjFdEMfLtupcKhGRydM8V7VHzii7Uh4aHoqH\"},\"revocations\":\"gamma/gamma.jsonl\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"a9cde292fc2e5bfe01889a6ded476cb8fa1acecf1346c8dd716465ade58b6e35bb3a32d15752dd4a074388267ef1c7d1f3b8c24851b538845d82b6f0eaca6c0f\"}}",
      "expect": {
       "error": "artifact_invalid",
-      "reason": "signature",
+      "reason": "immutable_conflict",
       "status": 400
      },
      "method": "PUT",
@@ -1009,7 +1034,7 @@
    ]
   }
  ],
- "description": "Store reads + remaining writes (gate contrat étape 5, P2): GET /heads, ?list=, POST /batch, POST /sync (A.3), the draft.2 servable layout of the redline gate 5 2026-07-20 (manifests/<h>.json, changesets/, evidence/, K1-C aliases), PUT did.json (genesis under the deposited root key + succession replacement, A.4) and the gamma segment replica (byte-exact prefix + per-entry A.4 + segment-head CAS, A.5). Base state = the FROZEN p8_cold package of p7-bundle-packages.json (aithos-bundle export_keyless); the gamma fixtures are the committed p7 entries; the p9 genesis identity is did:key-style from fixture seeds. Named arbitrages: did.json replacement under the stored succession key (interim §01.4 reading, §10.4 epoch artifact open); malformed batch/sync body → envelope_invalid; sync pack = manifest.json + pinned files-map diff; prefix_mismatch is the one new artifact_invalid reason.",
+ "description": "Store reads + remaining writes (gate contrat étape 5, P2): GET /heads, ?list=, POST /batch, POST /sync (A.3), the draft.2 servable layout of the redline gate 5 2026-07-20 (manifests/<h>.json, changesets/, evidence/, K1-C aliases), PUT did.json (strict root-signed genesis + fail-closed same-DID immutability, A.4) and the gamma segment replica (byte-exact prefix + per-entry A.4 + segment-head CAS, A.5). Base state = the FROZEN p8_cold package of p7-bundle-packages.json (aithos-bundle export_keyless); the gamma fixtures are the committed p7 entries; the p9 genesis identity is did:key-style from fixture seeds. Identity decision 2026-07-29: succession signs only a separate EpochTransition; Provider rejects byte-different same-DID did.json while canonical §10.4 triplet transport and storage remain undefined. Malformed batch/sync body → envelope_invalid; sync pack = manifest.json + pinned files-map diff; prefix_mismatch is the one new artifact_invalid reason.",
  "did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
  "fixtures": {
   "blobs": {
@@ -1028,9 +1053,10 @@
   "genesis": {
    "did": "did:aithos:z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE",
    "did_json_jcs": "{\"aithos-did-core\":\"1.0.0-draft.1\",\"bundle\":[\"https://store.aithos.fr/t/acme/did:aithos:z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE\"],\"id\":\"did:aithos:z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE\",\"keys\":{\"content\":\"z6Mkk5GewPNGPSdY4iLCCo4CUYymkBLgieaQ2TyizSZi5FPn\",\"kex\":\"z6LSpf5H9ms5WGALJ7gvTMAhBGcyQoCr56bcR5fmt1z8eiui\",\"root\":\"z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE\",\"succession\":\"z6MkmnhZECQ2mPrH66Rf6qCHnEJqbSfv5Rs8c6HonPxRgfTk\"},\"revocations\":\"gamma/gamma.jsonl\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"1a1f9403c8220441bb306ac6d43153628f5c07e38252456a29b6238c5a1003616b6b670eaf2dae347eb51e4ee4a4f74af1a5904d30021face54479357fe61105\"}}",
-   "root_seed_hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+   "root_seed_hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+   "unsupported_version_jcs": "{\"aithos-did-core\":\"9.9.9\",\"bundle\":[\"https://store.aithos.fr/t/acme/did:aithos:z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE\"],\"id\":\"did:aithos:z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE\",\"keys\":{\"content\":\"z6Mkk5GewPNGPSdY4iLCCo4CUYymkBLgieaQ2TyizSZi5FPn\",\"kex\":\"z6LSpf5H9ms5WGALJ7gvTMAhBGcyQoCr56bcR5fmt1z8eiui\",\"root\":\"z6Mkt58AjtEZiQsGZTpBaP2u77qPRMCAG25vUyhSK7gMNMpE\",\"succession\":\"z6MkmnhZECQ2mPrH66Rf6qCHnEJqbSfv5Rs8c6HonPxRgfTk\"},\"revocations\":\"gamma/gamma.jsonl\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"979e049a6f65089cefa273e79e32eb610d3cac7e1d677dc1d8f3855f283492e59ff8259131d3bf595b35bb29f7ba59746da5a3bfe085ae74e140fcfa4e52360c\"}}"
   },
-  "rotation": {
+  "same_did_replacement": {
    "root_signed_jcs": "{\"aithos-did-core\":\"1.0.0-draft.1\",\"bundle\":[\"https://store.aithos.fr/t/acme/did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"],\"id\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"keys\":{\"content\":\"z6MkmUJQTqCBUAzz87K7uNtHwiSc68HdNk2e8Hw9jz8vXnwM\",\"kex\":\"z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS\",\"root\":\"z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"succession\":\"z6Mkv1o2GEgtXjFdEMfLtupcKhGRydM8V7VHzii7Uh4aHoqH\"},\"revocations\":\"gamma/gamma.jsonl\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#root\",\"value\":\"a9cde292fc2e5bfe01889a6ded476cb8fa1acecf1346c8dd716465ade58b6e35bb3a32d15752dd4a074388267ef1c7d1f3b8c24851b538845d82b6f0eaca6c0f\"}}",
    "succession_signed_jcs": "{\"aithos-did-core\":\"1.0.0-draft.1\",\"bundle\":[\"https://store.aithos.fr/t/acme/did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\"],\"id\":\"did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"keys\":{\"content\":\"z6MkmUJQTqCBUAzz87K7uNtHwiSc68HdNk2e8Hw9jz8vXnwM\",\"kex\":\"z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS\",\"root\":\"z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr\",\"succession\":\"z6Mkv1o2GEgtXjFdEMfLtupcKhGRydM8V7VHzii7Uh4aHoqH\"},\"revocations\":\"gamma/gamma.jsonl\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#succession\",\"value\":\"82ae87ebb116f8b66e73d48a1abc8dfe18b8e5ec1ce09414e9f7b23d687dd4b294cac4e052d7ec5c6168a475bf0416893d1d0e060d079a7e470c4a21ac3d8100\"}}"
   }

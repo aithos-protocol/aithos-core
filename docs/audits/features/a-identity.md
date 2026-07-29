@@ -11,7 +11,7 @@
 | Primary runner | `aithos-bundle --test cucumber` |
 | Primary implementation | `aithos-core::{keys,did,derive,wire}` |
 | Inspected surfaces | Core, Bundle, CLI, WASM, Gateway, Client, and Provider where Identity requirements apply |
-| Note status | **CORRECTION ROUND 2 REQUESTED** — the Provider decision for AID-001 selects §10.4 epoch transition; AID-002 and AID-005 are `VERIFIED` within pilot scope; AID-003 and AID-004 remain `OPEN` |
+| Note status | **ROUND 2 REVIEW REQUESTED** — AID-001 has an `IMPLEMENTED` Provider candidate under the decided §10.4 model and requires a fresh two-pass review; AID-002 and AID-005 remain `VERIFIED` within pilot scope; AID-003 and AID-004 remain `OPEN` |
 
 ## Method provenance
 
@@ -37,6 +37,31 @@ Any future review that claims full two-pass compliance must:
 5. reconcile the two passes and separately inspect shared state/helpers.
 
 ## Verdict
+
+### Round 2 correction candidate
+
+- **AID-001 — `IMPLEMENTED`, review required.** Provider now sends every
+  incoming DID document through strict Core `DidDocument::verify`, then uses
+  the object store's atomic `put_once` verdict. Genesis and byte-identical
+  re-deposit succeed; succession-signed `did.json` fails strict verification;
+  a strict-Core-valid but byte-different same-DID document fails
+  `immutable_conflict`. Refusal scenarios read storage afterward and prove
+  that the original object remains byte-exact or that genesis remains absent.
+- **Canonical epoch transport remains undefined, fail-closed.** Provider has
+  no artifact path or request form for the complete previous document /
+  `EpochTransition` / successor document triplet, no control-plane successor
+  binding transition, and no atomic cross-DID commit or CAS/single-use rule.
+  The candidate therefore does not invent a wire protocol. Core
+  `EpochTransition::verify_succession` remains the required verifier before a
+  future epoch-acceptance surface may commit anything.
+- **P9 now expresses the decision.** The obsolete `did_rotation_ok` and
+  `did_rotation_root_signer` cases are replaced by explicit same-DID
+  refusals, plus a root-signed but unsupported-version genesis negative.
+  P9 refusal scenarios assert absence of partial persistent effects.
+
+This status is a corrector claim, not an auditor verification. A fresh
+history-blind Pass A followed by differential Pass B is required before
+AID-001 can move to `VERIFIED`.
 
 ### Independent round 1 correction review
 
@@ -97,6 +122,10 @@ cargo test -p aithos-bundle --test cucumber
   18 features
   836 scenarios (836 passed)
   3568 steps (3568 passed)
+
+cargo test --workspace --no-fail-fast
+  exit 0; all workspace package, integration, replay, Cucumber,
+  binary, and doc-test targets passed
 ```
 
 The Cucumber output enumerated all **30 Identity scenarios** and their 93
@@ -114,7 +143,61 @@ outside-sandbox retry was denied by execution policy. This workspace gate is
 **environmentally inconclusive**, not green.
 
 The non-network Provider runner passed 151/151 scenarios and 992/992 steps,
-including P9 `did_rotation_ok`, which is material to AID-001.
+including the then-current P9 `did_rotation_ok`. Round 2 deliberately retires
+that case under the binding protocol decision.
+
+### Round 2 corrector evidence
+
+Baseline `dfb79c87120caeb26737c81babd5cc2ad0dc0a3c`, with only the new
+refusal/rollback expectations applied:
+
+```text
+cargo test -p aithos-provider --test cucumber
+  151 scenarios: 149 passed, 2 failed
+  994 steps:     992 passed, 2 failed
+
+intended failures:
+  succession-signed same-DID replacement returned 204, expected refusal
+  root-signed byte-different replacement returned signature,
+    expected immutable_conflict
+```
+
+After the Provider correction and P9 update:
+
+```text
+cargo test -p aithos-provider --test cucumber
+  152 scenarios (152 passed)
+  1004 steps (1004 passed)
+
+python3 verify-p9.py
+  58 independent checks, 32 cases
+
+cargo test -p aithos-provider --test vectors_replay \
+  p9_cases_replay_wire_exact_against_the_real_binary -- --exact
+  1 passed
+
+cargo test -p aithos-provider --lib
+  59 passed
+
+cargo test -p aithos-core --test a1_genesis --test a2_did
+  a1_genesis: 4 passed
+  a2_did:     6 passed
+
+cargo test -p aithos-bundle --test aid_identity_surfaces
+  2 passed
+
+cargo test -p aithos-bundle --test cucumber
+  18 features
+  836 scenarios (836 passed)
+  3568 steps (3568 passed)
+```
+
+The direct worktree still has the known sibling-client lockfile collision, so
+Rust gates ran in an isolated exact sibling layout containing the current
+candidate sources and client `c6f6151`. Socket-using Provider gates required
+execution outside the restricted sandbox. `cargo fmt --all -- --check` still
+reports only the pre-existing out-of-diff Gateway line at
+`core_bridge.rs:1355`; the correction files themselves are formatted.
 
 ```text
 cargo fmt --all -- --check
@@ -238,7 +321,7 @@ initial verdict.
 
 ### AID-001 — Strict, closed DID verification
 
-**Priority: P1 — `CORRECTION_REQUESTED`, round 2**
+**Priority: P1 — `IMPLEMENTED`, round 2; independent review required**
 
 #### Before correction
 
@@ -270,13 +353,23 @@ verified JCS reconstruction.
   against the Core verdict.
 - [x] Negative Core, wire, Bundle, and mandate-chain surface tests.
 
-#### Provider discrepancy
+#### Provider round 2 candidate
 
-Provider `artifacts::deposit_did` intentionally verifies replacement under
-the stored document's `#succession` authority rather than calling
-`DidDocument::verify` on the incoming document. P9 `did_rotation_ok` fixes
-that behavior. It does not validate version/key exchange or all incoming
-Ed25519 points and can persist a document Core later rejects.
+Provider `artifacts::deposit_did` no longer carries a parallel verifier:
+
+- [x] every incoming document passes strict Core `DidDocument::verify`;
+- [x] first deposit uses atomic `ObjectStore::put_once`;
+- [x] a byte-identical re-deposit is idempotent;
+- [x] succession-signed same-DID `did.json` is rejected;
+- [x] strict-Core-valid but byte-different same-DID replacement is rejected
+  `immutable_conflict`;
+- [x] refusal scenarios prove genesis absence or byte-exact preservation of
+  the stored document.
+
+The canonical Provider path for the full epoch triplet is not implemented
+because the repository defines neither its transport/storage location nor its
+atomic cross-DID commit and control-plane/CAS semantics. The invalid path is
+removed fail-closed rather than replaced with invented wire behavior.
 
 #### Binding protocol decision — 2026-07-29
 
@@ -435,9 +528,8 @@ implementation fixes them implicitly.
 This audit may become fully `VERIFIED` when:
 
 - [ ] AID-001 through AID-005 are closed or explicitly decided out of scope;
-  AID-002/AID-005 are verified within pilot scope, AID-001 is assigned to
-  correction round 2 under the decided semantics, and AID-003/AID-004 remain
-  open;
+  AID-002/AID-005 are verified within pilot scope, AID-001 has a round 2
+  implementation candidate pending review, and AID-003/AID-004 remain open;
 - [x] no `a-identity.feature` scenario is `@wip`, proxy, or empty;
 - [ ] an automated targeted gate enforces the expected Identity count; the
   current count of 30 was verified manually;
@@ -445,12 +537,13 @@ This audit may become fully `VERIFIED` when:
 - [x] new negatives are RED against old semantics and GREEN after correction,
   subject to the disclosed non-versioned-shim limitation;
 - [ ] Core, Bundle, WASM, Gateway, and Provider share the decided DID verdict;
-  Provider replacement is currently parallel;
+  the round 2 Provider candidate now reuses strict Core verification, pending
+  independent review;
 - [x] targeted A1/A2 tests pass (4 + 6);
 - [x] Bundle Cucumber passes (836 scenarios, 3,568 steps);
-- [ ] workspace and Clippy gates pass in a capable environment; workspace was
-  sandbox-inconclusive, Clippy was not rerun, and formatting differs only in a
-  pre-existing out-of-diff Gateway file;
+- [ ] workspace and Clippy gates pass in a capable environment; the round 2
+  workspace gate passed, Clippy was not rerun, and formatting differs only in
+  a pre-existing out-of-diff Gateway file;
 - [x] exact revisions and results are recorded here;
 - [ ] any future full review follows the new isolated Pass A / Pass B process.
 
@@ -458,6 +551,7 @@ This audit may become fully `VERIFIED` when:
 
 | Date | State | Note |
 |---|---|---|
+| 2026-07-29 | `REVIEW_REQUESTED — ROUND 2` | AID-001 Provider candidate removes succession-signed same-DID replacement, composes strict Core verification with atomic write-once storage, updates P9, and proves refusal rollback. Canonical epoch-triplet transport/storage remains explicitly undefined and fail-closed. |
 | 2026-07-29 | `CORRECTION_REQUESTED — ROUND 2` | Human protocol decision: Provider adopts §10.4 epoch transition. DID documents remain root-signed, succession signs only the separate transition, new root means new DID, and same-DID succession-signed replacement is forbidden. |
 | 2026-07-29 | `PROCESS_DISCLOSURE` | Audit artifacts translated to English. The new two-pass process is adopted; initial and round 1 runs are explicitly recorded as history-aware rather than retroactively claimed as clean Pass A. |
 | 2026-07-29 | `DECISION_REQUIRED — ROUND 1` | Independent `be2d098..56436f3` review: AID-002/AID-005 verified within pilot scope; AID-001 awaits explicit Provider semantics. Targeted gates: A1 4, A2 6, surfaces 2, Cucumber 836/836 including 30 Identity. Workspace sandbox-inconclusive; pre-existing formatting issue outside diff. |

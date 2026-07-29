@@ -656,12 +656,19 @@ Anti-abus fail-closed, jamais l'autorité : un artefact rejeté répond
 corrige, ne complète, ne réécrit **jamais**.
 
 - **`did.json`** : parse `aithos-did-core`, `id == <did>` du chemin `==`
-  multibase(`keys.root`), clés bien formées, auto-signature `#root` (§01.4).
+  multibase(`keys.root`), clés bien formées, version/algorithme/fragments
+  connus, auto-signature `#root` (§01.4), via le verdict strict
+  `DidDocument::verify` du Core.
   **Genèse** : premier `did.json` d'un DID accepté si l'enveloppe `#root`
   vérifie sous la clé racine **du document déposé** et que le control plane
   liste ce DID pour le tenant (l'enrôlement P7 précède toujours — pas de
-  chicken-and-egg). Rotation d'identité = document d'époque §01.4, vérifié
-  sous la clé `succession` du document précédent.
+  chicken-and-egg). Un redépôt byte-identique est idempotent ; tout
+  remplacement byte-différent sous le même DID est refusé
+  `immutable_conflict`, faute de contrat canonique d'édition/CAS.
+  La clé `succession` signe uniquement l'`EpochTransition` séparée vers un
+  nouveau DID (§10.4), jamais `did.json`. Le transport du triplet
+  précédent/transition/successeur et son commit atomique inter-DID restent à
+  définir avant d'exposer cette transition sur le Provider.
 - **`manifest.json`** : parse, version connue, signature racine ou déléguée
   (`authorized_via` §02.6 — chaîne vérifiée comme A.2#9), `edition.height ==
   height_stocké + 1`, `edition.prev_hash == chain_hash(manifest stocké)`,

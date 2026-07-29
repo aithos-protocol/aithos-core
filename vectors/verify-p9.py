@@ -12,8 +12,10 @@ import hashlib
 import json
 import sys
 
-import base58
-import nacl.signing
+from cryptography.hazmat.primitives.asymmetric import ed25519
+
+
+BASE58 = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
 
 def jcs(obj) -> str:
@@ -45,7 +47,12 @@ def chain_head(manifest: dict) -> str:
 
 def mb_ed_pub(mb: str) -> bytes:
     assert mb.startswith("z")
-    raw = base58.b58decode(mb[1:])
+    value = 0
+    for char in mb[1:].encode():
+        value = value * 58 + BASE58.index(char)
+    decoded = value.to_bytes((value.bit_length() + 7) // 8, "big")
+    leading_zeroes = len(mb[1:]) - len(mb[1:].lstrip("1"))
+    raw = b"\0" * leading_zeroes + decoded
     assert raw[:2] == b"\xed\x01", "not an ed25519 multicodec key"
     return raw[2:]
 
@@ -56,7 +63,8 @@ def doc_verifies(doc_jcs: str, pub: bytes) -> bool:
     unsigned = json.loads(doc_jcs)
     unsigned["signature"] = dict(unsigned["signature"], value="")
     try:
-        nacl.signing.VerifyKey(pub).verify(jcs(unsigned).encode(), sig)
+        ed25519.Ed25519PublicKey.from_public_bytes(pub).verify(
+            sig, jcs(unsigned).encode())
         return True
     except Exception:
         return False
@@ -112,7 +120,7 @@ def main():
     expect(entry_head(g["action_jcs"]) == g["action_head"],
            "action head does not recompute")
 
-    # -- genesis / rotation docs --------------------------------------
+    # -- genesis / refused same-DID documents -------------------------
     gen = v["fixtures"]["genesis"]
     doc = json.loads(gen["did_json_jcs"])
     root_pub = mb_ed_pub(doc["keys"]["root"])
@@ -121,17 +129,33 @@ def main():
     expect(doc["id"] == gen["did"], "genesis doc id mismatch")
     expect(doc_verifies(gen["did_json_jcs"], root_pub),
            "genesis doc does not self-verify under its root")
+    unsupported = json.loads(gen["unsupported_version_jcs"])
+    expect(unsupported["aithos-did-core"] == "9.9.9",
+           "the invalid genesis fixture must carry an unsupported version")
+    expect(doc_verifies(gen["unsupported_version_jcs"], root_pub),
+           "the invalid genesis fixture must still have a correct root signature")
     stored = json.loads(p1["did_json_jcs"])
     succ_pub = mb_ed_pub(stored["keys"]["succession"])
-    rot = v["fixtures"]["rotation"]
-    succ_doc = json.loads(rot["succession_signed_jcs"])
-    expect(succ_doc["id"] == v["did"], "successor doc id mismatch")
+    replacement = v["fixtures"]["same_did_replacement"]
+    succ_doc = json.loads(replacement["succession_signed_jcs"])
+    expect(succ_doc["id"] == v["did"], "same-DID succession fixture id mismatch")
     expect(succ_doc["signature"]["key"] == "#succession",
-           "successor doc must sign as #succession")
-    expect(doc_verifies(rot["succession_signed_jcs"], succ_pub),
-           "successor doc does not verify under the STORED succession")
-    expect(not doc_verifies(rot["root_signed_jcs"], succ_pub),
-           "the root-signed successor must NOT verify under succession")
+           "the refused succession fixture must claim #succession")
+    expect(doc_verifies(replacement["succession_signed_jcs"], succ_pub),
+           "the refused fixture does not verify under the stored succession key")
+    root_doc = json.loads(replacement["root_signed_jcs"])
+    expect(root_doc["id"] == v["did"], "same-DID root fixture id mismatch")
+    expect(root_doc["signature"]["key"] == "#root",
+           "the strict-Core-valid replacement fixture must claim #root")
+    expect(doc_verifies(replacement["root_signed_jcs"],
+                        mb_ed_pub(root_doc["keys"]["root"])),
+           "the root-signed replacement fixture is not cryptographically valid")
+    expect(cases["did_same_did_succession_signer_refused"]["steps"][0]
+           ["expect"]["reason"] == "signature",
+           "succession-signed did.json must fail strict Core verification")
+    expect(cases["did_same_did_root_signer_refused"]["steps"][0]
+           ["expect"]["reason"] == "immutable_conflict",
+           "byte-different root-signed same-DID replacement must not overwrite")
 
     # -- sidecar content addressing -----------------------------------
     put_ok = cases["put_changeset_ok"]["steps"][0]
@@ -237,7 +261,8 @@ def main():
     # -- registry discipline ------------------------------------------
     known_reasons = {"form", "signature", "chain", "prev_hash_mismatch",
                      "id_mismatch", "subject_mismatch", "entry_signature",
-                     "prev_mismatch", "prefix_mismatch"}
+                     "prev_mismatch", "prefix_mismatch",
+                     "immutable_conflict"}
     for c in v["cases"]:
         for s in c["steps"]:
             r = s["expect"].get("reason")

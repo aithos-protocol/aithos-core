@@ -4,8 +4,9 @@
 The read-surface + remaining-write contract of INFRA-PROVIDER annexe A:
 GET /heads, GET ?list=, POST /batch, POST /sync (A.3), the draft.2
 servable layout (A.1 redline gate 5, 2026-07-20: manifests/<h>.json,
-changesets/, evidence/, K1-C aliases), PUT did.json (genesis + succession
-replacement, A.4) and the gamma segment replica (PUT, mode A, A.5).
+changesets/, evidence/, K1-C aliases), PUT did.json (strict root-signed
+genesis + fail-closed same-DID immutability, A.4) and the gamma segment
+replica (PUT, mode A, A.5).
 
 Rules of the house:
 - Every published byte comes from the FROZEN packages of
@@ -18,10 +19,12 @@ Rules of the house:
   A.7 registry unchanged — `prefix_mismatch` is the ONE new
   artifact_invalid reason this vector names, carried to the gate).
 
-Named arbitrages frozen here (gate 5, never resolved silently):
-- did.json replacement: interim reading of A.4 — the successor document
-  (same id) verifies under the STORED document's succession key; the
-  §10.4 epoch-artifact (next_did) question stays open.
+Named decisions frozen here:
+- did.json replacement: the Identity AID-001 decision of 2026-07-29
+  rejects succession-signed same-DID replacement. DID documents remain
+  root-signed; succession signs only a separate §10.4 EpochTransition.
+  Because Provider has no canonical triplet transport/storage contract,
+  byte-different same-DID replacement is refused fail-closed.
 - a malformed /batch /sync body answers `envelope_invalid` (the request
   form is part of the closed wire form; the A.7 registry stays closed).
 - /sync pack = manifest.json first, then the lexicographic diff of the
@@ -110,14 +113,22 @@ def genesis_fixture():
     }
     signed = gen_p.sign_doc(doc, root_sk)
     assert gen_p.verify_doc(signed, root_sk.verify_key.encode())
+    unsupported = json.loads(gen_p.jcs(signed))
+    unsupported["aithos-did-core"] = "9.9.9"
+    unsupported = gen_p.sign_doc(unsupported, root_sk)
     return {"did": did, "did_json_jcs": gen_p.jcs(signed),
+            "unsupported_version_jcs": gen_p.jcs(unsupported),
             "root_seed_hex": (b"\xcc" * 32).hex()}
 
 
-def rotation_fixture(p1_did_json_jcs: str):
-    """The successor document for the p1 DID: same id, rotated content
-    key, signed under the STORED document's succession key (interim A.4
-    reading — arbitrage named in the module docstring)."""
+def same_did_replacement_fixture(p1_did_json_jcs: str):
+    """Two byte-different same-DID replacement attempts for the p1 DID.
+
+    One is succession-signed and therefore not a DID document under the
+    decided model. The other is strictly root-signed but still cannot
+    overwrite did.json because Provider has no canonical same-DID
+    edition/CAS contract.
+    """
     stored = json.loads(p1_did_json_jcs)
     new_content = nacl.signing.SigningKey(b"\xdd" * 32)
     successor = json.loads(p1_did_json_jcs)
@@ -152,7 +163,7 @@ def build():
 
     gamma = gamma_fixture(p7)
     genesis = genesis_fixture()
-    rotation = rotation_fixture(p7_did_json(p7))
+    same_did_replacement = same_did_replacement_fixture(p7_did_json(p7))
 
     # The K1-C sidecar: recompute its digest from the frozen bytes — the
     # content-addressing check the redline engraves at deposit.
@@ -386,20 +397,29 @@ def build():
                body_utf8=genesis["did_json_jcs"])],
          "the genesis exception resolves #root against the deposited "
          "document: any other signer fails A.2 #8")
+    case("did_genesis_semantically_invalid", "did", genesis_state,
+         [step("genesis_owner", "PUT", "did.json",
+               {"status": 400, "error": "artifact_invalid",
+                "reason": "signature"},
+               body_utf8=genesis["unsupported_version_jcs"])],
+         "a root-signed document still passes strict Core semantics; an "
+         "unsupported DID version fails before storage")
     p1_state = {"use_base_objects": False, "extra_objects": {},
                 "heads": None}
-    case("did_rotation_ok", "did", p1_state,
-         [step("owner_root", "PUT", "did.json",
-               {"status": "accept", "code": 204},
-               body_utf8=rotation["succession_signed_jcs"])],
-         "a replacement verifies under the STORED succession key "
-         "(interim A.4 reading — named arbitrage)")
-    case("did_rotation_root_signer", "did", p1_state,
+    case("did_same_did_succession_signer_refused", "did", p1_state,
          [step("owner_root", "PUT", "did.json",
                {"status": 400, "error": "artifact_invalid",
                 "reason": "signature"},
-               body_utf8=rotation["root_signed_jcs"])],
-         "a stolen root can never steal the identity's future (§01.4)")
+               body_utf8=same_did_replacement["succession_signed_jcs"])],
+         "succession signs only EpochTransition, never did.json; the "
+         "stored root-signed bytes remain unchanged")
+    case("did_same_did_root_signer_refused", "did", p1_state,
+         [step("owner_root", "PUT", "did.json",
+               {"status": 400, "error": "artifact_invalid",
+                "reason": "immutable_conflict"},
+               body_utf8=same_did_replacement["root_signed_jcs"])],
+         "the document passes strict Core verification, but byte-different "
+         "same-DID replacement has no canonical edition/CAS contract")
 
     # ---- gamma segment replica --------------------------------------
     def replica_state(segment_utf8, gamma_head):
@@ -456,16 +476,18 @@ def build():
             "GET /heads, ?list=, POST /batch, POST /sync (A.3), the "
             "draft.2 servable layout of the redline gate 5 2026-07-20 "
             "(manifests/<h>.json, changesets/, evidence/, K1-C aliases), "
-            "PUT did.json (genesis under the deposited root key + "
-            "succession replacement, A.4) and the gamma segment replica "
+            "PUT did.json (strict root-signed genesis + fail-closed "
+            "same-DID immutability, A.4) and the gamma segment replica "
             "(byte-exact prefix + per-entry A.4 + segment-head CAS, "
             "A.5). Base state = the FROZEN p8_cold package of "
             "p7-bundle-packages.json (aithos-bundle export_keyless); "
             "the gamma fixtures are the committed p7 entries; the p9 "
             "genesis identity is did:key-style from fixture seeds. "
-            "Named arbitrages: did.json replacement under the stored "
-            "succession key (interim §01.4 reading, §10.4 epoch artifact "
-            "open); malformed batch/sync body → envelope_invalid; sync "
+            "Identity decision 2026-07-29: succession signs only a "
+            "separate EpochTransition; Provider rejects byte-different "
+            "same-DID did.json while canonical §10.4 triplet transport "
+            "and storage remain undefined. Malformed batch/sync body → "
+            "envelope_invalid; sync "
             "pack = manifest.json + pinned files-map diff; "
             "prefix_mismatch is the one new artifact_invalid reason."),
         "tenant": p7["tenant"],
@@ -475,7 +497,7 @@ def build():
         "at": AT,
         "fixtures": {
             "genesis": genesis,
-            "rotation": rotation,
+            "same_did_replacement": same_did_replacement,
             "gamma": gamma,
             "blobs": {CIRCLE_BLOB: CIRCLE_BYTES, SELF_BLOB: SELF_BYTES},
             "enrollment_cert": enrollment_cert,

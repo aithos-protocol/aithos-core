@@ -228,9 +228,9 @@ Feature: Publication — mandated authorization, deposit verification and the tw
   # A.4 — did.json deposit (étape 5). Genesis: accepted when the #root
   # envelope verifies under the root key OF THE DEPOSITED DOCUMENT and the
   # control plane lists the DID for the tenant (the enrollment always
-  # precedes — no chicken-and-egg). Replacement: verified under the stored
-  # document's succession key (interim reading of §01.4 — the §10.4
-  # epoch-artifact question is a named arbitrage, never resolved silently).
+  # precedes — no chicken-and-egg). A byte-different same-DID replacement is
+  # refused fail-closed: succession signs only the separate §10.4
+  # EpochTransition, and this Provider surface has no canonical triplet path.
   # ============================================================
 
   @artifacts @did @genesis
@@ -246,6 +246,7 @@ Feature: Publication — mandated authorization, deposit verification and the tw
     And a genesis did.json whose id names a foreign DID is loaded
     When the genesis owner deposits the loaded did.json
     Then the response is 400 "artifact_invalid" with reason "id_mismatch"
+    And no did.json was stored for the p9 genesis DID
 
   @artifacts @did @genesis
   Scenario: A genesis envelope not signed by the deposited root key is refused (p9 did_genesis_wrong_signer)
@@ -255,22 +256,33 @@ Feature: Publication — mandated authorization, deposit verification and the tw
     # the genesis exception resolves #root against the DEPOSITED document:
     # a signature under any other key fails A.2 #8
     Then the response is 401 "signature_invalid"
+    And no did.json was stored for the p9 genesis DID
 
-  @artifacts @did @rotation
-  Scenario: A did.json replacement verifies under the stored succession key (p9 did_rotation_ok)
-    Given the store holds the vector did.json for the vector DID
-    And a successor did.json signed under the stored succession key is loaded
-    When the owner deposits the loaded did.json
-    Then the request is accepted
-
-  @artifacts @did @rotation
-  Scenario: A did.json replacement signed by #root is refused (p9 did_rotation_root_signer)
-    Given the store holds the vector did.json for the vector DID
-    And a successor did.json signed under the stored root key is loaded
-    When the owner deposits the loaded did.json
-    # a stolen root can never steal the identity's future (§01.4): only the
-    # previous document's succession key authorizes a replacement
+  @artifacts @did @genesis
+  Scenario: A root-signed genesis did.json with unsupported semantics is refused (p9 did_genesis_semantically_invalid)
+    Given the tenant binds the p9 genesis DID with no stored document
+    And a root-signed genesis did.json with an unsupported version is loaded
+    When the genesis owner deposits the loaded did.json
     Then the response is 400 "artifact_invalid" with reason "signature"
+    And no did.json was stored for the p9 genesis DID
+
+  @artifacts @did @replacement
+  Scenario: A succession-signed same-DID replacement is refused (p9 did_same_did_succession_signer_refused)
+    Given the store holds the vector did.json for the vector DID
+    And a same-DID replacement signed under the stored succession key is loaded
+    When the owner deposits the loaded did.json
+    Then the response is 400 "artifact_invalid" with reason "signature"
+    And the stored did.json remains the original root-signed document
+
+  @artifacts @did @replacement
+  Scenario: A root-signed byte-different same-DID replacement is refused (p9 did_same_did_root_signer_refused)
+    Given the store holds the vector did.json for the vector DID
+    And a same-DID replacement signed under the stored root key is loaded
+    When the owner deposits the loaded did.json
+    # Same-DID edition/CAS semantics are not defined on this surface, so even
+    # a strict-Core-valid byte-different document cannot overwrite storage.
+    Then the response is 400 "artifact_invalid" with reason "immutable_conflict"
+    And the stored did.json remains the original root-signed document
 
   # ============================================================
   # A.4/A.5 — gamma segment replica (PUT, mode A). The stored segment must
