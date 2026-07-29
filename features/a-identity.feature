@@ -6,8 +6,8 @@ Feature: Identity genesis
   # visible while the current behavior keeps running as a regression test.
   # Review round 2: AID-001, AID-002, and AID-005 are verified within the
   # pilot scope. The Provider remains fail-closed until a canonical epoch
-  # triplet transport/storage contract exists. AID-003 and AID-004 remain
-  # open below.
+  # triplet transport/storage contract exists. AID-003 remains OPEN and
+  # AID-004 remains DECISION_REQUIRED below.
   # Tracking: docs/audits/features/a-identity.md
 
   Rule: Genesis is deterministic
@@ -39,13 +39,15 @@ Feature: Identity genesis
   Rule: The succession key is independent and cold
 
     @audit-partial @aid-003 @aid-004
-    # AUDIT AID-003/AID-004 — PARTIAL
+    # AUDIT AID-003 — OPEN; AID-004 — DECISION_REQUIRED
+    # Scenario evidence remains PARTIAL.
     # The step injects two fixed, independently chosen entropy values.
     # It proves neither that production genesis keeps succession independent
     # from the owner master nor that its private key remains in cold custody.
     # Required: exercise the real creation surfaces with an independent
     # succession source and verify the custody boundary.
     # Detail: docs/audits/features/a-identity.md#aid-003
+    # Detail: docs/audits/features/a-identity.md#aid-004
     Scenario: The succession key is not derived from the master seed
       Given a master seed
       When I generate a succession keypair twice for the same seed
@@ -61,6 +63,10 @@ Feature: Identity genesis
       And its identifier is derived from the root public key
       And its signature verifies under the root key
 
+    # AUDIT AID-001 — VERIFIED (ROUND 2)
+    # The scenario now states its exact post-signature mutation proof; strict
+    # signed-semantic and closed-wire defects are covered by the outlines below.
+    # Detail: docs/audits/features/a-identity.md#aid-001
     Scenario: A DID document altered after signing fails closed
       Given a signed DID document
       When one byte of it is altered after signing
@@ -68,9 +74,10 @@ Feature: Identity genesis
 
   Rule: A correct root signature is necessary, never sufficient
 
+    # AUDIT AID-001 — VERIFIED (ROUND 2)
     # Each document below is REBUILT and correctly re-signed under its own
-    # root key, so only the semantic control under test can explain the
-    # rejection. (AID-001)
+    # root key, so only the semantic control under test can explain rejection.
+    # Detail: docs/audits/features/a-identity.md#aid-001
     Scenario Outline: A correctly signed but semantically invalid DID document is rejected
       Given a signed DID document
       When it is rebuilt and re-signed with <defect>
@@ -86,8 +93,10 @@ Feature: Identity genesis
         | an unsupported signature algorithm      |
         | a signature fragment other than #root   |
 
+    # AUDIT AID-001 — VERIFIED (ROUND 2)
     # The verified JCS is rebuilt from the typed value: a member that is
-    # dropped on the way in would be a signed-then-erased field. (AID-001)
+    # dropped on the way in would be a signed-then-erased field.
+    # Detail: docs/audits/features/a-identity.md#aid-001
     Scenario Outline: An unknown member on the DID wire is refused, not dropped
       Given a signed DID document
       When <member> is added to its JSON wire
@@ -101,6 +110,10 @@ Feature: Identity genesis
 
   Rule: Only the succession key can declare a new master key
 
+    # AUDIT AID-002 — VERIFIED (ROUND 1)
+    # The assertion presents the complete successor document to Core
+    # verify_succession, which verifies both documents and their DID bindings.
+    # Detail: docs/audits/features/a-identity.md#aid-002
     Scenario: An epoch transition signed by the succession key is accepted
       Given an identity and its successor identity
       When the transition is signed by the succession key
@@ -113,8 +126,10 @@ Feature: Identity genesis
 
   Rule: A transition binds the successor document it names
 
+    # AUDIT AID-002 — VERIFIED (ROUND 1)
     # A declaration that names a successor proves nothing about the document
-    # actually presented: the whole triple is verified. (AID-002)
+    # actually presented: the whole triple is verified.
+    # Detail: docs/audits/features/a-identity.md#aid-002
     Scenario Outline: A transition that does not bind its successor is rejected
       Given an identity and its successor identity
       When the transition is signed by the succession key but <defect>
@@ -133,6 +148,10 @@ Feature: Identity genesis
         | it declares an unsupported version                 |
         | it declares an unsupported signature algorithm     |
 
+    # AUDIT AID-002 — VERIFIED (ROUND 1)
+    # This regression proves that the claimed #succession fragment cannot make
+    # a root signature satisfy the succession-authority check.
+    # Detail: docs/audits/features/a-identity.md#aid-002
     Scenario: A transition signed by the root key while claiming the succession fragment is rejected
       Given an identity and its successor identity
       When the transition is signed by the root key claiming to be the succession key
