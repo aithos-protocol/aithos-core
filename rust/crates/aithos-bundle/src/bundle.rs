@@ -1576,11 +1576,71 @@ impl<S: Store> Bundle<S> {
 
     // --------------------------------------------------------- editions
 
+    /// Minimum number of immutable pins before carrying them over from the
+    /// previous manifest becomes cheaper than re-hashing them (lot 0.1a).
+    /// One publication writes 5 objects under `manifests/`, so this threshold
+    /// keeps early editions on the plain path and avoids paying an O(n) manifest
+    /// parse for nothing.
+    const CARRY_OVER_MIN: usize = 12;
+
+    /// Paths the protocol declares immutable once written, recognizable from
+    /// the path alone — so their pin may be carried over from the previous
+    /// edition instead of being re-read and re-hashed (lot 0.1a).
+    ///
+    /// - `manifests/**` — every object there is suffixed by its edition
+    ///   height (`<h>.json`, `tree-<h>.json`, `index-<zone>-<h>.json`) and is
+    ///   written exactly once, by the publication of that height.
+    /// - `certs/**` — a certificate is immutable by I2; re-issuance mints a
+    ///   fresh mandate id and therefore a fresh path.
+    fn pin_is_immutable(path: &str) -> bool {
+        path.starts_with("manifests/") || path.starts_with("certs/")
+    }
+
+    /// The flat file pins of one edition (§02.10).
+    ///
+    /// Perf (lot 0.1a): on a conforming append-only Store, the produced map is
+    /// **byte-identical** to a full rescan — only its computation changed.
+    /// Immutable paths reuse the pin recorded by the previous edition instead
+    /// of being read and hashed again. If such a path was overwritten despite
+    /// the protocol invariant, the old pin is deliberately retained and
+    /// verification fails closed instead of blessing the replacement bytes.
+    /// Without this carry-over, publishing edition N re-reads and re-hashes
+    /// every object of every prior edition, so the cost of one section edit
+    /// grows quadratically in the number of editions.
     fn all_pinned_files(&self, exclude_latest: u64) -> Result<BTreeMap<String, String>> {
+        let skip_latest = format!("manifests/{exclude_latest}.json");
+        let paths: Vec<String> = self
+            .store
+            .list("")
+            .map_err(io_err)?
+            .into_iter()
+            .filter(|path| path != "manifest.json" && *path != skip_latest)
+            .collect();
+
+        // Loading the previous manifest costs one O(n) parse, so it only pays
+        // once there is more than a single edition's worth of immutable
+        // objects to carry over. Listing returns keys only — deciding here
+        // reads no object bytes.
+        let immutable = paths
+            .iter()
+            .filter(|path| Self::pin_is_immutable(path))
+            .count();
+        let carried: BTreeMap<String, String> =
+            if exclude_latest > 1 && immutable >= Self::CARRY_OVER_MIN {
+                self.get_json::<Manifest>(&format!("manifests/{}.json", exclude_latest - 1))
+                    .map(|manifest| manifest.files)
+                    .unwrap_or_default()
+            } else {
+                BTreeMap::new()
+            };
+
         let mut files = BTreeMap::new();
-        for path in self.store.list("").map_err(io_err)? {
-            if path == "manifest.json" || path == format!("manifests/{exclude_latest}.json") {
-                continue;
+        for path in paths {
+            if Self::pin_is_immutable(&path) {
+                if let Some(pin) = carried.get(&path) {
+                    files.insert(path, pin.clone());
+                    continue;
+                }
             }
             files.insert(path.clone(), sha256_hex(&self.get(&path)?));
         }
@@ -1634,8 +1694,14 @@ impl<S: Store> Bundle<S> {
             a.gamma_counts_root,
             a.gamma_head,
         )?;
-        self.put_json(&format!("manifests/{height}.json"), &manifest)?;
-        self.put_json("manifest.json", &manifest)
+        // Perf (lot 0.1c): the same manifest lands at two canonical paths.
+        // Serializing it once and writing the same bytes twice removes one
+        // O(n) pretty-print of the file-pin map — which is the largest single
+        // JSON document an edition produces.
+        let bytes = serde_json::to_vec_pretty(&manifest)
+            .map_err(|error| Error::SealRejected(format!("manifest.json: {error}")))?;
+        self.write_object(&format!("manifests/{height}.json"), &bytes)?;
+        self.write_object("manifest.json", &bytes)
     }
 
     pub fn publish(&mut self, owner: &OwnerKeys, now: &str) -> Result<()> {
