@@ -50,6 +50,13 @@ For `a-identity.feature`:
 - correction:
   `.agents/a-identity/corrector/correct-a-identity/SKILL.md`.
 
+For `b-derivation.feature`:
+
+- audit or review:
+  `.agents/b-derivation/auditor/audit-b-derivation/SKILL.md`;
+- correction:
+  `.agents/b-derivation/corrector/correct-b-derivation/SKILL.md`.
+
 ## Role boundaries
 
 - The auditor inspects, classifies, documents, and reviews. It does not correct

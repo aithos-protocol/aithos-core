@@ -1,0 +1,4 @@
+interface:
+  display_name: "Correct B — Derivation"
+  short_description: "Implement assigned b-derivation findings"
+  default_prompt: "Use $correct-b-derivation to implement only the findings assigned by features/.agents/b-derivation/STATE.md."

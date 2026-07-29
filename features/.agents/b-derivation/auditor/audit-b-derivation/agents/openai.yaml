@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit B — Derivation"
+  short_description: "Audit b-derivation.feature semantic proof"
+  default_prompt: "Use $audit-b-derivation to run the mode requested by features/.agents/b-derivation/STATE.md."
