@@ -8,13 +8,22 @@ description: Audit the semantic truth of an existing Gherkin feature or independ
 ## Preparation
 
 1. Read `../../PROCESS.md` completely.
-2. Read the specialized feature domain.
-3. Read only the routing fields from its state: mode, revision, assigned
+2. Inspect Git status, branches, and worktrees without changing them.
+3. For an initial audit, create or resume the canonical
+   `codex/audit-<feature-name>` branch from the current local `main` before
+   collecting evidence. Never use `main`, a shared pilot branch, another
+   feature's branch, or an unrelated product branch.
+4. If audit evidence already exists, do not silently rebase it. Preserve its
+   immutable revision and follow the process for an explicit integration
+   baseline or new round.
+5. Read the specialized feature domain.
+6. Read only the routing fields from its state: mode, branch, base revision,
+   observed revision, assigned
    scope, and output path.
-4. Record the revision, branch, worktree state, and requested mode.
-5. Run `features/.agents/scripts/verify-feature-tags.sh` and identify the
+7. Record the main base, revision, branch, worktree state, and requested mode.
+8. Run `features/.agents/scripts/verify-feature-tags.sh` and identify the
    canonical `@<feature-name>` tag.
-6. Do not search for entirely missing scenarios.
+9. Do not search for entirely missing scenarios.
 
 Do not read prior audit conclusions, corrector reports, commit history, or
 diffs before the history-blind pass is frozen. If they are already present in

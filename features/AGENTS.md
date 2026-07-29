@@ -2,6 +2,22 @@
 
 These instructions apply to all work started from `features/`.
 
+## Branch isolation
+
+- Start each initial feature audit on
+  `codex/audit-<feature-name>`, created from the current local `main`.
+- Use one feature per branch and a dedicated worktree when another task is
+  active; never audit on `main` or on a shared pilot branch.
+- Record the exact `main` base and audit revision in the domain state and run
+  report. Never silently rebase already collected audit evidence.
+- Create correction branches as
+  `codex/fix-<feature-name>-<finding-or-scope>` from the immutable audited
+  feature revision.
+- After independent review and impact acceptance, integrate the feature branch
+  into local `main` before starting the next feature.
+- Preserve unresolved findings and their live Gherkin markers across that
+  integration.
+
 ## Feature identity and test selection
 
 - Every `features/<name>.feature` starts with the unique tag `@<name>`.
@@ -14,8 +30,8 @@ These instructions apply to all work started from `features/`.
   and one unfiltered Cucumber/workspace gate before handoff.
 
 Every new feature agent must reuse the shared audit/correction skills and
-declare its canonical tag, focused tests, relevant regressions, and final
-global gates in `DOMAIN.md`.
+declare its canonical branch, canonical tag, focused tests, relevant
+regressions, and final global gates in `DOMAIN.md`.
 
 ## Mandatory routing
 

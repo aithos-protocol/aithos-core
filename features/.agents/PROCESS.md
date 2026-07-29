@@ -12,6 +12,41 @@ Determine whether every existing passing scenario:
 
 A green runner is necessary evidence, but it is never sufficient proof.
 
+## Feature branch lifecycle
+
+Each feature owns one canonical audit branch named
+`codex/audit-<feature-name>`, created from the current local `main` before the
+initial audit starts. Use a dedicated worktree when another task already owns a
+worktree. Never start a feature audit on a shared pilot branch, `main`, another
+feature's branch, or an unrelated product branch.
+
+Before creating or resuming the branch:
+
+1. inspect `git status`, existing branches, and existing worktrees;
+2. preserve every unrelated or in-progress change;
+3. confirm that the previous accepted feature cycle has been integrated into
+   local `main`;
+4. create the feature branch from that exact `main`, or verify the recorded
+   base of an existing feature branch;
+5. record the branch and base revision in `STATE.md` and every run report.
+
+Once audit evidence has been collected against an immutable revision, do not
+silently rebase or retarget it. If the feature branch must absorb a newer
+`main`, preserve the original audit revision, document why the findings remain
+applicable, record the new integration baseline, and start a new round whenever
+the relevant behavior may have changed.
+
+Corrections use dedicated descendant branches named
+`codex/fix-<feature-name>-<finding-or-scope>` from the immutable audited feature
+revision. A corrector never works directly on `main` or rewrites the canonical
+audit branch. After independent acceptance, integrate the candidate into the
+feature branch. Complete and accept the impact review, then integrate the
+feature branch into local `main` before starting the next feature.
+
+Integrating an accepted feature cycle does not hide unresolved findings.
+`OPEN` and `DECISION_REQUIRED` findings remain in the public audit, state, and
+live Gherkin markers until a later accepted round resolves them.
+
 ## Feature targeting and gate pyramid
 
 Every `features/<name>.feature` file must start with the unique feature-level

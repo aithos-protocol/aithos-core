@@ -8,12 +8,18 @@ description: Implement corrections requested by an already documented semantic G
 ## Preparation
 
 1. Read `../../PROCESS.md` completely.
-2. Read the domain, state, public audit, and latest auditor run.
-3. Confirm that state explicitly requests a correction.
-4. Freeze the baseline before the first modification.
-5. Run `features/.agents/scripts/verify-feature-tags.sh` and identify the
+2. Inspect Git status, branches, and worktrees without changing them.
+3. Read the domain, state, public audit, and latest auditor run.
+4. Confirm that state explicitly requests a correction and names an immutable
+   audited feature revision.
+5. Create or resume
+   `codex/fix-<feature-name>-<finding-or-scope>` from that exact revision.
+   Never correct directly on `main` or on the canonical audit branch.
+6. Freeze the baseline before the first modification and record the parent
+   feature branch.
+7. Run `features/.agents/scripts/verify-feature-tags.sh` and identify the
    canonical `@<feature-name>` tag.
-6. Limit the work to the assigned findings.
+8. Limit the work to the assigned findings.
 
 Stop without changing code if state is `DECISION_REQUIRED`.
 
@@ -49,3 +55,5 @@ resolve a semantic contradiction.
 - Explicitly request review from the specialized auditor skill.
 - Set state to `REVIEW_REQUESTED` with immutable baseline and candidate
   revisions.
+- Leave integration into the canonical feature branch and `main` to the
+  independent acceptance workflow.

@@ -33,6 +33,7 @@ dependency analysis and recommends any follow-up gates.
 Write a dated report under `../runs/` containing:
 
 - baseline and accepted candidate;
+- canonical feature branch and its recorded `main` base;
 - source audit and review;
 - changed elements;
 - searches performed;
@@ -40,3 +41,6 @@ Write a dated report under `../runs/` containing:
 - manual recommendation.
 
 Do not change code, audits, or feature files. Do not launch another agent.
+After human acceptance, the orchestrator may mark the cycle complete and
+integrate the canonical feature branch into local `main`. Start the next
+feature branch only from that updated `main`.

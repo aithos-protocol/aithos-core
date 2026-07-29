@@ -7,7 +7,7 @@
 > `docs/HANDOFF-A-IDENTITY-IMPACT-FOLLOWUPS-2026-07-29.md` et toutes ses
 > références obligatoires avant toute modification. État disque et Git =
 > vérité. Travailler dans un worktree/une branche dédiée à partir de
-> `b48386a6898fa444873968c3f43dfdb860ce0a03`. Corriger uniquement
+> la révision courante de `main` qui contient ce handoff. Corriger uniquement
 > `IMP-AID-01` et ajouter les régressions étroites `IMP-AID-02`. Ne pas
 > modifier le comportement de production sauf si un test démontre un défaut ;
 > dans ce cas, s'arrêter et documenter le besoin avant d'élargir le périmètre.
@@ -35,7 +35,7 @@ hors périmètre et fail-closed.
 |---|---|
 | Dépôt de référence | `/Volumes/Math17/aithos/v2/code/aithos-core-review-a-identity` |
 | Branche de référence | `codex/review-a-identity` |
-| Commit de départ requis | `b48386a6898fa444873968c3f43dfdb860ce0a03` |
+| Base de départ requise | la révision courante de `main` qui contient ce handoff, à résoudre et enregistrer avant le premier changement |
 | Baseline de la correction Provider acceptée | `dfb79c87120caeb26737c81babd5cc2ad0dc0a3c` |
 | Correction Provider acceptée | `e6fc5dc206204038e4bac80dcd9dc5f4c4429bc1` |
 | Revue d'audit acceptée | `features/.agents/a-identity/auditor/runs/2026-07-29-audit-review-02.md` |
