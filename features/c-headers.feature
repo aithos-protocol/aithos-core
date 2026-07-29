@@ -1,3 +1,4 @@
+@c-headers
 Feature: Headers — sealed node keys
   The header is the only place a node key is ever stored, and it is stored
   sealed: one line per authorized identity, always including the owner (I3).

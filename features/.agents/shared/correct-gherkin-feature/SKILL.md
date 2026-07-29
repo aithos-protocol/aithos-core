@@ -11,7 +11,9 @@ description: Implement corrections requested by an already documented semantic G
 2. Read the domain, state, public audit, and latest auditor run.
 3. Confirm that state explicitly requests a correction.
 4. Freeze the baseline before the first modification.
-5. Limit the work to the assigned findings.
+5. Run `features/.agents/scripts/verify-feature-tags.sh` and identify the
+   canonical `@<feature-name>` tag.
+6. Limit the work to the assigned findings.
 
 Stop without changing code if state is `DECISION_REQUIRED`.
 
@@ -22,9 +24,12 @@ Stop without changing code if state is `DECISION_REQUIRED`.
 3. Confirm that the test fails for the intended reason.
 4. Implement the smallest correction in the layer that owns the invariant.
 5. Avoid parallel verifiers and test-specific patches.
-6. Rerun the targeted test, feature, and relevant regressions.
-7. Prove the absence of partial effects for every rejected mutation.
-8. Format and inspect the diff.
+6. Repeat only the focused RED/GREEN tests while the implementation changes.
+7. Run the canonical feature-tag gate once after the final change.
+8. Run relevant regressions, then one unfiltered Cucumber/workspace gate before
+   handoff when required by the domain.
+9. Prove the absence of partial effects for every rejected mutation.
+10. Format and inspect the diff.
 
 Add only the scenarios or tests needed to prove the assigned findings. Do not
 start a general coverage project or address an unassigned finding.

@@ -1,3 +1,4 @@
+@l-delegated-writes
 Feature: Delegated writes — the mandate is a pen, not just a key
   A mandate whose perimeter carries a mutation verb writes sections in the
   keyed zones itself: same tree, same blobs, same log — no owner in the

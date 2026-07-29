@@ -1,3 +1,4 @@
+@k-integration
 Feature: Integration — one bundle lives the whole protocol (plan §K, spec §09)
   The living end-to-end scenario: a single bundle carries genesis, tree
   building, constrained agentic grants with obligations, budgeted and

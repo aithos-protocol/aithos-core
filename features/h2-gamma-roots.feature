@@ -1,3 +1,4 @@
+@h2-gamma-roots
 Feature: Committed gamma roots — proofs over the log (spec 07.10, pass H2)
   Each edition's manifest commits, beside gamma_head and additively like the
   content roots: one root and entry count per non-empty monthly segment, and

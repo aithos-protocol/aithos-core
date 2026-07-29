@@ -1,3 +1,4 @@
+@o-connector-classes-vault
 Feature: Connector classes and isolated vault capabilities
   Connector business actions use an owner-approved signed catalog.
   Each connector vault is isolated and needs both exact authority and an exact key line.

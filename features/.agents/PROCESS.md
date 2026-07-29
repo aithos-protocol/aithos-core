@@ -12,6 +12,39 @@ Determine whether every existing passing scenario:
 
 A green runner is necessary evidence, but it is never sufficient proof.
 
+## Feature targeting and gate pyramid
+
+Every `features/<name>.feature` file must start with the unique feature-level
+tag `@<name>`. For example, `a-identity.feature` starts with `@a-identity`.
+Run `features/.agents/scripts/verify-feature-tags.sh` before any audit,
+correction, or review. A new feature without its canonical tag is invalid.
+
+Use the cheapest gate that proves the current step:
+
+1. **Focused RED/GREEN:** while changing behavior, run the exact Rust test or
+   uniquely named/tagged scenario that detects the finding.
+2. **Feature gate:** run the Cucumber binary with
+   `--tags @<feature-name>` once per examined immutable revision, after all
+   review units or code changes for that feature are ready.
+3. **Relevant regressions:** run only the unit, vector, surface, or neighboring
+   feature gates identified by the domain or current diff.
+4. **Global Cucumber gate:** run the unfiltered Cucumber suite once, at final
+   integration after all feature findings have been reconciled.
+5. **Workspace gate:** run the full workspace once at the final lifecycle gate
+   when required by the domain or repository policy.
+
+Do not rerun the feature gate after every read-only scenario audit: no
+executable state changed. Do not run the global Cucumber or workspace gates
+once per scenario, Rule, review unit, or Pass. Rerun a passed gate only after
+relevant code/test changes, to diagnose a failure, or because an independent
+review must reproduce it.
+
+The corrector and independent reviewer each own their evidence. A corrector
+runs one final global gate before handoff. A reviewer does not trust that
+claim: if the candidate is otherwise acceptable, it independently runs one
+final global gate before acceptance. This duplication happens once per role,
+not once per scenario.
+
 ## Current scope
 
 Include:
@@ -190,13 +223,15 @@ The auditor:
 
 1. freezes the revision and worktree state;
 2. inventories the scenarios and divides them into review units;
-3. completes and freezes history-blind Pass A for every unit;
-4. completes Pass B and the shared-state integration pass;
-5. classifies every scenario;
-6. adds concise comments and tags only to unresolved problematic scenarios;
-7. writes or updates the public audit;
-8. writes a dated conclusion;
-9. sets `STATE.md` to `CORRECTION_REQUESTED`.
+3. runs the canonical feature gate once on that immutable revision;
+4. completes and freezes history-blind Pass A for every unit;
+5. completes Pass B and the shared-state integration pass;
+6. runs relevant regressions and one final global gate;
+7. classifies every scenario;
+8. adds concise comments and tags only to unresolved problematic scenarios;
+9. writes or updates the public audit;
+10. writes a dated conclusion;
+11. sets `STATE.md` to `CORRECTION_REQUESTED`.
 
 ### Correction
 
@@ -205,26 +240,30 @@ The corrector:
 1. reads only the explicitly assigned findings;
 2. demonstrates each defect with a RED test when possible;
 3. implements the smallest correction;
-4. reruns targeted gates and relevant regressions;
-5. documents the diff and exact results;
-6. marks findings at most `IMPLEMENTED`;
-7. requests an independent review;
-8. sets `STATE.md` to `REVIEW_REQUESTED`.
+4. repeats focused RED/GREEN tests while implementation changes;
+5. runs the feature gate once after the final change;
+6. runs relevant regressions and one final global gate before handoff;
+7. documents the diff and exact results;
+8. marks findings at most `IMPLEMENTED`;
+9. requests an independent review;
+10. sets `STATE.md` to `REVIEW_REQUESTED`.
 
 ### Correction review
 
 The auditor:
 
-1. performs history-blind Pass A against the candidate's current code;
-2. freezes the behavioral verdict before reading the correction diff or run;
-3. performs Pass B on the exact `baseline..candidate` range;
-4. treats the corrector's conclusion as a claim to verify, not evidence;
-5. reruns tests in a clean context;
-6. checks public surfaces and partial effects;
-7. accepts or rejects each finding separately;
-8. marks `VERIFIED` only after independent proof;
-9. removes Gherkin audit markers for findings accepted as `VERIFIED`;
-10. records affected files, symbols, formats, and surfaces.
+1. runs the canonical feature gate once against the immutable candidate;
+2. performs history-blind Pass A against the candidate's current code;
+3. freezes the behavioral verdict before reading the correction diff or run;
+4. performs Pass B on the exact `baseline..candidate` range;
+5. treats the corrector's conclusion as a claim to verify, not evidence;
+6. runs focused and relevant regression gates in a clean context;
+7. if the candidate is otherwise acceptable, runs one final global gate;
+8. checks public surfaces and partial effects;
+9. accepts or rejects each finding separately;
+10. marks `VERIFIED` only after independent proof;
+11. removes Gherkin audit markers for findings accepted as `VERIFIED`;
+12. records affected files, symbols, formats, and surfaces.
 
 A rejected review returns to the corrector. After three rejections for the
 same finding, stop the automatic cycle and request human direction.

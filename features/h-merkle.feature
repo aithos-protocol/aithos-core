@@ -1,3 +1,4 @@
+@h-merkle
 Feature: Merkle state roots — verifiable partial reads (spec 02.10, pass H1)
   Each edition's manifest pins one state root per zone, plus the vault, next
   to gamma_head — ADDED beside the flat file pins (decided 2026-07-11). A

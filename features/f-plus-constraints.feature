@@ -1,3 +1,4 @@
+@f-plus-constraints
 Feature: Advanced agentic constraints — windows, budgets, inference, kinds, sealed args
   A purely additive enrichment of the mandate constraint vocabulary
   (spec 04.4 + 07.4): time becomes interval arithmetic on absolute windows

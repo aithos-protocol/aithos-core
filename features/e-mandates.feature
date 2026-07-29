@@ -1,3 +1,4 @@
+@e-mandates
 Feature: Mandates and the offline verifier
   A mandate is a pure certificate: it grants a keypair a perimeter, under
   constraints, for a window — verifiable from files alone, at an injected

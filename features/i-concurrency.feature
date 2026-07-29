@@ -1,3 +1,4 @@
+@i-concurrency
 Feature: Concurrency — disjoint merge, fork, resolution (spec 02.6 + 07.6, pass I)
   Editions form a linear chain until two authors sign competing heights.
   Disjoint changesets (root-descent diffs against the common ancestor whose

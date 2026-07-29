@@ -1,3 +1,4 @@
+@b-derivation
 Feature: Content-tree derivation
   One BLAKE3 derivation per path segment; holding a folder's key yields its
   whole subtree — present and future — and nothing else. Derivation labels

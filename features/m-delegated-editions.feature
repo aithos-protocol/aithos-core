@@ -1,3 +1,4 @@
+@m-delegated-editions
 Feature: Normal delegated editions
   A normal edition has one actor, one authority context and a derived changeset.
   Public and opaque artifacts suffice for cold verification without an owner fallback.

@@ -1,3 +1,4 @@
+@g-revocation
 Feature: Revocation — the full ladder, with no server in any trust role
   Cutting an agent is a ladder, not a switch: expiry and cert revocation cut
   delegated protocol consumption (every honoring verifier refuses), rotation cuts FUTURE reads

@@ -24,6 +24,10 @@ description: Analyze possible cross-feature effects of a Gherkin correction alre
    - `TARGETED`: a few specific scenarios should be reviewed;
    - `FULL_AUDIT`: a shared helper, API, format, or invariant changed.
 
+Do not rerun feature, global Cucumber, or workspace gates. The accepted
+review already owns independent behavioral evidence; this role performs
+dependency analysis and recommends any follow-up gates.
+
 ## Output
 
 Write a dated report under `../runs/` containing:

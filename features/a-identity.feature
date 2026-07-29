@@ -1,3 +1,4 @@
+@a-identity
 Feature: Identity genesis
   The owner's whole identity derives from a single 32-byte master seed S.
   Everything is recomputed on demand; only S is ever backed up. (spec 01.1)

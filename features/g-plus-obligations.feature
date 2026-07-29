@@ -1,3 +1,4 @@
+@g-plus-obligations
 Feature: Obligations — the general gate (spec 04.12)
   An obligation attaches a discharge requirement to a permit: an in-scope
   action may consume — append its entry — only if it carries a valid signed

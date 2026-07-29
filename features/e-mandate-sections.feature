@@ -1,3 +1,4 @@
+@e-mandate-sections
 Feature: Section-precise mandates — the id= selector
   spec 04.2 grants one section: read.self#id=<sid> and the verb
   variants. A sid is global — id composes with nothing: not with dir,

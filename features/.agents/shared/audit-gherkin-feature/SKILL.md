@@ -12,7 +12,9 @@ description: Audit the semantic truth of an existing Gherkin feature or independ
 3. Read only the routing fields from its state: mode, revision, assigned
    scope, and output path.
 4. Record the revision, branch, worktree state, and requested mode.
-5. Do not search for entirely missing scenarios.
+5. Run `features/.agents/scripts/verify-feature-tags.sh` and identify the
+   canonical `@<feature-name>` tag.
+6. Do not search for entirely missing scenarios.
 
 Do not read prior audit conclusions, corrector reports, commit history, or
 diffs before the history-blind pass is frozen. If they are already present in
@@ -25,7 +27,8 @@ when practical.
 
 1. Inventory Rules, Scenarios, Outlines, Examples, and tags.
 2. Divide the feature into independent review units as defined by the process.
-3. Confirm that the runner selects and executes the feature.
+3. Run the canonical feature-tag gate once on the immutable revision; do not
+   repeat it after each read-only scenario or review unit.
 4. Resolve every phrase to its exact step definition.
 5. Trace every scenario parameter into the production call graph.
 6. Follow return values and scenario state into the exact assertion.
@@ -46,22 +49,27 @@ a similar name, or the global runner is green.
 4. Re-open the current code trace for any new path.
 5. Reconcile Pass A and Pass B explicitly.
 6. Run the final shared-state and cross-scenario integration check.
+7. Run relevant regressions, then the unfiltered Cucumber/workspace gates once
+   at final integration when required by the domain.
 
 ## Correction review
 
 1. In a clean review unit, inspect the candidate's scenario, steps, production
    paths, protocol, and public surfaces without reading the correction diff or
    corrector conclusion.
-2. Freeze Pass A behavioral verdicts for each assigned finding.
-3. Read the immutable baseline and candidate revisions from state.
-4. Inspect the exact diff and corrector report.
-5. Map each change to a finding and its closure criteria.
-6. verify that new tests would detect the old behavior.
-7. Reproduce the announced gates in a clean context.
-8. Check public paths, rejection paths, and partial effects.
-9. Search for parallel bypasses in domain surfaces.
-10. Accept or reject each finding independently.
-11. Use `DECISION_REQUIRED` if closure requires a protocol or product choice.
+2. Run the canonical feature-tag gate once on the immutable candidate.
+3. Freeze Pass A behavioral verdicts for each assigned finding.
+4. Read the immutable baseline and candidate revisions from state.
+5. Inspect the exact diff and corrector report.
+6. Map each change to a finding and its closure criteria.
+7. Verify that new tests would detect the old behavior.
+8. Reproduce focused and relevant regression gates in a clean context.
+9. If the candidate is otherwise acceptable, run the unfiltered
+   Cucumber/workspace gates once at final integration.
+10. Check public paths, rejection paths, and partial effects.
+11. Search for parallel bypasses in domain surfaces.
+12. Accept or reject each finding independently.
+13. Use `DECISION_REQUIRED` if closure requires a protocol or product choice.
 
 Treat the corrector's conclusion as a handoff to verify, never as proof.
 

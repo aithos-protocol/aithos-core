@@ -1,3 +1,4 @@
+@n-structural-mutations
 Feature: Structural mutations
   Folder and metadata operations use the existing read, edit, append, delete and write
   lattice. Their indexes, tag views, rotations, wraps, Gamma and editions commit atomically.

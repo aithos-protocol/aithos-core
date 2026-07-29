@@ -1,3 +1,4 @@
+@d-bundle
 Feature: Bundle and editions
   The bundle is the subject's entire state as files: indexes, sealed blobs,
   headers, DID document, and a signed manifest. Editions form a linear,

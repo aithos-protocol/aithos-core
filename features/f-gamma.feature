@@ -1,3 +1,4 @@
+@f-gamma
 Feature: The gamma log
   Every mutation and every agentic action leaves one hash-chained, signed
   entry in the gamma log. It is the history spine and the counter the

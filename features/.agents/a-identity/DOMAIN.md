@@ -55,22 +55,46 @@ The binding decision for invariants 10–12 is recorded in
 After the AID-001/002/005 candidate correction, also inspect
 `rust/crates/aithos-bundle/tests/aid_identity_surfaces.rs`.
 
-## Minimum gates
+## Gate pyramid
+
+Canonical feature tag: `@a-identity`.
+
+Run the static check from the repository root:
 
 ```text
-cargo test -p aithos-core --test a1_genesis --test a2_did
-cargo test -p aithos-bundle --test aid_identity_surfaces
-cargo test -p aithos-bundle --test cucumber
-cargo test --workspace --no-fail-fast
-cargo fmt --all -- --check
+features/.agents/scripts/verify-feature-tags.sh
+```
+
+Run Cargo commands from the repository root with the workspace manifest.
+
+### Feature gate — once per immutable revision
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test cucumber -- --tags @a-identity
+```
+
+### Identity regressions — after the feature trace or final correction
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p aithos-core --test a1_genesis --test a2_did
+cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test aid_identity_surfaces
+```
+
+### Final integration — once per role, after all findings are reconciled
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test cucumber
+cargo test --manifest-path rust/Cargo.toml --workspace --no-fail-fast
+cargo fmt --manifest-path rust/Cargo.toml --all -- --check
 ```
 
 If a test does not exist on the examined baseline, report that fact instead of
 turning its absence into success.
 
-The Cucumber runner scans all features not tagged `@wip`. Confirm the exact
-number of executed `a-identity` scenarios in its output, not only the global
-exit code.
+The feature gate must report exactly the expanded `a-identity` scenario count.
+The final Cucumber gate scans every feature not tagged `@wip`; record its
+global scenario and step counts. Do not run either gate once per scenario or
+review unit.
 
 ## Surfaces and neighboring domains to inspect
 

@@ -2,6 +2,20 @@
 
 These instructions apply to all work started from `features/`.
 
+## Feature identity and test selection
+
+- Every `features/<name>.feature` starts with the unique tag `@<name>`.
+- Run `features/.agents/scripts/verify-feature-tags.sh` before feature work.
+- Use `cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test
+  cucumber -- --tags @<name>` for the feature gate.
+- Run that feature gate once per immutable revision, not after every scenario.
+- Run the unfiltered Cucumber and workspace gates once at final integration,
+  never once per scenario, Rule, review unit, or audit Pass.
+
+Every new feature agent must reuse the shared audit/correction skills and
+declare its canonical tag, focused tests, relevant regressions, and final
+global gates in `DOMAIN.md`.
+
 ## Mandatory routing
 
 Before auditing or correcting a feature:
