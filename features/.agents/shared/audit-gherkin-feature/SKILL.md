@@ -49,8 +49,10 @@ a similar name, or the global runner is green.
 4. Re-open the current code trace for any new path.
 5. Reconcile Pass A and Pass B explicitly.
 6. Run the final shared-state and cross-scenario integration check.
-7. Run relevant regressions, then the unfiltered Cucumber/workspace gates once
-   at final integration when required by the domain.
+
+Do not run unfiltered Cucumber, broad regression, or workspace gates. This
+read-only role owns semantic tracing and one canonical feature gate, not the
+execution agent's global regression proof.
 
 ## Correction review
 
@@ -63,9 +65,8 @@ a similar name, or the global runner is green.
 5. Inspect the exact diff and corrector report.
 6. Map each change to a finding and its closure criteria.
 7. Verify that new tests would detect the old behavior.
-8. Reproduce focused and relevant regression gates in a clean context.
-9. If the candidate is otherwise acceptable, run the unfiltered
-   Cucumber/workspace gates once at final integration.
+8. Run a focused test only when needed to resolve a semantic contradiction.
+9. Do not rerun unfiltered Cucumber, broad regression, or workspace gates.
 10. Check public paths, rejection paths, and partial effects.
 11. Search for parallel bypasses in domain surfaces.
 12. Accept or reject each finding independently.
@@ -80,6 +81,8 @@ Treat the corrector's conclusion as a handoff to verify, never as proof.
 - Add or update required Gherkin markers.
 - Write a dated conclusion under the specialized role's `runs` directory.
 - Include frozen Pass A verdicts, Pass B evidence, and reconciliation.
+- Distinguish auditor-executed feature evidence from global gates merely
+  reported by the corrector or CI.
 - Update state with the next action.
 - On acceptance, enumerate files, symbols, formats, specification sections,
   and surfaces that may have cross-feature impact.

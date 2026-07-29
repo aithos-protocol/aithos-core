@@ -34,6 +34,10 @@ Stop without changing code if state is `DECISION_REQUIRED`.
 Add only the scenarios or tests needed to prove the assigned findings. Do not
 start a general coverage project or address an unassigned finding.
 
+This execution role owns the global regression proof. The independent auditor
+will rerun only the canonical feature gate and any focused test needed to
+resolve a semantic contradiction.
+
 ## Documentation and handoff
 
 - Document RED and GREEN results.

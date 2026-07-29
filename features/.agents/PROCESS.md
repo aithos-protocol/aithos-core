@@ -24,26 +24,30 @@ Use the cheapest gate that proves the current step:
 1. **Focused RED/GREEN:** while changing behavior, run the exact Rust test or
    uniquely named/tagged scenario that detects the finding.
 2. **Feature gate:** run the Cucumber binary with
-   `--tags @<feature-name>` once per examined immutable revision, after all
-   review units or code changes for that feature are ready.
+   `--tags @<feature-name>` once per examined immutable revision. The auditor
+   runs it before tracing; the corrector runs it after the final code change.
 3. **Relevant regressions:** run only the unit, vector, surface, or neighboring
    feature gates identified by the domain or current diff.
-4. **Global Cucumber gate:** run the unfiltered Cucumber suite once, at final
-   integration after all feature findings have been reconciled.
-5. **Workspace gate:** run the full workspace once at the final lifecycle gate
-   when required by the domain or repository policy.
+4. **Global Cucumber gate:** the correcting/execution role runs the unfiltered
+   Cucumber suite once, after all feature changes are complete.
+5. **Workspace gate:** the correcting/execution role runs the full workspace
+   once before handoff when required by domain or repository policy.
 
 Do not rerun the feature gate after every read-only scenario audit: no
 executable state changed. Do not run the global Cucumber or workspace gates
 once per scenario, Rule, review unit, or Pass. Rerun a passed gate only after
-relevant code/test changes, to diagnose a failure, or because an independent
-review must reproduce it.
+relevant code/test changes or to diagnose a failure. An independent auditor
+reproduces only the feature/focused evidence, never the global gates.
 
-The corrector and independent reviewer each own their evidence. A corrector
-runs one final global gate before handoff. A reviewer does not trust that
-claim: if the candidate is otherwise acceptable, it independently runs one
-final global gate before acceptance. This duplication happens once per role,
-not once per scenario.
+Role ownership is explicit:
+
+- the auditor runs the canonical feature gate once to prove selection and
+  execution, plus a focused test only when needed to resolve a semantic
+  contradiction;
+- the auditor never reruns unfiltered Cucumber or the workspace;
+- the corrector/execution agent owns repeated RED/GREEN, relevant regressions,
+  and one final global Cucumber/workspace gate before handoff;
+- CI may independently reproduce global gates, but that is not audit work.
 
 ## Current scope
 
@@ -226,12 +230,11 @@ The auditor:
 3. runs the canonical feature gate once on that immutable revision;
 4. completes and freezes history-blind Pass A for every unit;
 5. completes Pass B and the shared-state integration pass;
-6. runs relevant regressions and one final global gate;
-7. classifies every scenario;
-8. adds concise comments and tags only to unresolved problematic scenarios;
-9. writes or updates the public audit;
-10. writes a dated conclusion;
-11. sets `STATE.md` to `CORRECTION_REQUESTED`.
+6. classifies every scenario without rerunning global regression suites;
+7. adds concise comments and tags only to unresolved problematic scenarios;
+8. writes or updates the public audit;
+9. writes a dated conclusion;
+10. sets `STATE.md` to `CORRECTION_REQUESTED`.
 
 ### Correction
 
@@ -257,8 +260,8 @@ The auditor:
 3. freezes the behavioral verdict before reading the correction diff or run;
 4. performs Pass B on the exact `baseline..candidate` range;
 5. treats the corrector's conclusion as a claim to verify, not evidence;
-6. runs focused and relevant regression gates in a clean context;
-7. if the candidate is otherwise acceptable, runs one final global gate;
+6. runs a focused test only when needed to resolve a semantic contradiction;
+7. does not rerun global Cucumber or workspace gates;
 8. checks public surfaces and partial effects;
 9. accepts or rejects each finding separately;
 10. marks `VERIFIED` only after independent proof;

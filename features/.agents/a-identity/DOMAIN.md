@@ -67,20 +67,23 @@ features/.agents/scripts/verify-feature-tags.sh
 
 Run Cargo commands from the repository root with the workspace manifest.
 
-### Feature gate — once per immutable revision
+### Auditor evidence — once per immutable revision
 
 ```text
 cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test cucumber -- --tags @a-identity
 ```
 
-### Identity regressions — after the feature trace or final correction
+The auditor runs no unfiltered Cucumber, broad regression, or workspace gate.
+It may run one exact focused test only to resolve a semantic contradiction.
+
+### Corrector regressions — after the final correction
 
 ```text
 cargo test --manifest-path rust/Cargo.toml -p aithos-core --test a1_genesis --test a2_did
 cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test aid_identity_surfaces
 ```
 
-### Final integration — once per role, after all findings are reconciled
+### Corrector final integration — once before review handoff
 
 ```text
 cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test cucumber
@@ -91,10 +94,10 @@ cargo fmt --manifest-path rust/Cargo.toml --all -- --check
 If a test does not exist on the examined baseline, report that fact instead of
 turning its absence into success.
 
-The feature gate must report exactly the expanded `a-identity` scenario count.
-The final Cucumber gate scans every feature not tagged `@wip`; record its
-global scenario and step counts. Do not run either gate once per scenario or
-review unit.
+The auditor's feature gate must report exactly the expanded `a-identity`
+scenario count. The corrector's final Cucumber gate scans every feature not
+tagged `@wip`; record its global scenario and step counts. Neither role runs a
+gate once per scenario or review unit.
 
 ## Surfaces and neighboring domains to inspect
 

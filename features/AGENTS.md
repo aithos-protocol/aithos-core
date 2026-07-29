@@ -8,9 +8,10 @@ These instructions apply to all work started from `features/`.
 - Run `features/.agents/scripts/verify-feature-tags.sh` before feature work.
 - Use `cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test
   cucumber -- --tags @<name>` for the feature gate.
-- Run that feature gate once per immutable revision, not after every scenario.
-- Run the unfiltered Cucumber and workspace gates once at final integration,
-  never once per scenario, Rule, review unit, or audit Pass.
+- The auditor runs that feature gate once per immutable revision, not after
+  every scenario, and never runs unfiltered Cucumber or the workspace.
+- The corrector/execution agent owns focused RED/GREEN, relevant regressions,
+  and one unfiltered Cucumber/workspace gate before handoff.
 
 Every new feature agent must reuse the shared audit/correction skills and
 declare its canonical tag, focused tests, relevant regressions, and final
@@ -36,9 +37,9 @@ For `a-identity.feature`:
 ## Role boundaries
 
 - The auditor inspects, classifies, documents, and reviews. It does not correct
-  production code.
+  production code or run global regression suites.
 - The corrector implements only the requested findings. It may mark a finding
-  `IMPLEMENTED`, never `VERIFIED`.
+  `IMPLEMENTED`, never `VERIFIED`, and owns the final regression gates.
 - The impact reviewer runs only after an accepted review. It reports other
   features that may be affected without changing or restarting them.
 - If a review exposes a protocol or product choice, set the domain to
