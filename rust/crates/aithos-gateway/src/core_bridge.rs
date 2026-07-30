@@ -93,8 +93,9 @@ pub use aithos_owner::{
     owner_add_section, owner_deliver_circle_line, owner_grant_briefing,
     owner_grant_connector_config, owner_grant_context, owner_grant_session_delegate,
     owner_init_context, owner_init_journal, owner_read_journal_note, owner_revoke_mandate_id,
-    ConnectorConfigGrant, EquipOutcome, MandateWindow, OwnerError, BRIEFING_FOLDER,
-    BRIEFING_SECTION, LEGACY_STATE_PATH, LLM_BUDGET_REF, MEMORY_FOLDER, STATE_PATH,
+    owner_set_briefing, ConnectorConfigGrant, EquipOutcome, MandateWindow, OwnerError,
+    BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH, LLM_BUDGET_REF, MEMORY_FOLDER,
+    STATE_PATH,
 };
 
 pub use shared::{
@@ -4807,73 +4808,6 @@ pub fn owner_reenroll_server(
         equipment,
         revoked_mandates,
     })
-}
-
-/// Write or update one zone's directive (lot K owner tooling): creation
-/// on first use, in-place rewrite afterwards — the very next
-/// `briefing.read` serves the new text, no restart. `self` is accepted
-/// as a target (owner-only notes live there) but is NEVER served: the
-/// runtime holds no self line and lists no self index. v1 limits,
-/// documented: one section per zone (`briefing/directives`), and the
-/// owner-side rewrite is circle-only (the core's `section_rewrite`
-/// pass) — a public or self directive is written once.
-#[allow(clippy::too_many_arguments)]
-pub fn owner_set_briefing(
-    master: &[u8; 32],
-    label: &str,
-    zone: &str,
-    title: &str,
-    text: &str,
-    store: GatewayStore,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<()> {
-    let zone = match zone {
-        "public" => Zone::Public,
-        "circle" => Zone::Circle,
-        "self" => Zone::Self_,
-        other => {
-            return Err(GatewayError::ConfigRejected(format!(
-                "briefing zone must be public, circle or self, not `{other}`"
-            )))
-        }
-    };
-    let owner = derived_owner(master, "context", label);
-    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    bundle
-        .ensure_folder(zone, BRIEFING_FOLDER, &owner, ent)
-        .map_err(bridge_err)?;
-    let path = format!("{BRIEFING_FOLDER}/{BRIEFING_SECTION}");
-    let exists = bundle.read_section(zone, &path, &owner).is_ok();
-    if !exists {
-        bundle
-            .section_add(
-                &aithos_bundle::bundle::SectionSpec {
-                    zone,
-                    folder_path: BRIEFING_FOLDER,
-                    name: BRIEFING_SECTION,
-                    title,
-                    tags: &[],
-                    body: text,
-                    now,
-                },
-                &owner,
-                ent,
-            )
-            .map_err(bridge_err)?;
-        return bundle.publish(&owner, now).map_err(bridge_err);
-    }
-    if zone != Zone::Circle {
-        return Err(GatewayError::ConfigRejected(format!(
-            "rewriting a `{}` directive is circle-only in v1 — the {} zone directive is written once",
-            zone.as_str(),
-            zone.as_str()
-        )));
-    }
-    bundle
-        .section_rewrite(zone, &path, text, &owner, now, ent)
-        .map_err(bridge_err)?;
-    bundle.publish(&owner, now).map_err(bridge_err)
 }
 
 fn replace_hub_manifest(

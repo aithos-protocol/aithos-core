@@ -933,3 +933,70 @@ pub fn owner_grant_briefing<S: OwnerStore>(
         .map_err(owner_err)?;
     Ok(mandate.id)
 }
+
+/// Write or update one zone's directive (lot K owner tooling): creation
+/// on first use, in-place rewrite afterwards — the very next
+/// `briefing.read` serves the new text, no restart. `self` is accepted
+/// as a target (owner-only notes live there) but is NEVER served: the
+/// runtime holds no self line and lists no self index. v1 limits,
+/// documented: one section per zone (`briefing/directives`), and the
+/// owner-side rewrite is circle-only (the core's `section_rewrite`
+/// pass) — a public or self directive is written once.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_set_briefing<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    zone: &str,
+    title: &str,
+    text: &str,
+    store: S,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<()> {
+    let zone = match zone {
+        "public" => Zone::Public,
+        "circle" => Zone::Circle,
+        "self" => Zone::Self_,
+        other => {
+            return Err(OwnerError::Rejected(format!(
+                "briefing zone must be public, circle or self, not `{other}`"
+            )))
+        }
+    };
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(owner_err)?;
+    bundle
+        .ensure_folder(zone, BRIEFING_FOLDER, &owner, ent)
+        .map_err(owner_err)?;
+    let path = format!("{BRIEFING_FOLDER}/{BRIEFING_SECTION}");
+    let exists = bundle.read_section(zone, &path, &owner).is_ok();
+    if !exists {
+        bundle
+            .section_add(
+                &aithos_bundle::bundle::SectionSpec {
+                    zone,
+                    folder_path: BRIEFING_FOLDER,
+                    name: BRIEFING_SECTION,
+                    title,
+                    tags: &[],
+                    body: text,
+                    now,
+                },
+                &owner,
+                ent,
+            )
+            .map_err(owner_err)?;
+        return bundle.publish(&owner, now).map_err(owner_err);
+    }
+    if zone != Zone::Circle {
+        return Err(OwnerError::Rejected(format!(
+            "rewriting a `{}` directive is circle-only in v1 — the {} zone directive is written once",
+            zone.as_str(),
+            zone.as_str()
+        )));
+    }
+    bundle
+        .section_rewrite(zone, &path, text, &owner, now, ent)
+        .map_err(owner_err)?;
+    bundle.publish(&owner, now).map_err(owner_err)
+}
