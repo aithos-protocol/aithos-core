@@ -2,7 +2,7 @@
 
 Date : 2026-07-30
 
-Statut : **en cours — SPL-0, SPL-1, SPL-2 faits (2026-07-30).** Ce document est
+Statut : **en cours — SPL-0 → SPL-3 faits (2026-07-30).** Ce document est
 le backlog canonique du chantier ; le brief d'amorçage est
 [`PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md).
 Baseline figée : [`audits/split/baseline-2026-07-30.md`](audits/split/baseline-2026-07-30.md)
@@ -427,6 +427,12 @@ Les helpers à **runtime = 0** (`derived_owner`, `derived_succession`, `equip`,
 `preview_load`, `preview_status`, `effective_call_verdict`,
 `describe_effective_policy`, `manifest_catalog_digest`) restent avec le bloc
 owner : ils partiront en SPL-4.
+
+**Sortie du lot — 2026-07-30, gates atteintes.** 34 fonctions déplacées ;
+`core_bridge.rs` 7 036 → 6 448 lignes, `shared.rs` 620 ; `impl Bridge` et
+`impl Runner` byte-identiques (vérifié par extraction de région) ; trois
+structs internes passées `pub(crate)` (`BridgeState`, `MemoryRow`,
+`EthosRow`), aucun `pub` nouveau hors crate.
 
 **Critères de sortie.** `scripts/split-baseline.sh` vert ; `core_bridge.rs`
 ne contient plus **aucune fonction libre hors bloc owner** (tout helper vit
