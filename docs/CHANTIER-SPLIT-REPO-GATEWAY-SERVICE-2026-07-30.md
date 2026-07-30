@@ -2,9 +2,14 @@
 
 Date : 2026-07-30
 
-Statut : **cadré, non démarré.** Aucune ligne de code produite. Ce document est
+Statut : **en cours — SPL-0 fait (2026-07-30), SPL-1 entamé.** Ce document est
 le backlog canonique du chantier ; le brief d'amorçage est
 [`PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md).
+Baseline figée : [`audits/split/baseline-2026-07-30.md`](audits/split/baseline-2026-07-30.md)
+(638 tests, 1 365 scénarios cucumber, 6 495 steps, 36 `@wip`). Réserve
+consignée : clippy était rouge sur non-macOS à l'état initial
+(`aithos-cli/src/custody.rs:7`, code mort sous cfg) — corrigé en une ligne au
+lot SPL-0.
 
 Livrables attendus :
 
@@ -141,8 +146,15 @@ couverte par `act.x.gateway.*`.
 
 ### 2.4 Couplages physiques cross-répertoire
 
-**`include_str!` / chemins relatifs vers `vectors/`** — 5 sites, tous sous
-`#[cfg(test)]` :
+**`include_str!` / chemins relatifs vers `vectors/`** — revérifié le
+2026-07-30 au début du lot SPL-1 : le grep repo-entier renvoie en réalité
+**~150 sites**, dont l'écrasante majorité dans les tests d'`aithos-core` et
+d'`aithos-bundle`. Ces crates-là restent dans le même dépôt que `vectors/` :
+leurs chemins ne cassent pas à la scission et sont hors périmètre du lot.
+Les sites du périmètre sont ceux des crates qui partent (`aithos-gateway`)
+ou dont le vecteur est consommé des deux côtés de la frontière
+(`cb15` : CLI et WASM côté core, `aithos-client` côté dépôt séparé) —
+**7 sites**, tous sous `#[cfg(test)]` :
 
 ```
 aithos-gateway/src/core_bridge.rs:6875   ../../../../vectors/cb2-session-proof.json
@@ -151,7 +163,11 @@ aithos-gateway/src/public_tls.rs:1026    ../../../../vectors/p6-acme-txt.json
 aithos-gateway/src/relay.rs:489          /../../../vectors/p3-tunnel-register.json
 aithos-gateway/tests/cucumber.rs:9579    /../../../vectors/p3-tunnel-register.json
 aithos-cli/tests/delegated_oauth.rs:72   ../../../../vectors/cb15-external-delegated-grant.json
+aithos-wasm/src/lib.rs:389               ../../../../vectors/cb15-external-delegated-grant.json
 ```
+
+(Le site `aithos-wasm` manquait au constat initial ; ajouté à la
+revérification du 2026-07-30.)
 
 `vectors/` (91 entrées, à plat) mélange vecteurs protocolaires (`a1-*`, `b2-*`,
 `c1-*`, `cb*`) et vecteurs provider (`p1-*` → `p9-*`). La convention de nommage
@@ -265,16 +281,19 @@ volontaire.
 3. Reformuler la mention « the gateway » de `features/f-plus-constraints.feature:274`
    en termes non nominatifs (« le point d'exécution », « le vérificateur en
    ligne »).
-4. Neutraliser les 6 `include_str!` / chemins relatifs de la §2.4 : introduire un
+4. Neutraliser les 7 `include_str!` / chemins relatifs de la §2.4 : introduire un
    helper de résolution de fixture par crate (`tests/fixtures/vectors.rs`) qui lit
-   depuis une variable d'environnement avec repli sur le chemin actuel. Aucun
-   vecteur n'est copié à ce stade — on ne fait que couper la dépendance à la
-   profondeur de répertoire.
+   depuis une variable d'environnement (`AITHOS_VECTORS_DIR`) avec repli sur le
+   chemin actuel. Aucun vecteur n'est copié à ce stade — on ne fait que couper la
+   dépendance à la profondeur de répertoire.
 
 **Critères de sortie.**
 
 - `scripts/split-baseline.sh` vert ;
-- `grep -rn '\.\./\.\./\.\./vectors' rust/crates/` ne renvoie plus que le helper ;
+- `grep -rn '\.\./\.\./\.\./vectors' rust/crates/aithos-gateway rust/crates/aithos-cli rust/crates/aithos-wasm`
+  ne renvoie plus que le helper (gate rescopée le 2026-07-30 : la forme
+  repo-entière du gate d'origine comptait aussi les ~143 sites
+  core/bundle → vecteurs protocolaires du même dépôt, hors périmètre) ;
 - aucun scénario `@wip` passé en actif.
 
 ### SPL-2 — libérer la grammaire du nom `gateway`
@@ -472,7 +491,7 @@ propriétaire unique.
 4. Mettre à jour `vectors/README.md` pour énoncer la règle de propriété.
 
 **Critères de sortie.** Aucune duplication d'octet entre les deux dépôts (à
-prouver par comparaison de digests) ; les 6 sites du §2.4 résolvent via le helper
+prouver par comparaison de digests) ; les 7 sites du §2.4 résolvent via le helper
 de SPL-1.
 
 ### SPL-8 — extraction du dépôt `aithos-service`
