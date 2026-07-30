@@ -57,6 +57,8 @@ enum Command {
     Keygen,
     /// OWNER SIDE (never in the runner): create the agent's journal —
     /// an enterprise-owned Ethos where the agent gets the xref pen.
+    ///
+    /// Deprecated (lot SPL-5): prefer `aithos owner init-journal` — same ceremony, one path.
     OwnerInitJournal {
         /// Enterprise master seed (DEV ONLY on the command line).
         #[arg(long)]
@@ -82,6 +84,8 @@ enum Command {
     },
     /// OWNER SIDE: create a context Ethos (demo/dev — real contexts
     /// usually pre-exist).
+    ///
+    /// Deprecated (lot SPL-5): prefer `aithos owner init-context` — same ceremony, one path.
     OwnerInitContext {
         #[arg(long)]
         master_seed_hex: String,
@@ -147,6 +151,8 @@ enum Command {
     },
     /// OWNER SIDE: grant a context to the agent's public key (read
     /// tools + gateway governance + scoped auditor).
+    ///
+    /// Deprecated (lot SPL-5): prefer `aithos owner grant-context` — same ceremony, one path.
     OwnerGrantContext {
         #[arg(long)]
         master_seed_hex: String,
@@ -167,6 +173,8 @@ enum Command {
     /// OWNER SIDE: enrol one person public key as a delegated MCP session
     /// issuer. The owner master seed is read as 32-byte hexadecimal from
     /// stdin, never from argv; only the signed public mandate is persisted.
+    ///
+    /// Deprecated (lot SPL-5): prefer `aithos owner grant-session-delegate` — same ceremony, one path.
     OwnerGrantSessionDelegate {
         #[arg(long)]
         label: String,
@@ -185,6 +193,8 @@ enum Command {
     },
     /// OWNER SIDE: revoke one context mandate. The owner master seed is
     /// read as 32-byte hexadecimal from stdin, never from argv.
+    ///
+    /// Deprecated (lot SPL-5): prefer `aithos owner revoke-mandate` — same ceremony, one path.
     OwnerRevokeMandate {
         #[arg(long)]
         label: String,
@@ -266,6 +276,8 @@ enum Command {
     /// read mandate and zone lines on the `briefing/` folders of the
     /// public and circle zones (lot K). Separate gesture on purpose: one
     /// pen per usage, revocable independently of the tool grants.
+    ///
+    /// Deprecated (lot SPL-5): prefer `aithos owner grant-briefing` — same ceremony, one path.
     OwnerGrantBriefing {
         #[arg(long)]
         master_seed_hex: String,
@@ -285,6 +297,8 @@ enum Command {
     /// gesture, a delegate's sub-mandate or the future multi-mandate
     /// surface all light it the same way. `self` is refused while the
     /// delegated self resolution is its own core lot.
+    ///
+    /// Deprecated (lot SPL-5): prefer `aithos owner grant-ethos-read` — same ceremony, one path.
     OwnerGrantEthosRead {
         #[arg(long)]
         master_seed_hex: String,
@@ -304,6 +318,8 @@ enum Command {
     /// context (lot G6 owner tooling — GAPS beat 2, filling the zones).
     /// Title = the last path segment; the ethos data tools serve it on
     /// the very next call when the surface covers it.
+    ///
+    /// Deprecated (lot SPL-5): prefer `aithos owner add-section` — same ceremony, one path.
     OwnerAddSection {
         #[arg(long)]
         master_seed_hex: String,
@@ -323,6 +339,8 @@ enum Command {
     /// first use, in-place rewrite afterwards — served on the very next
     /// briefing.read, no restart). `self` holds owner-only notes that
     /// never reach the agent.
+    ///
+    /// Deprecated (lot SPL-5): prefer `aithos owner set-briefing` — same ceremony, one path.
     OwnerSetBriefing {
         #[arg(long)]
         master_seed_hex: String,
@@ -448,7 +466,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let master = decode_master(master_seed_hex)?;
             let start = now_secs();
-            let outcome = aithos_gateway::core_bridge::owner_init_journal(
+            deprecated_owner_surface("owner init-journal");
+            let outcome = aithos_owner::owner_init_journal(
                 &master,
                 agent_label,
                 agent_pub,
@@ -481,7 +500,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             store_root,
         } => {
             let master = decode_master(master_seed_hex)?;
-            let did = aithos_gateway::core_bridge::owner_init_context(
+            deprecated_owner_surface("owner init-context");
+            let did = aithos_owner::owner_init_context(
                 &master,
                 label,
                 GatewayStore::from_config(&aithos_gateway::config::StoreConfig::Fs {
@@ -578,7 +598,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let master = decode_master(master_seed_hex)?;
             let start = now_secs();
-            let outcome = aithos_gateway::core_bridge::owner_grant_context(
+            deprecated_owner_surface("owner grant-context");
+            let outcome = aithos_owner::owner_grant_context(
                 &master,
                 label,
                 agent_pub,
@@ -614,7 +635,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let master = decode_master_stdin()?;
             let start = now_secs();
-            let mandate = aithos_gateway::core_bridge::owner_grant_session_delegate(
+            deprecated_owner_surface("owner grant-session-delegate");
+            let mandate = aithos_owner::owner_grant_session_delegate(
                 &master,
                 label,
                 delegate_pub,
@@ -641,7 +663,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             reason,
         } => {
             let master = decode_master_stdin()?;
-            aithos_gateway::core_bridge::owner_revoke_mandate_id(
+            deprecated_owner_surface("owner revoke-mandate");
+            aithos_owner::owner_revoke_mandate_id(
                 &master,
                 label,
                 mandate_id,
@@ -664,7 +687,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let master = decode_master(master_seed_hex)?;
             let start = now_secs();
-            let mandate = aithos_gateway::core_bridge::owner_grant_briefing(
+            deprecated_owner_surface("owner grant-briefing");
+            let mandate = aithos_owner::owner_grant_briefing(
                 &master,
                 label,
                 agent_pub,
@@ -697,7 +721,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 .filter(|z| !z.is_empty())
                 .map(str::to_owned)
                 .collect();
-            let mandate = aithos_gateway::core_bridge::owner_grant_ethos_read(
+            deprecated_owner_surface("owner grant-ethos-read");
+            let mandate = aithos_owner::owner_grant_ethos_read(
                 &master,
                 label,
                 agent_pub,
@@ -725,7 +750,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let master = decode_master(master_seed_hex)?;
             let start = now_secs();
-            aithos_gateway::core_bridge::owner_add_section(
+            deprecated_owner_surface("owner add-section");
+            aithos_owner::owner_add_section(
                 &master,
                 label,
                 zone,
@@ -749,7 +775,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             store_root,
         } => {
             let master = decode_master(master_seed_hex)?;
-            aithos_gateway::core_bridge::owner_set_briefing(
+            deprecated_owner_surface("owner set-briefing");
+            aithos_owner::owner_set_briefing(
                 &master,
                 label,
                 zone,
@@ -1695,6 +1722,16 @@ fn print_onboard(o: &OnboardOutcome) {
     println!("agent_endpoint: {}", o.agent_endpoint);
     println!();
     println!("Point the agent's MCP client at agent_endpoint — nothing else changes.");
+}
+
+/// Double-surface period (lot SPL-5): the gateway keeps its Owner*
+/// commands, deprecated, delegating to the same aithos-owner ceremonies
+/// the `aithos owner …` group now fronts. Famille B (enroll, preview,
+/// discovery, replicate, OAuth) stays a first-class gateway surface.
+fn deprecated_owner_surface(replacement: &str) {
+    eprintln!(
+        "DEPRECATED: this gateway surface delegates to the aithos-owner ceremonies — prefer `aithos {replacement}`."
+    );
 }
 
 fn decode_master(hex_str: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
