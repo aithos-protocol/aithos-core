@@ -1332,3 +1332,10 @@ pub fn cert_constraints<S: OwnerStore>(store: S, mandate_id: &str) -> Result<ser
     let m: Mandate = read_json(&bundle, &cert_path(mandate_id))?;
     Ok(m.constraints)
 }
+
+/// Canonical perimeter strings carried by a stored certificate.
+pub fn cert_perimeter<S: OwnerStore>(store: S, mandate_id: &str) -> Result<Vec<String>> {
+    let bundle = Bundle::open(store).map_err(owner_err)?;
+    let mandate: Mandate = read_json(&bundle, &cert_path(mandate_id))?;
+    Ok(mandate.perimeter)
+}
