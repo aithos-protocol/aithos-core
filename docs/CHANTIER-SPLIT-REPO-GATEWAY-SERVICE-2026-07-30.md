@@ -304,6 +304,27 @@ consommateur par son nom.
 **Décision arrêtée** (cf. §2.3) : généralisation vers `x/<consumer>/…`, pas
 inscription de `gateway/` dans la spec.
 
+**Gate de couverture wire — vérifiée le 2026-07-30, le lot procède.**
+Constat sur `aithos-provider/src/pathmap.rs` :
+
+- parse : `["x", id, rest @ ..]` accepte `x/gateway/state.json`
+  (`validate_name("gateway")` ✓, `valid_file_segments(["state.json"])` ✓ —
+  minuscules + point, pas de tête `.`) ;
+- couverture GET : `ObjectPath::X(id, _) => act_connector(id)` ;
+- couverture PUT : même ligne dans le bras d'écriture ;
+- `act_connector` matche toute `PerimeterEntry::Act { connector == id }`,
+  donc `act.x.gateway.*` (et tout `act.x.gateway.<action>` nommé) couvre
+  GET/PUT `x/gateway/**`.
+
+La tension §2.3 (redline « pas une route wire » vs objet répliqué) se
+résout comme prévu : sous `x/`, l'état devient une route wire légitime
+gouvernée par le verbe du même nœud ; `gateway/**` reste hors wire (le
+scénario `@redline-a1` de `store-reads.feature:361` et le test
+`bundle_internal_keys_stay_outside_the_wire` restent vrais tels quels).
+Un test symétrique d'acceptation est ajouté au lot (critère de sortie 2).
+Vérifié aussi : aucun vecteur gelé ne mentionne `gateway/state.json` ni
+`gateway/keys.json` — le retrait de grammaire ne touche aucun vecteur.
+
 **Actions.**
 
 1. Supprimer l'arme `"gateway/keys.json"` de `validate_store_key`. Aucun
