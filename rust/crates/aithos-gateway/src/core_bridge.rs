@@ -84,12 +84,12 @@ pub use control::{
 /// publics historiques sont préservés par les re-exports ci-dessous.
 mod shared;
 
-pub(crate) use aithos_owner::{derived_owner, derived_succession};
+pub(crate) use aithos_owner::{decode_pub, derived_owner, derived_succession};
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
 pub use aithos_owner::{
-    owner_add_section, owner_init_context, owner_read_journal_note, owner_revoke_mandate_id,
-    OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, MEMORY_FOLDER,
+    owner_add_section, owner_deliver_circle_line, owner_init_context, owner_read_journal_note,
+    owner_revoke_mandate_id, OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, MEMORY_FOLDER,
 };
 
 pub use shared::{
@@ -5561,12 +5561,6 @@ fn equip(
     })
 }
 
-fn decode_pub(multibase: &str) -> Result<ed25519_dalek::VerifyingKey> {
-    let bytes = aithos_core::wire::multibase_to_ed25519_pub(multibase).map_err(bridge_err)?;
-    ed25519_dalek::VerifyingKey::from_bytes(&bytes)
-        .map_err(|e| GatewayError::BridgeFailed(format!("bad agent public key: {e}")))
-}
-
 /// Mint the v1 ethos-read pen (lot G6, decided 2026-07-16): a plain
 /// owner mandate covering `read.<zone>` for the asked zones, the circle
 /// line delivered to the agent AND to the context auditor (the lot-K
@@ -5669,30 +5663,6 @@ pub fn owner_grant_ethos_read(
         .log_owner_grant(&owner, &mandate.id, now, ent)
         .map_err(bridge_err)?;
     Ok(mandate.id)
-}
-
-/// Deliver the circle zone line to ONE recipient key (§04.3 — the line
-/// is the physics half of a pen). Generic on purpose: the briefing pen
-/// delivers to the agent key, a delegated session pen delivers to the
-/// GATEWAY key (the session leaf grantee), and the auditor gets its
-/// copy when present — issuance appends the needed lines, the
-/// certificate half travels separately.
-pub fn owner_deliver_circle_line(
-    master: &[u8; 32],
-    label: &str,
-    recipient_pub_mb: &str,
-    store: GatewayStore,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<()> {
-    let owner = derived_owner(master, "context", label);
-    let recipient_pub = decode_pub(recipient_pub_mb)?;
-    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    let _ = now;
-    bundle
-        .deliver_zone_line(&owner, &recipient_pub, Zone::Circle, "", None, ent)
-        .map_err(bridge_err)?;
-    Ok(())
 }
 
 /// Dev/harness emission path pending the G8.c product surface: the

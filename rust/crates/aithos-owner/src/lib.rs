@@ -188,3 +188,33 @@ pub fn owner_add_section<S: OwnerStore>(
         )
         .map_err(owner_err)
 }
+
+/// Deliver the circle zone line to ONE recipient key (§04.3 — the line
+/// is the physics half of a pen). Generic on purpose: the briefing pen
+/// delivers to the agent key, a delegated session pen delivers to the
+/// GATEWAY key (the session leaf grantee), and the auditor gets its
+/// copy when present — issuance appends the needed lines, the
+/// certificate half travels separately.
+pub fn owner_deliver_circle_line<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    recipient_pub_mb: &str,
+    store: S,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<()> {
+    let owner = derived_owner(master, "context", label);
+    let recipient_pub = decode_pub(recipient_pub_mb)?;
+    let mut bundle = Bundle::open(store).map_err(owner_err)?;
+    let _ = now;
+    bundle
+        .deliver_zone_line(&owner, &recipient_pub, Zone::Circle, "", None, ent)
+        .map_err(owner_err)?;
+    Ok(())
+}
+
+pub fn decode_pub(multibase: &str) -> Result<ed25519_dalek::VerifyingKey> {
+    let bytes = aithos_core::wire::multibase_to_ed25519_pub(multibase).map_err(owner_err)?;
+    ed25519_dalek::VerifyingKey::from_bytes(&bytes)
+        .map_err(|e| OwnerError::Failed(format!("bad agent public key: {e}")))
+}
