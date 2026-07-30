@@ -2,7 +2,7 @@
 
 Date : 2026-07-30
 
-Statut : **en cours — SPL-0 → SPL-3 faits (2026-07-30).** Ce document est
+Statut : **en cours — SPL-0 → SPL-4 faits (2026-07-30).** Ce document est
 le backlog canonique du chantier ; le brief d'amorçage est
 [`PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md).
 Baseline figée : [`audits/split/baseline-2026-07-30.md`](audits/split/baseline-2026-07-30.md)
@@ -517,6 +517,50 @@ méthode) :
 - les tests qui appelaient les `owner_*` (9 fichiers de `tests/`, dont
   `cucumber.rs` et `support/g7b_steps.rs`) compilent contre la nouvelle
   localisation sans changement d'assertion.
+
+**Sortie du lot SPL-4 — 2026-07-30, gates atteintes.**
+
+- **Déplacé vers `aithos-owner`** (une fonction = un commit, baseline et
+  clippy rejoués à chaque scellement) : 13 cérémonies (`owner_init_context`,
+  `owner_init_journal`, `owner_grant_context` (+ variante `_ops`),
+  `owner_grant_session_delegate`, `owner_grant_connector_config`,
+  `owner_grant_briefing`, `owner_set_briefing`, `owner_grant_ethos_read`,
+  `owner_issue_ethos_read_subchain`, `owner_add_section`,
+  `owner_deliver_circle_line`, `owner_revoke_mandate_id`,
+  `owner_read_journal_note`), les 5 lecteurs (`gamma_view`,
+  `journal_notes_view`, `cert_grantee_pub`, `cert_constraints`,
+  `cert_perimeter`), les helpers (`derived_owner`, `derived_succession`,
+  `decode_pub`, `equip`, `mint`, `mint_entries`, `no_constraints`,
+  `cert_path`, `read_json`, `read_state_migrating`, `zone_rows`,
+  `memory_rows`, `view`), les types (`BridgeState`, `EquipOutcome`,
+  `ConnectorConfigGrant`, `MandateWindow`, `EntryView`, `NoteView`,
+  `MemoryRow`) et les constantes (`STATE_PATH`, `LEGACY_STATE_PATH`,
+  `LLM_BUDGET_REF`, `MEMORY_FOLDER`, `BRIEFING_FOLDER`,
+  `BRIEFING_SECTION`) — tout re-exporté par `core_bridge`, chemins publics
+  inchangés. La convention de nommage MCP (`MCP_CONNECTOR`, `action_name`,
+  `op_for_tool`) a suivi (grammaire de mandat, pas moteur de politique) ;
+  `policy.rs` la re-exporte.
+- **Survivants `pub fn owner_*` de `core_bridge.rs` (7, tous famille B),
+  justifiés** :
+  - `owner_enroll_server` / `owner_enroll_servers` / `owner_reenroll_server`
+    — manipulent `ApprovedManifest` et le pin de hub (domaine gateway) ;
+  - `owner_read_hub_manifest` — lit le manifest approuvé via la politique ;
+  - `owner_preview_mandate` / `owner_preview_call` — consomment
+    `describe_effective_policy` / `effective_call_verdict` (verdicts
+    d'outils) via `preview_load` (manifests du hub) ;
+  - `owner_replicate_history_to_remote` — construit
+    `RemoteStore`/`KeySigner` (transport provider A.2), pas une cérémonie
+    génériquisable sur `S: Store` (reclassement consigné à l'ouverture).
+- **`impl Bridge` et `impl Runner` byte-identiques** à l'état pré-SPL-4
+  (vérifié par extraction de région) ; les primitives partagées passent
+  par des wrappers d'erreur dans `shared.rs` (`read_json`, `mint`,
+  `read_state_migrating`, `zone_rows`, `memory_rows`) qui mappent
+  `OwnerError` sur la taxonomie gateway sans changer un octet des impl.
+- `core_bridge.rs` : 6 448 → **5 370 lignes** (le seuil « < 6 000 » de la
+  gate SPL-3 d'origine est atteint par ricochet, comme prévu) ;
+  `aithos-owner/src/lib.rs` : 1 341 lignes.
+- Baseline VERTE à chaque commit du lot ; les 9 fichiers de tests
+  consommateurs compilent sans changement d'assertion (re-exports).
 
 ### SPL-5 — unifier la surface CLI
 
