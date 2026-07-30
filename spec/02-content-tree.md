@@ -75,6 +75,12 @@ gamma/gamma.jsonl          §07
 Sharding of large indexes is permitted (deterministic, by `sha256(sid)`) but omitted
 here for clarity; it does not affect keys or headers.
 
+The layout names no consumer. A runtime mandated on `act.x.<id>.*` keeps its
+non-secret runtime state under its own vault namespace `x/<id>/…` (§08) — an
+ordinary connector-namespace object, covered by the node's verb like any
+other. The closed store-key grammar has no consumer-specific key and acquires
+none by deployment convenience.
+
 > **CB1 conformance-hardening decision — validated at the human protocol gate on
 > 2026-07-18; no new grammar.**
 > Untrusted display paths are relative to their already-selected logical zone and

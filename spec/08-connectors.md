@@ -229,6 +229,13 @@ database.
   exact private opening capability.
 - **No `/x` in structural ethos grants.** A grant on `/e` or a whole-ethos grant never
   covers `/x`; vault access is always an explicit `act.x.<id>.config` perimeter entry.
+- **Non-secret runtime state.** A consumer mandated on `act.x.<id>.*` MAY keep
+  its non-secret runtime state as ordinary objects under `x/<id>/…`. This is a
+  location, not an authority: wire coverage still comes from the presented
+  chain and the node's own verb, `.config` custody rules are unchanged, and no
+  credential, DK, or private key ever rides these objects. The store-key
+  grammar names no consumer (§02.3) — the vault namespace is where a
+  consumer's state belongs, under the verb that already governs the node.
 
 > **CB1 decision G-A — validated at the human protocol gate on 2026-07-18.**
 > `.config` is a reserved vault capability outside the connector's business
