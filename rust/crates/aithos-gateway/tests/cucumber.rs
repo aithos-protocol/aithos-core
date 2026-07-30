@@ -76,6 +76,8 @@ use aithos_provider::envelope::{
     EnvelopeSignature as A2EnvelopeSignature,
 };
 
+#[path = "fixtures/vectors.rs"]
+mod fixtures_vectors;
 #[path = "support/g7b_steps.rs"]
 mod g7b_steps;
 #[path = "support/oac0_steps.rs"]
@@ -9574,11 +9576,8 @@ fn g1a_no_socket_before_valid_config(w: &mut GatewayWorld) {
 
 #[given("the gateway key and the injected instant and nonce from vector p3")]
 fn g1a_p3_inputs(w: &mut GatewayWorld) {
-    let vector: Value = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../vectors/p3-tunnel-register.json"
-    )))
-    .unwrap();
+    let vector: Value =
+        serde_json::from_str(&fixtures_vectors::vector_str("p3-tunnel-register.json")).unwrap();
     w.relay_expected_line = Some(
         vector["cases"][0]["line"]
             .as_str()

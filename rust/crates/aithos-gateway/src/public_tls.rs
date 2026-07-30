@@ -1023,7 +1023,7 @@ mod tests {
     #[test]
     fn b5_authorization_is_byte_exact_to_p6_put_and_delete() {
         let vectors: serde_json::Value =
-            serde_json::from_str(include_str!("../../../../vectors/p6-acme-txt.json")).unwrap();
+            serde_json::from_str(&crate::test_vectors::vector_str("p6-acme-txt.json")).unwrap();
         for name in ["accept_put_ok", "accept_delete_ok"] {
             let case = vectors["cases"]
                 .as_array()

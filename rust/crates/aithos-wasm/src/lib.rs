@@ -15,6 +15,12 @@ use serde::Deserialize;
 use serde_json::Value;
 use wasm_bindgen::prelude::*;
 
+/// Résolution test-only des fixtures de vecteurs (voir
+/// `tests/fixtures/vectors.rs` — jamais compilé pour la cible wasm).
+#[cfg(test)]
+#[path = "../tests/fixtures/vectors.rs"]
+mod test_vectors;
+
 /// Deterministic genesis (spec §01.1): derive the owner public keys from a
 /// 32-byte master seed. Returns a JSON string of hex-encoded public keys.
 /// The seed must come from the caller — WASM core never generates randomness.
@@ -385,8 +391,8 @@ mod tests {
         assert!(proof.get("seed").is_none());
         assert_eq!(proof.as_object().unwrap().len(), 4);
 
-        let vector: Value = serde_json::from_str(include_str!(
-            "../../../../vectors/cb15-external-delegated-grant.json"
+        let vector: Value = serde_json::from_str(&crate::test_vectors::vector_str(
+            "cb15-external-delegated-grant.json",
         ))
         .unwrap();
         let mut seed = [0x62u8; 32];

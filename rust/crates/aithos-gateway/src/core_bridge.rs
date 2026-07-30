@@ -6843,13 +6843,13 @@ mod delegated_session_tests {
     use super::*;
 
     fn historical_vector() -> serde_json::Value {
-        serde_json::from_str(include_str!("../../../../vectors/cb2-session-proof.json"))
+        serde_json::from_str(&crate::test_vectors::vector_str("cb2-session-proof.json"))
             .expect("historical CB2 vector parses")
     }
 
     fn delegated_chain_vector() -> serde_json::Value {
-        serde_json::from_str(include_str!(
-            "../../../../vectors/cb14-delegated-session-chain.json"
+        serde_json::from_str(&crate::test_vectors::vector_str(
+            "cb14-delegated-session-chain.json",
         ))
         .expect("CB14 delegated chain vector parses")
     }

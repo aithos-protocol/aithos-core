@@ -1,3 +1,6 @@
+#[path = "fixtures/vectors.rs"]
+mod fixtures_vectors;
+
 use assert_cmd::Command;
 use base64::Engine as _;
 use serde_json::{json, Value};
@@ -68,8 +71,8 @@ fn request_target(headers: &str, method: &str) -> String {
 
 #[test]
 fn delegated_oauth_flow_uses_stdin_core_signing_and_a_private_token_file() {
-    let vector: Value = serde_json::from_str(include_str!(
-        "../../../../vectors/cb15-external-delegated-grant.json"
+    let vector: Value = serde_json::from_str(&fixtures_vectors::vector_str(
+        "cb15-external-delegated-grant.json",
     ))
     .unwrap();
     let positive = vector["positive"].clone();

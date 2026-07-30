@@ -484,11 +484,9 @@ mod tests {
 
     #[test]
     fn registration_is_byte_exact_to_p3() {
-        let vector: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../../vectors/p3-tunnel-register.json"
-        )))
-        .unwrap();
+        let vector: serde_json::Value =
+            serde_json::from_str(&crate::test_vectors::vector_str("p3-tunnel-register.json"))
+                .unwrap();
         let key = Keyholder::from_entropy([0x42; 32], [0x51; 32]);
         let line = gateway_tunnel_registration_line(
             &key,

@@ -45,6 +45,12 @@ pub mod upstream_oauth;
 
 mod error;
 
+/// Résolution test-only des fixtures de vecteurs (partagée avec les crates
+/// de tests d'intégration via `#[path]` — voir `tests/fixtures/vectors.rs`).
+#[cfg(test)]
+#[path = "../tests/fixtures/vectors.rs"]
+pub(crate) mod test_vectors;
+
 pub use error::GatewayError;
 
 /// Gateway-wide result type.
