@@ -134,3 +134,57 @@ pub fn owner_read_journal_note<S: OwnerStore>(
         .read_section(Zone::Circle, &format!("{MEMORY_FOLDER}/{name}"), &owner)
         .map_err(owner_err)
 }
+
+/// Owner-side section write (lot G6 provisioning surface, the generic
+/// sibling of `owner_set_briefing`): ensure the folder chain, add ONE
+/// fresh section — title = the last path segment, the human label the
+/// clear index shows. Demos and harnesses fill zones with it.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_add_section<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    zone: &str,
+    path: &str,
+    text: &str,
+    store: S,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<()> {
+    let zone = match zone {
+        "public" => Zone::Public,
+        "circle" => Zone::Circle,
+        "self" => Zone::Self_,
+        other => {
+            return Err(OwnerError::Rejected(format!(
+                "zone must be public, circle or self, not `{other}`"
+            )))
+        }
+    };
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(owner_err)?;
+    let (folder_path, name) = match path.rsplit_once('/') {
+        Some((dir, name)) => (dir, name),
+        None => ("", path),
+    };
+    if !folder_path.is_empty() {
+        bundle
+            .ensure_folder(zone, folder_path, &owner, ent)
+            .map_err(owner_err)?;
+        bundle.publish(&owner, now).map_err(owner_err)?;
+    }
+    bundle
+        .section_add(
+            &aithos_bundle::bundle::SectionSpec {
+                zone,
+                folder_path,
+                name,
+                title: name,
+                tags: &[],
+                body: text,
+                now,
+            },
+            &owner,
+            ent,
+        )
+        .map_err(owner_err)
+}

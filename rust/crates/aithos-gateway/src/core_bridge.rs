@@ -88,8 +88,8 @@ pub(crate) use aithos_owner::{derived_owner, derived_succession};
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
 pub use aithos_owner::{
-    owner_init_context, owner_read_journal_note, owner_revoke_mandate_id, OwnerError,
-    BRIEFING_FOLDER, BRIEFING_SECTION, MEMORY_FOLDER,
+    owner_add_section, owner_init_context, owner_read_journal_note, owner_revoke_mandate_id,
+    OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, MEMORY_FOLDER,
 };
 
 pub use shared::{
@@ -5693,60 +5693,6 @@ pub fn owner_deliver_circle_line(
         .deliver_zone_line(&owner, &recipient_pub, Zone::Circle, "", None, ent)
         .map_err(bridge_err)?;
     Ok(())
-}
-
-/// Owner-side section write (lot G6 provisioning surface, the generic
-/// sibling of `owner_set_briefing`): ensure the folder chain, add ONE
-/// fresh section — title = the last path segment, the human label the
-/// clear index shows. Demos and harnesses fill zones with it.
-#[allow(clippy::too_many_arguments)]
-pub fn owner_add_section(
-    master: &[u8; 32],
-    label: &str,
-    zone: &str,
-    path: &str,
-    text: &str,
-    store: GatewayStore,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<()> {
-    let zone = match zone {
-        "public" => Zone::Public,
-        "circle" => Zone::Circle,
-        "self" => Zone::Self_,
-        other => {
-            return Err(GatewayError::ConfigRejected(format!(
-                "zone must be public, circle or self, not `{other}`"
-            )))
-        }
-    };
-    let owner = derived_owner(master, "context", label);
-    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    let (folder_path, name) = match path.rsplit_once('/') {
-        Some((dir, name)) => (dir, name),
-        None => ("", path),
-    };
-    if !folder_path.is_empty() {
-        bundle
-            .ensure_folder(zone, folder_path, &owner, ent)
-            .map_err(bridge_err)?;
-        bundle.publish(&owner, now).map_err(bridge_err)?;
-    }
-    bundle
-        .section_add(
-            &aithos_bundle::bundle::SectionSpec {
-                zone,
-                folder_path,
-                name,
-                title: name,
-                tags: &[],
-                body: text,
-                now,
-            },
-            &owner,
-            ent,
-        )
-        .map_err(bridge_err)
 }
 
 /// Dev/harness emission path pending the G8.c product surface: the
