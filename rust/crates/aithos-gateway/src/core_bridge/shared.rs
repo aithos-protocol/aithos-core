@@ -274,69 +274,6 @@ pub(crate) fn bridge_err(e: impl std::fmt::Display) -> GatewayError {
     GatewayError::BridgeFailed(e.to_string())
 }
 
-/// The memory shelf's clear index rows, oldest first — see [`zone_rows`].
-pub(crate) fn memory_rows(
-    bundle: &Bundle<GatewayStore>,
-    query: Option<&str>,
-    tag: Option<&str>,
-) -> Result<Vec<MemoryRow>> {
-    zone_rows(bundle, Zone::Circle, MEMORY_FOLDER, query, tag)
-}
-
-/// One zone folder's clear index rows, oldest first, optionally filtered
-/// by a case-insensitive `query` over name/title/tags and an exact
-/// `tag`. This reads the SKELETON the readability frontier already
-/// grants whoever holds the files — no body is touched here. A folder
-/// that does not exist yields no rows (nothing was ever shelved there).
-pub(crate) fn zone_rows(
-    bundle: &Bundle<GatewayStore>,
-    zone: Zone,
-    folder: &str,
-    query: Option<&str>,
-    tag: Option<&str>,
-) -> Result<Vec<MemoryRow>> {
-    let Ok(folders) = bundle.resolve_folder(zone, folder) else {
-        return Ok(Vec::new());
-    };
-    let folder_sid = folders.last().map(ToString::to_string);
-    let index: serde_json::Value = read_json(bundle, &format!("e/{}/index.json", zone.as_str()))?;
-    let needle = query.map(str::to_lowercase);
-    let mut rows = Vec::new();
-    for row in index["sections"].as_array().into_iter().flatten() {
-        if row["folder_sid"].as_str().map(str::to_owned) != folder_sid {
-            continue;
-        }
-        let name = row["name"].as_str().unwrap_or_default().to_owned();
-        let title = row["title"].as_str().unwrap_or_default().to_owned();
-        let tags: Vec<String> = row["tags"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|t| t.as_str().map(str::to_owned))
-                    .collect()
-            })
-            .unwrap_or_default();
-        if let Some(q) = &needle {
-            let hay = format!(
-                "{}\u{0}{}\u{0}{}",
-                name.to_lowercase(),
-                title.to_lowercase(),
-                tags.join("\u{0}").to_lowercase()
-            );
-            if !hay.contains(q.as_str()) {
-                continue;
-            }
-        }
-        if let Some(t) = tag {
-            if !tags.iter().any(|x| x == t) {
-                continue;
-            }
-        }
-        rows.push(MemoryRow { name, title, tags });
-    }
-    Ok(rows)
-}
-
 /// Verify one concrete row with its SID. This preserves the historical
 /// folder/tag semantics and additionally supports exact `#id=` grants.
 /// K1-C's public carrier deliberately exposes no folder SIDs or tags, so
@@ -583,4 +520,25 @@ pub(crate) fn mint(
         now,
     )
     .map_err(GatewayError::from)
+}
+
+/// Voir [`read_json`] — wrappers d'erreur des lecteurs d'index extraits
+/// vers `aithos-owner`.
+pub(crate) fn zone_rows(
+    bundle: &Bundle<GatewayStore>,
+    zone: Zone,
+    folder: &str,
+    query: Option<&str>,
+    tag: Option<&str>,
+) -> Result<Vec<aithos_owner::MemoryRow>> {
+    aithos_owner::zone_rows(bundle, zone, folder, query, tag).map_err(GatewayError::from)
+}
+
+/// Voir [`zone_rows`].
+pub(crate) fn memory_rows(
+    bundle: &Bundle<GatewayStore>,
+    query: Option<&str>,
+    tag: Option<&str>,
+) -> Result<Vec<aithos_owner::MemoryRow>> {
+    aithos_owner::memory_rows(bundle, query, tag).map_err(GatewayError::from)
 }

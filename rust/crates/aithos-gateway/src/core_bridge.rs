@@ -90,13 +90,13 @@ pub(crate) use aithos_owner::{
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
 pub use aithos_owner::{
-    gamma_view, owner_add_section, owner_deliver_circle_line, owner_grant_briefing,
-    owner_grant_connector_config, owner_grant_context, owner_grant_ethos_read,
-    owner_grant_session_delegate, owner_init_context, owner_init_journal,
+    gamma_view, journal_notes_view, owner_add_section, owner_deliver_circle_line,
+    owner_grant_briefing, owner_grant_connector_config, owner_grant_context,
+    owner_grant_ethos_read, owner_grant_session_delegate, owner_init_context, owner_init_journal,
     owner_issue_ethos_read_subchain, owner_read_journal_note, owner_revoke_mandate_id,
-    owner_set_briefing, ConnectorConfigGrant, EntryView, EquipOutcome, MandateWindow, OwnerError,
-    BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH, LLM_BUDGET_REF, MEMORY_FOLDER,
-    STATE_PATH,
+    owner_set_briefing, ConnectorConfigGrant, EntryView, EquipOutcome, MandateWindow, NoteView,
+    OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH, LLM_BUDGET_REF,
+    MEMORY_FOLDER, STATE_PATH,
 };
 
 pub use shared::{
@@ -172,19 +172,6 @@ impl std::fmt::Debug for OnboardOutcome {
             .field("auditor_mandate", &self.auditor_mandate)
             .finish_non_exhaustive()
     }
-}
-
-/// A clear, serialisable view of one memory note — what the journal
-/// tools hand back. `text` rides on opened hits only: the index
-/// skeleton (name, title, tags) is clear, the body stays sealed until
-/// a covered read opens it.
-#[derive(Debug, Clone, Serialize)]
-pub struct NoteView {
-    pub name: String,
-    pub title: String,
-    pub tags: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
 }
 
 /// One served directive (lot K): the owner's exact text, the zone it
@@ -4929,22 +4916,6 @@ pub fn owner_read_hub_manifest(
     Ok(manifest)
 }
 
-/// Owner/ops-side view of a journal's memory shelf: the CLEAR index
-/// skeleton (names, titles, tags — never a body), oldest first. What an
-/// operator or test lists before opening a note with the owner keys.
-pub fn journal_notes_view(store: GatewayStore) -> Result<Vec<NoteView>> {
-    let bundle = Bundle::open(store).map_err(bridge_err)?;
-    Ok(memory_rows(&bundle, None, None)?
-        .into_iter()
-        .map(|r| NoteView {
-            name: r.name,
-            title: r.title,
-            tags: r.tags,
-            text: None,
-        })
-        .collect())
-}
-
 /// The grantee public key (multibase) named by a stored certificate.
 pub fn cert_grantee_pub(store: GatewayStore, mandate_id: &str) -> Result<String> {
     let bundle = Bundle::open(store).map_err(bridge_err)?;
@@ -5233,13 +5204,6 @@ pub fn owner_preview_call(
 }
 
 // ---------------------------------------------------------------- helpers
-
-/// One clear index row of the memory shelf (skeleton data — no body).
-pub(crate) struct MemoryRow {
-    name: String,
-    title: String,
-    tags: Vec<String>,
-}
 
 /// One agent-facing row of a zone index (lot G6): display path, clear
 /// title and tags, and the folder sid-path (what `covers()` walks).

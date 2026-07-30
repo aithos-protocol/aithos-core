@@ -1218,3 +1218,102 @@ pub fn gamma_view<S: OwnerStore>(store: S) -> Result<Vec<EntryView>> {
         .map(view)
         .collect())
 }
+
+/// A clear, serialisable view of one memory note — what the journal
+/// tools hand back. `text` rides on opened hits only: the index
+/// skeleton (name, title, tags) is clear, the body stays sealed until
+/// a covered read opens it.
+#[derive(Debug, Clone, Serialize)]
+pub struct NoteView {
+    pub name: String,
+    pub title: String,
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// One clear index row of the memory shelf (skeleton data — no body).
+pub struct MemoryRow {
+    pub name: String,
+    pub title: String,
+    pub tags: Vec<String>,
+}
+
+/// One zone folder's clear index rows, oldest first, optionally filtered
+/// by a case-insensitive `query` over name/title/tags and an exact
+/// `tag`. This reads the SKELETON the readability frontier already
+/// grants whoever holds the files — no body is touched here. A folder
+/// that does not exist yields no rows (nothing was ever shelved there).
+pub fn zone_rows<S: Store>(
+    bundle: &Bundle<S>,
+    zone: Zone,
+    folder: &str,
+    query: Option<&str>,
+    tag: Option<&str>,
+) -> Result<Vec<MemoryRow>> {
+    let Ok(folders) = bundle.resolve_folder(zone, folder) else {
+        return Ok(Vec::new());
+    };
+    let folder_sid = folders.last().map(ToString::to_string);
+    let index: serde_json::Value = read_json(bundle, &format!("e/{}/index.json", zone.as_str()))?;
+    let needle = query.map(str::to_lowercase);
+    let mut rows = Vec::new();
+    for row in index["sections"].as_array().into_iter().flatten() {
+        if row["folder_sid"].as_str().map(str::to_owned) != folder_sid {
+            continue;
+        }
+        let name = row["name"].as_str().unwrap_or_default().to_owned();
+        let title = row["title"].as_str().unwrap_or_default().to_owned();
+        let tags: Vec<String> = row["tags"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|t| t.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(q) = &needle {
+            let hay = format!(
+                "{}\u{0}{}\u{0}{}",
+                name.to_lowercase(),
+                title.to_lowercase(),
+                tags.join("\u{0}").to_lowercase()
+            );
+            if !hay.contains(q.as_str()) {
+                continue;
+            }
+        }
+        if let Some(t) = tag {
+            if !tags.iter().any(|x| x == t) {
+                continue;
+            }
+        }
+        rows.push(MemoryRow { name, title, tags });
+    }
+    Ok(rows)
+}
+
+/// The memory shelf's clear index rows, oldest first — see [`zone_rows`].
+pub fn memory_rows<S: Store>(
+    bundle: &Bundle<S>,
+    query: Option<&str>,
+    tag: Option<&str>,
+) -> Result<Vec<MemoryRow>> {
+    zone_rows(bundle, Zone::Circle, MEMORY_FOLDER, query, tag)
+}
+
+/// Owner/ops-side view of a journal's memory shelf: the CLEAR index
+/// skeleton (names, titles, tags — never a body), oldest first. What an
+/// operator or test lists before opening a note with the owner keys.
+pub fn journal_notes_view<S: OwnerStore>(store: S) -> Result<Vec<NoteView>> {
+    let bundle = Bundle::open(store).map_err(owner_err)?;
+    Ok(memory_rows(&bundle, None, None)?
+        .into_iter()
+        .map(|r| NoteView {
+            name: r.name,
+            title: r.title,
+            tags: r.tags,
+            text: None,
+        })
+        .collect())
+}
