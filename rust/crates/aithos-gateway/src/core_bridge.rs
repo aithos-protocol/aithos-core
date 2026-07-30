@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use base64::Engine as _;
 use ed25519_dalek::{Signer as _, SigningKey};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use aithos_bundle::bundle::Bundle;
 use aithos_bundle::log::{ActionSpec, InferenceSpec, LogFilter};
@@ -85,14 +85,16 @@ pub use control::{
 mod shared;
 
 pub(crate) use aithos_owner::{
-    cert_path, decode_pub, derived_owner, derived_succession, mint, mint_entries, no_constraints,
+    cert_path, decode_pub, derived_owner, derived_succession, equip, mint_entries, no_constraints,
+    BridgeState,
 };
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
 pub use aithos_owner::{
     owner_add_section, owner_deliver_circle_line, owner_grant_connector_config, owner_init_context,
-    owner_read_journal_note, owner_revoke_mandate_id, ConnectorConfigGrant, MandateWindow,
-    OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, MEMORY_FOLDER,
+    owner_read_journal_note, owner_revoke_mandate_id, ConnectorConfigGrant, EquipOutcome,
+    MandateWindow, OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH,
+    LLM_BUDGET_REF, MEMORY_FOLDER, STATE_PATH,
 };
 
 pub use shared::{
@@ -103,25 +105,10 @@ pub use shared::{
 };
 pub(crate) use shared::{
     bridge_err, commitment_of, constraints_bind_resource, enrollment_chain_is_direct_owner,
-    ethos_row_is_covered, hash_of, hub_manifest_paths, memory_rows, merge_server_pins,
+    ethos_row_is_covered, hash_of, hub_manifest_paths, memory_rows, merge_server_pins, mint,
     public_read_current, read_denied_op, read_json, read_state_migrating, validate_runtime_tool,
     view, write_denied, write_denied_op, zone_all_rows, zone_rows,
 };
-
-/// Where the bridge keeps its non-secret runtime state in the store —
-/// under the vault namespace of the node its own governance mandate
-/// covers (`act.x.gateway.*` → `/x/gateway`, spec §08). Migrated from
-/// [`LEGACY_STATE_PATH`] at context open (SPL-2); custody is unchanged:
-/// the state stays pod-local (sidecar / primary fs), never replicated.
-pub const STATE_PATH: &str = "x/gateway/state.json";
-/// Pre-SPL-2 address of the bridge state. Read once at context open to
-/// rewrite the bytes under [`STATE_PATH`]; never deleted, never written
-/// again.
-pub const LEGACY_STATE_PATH: &str = "gateway/state.json";
-/// The one budget profile id the gateway cites on inference entries —
-/// the same id `owner-init-journal --token-budget` writes into the
-/// inference mandate (v1: one profile, one tap).
-pub const LLM_BUDGET_REF: &str = "llm";
 
 /// Native proof domain fixed by the historical CB2 session vector.
 pub const MCP_SESSION_NATIVE_PROOF_DOMAIN: &[u8] = b"aithos-core/cb2/native-leaf-proof\x00";
@@ -153,32 +140,6 @@ pub struct DelegatedChainSessionEvidence<'a> {
 /// Vault record name for one approved hub manifest. The parent
 /// `/x/<server>` header is pinned by the bundle's vault root.
 const HUB_MANIFEST_FILE: &str = "manifest.enc";
-/// Non-secret state persisted at equip time, reloaded by `open`.
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct BridgeState {
-    agent_mandate: String,
-    gateway_mandate: String,
-    /// Absent on ethos where no audit grant was made (e.g. journals).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    auditor_mandate: Option<String>,
-    /// The budgeted inference pen (journals only, Phase C) — absent on
-    /// contexts and on journals provisioned without a token budget.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    inference_mandate: Option<String>,
-    /// The memory pen (journals only, lot C2): the append mandate on
-    /// `circle:memory/` — absent on contexts and on journals provisioned
-    /// before this lot (their journal tools refuse fail-closed).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    memory_mandate: Option<String>,
-    /// The briefing pen (contexts only, lot K): the READ mandate on the
-    /// `briefing/` folders of the public and circle zones, granted by
-    /// `owner-grant-briefing` — a separate owner gesture, orthogonal to
-    /// server enrollment (re-enrollment preserves it). Absent = this
-    /// context serves no directives (mute surface, fail-closed).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    briefing_mandate: Option<String>,
-}
-
 /// What onboarding hands back to the operator. Secrets appear ONCE here
 /// (to be stored cold / handed to the auditor) and are never persisted
 /// by the gateway runtime.
@@ -4635,21 +4596,34 @@ pub fn owner_replicate_history_to_remote(
     Ok((did, report))
 }
 
-/// What equipping an ethos hands back — identifiers only, never seeds
-/// (the auditor seed is the one exception, printed once by the caller).
-#[derive(Debug, Clone)]
-pub struct EquipOutcome {
-    pub ethos_did: String,
-    pub agent_mandate: String,
-    pub gateway_mandate: String,
-    pub auditor_mandate: Option<String>,
-    pub auditor_seed_hex: Option<String>,
-    /// The budgeted inference pen (journals provisioned with a token
-    /// budget only, Phase C).
-    pub inference_mandate: Option<String>,
-    /// The memory pen (journals only, lot C2): append on the journal's
-    /// `circle:memory/` shelf.
-    pub memory_mandate: Option<String>,
+/// Équipement d'un contexte — wrapper gateway : mappe les noms d'outils
+/// MCP sur la grammaire de mandat (convention `policy::op_for_tool`,
+/// domaine gateway) puis délègue la cérémonie à `aithos-owner`.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_context(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    gateway_pub_mb: &str,
+    read_tools: &[String],
+    store: GatewayStore,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<EquipOutcome> {
+    let read_ops: Vec<String> = read_tools.iter().map(|t| op_for_tool(t)).collect();
+    aithos_owner::owner_grant_context_ops(
+        master,
+        label,
+        agent_pub_mb,
+        gateway_pub_mb,
+        &read_ops,
+        store,
+        window,
+        now,
+        ent,
+    )
+    .map_err(GatewayError::from)
 }
 
 /// Governed replacement result: fresh active equipment plus the prior
@@ -4707,38 +4681,7 @@ pub fn owner_init_journal(
         now,
         ent,
     )
-}
-
-/// Grant a context to the agent's PUBLIC key: read mandate on the listed
-/// tools, governance mandate for the gateway, scoped audit mandate.
-#[allow(clippy::too_many_arguments)]
-pub fn owner_grant_context(
-    master: &[u8; 32],
-    label: &str,
-    agent_pub_mb: &str,
-    gateway_pub_mb: &str,
-    read_tools: &[String],
-    store: GatewayStore,
-    window: &MandateWindow,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<EquipOutcome> {
-    let owner = derived_owner(master, "context", label);
-    let bundle = Bundle::open(store).map_err(bridge_err)?;
-    let read_ops: Vec<String> = read_tools.iter().map(|t| op_for_tool(t)).collect();
-    equip(
-        bundle,
-        &owner,
-        agent_pub_mb,
-        gateway_pub_mb,
-        &read_ops,
-        true,
-        None,
-        None,
-        window,
-        now,
-        ent,
-    )
+    .map_err(GatewayError::from)
 }
 
 /// Enrol one person public key as a session issuer for an existing context.
@@ -4927,6 +4870,7 @@ pub fn owner_enroll_servers(
         now,
         ent,
     )
+    .map_err(GatewayError::from)
 }
 
 /// Replace an existing server pin for the SAME agent key. The owner
@@ -5332,176 +5276,6 @@ pub fn owner_read_hub_manifest(
     let manifest: ApprovedManifest = serde_json::from_slice(&plain).map_err(bridge_err)?;
     validate_approved(&manifest)?;
     Ok(manifest)
-}
-
-/// Shared equip path: mint the mandates towards the agent/gateway PUBLIC
-/// keys, log every grant (issuance is never silent), persist certs+state.
-#[allow(clippy::too_many_arguments)]
-fn equip(
-    mut bundle: Bundle<GatewayStore>,
-    owner: &OwnerKeys,
-    agent_pub_mb: &str,
-    gateway_pub_mb: &str,
-    agent_ops: &[String],
-    with_auditor: bool,
-    token_budget: Option<u64>,
-    memory_folder: Option<&str>,
-    window: &MandateWindow,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<EquipOutcome> {
-    let agent_pub = decode_pub(agent_pub_mb)?;
-    let gateway_pub = decode_pub(gateway_pub_mb)?;
-
-    let agent_mandate = mint(
-        owner,
-        &bundle,
-        ent,
-        "agent",
-        &agent_pub,
-        agent_ops,
-        no_constraints(),
-        window,
-        now,
-    )?;
-    let gateway_mandate = mint(
-        owner,
-        &bundle,
-        ent,
-        "gateway",
-        &gateway_pub,
-        &["act.x.gateway.*".to_owned()],
-        no_constraints(),
-        window,
-        now,
-    )?;
-    let (auditor_mandate, auditor_seed_hex) = if with_auditor {
-        let seed = ent.e32();
-        let sk = SigningKey::from_bytes(&seed);
-        // The context auditor replays acts AND journalized reads (lot K
-        // briefing entries are `ethos.read`) — two scoped entries, each
-        // query still names ONE kind and anything wider stays refused by
-        // the certificate half (§07.8). The mono `onboard` auditor keeps
-        // its historic act-only scope (gateway-audit contract).
-        let m = mint(
-            owner,
-            &bundle,
-            ent,
-            "auditor",
-            &sk.verifying_key(),
-            &[
-                "read.gamma#kind=action".to_owned(),
-                "read.gamma#kind=ethos.read".to_owned(),
-            ],
-            no_constraints(),
-            window,
-            now,
-        )?;
-        (Some(m), Some(hex::encode(seed)))
-    } else {
-        (None, None)
-    };
-    // The inference pen: SAME grantee key, its OWN mandate — budgets are
-    // profile constraints checked on every entry citing them, so parking
-    // the token budget here keeps the xref pen budget-free.
-    let inference_mandate = match token_budget {
-        Some(budget) => Some(mint(
-            owner,
-            &bundle,
-            ent,
-            "inference",
-            &agent_pub,
-            &["act.x.llm.*".to_owned()],
-            serde_json::json!({
-                "budgets": [{ "id": LLM_BUDGET_REF, "token_budget": budget }]
-            }),
-            window,
-            now,
-        )?),
-        None => None,
-    };
-
-    // The memory pen (lot C2): the append mandate on the journal's
-    // memory shelf, next to — never inside — the xref pen. The
-    // certificate half is the Ethos perimeter entry (§04.2 lattice:
-    // append creates and reads, never rewrites nor deletes); the
-    // physical half is the shelf's header line, delivered to the SAME
-    // agent key (§04.3 — the line is the pen).
-    let memory_mandate = match memory_folder {
-        Some(folder) => {
-            bundle
-                .deliver_zone_line(owner, &agent_pub, Zone::Circle, folder, None, ent)
-                .map_err(bridge_err)?;
-            let dir = bundle
-                .resolve_folder(Zone::Circle, folder)
-                .map_err(bridge_err)?;
-            Some(mint_entries(
-                owner,
-                &bundle,
-                ent,
-                "memory",
-                &agent_pub,
-                vec![PerimeterEntry::Ethos {
-                    verb: Verb::Append,
-                    zone: Zone::Circle,
-                    dir,
-                    tag: None,
-                }],
-                no_constraints(),
-                window,
-                now,
-            )?)
-        }
-        None => None,
-    };
-
-    let mut all = vec![&agent_mandate, &gateway_mandate];
-    if let Some(m) = &auditor_mandate {
-        all.push(m);
-    }
-    if let Some(m) = &inference_mandate {
-        all.push(m);
-    }
-    if let Some(m) = &memory_mandate {
-        all.push(m);
-    }
-    for m in all {
-        bundle
-            .store
-            .put(
-                &cert_path(&m.id),
-                &serde_json::to_vec_pretty(m).map_err(bridge_err)?,
-            )
-            .map_err(bridge_err)?;
-        bundle
-            .log_owner_grant(owner, &m.id, now, ent)
-            .map_err(bridge_err)?;
-    }
-    let state = BridgeState {
-        agent_mandate: agent_mandate.id.clone(),
-        gateway_mandate: gateway_mandate.id.clone(),
-        auditor_mandate: auditor_mandate.as_ref().map(|m| m.id.clone()),
-        inference_mandate: inference_mandate.as_ref().map(|m| m.id.clone()),
-        memory_mandate: memory_mandate.as_ref().map(|m| m.id.clone()),
-        briefing_mandate: None,
-    };
-    bundle
-        .store
-        .put(
-            STATE_PATH,
-            &serde_json::to_vec_pretty(&state).map_err(bridge_err)?,
-        )
-        .map_err(bridge_err)?;
-
-    Ok(EquipOutcome {
-        ethos_did: bundle.did.clone(),
-        agent_mandate: agent_mandate.id,
-        gateway_mandate: gateway_mandate.id,
-        auditor_mandate: auditor_mandate.map(|m| m.id),
-        auditor_seed_hex,
-        inference_mandate: inference_mandate.map(|m| m.id),
-        memory_mandate: memory_mandate.map(|m| m.id),
-    })
 }
 
 /// Mint the v1 ethos-read pen (lot G6, decided 2026-07-16): a plain

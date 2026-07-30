@@ -1001,6 +1001,15 @@ impl Store for GatewayStore {
     }
 }
 
+/// Le store d'accueil des cérémonies propriétaire (`aithos-owner`) : la
+/// gateway surface son état pré-migration SPL-2 par la lecture brute de
+/// territoire pod, les stores protocolaires purs n'en ont pas.
+impl aithos_owner::OwnerStore for GatewayStore {
+    fn legacy_state_bytes(&self) -> std::io::Result<Option<Vec<u8>>> {
+        GatewayStore::legacy_state_bytes(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1067,14 +1076,5 @@ mod tests {
         ] {
             assert!(!retry_binding_with_agent(&std::io::Error::other(detail)));
         }
-    }
-}
-
-/// Le store d'accueil des cérémonies propriétaire (`aithos-owner`) : la
-/// gateway surface son état pré-migration SPL-2 par la lecture brute de
-/// territoire pod, les stores protocolaires purs n'en ont pas.
-impl aithos_owner::OwnerStore for GatewayStore {
-    fn legacy_state_bytes(&self) -> std::io::Result<Option<Vec<u8>>> {
-        GatewayStore::legacy_state_bytes(self)
     }
 }

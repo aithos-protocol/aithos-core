@@ -281,33 +281,6 @@ pub(crate) fn commitment_of(domain: &str, value: &serde_json::Value) -> Result<S
     ))
 }
 
-pub(crate) fn read_json<T: serde::de::DeserializeOwned>(
-    bundle: &Bundle<GatewayStore>,
-    path: &str,
-) -> Result<T> {
-    let bytes = bundle
-        .store
-        .get(path)
-        .map_err(bridge_err)?
-        .ok_or_else(|| GatewayError::BridgeFailed(format!("missing {path}")))?;
-    serde_json::from_slice(&bytes).map_err(bridge_err)
-}
-
-/// Read the bridge state, migrating the pre-SPL-2 key on first touch:
-/// when [`STATE_PATH`] is absent and [`LEGACY_STATE_PATH`] present, the
-/// bytes are copied verbatim under the new key — the legacy object is
-/// never deleted — then read back from the new key.
-pub(crate) fn read_state_migrating(bundle: &mut Bundle<GatewayStore>) -> Result<BridgeState> {
-    if bundle.store.get(STATE_PATH).map_err(bridge_err)?.is_none() {
-        // The legacy key left the canonical grammar with SPL-2 — the read
-        // is a raw pod-territory access, never a Store::get.
-        if let Some(legacy) = bundle.store.legacy_state_bytes().map_err(bridge_err)? {
-            bundle.store.put(STATE_PATH, &legacy).map_err(bridge_err)?;
-        }
-    }
-    read_json(bundle, STATE_PATH)
-}
-
 pub(crate) fn bridge_err(e: impl std::fmt::Display) -> GatewayError {
     GatewayError::BridgeFailed(e.to_string())
 }
@@ -576,4 +549,49 @@ pub(crate) fn constraints_bind_resource(constraints: &serde_json::Value, resourc
         .get("purpose")
         .and_then(serde_json::Value::as_str)
         == Some(resource)
+}
+
+/// Wrappers d'erreur des primitives partagées extraites vers
+/// `aithos-owner` (SPL-4) : mêmes noms, mêmes signatures côté gateway,
+/// l'erreur revient dans la taxonomie locale — les `impl` restent
+/// byte-identiques.
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(
+    bundle: &Bundle<GatewayStore>,
+    path: &str,
+) -> Result<T> {
+    aithos_owner::read_json(bundle, path).map_err(GatewayError::from)
+}
+
+/// Voir [`read_json`] — même wrapper pour la lecture migrante de l'état.
+pub(crate) fn read_state_migrating(
+    bundle: &mut Bundle<GatewayStore>,
+) -> Result<aithos_owner::BridgeState> {
+    aithos_owner::read_state_migrating(bundle).map_err(GatewayError::from)
+}
+
+/// Voir [`read_json`] — même wrapper pour la frappe de mandat.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn mint(
+    owner: &OwnerKeys,
+    bundle: &Bundle<GatewayStore>,
+    ent: &mut dyn EntropySource,
+    label: &str,
+    grantee_pub: &ed25519_dalek::VerifyingKey,
+    ops: &[String],
+    constraints: serde_json::Value,
+    window: &MandateWindow,
+    now: &str,
+) -> Result<Mandate> {
+    aithos_owner::mint(
+        owner,
+        bundle,
+        ent,
+        label,
+        grantee_pub,
+        ops,
+        constraints,
+        window,
+        now,
+    )
+    .map_err(GatewayError::from)
 }
