@@ -63,11 +63,6 @@ pub fn enforce_max_sessions(max_sessions: u64, active_session_keys: &[&str]) -> 
         })
 }
 
-/// Where mandate certificates live in the store.
-pub(crate) fn cert_path(id: &str) -> String {
-    format!("certs/{id}.json")
-}
-
 /// Wire encoding of the agent public key (`z…`, base58btc multicodec) —
 /// the ONLY thing that leaves the runner at birth.
 pub fn agent_pub_multibase(kh: &Keyholder) -> String {
@@ -257,42 +252,6 @@ pub fn proposed_manifest_catalog_digest(manifest: &ProposedManifest) -> Result<S
             .iter()
             .map(|tool| (tool.name.as_str(), tool.pin_sha256.as_str())),
     )
-}
-
-/// Mint one root mandate: `ops` are perimeter entry strings. Every
-/// caller passes its constraints explicitly (empty object = none).
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn mint(
-    owner: &OwnerKeys,
-    bundle: &Bundle<GatewayStore>,
-    ent: &mut dyn EntropySource,
-    label: &str,
-    grantee_pub: &ed25519_dalek::VerifyingKey,
-    ops: &[String],
-    constraints: serde_json::Value,
-    window: &MandateWindow,
-    now: &str,
-) -> Result<Mandate> {
-    let perimeter = ops
-        .iter()
-        .map(|op| PerimeterEntry::parse(op).map_err(bridge_err))
-        .collect::<Result<Vec<_>>>()?;
-    mint_entries(
-        owner,
-        bundle,
-        ent,
-        label,
-        grantee_pub,
-        perimeter,
-        constraints,
-        window,
-        now,
-    )
-}
-
-/// No constraints — the shape most mints use.
-pub(crate) fn no_constraints() -> serde_json::Value {
-    serde_json::Value::Object(serde_json::Map::new())
 }
 
 pub(crate) fn view(e: &aithos_core::gamma::Entry) -> EntryView {

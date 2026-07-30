@@ -84,12 +84,15 @@ pub use control::{
 /// publics historiques sont préservés par les re-exports ci-dessous.
 mod shared;
 
-pub(crate) use aithos_owner::{decode_pub, derived_owner, derived_succession};
+pub(crate) use aithos_owner::{
+    cert_path, decode_pub, derived_owner, derived_succession, mint, mint_entries, no_constraints,
+};
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
 pub use aithos_owner::{
-    owner_add_section, owner_deliver_circle_line, owner_init_context, owner_read_journal_note,
-    owner_revoke_mandate_id, OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, MEMORY_FOLDER,
+    owner_add_section, owner_deliver_circle_line, owner_grant_connector_config, owner_init_context,
+    owner_read_journal_note, owner_revoke_mandate_id, ConnectorConfigGrant, MandateWindow,
+    OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, MEMORY_FOLDER,
 };
 
 pub use shared::{
@@ -99,11 +102,10 @@ pub use shared::{
     proposed_manifest_catalog_digest, verify_delegated_chain_session, verify_delegated_session,
 };
 pub(crate) use shared::{
-    bridge_err, cert_path, commitment_of, constraints_bind_resource,
-    enrollment_chain_is_direct_owner, ethos_row_is_covered, hash_of, hub_manifest_paths,
-    memory_rows, merge_server_pins, mint, no_constraints, public_read_current, read_denied_op,
-    read_json, read_state_migrating, validate_runtime_tool, view, write_denied, write_denied_op,
-    zone_all_rows, zone_rows,
+    bridge_err, commitment_of, constraints_bind_resource, enrollment_chain_is_direct_owner,
+    ethos_row_is_covered, hash_of, hub_manifest_paths, memory_rows, merge_server_pins,
+    public_read_current, read_denied_op, read_json, read_state_migrating, validate_runtime_tool,
+    view, write_denied, write_denied_op, zone_all_rows, zone_rows,
 };
 
 /// Where the bridge keeps its non-secret runtime state in the store —
@@ -207,14 +209,6 @@ impl std::fmt::Debug for OnboardOutcome {
             .field("auditor_mandate", &self.auditor_mandate)
             .finish_non_exhaustive()
     }
-}
-
-/// The validity window of the mandates minted at onboarding. Computed by
-/// the surface (binary or test) — T stays injected, the bridge does no
-/// clock arithmetic.
-pub struct MandateWindow {
-    pub not_before: String,
-    pub not_after: String,
 }
 
 /// A clear, serialisable view of one gamma entry — what steps and
@@ -4658,13 +4652,6 @@ pub struct EquipOutcome {
     pub memory_mandate: Option<String>,
 }
 
-/// One narrowly scoped control-plane delegate. The seed is handed to the
-/// enterprise client once; the gateway persists only the signed mandate.
-pub struct ConnectorConfigGrant {
-    pub mandate: String,
-    pub seed_hex: String,
-}
-
 /// Governed replacement result: fresh active equipment plus the prior
 /// certificates that were politically revoked in the same owner gesture.
 #[derive(Debug, Clone)]
@@ -4830,50 +4817,6 @@ pub fn owner_grant_session_delegate(
         .log_owner_grant(&owner, &mandate.id, now, ent)
         .map_err(bridge_err)?;
     Ok(mandate.id)
-}
-
-/// Mint an exact `act.x.<connector>.config` delegate for the signed control
-/// plane. This consumes Core's existing perimeter grammar and grant log; it
-/// does not create a gateway-local authority dialect.
-#[allow(clippy::too_many_arguments)]
-pub fn owner_grant_connector_config(
-    master: &[u8; 32],
-    label: &str,
-    connector: &str,
-    store: GatewayStore,
-    window: &MandateWindow,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<ConnectorConfigGrant> {
-    let owner = derived_owner(master, "context", label);
-    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    let seed = ent.e32();
-    let signer = SigningKey::from_bytes(&seed);
-    let mandate = mint(
-        &owner,
-        &bundle,
-        ent,
-        "connector-config",
-        &signer.verifying_key(),
-        &[format!("act.x.{connector}.config")],
-        no_constraints(),
-        window,
-        now,
-    )?;
-    bundle
-        .store
-        .put(
-            &cert_path(&mandate.id),
-            &serde_json::to_vec_pretty(&mandate).map_err(bridge_err)?,
-        )
-        .map_err(bridge_err)?;
-    bundle
-        .log_owner_grant(&owner, &mandate.id, now, ent)
-        .map_err(bridge_err)?;
-    Ok(ConnectorConfigGrant {
-        mandate: mandate.id,
-        seed_hex: hex::encode(seed),
-    })
 }
 
 /// Discover/approval has already produced a validated manifest. Pin it
@@ -6060,44 +6003,6 @@ pub fn owner_preview_call(
 }
 
 // ---------------------------------------------------------------- helpers
-
-/// Mint one root mandate from pre-built perimeter entries — what the
-/// memory pen uses (its Ethos entry carries resolved folder sids, not a
-/// parseable string).
-#[allow(clippy::too_many_arguments)]
-fn mint_entries(
-    owner: &OwnerKeys,
-    bundle: &Bundle<GatewayStore>,
-    ent: &mut dyn EntropySource,
-    label: &str,
-    grantee_pub: &ed25519_dalek::VerifyingKey,
-    perimeter: Vec<PerimeterEntry>,
-    constraints: serde_json::Value,
-    window: &MandateWindow,
-    now: &str,
-) -> Result<Mandate> {
-    let id = format!(
-        "mandate_{}",
-        aithos_core::ids::Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
-    );
-    Mandate::build_root(
-        &owner.root_sign,
-        &MandateSpec {
-            id,
-            subject: bundle.did.clone(),
-            grantee_id: format!("urn:aithos:agent:{label}"),
-            grantee_label: label.to_owned(),
-            grantee_pub,
-            perimeter,
-            constraints,
-            not_before: window.not_before.clone(),
-            not_after: window.not_after.clone(),
-            issued_at: now.to_owned(),
-            nonce: hex::encode(ent.e16()),
-        },
-    )
-    .map_err(bridge_err)
-}
 
 /// One clear index row of the memory shelf (skeleton data — no body).
 pub(crate) struct MemoryRow {

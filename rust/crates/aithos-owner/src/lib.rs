@@ -15,6 +15,7 @@ use aithos_bundle::bundle::Bundle;
 use aithos_bundle::entropy::EntropySource;
 use aithos_bundle::Store;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
+use aithos_core::mandate::{Mandate, MandateSpec, PerimeterEntry};
 use aithos_core::path::Zone;
 use ed25519_dalek::SigningKey;
 
@@ -217,4 +218,142 @@ pub fn decode_pub(multibase: &str) -> Result<ed25519_dalek::VerifyingKey> {
     let bytes = aithos_core::wire::multibase_to_ed25519_pub(multibase).map_err(owner_err)?;
     ed25519_dalek::VerifyingKey::from_bytes(&bytes)
         .map_err(|e| OwnerError::Failed(format!("bad agent public key: {e}")))
+}
+
+/// The validity window of the mandates minted at onboarding. Computed by
+/// the surface (binary or test) — T stays injected, the bridge does no
+/// clock arithmetic.
+pub struct MandateWindow {
+    pub not_before: String,
+    pub not_after: String,
+}
+
+/// One narrowly scoped control-plane delegate. The seed is handed to the
+/// enterprise client once; the gateway persists only the signed mandate.
+pub struct ConnectorConfigGrant {
+    pub mandate: String,
+    pub seed_hex: String,
+}
+
+/// Where mandate certificates live in the store.
+pub fn cert_path(id: &str) -> String {
+    format!("certs/{id}.json")
+}
+
+/// No constraints — the shape most mints use.
+pub fn no_constraints() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
+}
+
+/// Mint one root mandate: `ops` are perimeter entry strings. Every
+/// caller passes its constraints explicitly (empty object = none).
+#[allow(clippy::too_many_arguments)]
+pub fn mint<S: Store>(
+    owner: &OwnerKeys,
+    bundle: &Bundle<S>,
+    ent: &mut dyn EntropySource,
+    label: &str,
+    grantee_pub: &ed25519_dalek::VerifyingKey,
+    ops: &[String],
+    constraints: serde_json::Value,
+    window: &MandateWindow,
+    now: &str,
+) -> Result<Mandate> {
+    let perimeter = ops
+        .iter()
+        .map(|op| PerimeterEntry::parse(op).map_err(owner_err))
+        .collect::<Result<Vec<_>>>()?;
+    mint_entries(
+        owner,
+        bundle,
+        ent,
+        label,
+        grantee_pub,
+        perimeter,
+        constraints,
+        window,
+        now,
+    )
+}
+
+/// Mint one root mandate from pre-built perimeter entries — what the
+/// memory pen uses (its Ethos entry carries resolved folder sids, not a
+/// parseable string).
+#[allow(clippy::too_many_arguments)]
+pub fn mint_entries<S: Store>(
+    owner: &OwnerKeys,
+    bundle: &Bundle<S>,
+    ent: &mut dyn EntropySource,
+    label: &str,
+    grantee_pub: &ed25519_dalek::VerifyingKey,
+    perimeter: Vec<PerimeterEntry>,
+    constraints: serde_json::Value,
+    window: &MandateWindow,
+    now: &str,
+) -> Result<Mandate> {
+    let id = format!(
+        "mandate_{}",
+        aithos_core::ids::Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
+    );
+    Mandate::build_root(
+        &owner.root_sign,
+        &MandateSpec {
+            id,
+            subject: bundle.did.clone(),
+            grantee_id: format!("urn:aithos:agent:{label}"),
+            grantee_label: label.to_owned(),
+            grantee_pub,
+            perimeter,
+            constraints,
+            not_before: window.not_before.clone(),
+            not_after: window.not_after.clone(),
+            issued_at: now.to_owned(),
+            nonce: hex::encode(ent.e16()),
+        },
+    )
+    .map_err(owner_err)
+}
+
+/// Mint an exact `act.x.<connector>.config` delegate for the signed control
+/// plane. This consumes Core's existing perimeter grammar and grant log; it
+/// does not create a gateway-local authority dialect.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_connector_config<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    connector: &str,
+    store: S,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<ConnectorConfigGrant> {
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(owner_err)?;
+    let seed = ent.e32();
+    let signer = SigningKey::from_bytes(&seed);
+    let mandate = mint(
+        &owner,
+        &bundle,
+        ent,
+        "connector-config",
+        &signer.verifying_key(),
+        &[format!("act.x.{connector}.config")],
+        no_constraints(),
+        window,
+        now,
+    )?;
+    bundle
+        .store
+        .put(
+            &cert_path(&mandate.id),
+            &serde_json::to_vec_pretty(&mandate).map_err(owner_err)?,
+        )
+        .map_err(owner_err)?;
+    bundle
+        .log_owner_grant(&owner, &mandate.id, now, ent)
+        .map_err(owner_err)?;
+    Ok(ConnectorConfigGrant {
+        mandate: mandate.id,
+        seed_hex: hex::encode(seed),
+    })
 }
