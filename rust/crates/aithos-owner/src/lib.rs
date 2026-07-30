@@ -11,7 +11,11 @@
 
 use std::io;
 
+use aithos_bundle::bundle::Bundle;
+use aithos_bundle::entropy::EntropySource;
 use aithos_bundle::Store;
+use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
+use ed25519_dalek::SigningKey;
 
 /// Every way an owner ceremony can refuse or fail. Mirrors the callers'
 /// fail-closed taxonomy: [`OwnerError::Rejected`] converts to their
@@ -42,4 +46,40 @@ pub trait OwnerStore: Store {
     fn legacy_state_bytes(&self) -> io::Result<Option<Vec<u8>>> {
         Ok(None)
     }
+}
+
+pub(crate) fn owner_err(error: impl std::fmt::Display) -> OwnerError {
+    OwnerError::Failed(error.to_string())
+}
+
+/// Derived owner keys for an enterprise-owned ethos (journal or context).
+pub fn derived_owner(master: &[u8; 32], kind: &str, label: &str) -> OwnerKeys {
+    OwnerKeys::genesis(&MasterSeed::from_bytes(aithos_core::derive::derive_key(
+        &format!("aithos-gw/v1/{kind}/{label}"),
+        master,
+    )))
+}
+
+/// Derived succession key for the same ethos — the second genesis input.
+pub fn derived_succession(master: &[u8; 32], kind: &str, label: &str) -> SigningKey {
+    succession_from_entropy(aithos_core::derive::derive_key(
+        &format!("aithos-gw/v1/{kind}/{label}/succession"),
+        master,
+    ))
+}
+
+/// Create a context Ethos owned by the enterprise (demo/dev path — real
+/// contexts usually pre-exist with their own history).
+pub fn owner_init_context<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    store: S,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<String> {
+    let owner = derived_owner(master, "context", label);
+    let succession = derived_succession(master, "context", label);
+    let bundle =
+        Bundle::init(store, &owner, &succession.verifying_key(), ent, now).map_err(owner_err)?;
+    Ok(bundle.did)
 }

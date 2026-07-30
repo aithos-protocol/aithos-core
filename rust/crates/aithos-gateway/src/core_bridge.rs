@@ -84,6 +84,11 @@ pub use control::{
 /// publics historiques sont préservés par les re-exports ci-dessous.
 mod shared;
 
+pub(crate) use aithos_owner::{derived_owner, derived_succession};
+/// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
+/// Les chemins publics historiques sont préservés.
+pub use aithos_owner::{owner_init_context, OwnerError};
+
 pub use shared::{
     agent_kex_pub_multibase, agent_pub_multibase, approved_manifest_catalog_digest,
     enforce_max_sessions, gateway_acme_authorization_header, gateway_kex_pub_multibase,
@@ -4601,14 +4606,6 @@ impl Runner {
 // One master anchors everything (decisions §6/§9): the owner keys of
 // journals and contexts derive by label; agent keys never derive.
 
-/// Derived owner keys for an enterprise-owned ethos (journal or context).
-fn derived_owner(master: &[u8; 32], kind: &str, label: &str) -> OwnerKeys {
-    OwnerKeys::genesis(&MasterSeed::from_bytes(aithos_core::derive::derive_key(
-        &format!("aithos-gw/v1/{kind}/{label}"),
-        master,
-    )))
-}
-
 /// Owner-side promotion of the P3 history-seeding seam. The master seed
 /// stays on the operator machine; only signed A.2 requests leave it.
 /// `kind` is deliberately closed to the two derivation domains created
@@ -4651,13 +4648,6 @@ pub fn owner_replicate_history_to_remote(
     let report = replicate_owner_history(local_root, &mut remote)
         .map_err(|e| GatewayError::BridgeFailed(e.to_string()))?;
     Ok((did, report))
-}
-
-fn derived_succession(master: &[u8; 32], kind: &str, label: &str) -> SigningKey {
-    succession_from_entropy(aithos_core::derive::derive_key(
-        &format!("aithos-gw/v1/{kind}/{label}/succession"),
-        master,
-    ))
 }
 
 /// What equipping an ethos hands back — identifiers only, never seeds
@@ -4739,22 +4729,6 @@ pub fn owner_init_journal(
         now,
         ent,
     )
-}
-
-/// Create a context Ethos owned by the enterprise (demo/dev path — real
-/// contexts usually pre-exist with their own history).
-pub fn owner_init_context(
-    master: &[u8; 32],
-    label: &str,
-    store: GatewayStore,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<String> {
-    let owner = derived_owner(master, "context", label);
-    let succession = derived_succession(master, "context", label);
-    let bundle =
-        Bundle::init(store, &owner, &succession.verifying_key(), ent, now).map_err(bridge_err)?;
-    Ok(bundle.did)
 }
 
 /// Grant a context to the agent's PUBLIC key: read mandate on the listed
