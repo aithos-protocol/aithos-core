@@ -84,19 +84,19 @@ pub use control::{
 /// publics historiques sont préservés par les re-exports ci-dessous.
 mod shared;
 
-pub(crate) use aithos_owner::{
-    cert_path, decode_pub, derived_owner, equip, no_constraints, view, BridgeState,
-};
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
 pub use aithos_owner::{
-    gamma_view, journal_notes_view, owner_add_section, owner_deliver_circle_line,
+    cert_grantee_pub, gamma_view, journal_notes_view, owner_add_section, owner_deliver_circle_line,
     owner_grant_briefing, owner_grant_connector_config, owner_grant_context,
     owner_grant_ethos_read, owner_grant_session_delegate, owner_init_context, owner_init_journal,
     owner_issue_ethos_read_subchain, owner_read_journal_note, owner_revoke_mandate_id,
     owner_set_briefing, ConnectorConfigGrant, EntryView, EquipOutcome, MandateWindow, NoteView,
     OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH, LLM_BUDGET_REF,
     MEMORY_FOLDER, STATE_PATH,
+};
+pub(crate) use aithos_owner::{
+    cert_path, decode_pub, derived_owner, equip, no_constraints, view, BridgeState,
 };
 
 pub use shared::{
@@ -4914,13 +4914,6 @@ pub fn owner_read_hub_manifest(
     let manifest: ApprovedManifest = serde_json::from_slice(&plain).map_err(bridge_err)?;
     validate_approved(&manifest)?;
     Ok(manifest)
-}
-
-/// The grantee public key (multibase) named by a stored certificate.
-pub fn cert_grantee_pub(store: GatewayStore, mandate_id: &str) -> Result<String> {
-    let bundle = Bundle::open(store).map_err(bridge_err)?;
-    let m: Mandate = read_json(&bundle, &cert_path(mandate_id))?;
-    Ok(m.grantee.pubkey)
 }
 
 /// The constraints block carried by a stored certificate (owner/test-side

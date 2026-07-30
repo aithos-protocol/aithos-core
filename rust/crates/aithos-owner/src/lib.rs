@@ -1317,3 +1317,10 @@ pub fn journal_notes_view<S: OwnerStore>(store: S) -> Result<Vec<NoteView>> {
         })
         .collect())
 }
+
+/// The grantee public key (multibase) named by a stored certificate.
+pub fn cert_grantee_pub<S: OwnerStore>(store: S, mandate_id: &str) -> Result<String> {
+    let bundle = Bundle::open(store).map_err(owner_err)?;
+    let m: Mandate = read_json(&bundle, &cert_path(mandate_id))?;
+    Ok(m.grantee.pubkey)
+}
