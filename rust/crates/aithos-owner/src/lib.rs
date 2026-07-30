@@ -1000,3 +1000,107 @@ pub fn owner_set_briefing<S: OwnerStore>(
         .map_err(owner_err)?;
     bundle.publish(&owner, now).map_err(owner_err)
 }
+
+/// Mint the v1 ethos-read pen (lot G6, decided 2026-07-16): a plain
+/// owner mandate covering `read.<zone>` for the asked zones, the circle
+/// line delivered to the agent AND to the context auditor (the lot-K
+/// implication, assumed: the auditor mandated on `kind=ethos.read` can
+/// replay what it audits), the grant journalized. NEVER a toggle and
+/// NEVER a state field: the runtime discovers the pen — like any other
+/// chain to the agent key — by scanning the certificates, so any other
+/// emission path (G8.c, a delegate) lights the same surface. `self` is
+/// refused while the delegated self resolution is its own core lot.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_ethos_read<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    zones: &[String],
+    store: S,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<String> {
+    if zones.is_empty() {
+        return Err(OwnerError::Rejected(
+            "owner-grant-ethos-read needs at least one zone (public, circle)".into(),
+        ));
+    }
+    let mut perimeter = Vec::new();
+    let mut wants_circle = false;
+    for zone in zones {
+        match zone.as_str() {
+            "public" => perimeter.push(PerimeterEntry::Ethos {
+                verb: Verb::Read,
+                zone: Zone::Public,
+                dir: Vec::new(),
+                tag: None,
+            }),
+            "circle" => {
+                wants_circle = true;
+                perimeter.push(PerimeterEntry::Ethos {
+                    verb: Verb::Read,
+                    zone: Zone::Circle,
+                    dir: Vec::new(),
+                    tag: None,
+                });
+            }
+            "self" => {
+                return Err(OwnerError::Rejected(
+                    "zone `self` is refused: read.self is never granted by default, and \
+                     serving it awaits the delegated self-resolution core lot (vectors-first)"
+                        .into(),
+                ))
+            }
+            other => {
+                return Err(OwnerError::Rejected(format!(
+                    "unknown zone `{other}` (public, circle)"
+                )))
+            }
+        }
+    }
+    let owner = derived_owner(master, "context", label);
+    let agent_pub = decode_pub(agent_pub_mb)?;
+    let mut bundle = Bundle::open(store).map_err(owner_err)?;
+    let state: BridgeState = read_state_migrating(&mut bundle)?;
+    let agent_cert: Mandate = read_json(&bundle, &cert_path(&state.agent_mandate))?;
+    if agent_cert.grantee_pub().map_err(owner_err)? != agent_pub {
+        return Err(OwnerError::Rejected(
+            "the ethos-read pen must go to the equipped agent public key".into(),
+        ));
+    }
+    if wants_circle {
+        bundle
+            .deliver_zone_line(&owner, &agent_pub, Zone::Circle, "", None, ent)
+            .map_err(owner_err)?;
+        if let Some(auditor_id) = &state.auditor_mandate {
+            let auditor_cert: Mandate = read_json(&bundle, &cert_path(auditor_id))?;
+            let auditor_pub = auditor_cert.grantee_pub().map_err(owner_err)?;
+            bundle
+                .deliver_zone_line(&owner, &auditor_pub, Zone::Circle, "", None, ent)
+                .map_err(owner_err)?;
+        }
+    }
+    let mandate = mint_entries(
+        &owner,
+        &bundle,
+        ent,
+        "ethos-read",
+        &agent_pub,
+        perimeter,
+        no_constraints(),
+        window,
+        now,
+    )?;
+    bundle
+        .store
+        .put(
+            &cert_path(&mandate.id),
+            &serde_json::to_vec_pretty(&mandate).map_err(owner_err)?,
+        )
+        .map_err(owner_err)?;
+    bundle
+        .log_owner_grant(&owner, &mandate.id, now, ent)
+        .map_err(owner_err)?;
+    Ok(mandate.id)
+}
