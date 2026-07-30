@@ -819,3 +819,117 @@ pub fn owner_grant_session_delegate<S: OwnerStore>(
         .map_err(owner_err)?;
     Ok(mandate.id)
 }
+
+/// Grant the briefing pen on a context (lot K, the minimal seam): the
+/// owner prepares the `briefing/` folders in the public and circle
+/// zones, delivers their zone lines to the agent's PUBLIC key (§04.3 —
+/// the line is the pen's physics half) and mints ONE read mandate
+/// covering both dirs (the certificate half). A separate owner gesture,
+/// deliberately: one pen per usage, independently revocable, and the
+/// existing tool equipment (grants, counts, re-enrollment) is never
+/// touched. The `self` zone gets no line and no perimeter entry — it is
+/// structurally out of the agent's reach. Requires prior equipment
+/// (`owner-grant-context` / `owner-enroll-server`): the pen extends a
+/// provisioned context, it never creates one.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_briefing<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    store: S,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<String> {
+    let owner = derived_owner(master, "context", label);
+    let agent_pub = decode_pub(agent_pub_mb)?;
+    let mut bundle = Bundle::open(store).map_err(owner_err)?;
+    let mut state: BridgeState = read_state_migrating(&mut bundle)?;
+    let expected_agent = &state.agent_mandate;
+    let agent_cert: Mandate = read_json(&bundle, &cert_path(expected_agent))?;
+    if agent_cert.grantee_pub().map_err(owner_err)? != agent_pub {
+        return Err(OwnerError::Rejected(
+            "the briefing pen must go to the equipped agent public key".into(),
+        ));
+    }
+    // The shelves: owner-prepared folders in both served zones. A read
+    // perimeter serves content, never grows the tree — they must exist.
+    bundle
+        .ensure_folder(Zone::Public, BRIEFING_FOLDER, &owner, ent)
+        .map_err(owner_err)?;
+    bundle
+        .ensure_folder(Zone::Circle, BRIEFING_FOLDER, &owner, ent)
+        .map_err(owner_err)?;
+    bundle.publish(&owner, now).map_err(owner_err)?;
+    // The physics half exists for CIRCLE only: public is clear by
+    // design (§02.1 — no zone key, no header line to deliver), so the
+    // circle dir gets the sealed line and the certificate names both
+    // zones (the public entry documents the granted read even though no
+    // key gates it).
+    bundle
+        .deliver_zone_line(&owner, &agent_pub, Zone::Circle, BRIEFING_FOLDER, None, ent)
+        .map_err(owner_err)?;
+    // The context AUDITOR gets the same circle line: the journalized
+    // briefing reads seal their bodies under the section keys of this
+    // dir (§07.9.2), and a gamma query only serves sealed entries the
+    // querier can physically open — the auditor mandated on
+    // `kind=ethos.read` needs the keys to replay its own slice. The
+    // owner accepts what this implies: the context auditor can read the
+    // circle directives it audits the reads of.
+    if let Some(auditor_id) = &state.auditor_mandate {
+        let auditor_cert: Mandate = read_json(&bundle, &cert_path(auditor_id))?;
+        let auditor_pub = auditor_cert.grantee_pub().map_err(owner_err)?;
+        bundle
+            .deliver_zone_line(
+                &owner,
+                &auditor_pub,
+                Zone::Circle,
+                BRIEFING_FOLDER,
+                None,
+                ent,
+            )
+            .map_err(owner_err)?;
+    }
+    let mut perimeter = Vec::new();
+    for zone in [Zone::Public, Zone::Circle] {
+        let dir = bundle
+            .resolve_folder(zone, BRIEFING_FOLDER)
+            .map_err(owner_err)?;
+        perimeter.push(PerimeterEntry::Ethos {
+            verb: Verb::Read,
+            zone,
+            dir,
+            tag: None,
+        });
+    }
+    let mandate = mint_entries(
+        &owner,
+        &bundle,
+        ent,
+        "briefing",
+        &agent_pub,
+        perimeter,
+        no_constraints(),
+        window,
+        now,
+    )?;
+    bundle
+        .store
+        .put(
+            &cert_path(&mandate.id),
+            &serde_json::to_vec_pretty(&mandate).map_err(owner_err)?,
+        )
+        .map_err(owner_err)?;
+    bundle
+        .log_owner_grant(&owner, &mandate.id, now, ent)
+        .map_err(owner_err)?;
+    state.briefing_mandate = Some(mandate.id.clone());
+    bundle
+        .store
+        .put(
+            STATE_PATH,
+            &serde_json::to_vec_pretty(&state).map_err(owner_err)?,
+        )
+        .map_err(owner_err)?;
+    Ok(mandate.id)
+}
