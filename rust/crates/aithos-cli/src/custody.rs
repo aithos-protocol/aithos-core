@@ -4,6 +4,7 @@ use std::time::Duration;
 use zeroize::Zeroize;
 
 const PROFILE_VERSION: u32 = 1;
+#[cfg(target_os = "macos")]
 const KEYCHAIN_SERVICE: &str = "fr.aithos.cli";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
