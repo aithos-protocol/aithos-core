@@ -1,0 +1,32 @@
+Aithos runner gateway
+
+Usage: aithos-gateway [OPTIONS] <COMMAND>
+
+Commands:
+  keygen                        Birth of the runner: generate the agent identity in place. Only the PUBLIC keys are printed — the seeds never leave the file
+  owner-init-journal            OWNER SIDE (never in the runner): create the agent's journal — an enterprise-owned Ethos where the agent gets the xref pen
+  owner-init-context            OWNER SIDE: create a context Ethos (demo/dev — real contexts usually pre-exist)
+  owner-replicate-history       OWNER SIDE: replay a locally provisioned journal or context onto the provider through the signed A.2 wire. This is the deliberate seed/promotion step for mode B and mode A demos; local runner state never leaves the machine
+  demo-lea-render-config        Render the no-secret provider-backed configuration for the Léa CLI demo (ventes mode A, journal mode B, three Vault references)
+  owner-grant-context           OWNER SIDE: grant a context to the agent's public key (read tools + gateway governance + scoped auditor)
+  owner-grant-session-delegate  OWNER SIDE: enrol one person public key as a delegated MCP session issuer. The owner master seed is read as 32-byte hexadecimal from stdin, never from argv; only the signed public mandate is persisted
+  owner-revoke-mandate          OWNER SIDE: revoke one context mandate. The owner master seed is read as 32-byte hexadecimal from stdin, never from argv
+  owner-discover-server         OWNER SIDE: capture one upstream tools/list into a proposed manifest. Discovery grants nothing and stores nothing in an Ethos
+  owner-propose-compiled        OWNER SIDE: emit the immutable proposal for one compiled REST connector profile without contacting an upstream provider
+  owner-enroll-server           OWNER SIDE: approve every discovered tool's risk class, seal the approved manifest in /x/<server>, then mint the context grants. Repeat --proposal to enroll several servers into the context in ONE gesture: a single agent mandate then covers the union of the granted tools (the demo shape). Tool names must be unambiguous across the batch — a name advertised by two servers refuses
+  owner-grant-briefing          OWNER SIDE: grant the briefing pen on an equipped context — the read mandate and zone lines on the `briefing/` folders of the public and circle zones (lot K). Separate gesture on purpose: one pen per usage, revocable independently of the tool grants
+  owner-grant-ethos-read        OWNER SIDE: mint the ethos-read pen on an equipped context (lot G6) — a plain read mandate on the asked zones plus the circle line to the agent AND the context auditor. Never a toggle: the runtime derives the surface by scanning certificates, so this gesture, a delegate's sub-mandate or the future multi-mandate surface all light it the same way. `self` is refused while the delegated self resolution is its own core lot
+  owner-add-section             OWNER SIDE: add one fresh section to a zone of an equipped context (lot G6 owner tooling — GAPS beat 2, filling the zones). Title = the last path segment; the ethos data tools serve it on the very next call when the surface covers it
+  owner-set-briefing            OWNER SIDE: write or update one zone's directive (creation on first use, in-place rewrite afterwards — served on the very next briefing.read, no restart). `self` holds owner-only notes that never reach the agent
+  owner-preview-mandate         OWNER SIDE: preview the effective policy of an equipped context — the stable read-model JSON the UI renders (mandate lifecycle, tools, inherited bounds), or with --call the dry-run verdict of one hypothetical call. Preview and runtime decide from the same inputs: the preview IS the decision
+  owner-connect-oauth           OWNER SIDE: start an OAuth authorization-code + PKCE consent for one configured upstream. The URL is public; all pending and token state is written to Vault. With a positive wait, this command serves the configured `/oauth/callback` until connected or timed out
+  onboard                       Initialise the ethos, mint identities, grant the read-only agent mandate, the gateway governance mandate and the scoped auditor mandate; print the endpoint to plug into the agent runtime
+  run                           Run the gateway (agent-facing MCP endpoint + policy + gamma)
+  audit-export                  Export the audit slice the auditor's mandate covers (JSON on stdout)
+  help                          Print this message or the help of the given subcommand(s)
+
+Options:
+      --config <CONFIG>      Path to the gateway YAML configuration [default: gateway.yaml]
+      --identity <IDENTITY>  Path to the runner identity file (seeds; runner custody only) [default: agent.id]
+  -h, --help                 Print help
+  -V, --version              Print version

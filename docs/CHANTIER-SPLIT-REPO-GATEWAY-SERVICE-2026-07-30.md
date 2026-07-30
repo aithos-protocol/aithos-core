@@ -2,7 +2,7 @@
 
 Date : 2026-07-30
 
-Statut : **en cours — SPL-0 → SPL-4 faits (2026-07-30).** Ce document est
+Statut : **en cours — SPL-0 → SPL-4 faits, SPL-5 ouvert (2026-07-30).** Ce document est
 le backlog canonique du chantier ; le brief d'amorçage est
 [`PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md).
 Baseline figée : [`audits/split/baseline-2026-07-30.md`](audits/split/baseline-2026-07-30.md)
@@ -575,6 +575,40 @@ méthode) :
 `Revoke` / `SectionAdd` / `LogShow`. En regard, `aithos-cli/src/main.rs` porte
 **30 commandes** dans un `fn main()` unique de 743 lignes (l. 604 → 1347), sans
 module par commande.
+
+**Ouverture du lot — 2026-07-30 (session de reprise), références
+revérifiées.** Constat conforme à un détail près, recalé : le `fn main()`
+de `aithos-cli` s'étend l. 604 → 1345 (742 lignes), non l. 604 → 1347.
+Le filet côté gateway est `aithos-gateway/tests/cli_surface.rs` (237 l.),
+en plus des 1 462 l. côté CLI. Décisions d'exécution consignées :
+
+- **Découpage** : une variante tuple par commande —
+  `Command::<Cmd>(cmd::<module>::Args)` avec `#[derive(clap::Args)]` dans
+  chaque module, champs et attributs conservés à l'identique ; la surface
+  clap est asservie par les deux `cli_surface.rs`. Le module de `Move`
+  s'appelle `move_folder.rs` (`move` est un mot-clé).
+- **Famille A portée vers `aithos owner …`** (9 commandes) :
+  `init-journal`, `init-context`, `grant-context`, `grant-session-delegate`,
+  `revoke-mandate`, `grant-briefing`, `grant-ethos-read`, `add-section`,
+  `set-briefing`. La lecture du master seed sur stdin (jamais argv) est
+  conservée pour `grant-session-delegate` et `revoke-mandate`, comme sur
+  la surface gateway.
+- **Famille B reste gateway** : `OwnerReplicateHistory`,
+  `OwnerDiscoverServer`, `OwnerProposeCompiled`, `OwnerEnrollServer`,
+  `OwnerPreviewMandate`, `OwnerConnectOauth` (+ `DemoLeaRenderConfig`,
+  hors bloc owner).
+- **Store CLI** : `impl OwnerStore for FsStore` ajouté dans
+  `aithos-owner` (le trait y est local ; l'orphan rule interdit l'impl
+  côté CLI). Défaut du trait conservé : `legacy_state_bytes() -> None` —
+  la migration SPL-2 ne joue pas sur un bundle FsStore piloté par la CLI,
+  qui n'a jamais porté l'ancienne clé. Aucun `pub` nouveau sur
+  `aithos-core`/`aithos-bundle`.
+- **Scellements** : commit par étape cohérente (groupe de modules, groupe
+  owner, dépréciation gateway, plumbing lib), fmt + clippy + baseline à
+  chaque scellement ; les commits docs-seuls réutilisent le dernier log
+  vert (`SPLIT_BASELINE_REUSE_LOG`), l'arbre de code étant inchangé.
+- `--help` avant/après : consignés dans
+  `docs/audits/split/spl5-help-{avant,apres}-{aithos,gateway}.txt`.
 
 **Actions.**
 
