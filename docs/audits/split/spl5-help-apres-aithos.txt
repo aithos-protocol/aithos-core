@@ -1,0 +1,43 @@
+Aithos Core CLI
+
+Usage: aithos [OPTIONS] <COMMAND>
+
+Commands:
+  init                Create an Ethos, its DID and real random keys under managed custody
+  status              Show the active profile, custody backend and verification status
+  oauth               OAuth client flows that retain signer custody outside process arguments
+  folder-add          Create a folder (mkdir -p) in a zone of the bundle
+  section-add         Add a section. PATH is folder/…/name; body from --body
+  zone-show           Show a zone's display tree (owner-side for circle/self)
+  section-read        Read one section. Public needs NO key (omit --seed-hex)
+  edition-publish     Publish a new edition (height+1), signed by root
+  edition-verify      Verify the whole edition chain and pinned files. No keys needed
+  edition-merge       Merge another copy's competing edition into this bundle (spec 02.6): disjoint changesets only, deterministic result, signed by root
+  grant               Grant an agent a circle perimeter: mints the cert AND delivers keys
+  mandate-verify      Verify a mandate chain (one cert file) at time T. No keys needed
+  section-read-agent  Read a circle section AS an agent, gated by its mandate (spec 04.5)
+  node-key            DEV ONLY: derive a node key along a canonical sid-path (spec 02.5). Proves determinism by hand: same path, same key — every time
+  header-seal         Seal a node key into a header (spec 03). DEV surface over test keys
+  header-open         Open one's line in a header JSON (from --file) and print the node key
+  grant-act           Grant an agent CONNECTOR ACTION rights (certificate only — actions need no content keys). Counting constraints are enforced by gamma
+  action              Log a connector action under a mandate chain (leaf last). The gamma entry IS the authorization evidence — no entry, no action (I5)
+  approve             Sign an obligation receipt (spec 04.12): the attestor's verdict, bound to one mandate+action+args. Prints the checks[] JSON for `action --check-json`. With --owner-seed-hex, signs the owner co_sign instance (spec 04.6) with the content key
+  inference           Log one metered LLM call (spec 07.9.1): counters only, never text
+  prove               Build the O(log n) inclusion proof of a section against the signed Merkle root (spec 02.10) and verify it offline before printing
+  log-prove           Build a count proof — or an absence proof — for a mandate against the committed gamma counts root (spec 07.10), verified offline before printing. Every TOTAL cap check rides one such proof
+  edition-diff        Root-descent diff between two editions (spec 02.10): the node labels added, removed or changed. Defaults to previous → latest
+  heartbeat           Publish an owner liveness beacon (spec 07.5)
+  revoke              Revoke a mandate (spec 06): one signed, anchored gamma entry. With --rotate <folder>, also turns the lock (rung 2/3) — fresh key sealed to survivors, up-link wrap, re-encryption
+  move                Move a circle folder under a new parent (spec 02.9): move IS a rotation — fresh key at the new path, direct lines re-sealed as survivors, up-link wrap under the NEW parent, subtree re-encrypted. Old-parent holders are cut; certificates follow the node (04.2)
+  log-show            Print the log's counting skeleton (what any file-holder sees)
+  log-verify          Verify the whole gamma chain and every entry signature. No keys needed
+  log-audit           Owner audit of sealed action args (spec 07.9.3): reopen each sealed argument object, re-check its hash, optionally re-evaluate the action_params predicates of a mandate
+  log-query           Owner search over the log (spec 07.8): every present filter narrows
+  owner               OWNER SIDE ceremonies over a local store (famille A, ported from the aithos-gateway binary at lot SPL-5): journal/context equipment, grants, briefing and sections. One ceremony, one path
+  help                Print this message or the help of the given subcommand(s)
+
+Options:
+      --profile <PROFILE>  Named local profile (bundle location + non-secret key-store reference) [default: default]
+      --home <HOME>        Override Aithos' application-data directory (also: AITHOS_HOME)
+  -h, --help               Print help
+  -V, --version            Print version

@@ -1,0 +1,20 @@
+OWNER SIDE ceremonies over a local store (famille A, ported from the aithos-gateway binary at lot SPL-5): journal/context equipment, grants, briefing and sections. One ceremony, one path
+
+Usage: aithos owner [OPTIONS] <COMMAND>
+
+Commands:
+  init-journal            OWNER SIDE (never in the runner): create the agent's journal — an enterprise-owned Ethos where the agent gets the xref pen
+  init-context            OWNER SIDE: create a context Ethos (demo/dev — real contexts usually pre-exist)
+  grant-context           OWNER SIDE: grant a context to the agent's public key (read tools + gateway governance + scoped auditor)
+  grant-session-delegate  OWNER SIDE: enrol one person public key as a delegated MCP session issuer. The owner master seed is read as 32-byte hexadecimal from stdin, never from argv; only the signed public mandate is persisted
+  revoke-mandate          OWNER SIDE: revoke one context mandate. The owner master seed is read as 32-byte hexadecimal from stdin, never from argv
+  grant-briefing          OWNER SIDE: grant the briefing pen on an equipped context — the read mandate and zone lines on the `briefing/` folders of the public and circle zones (lot K). Separate gesture on purpose: one pen per usage, revocable independently of the tool grants
+  grant-ethos-read        OWNER SIDE: mint the ethos-read pen on an equipped context (lot G6) — a plain read mandate on the asked zones plus the circle line to the agent AND the context auditor
+  add-section             OWNER SIDE: add one fresh section to a zone of an equipped context. Title = the last path segment; the ethos data tools serve it on the very next call when the surface covers it
+  set-briefing            OWNER SIDE: write or update one zone's directive (creation on first use, in-place rewrite afterwards — served on the very next briefing.read, no restart). `self` holds owner-only notes that never reach the agent
+  help                    Print this message or the help of the given subcommand(s)
+
+Options:
+      --profile <PROFILE>  Named local profile (bundle location + non-secret key-store reference) [default: default]
+      --home <HOME>        Override Aithos' application-data directory (also: AITHOS_HOME)
+  -h, --help               Print help

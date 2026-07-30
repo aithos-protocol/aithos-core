@@ -2,7 +2,7 @@
 
 Date : 2026-07-30
 
-Statut : **en cours — SPL-0 → SPL-4 faits, SPL-5 ouvert (2026-07-30).** Ce document est
+Statut : **en cours — SPL-0 → SPL-5 faits (2026-07-30).** Ce document est
 le backlog canonique du chantier ; le brief d'amorçage est
 [`PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md).
 Baseline figée : [`audits/split/baseline-2026-07-30.md`](audits/split/baseline-2026-07-30.md)
@@ -626,6 +626,46 @@ en plus des 1 462 l. côté CLI. Décisions d'exécution consignées :
 **Critères de sortie.** Les deux `tests/cli_surface.rs` verts sans assertion
 retirée ; `--help` des deux binaires consigné avant/après dans le lot ;
 `scripts/split-baseline.sh` vert.
+
+**Sortie du lot SPL-5 — 2026-07-30, gates atteintes.** Cinq commits
+(ouverture 5f8894f, découpage 22066e5, groupe owner 9ef0ec9, double
+surface 4e301ce, plumbing lib cf843f2), fmt + clippy + baseline verts à
+chaque scellement. Notes d'exécution :
+
+- **Découpage** : `aithos-cli/src/main.rs` 1 572 → **158 lignes** (Cli,
+  enum `Command` à variantes tuple, dispatch pur) ; 31 modules sous
+  `src/cmd/` + `common.rs` + `mod.rs`. `--help` top-niveau
+  **byte-identique** avant/après le découpage.
+- **Groupe owner** : les 9 cérémonies famille A servies par
+  `aithos owner …` sur `FsStore`, appels directs `aithos_owner::owner_*` ;
+  stdin conservé pour `grant-session-delegate` / `revoke-mandate` ;
+  4 tests de surface ajoutés (`cli_surface` 20 → 24, dont un roundtrip
+  init-journal réel qui asserte la clé SPL-2 canonique
+  `x/gateway/state.json` et l'absence de l'arbre legacy `gateway/`).
+- **Double surface** : les 9 `Owner*` gateway restent, marqués
+  « Deprecated (lot SPL-5) » dans l'aide longue et précédés d'un
+  avertissement stderr à l'exécution, délégation explicite
+  `aithos_owner::*` ; le `--help` top-niveau gateway est **identique**
+  avant/après (rien retiré) ; `owner_surface.rs` (7) et
+  `cli_surface.rs` gateway (7) verts sans modification.
+- **Plumbing lib** : `aithos-gateway/src/serve.rs` (274 l., module `pub
+  serve`) porte `serve_gateway`, `run_relay_plane`, `prepare_public_tls`,
+  `renew_public_tls` et leurs supports ; `main.rs` gateway 1 836 →
+  1 644 lignes ; les deux tests de `unittests_main` restent dans
+  `main.rs` (compteur de harnais préservé).
+- **Pub nouveaux, consignés** : `impl OwnerStore for FsStore` dans
+  `aithos-owner` (orphan rule ; défaut `legacy_state_bytes -> None`,
+  un store FsStore CLI n'a jamais porté la clé legacy) et le module
+  `aithos_gateway::serve`. **Aucun `pub` nouveau sur
+  `aithos-core`/`aithos-bundle`** (invariant 7).
+- `--help` avant/après :
+  `docs/audits/split/spl5-help-{avant,apres}-{aithos,gateway}.txt` +
+  `spl5-help-apres-aithos-owner.txt`. Diff aithos = la seule ligne
+  `owner` ajoutée ; diff gateway = vide.
+- **Aléa observé, sans lien avec le lot** : un scellement a rencontré un
+  échec unique du scénario gateway « Relay outage does not take down the
+  direct listener » (readiness relay, sensible au timing sous charge) ;
+  rejoué immédiatement : 299/299. À garder à l'œil pour SPL-8 (CI).
 
 ### SPL-6 — pipeline de release du bundle WASM
 
