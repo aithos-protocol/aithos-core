@@ -1184,3 +1184,37 @@ pub fn owner_issue_ethos_read_subchain<S: OwnerStore>(
         .map_err(owner_err)?;
     Ok((parent.id.clone(), sub.id.clone()))
 }
+
+/// A clear, serialisable view of one gamma entry — what steps and
+/// exports consume, without leaking core types across the bridge.
+#[derive(Debug, Clone, Serialize)]
+pub struct EntryView {
+    pub id: String,
+    pub at: String,
+    pub kind: String,
+    pub target: Option<String>,
+    pub authorized_via: Option<Vec<String>>,
+    pub payload: Option<serde_json::Value>,
+}
+
+pub fn view(e: &aithos_core::gamma::Entry) -> EntryView {
+    EntryView {
+        id: e.id.clone(),
+        at: e.at.clone(),
+        kind: e.kind.clone(),
+        target: e.target.clone(),
+        authorized_via: e.authorized_via.clone(),
+        payload: e.payload.clone(),
+    }
+}
+
+/// Owner/test-side view of any ethos gamma (opens the store read-only).
+pub fn gamma_view<S: OwnerStore>(store: S) -> Result<Vec<EntryView>> {
+    let bundle = Bundle::open(store).map_err(owner_err)?;
+    Ok(bundle
+        .gamma_entries()
+        .map_err(owner_err)?
+        .iter()
+        .map(view)
+        .collect())
+}

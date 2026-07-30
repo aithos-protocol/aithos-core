@@ -85,16 +85,16 @@ pub use control::{
 mod shared;
 
 pub(crate) use aithos_owner::{
-    cert_path, decode_pub, derived_owner, equip, no_constraints, BridgeState,
+    cert_path, decode_pub, derived_owner, equip, no_constraints, view, BridgeState,
 };
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
 pub use aithos_owner::{
-    owner_add_section, owner_deliver_circle_line, owner_grant_briefing,
+    gamma_view, owner_add_section, owner_deliver_circle_line, owner_grant_briefing,
     owner_grant_connector_config, owner_grant_context, owner_grant_ethos_read,
     owner_grant_session_delegate, owner_init_context, owner_init_journal,
     owner_issue_ethos_read_subchain, owner_read_journal_note, owner_revoke_mandate_id,
-    owner_set_briefing, ConnectorConfigGrant, EquipOutcome, MandateWindow, OwnerError,
+    owner_set_briefing, ConnectorConfigGrant, EntryView, EquipOutcome, MandateWindow, OwnerError,
     BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH, LLM_BUDGET_REF, MEMORY_FOLDER,
     STATE_PATH,
 };
@@ -109,7 +109,7 @@ pub(crate) use shared::{
     bridge_err, commitment_of, constraints_bind_resource, enrollment_chain_is_direct_owner,
     ethos_row_is_covered, hash_of, hub_manifest_paths, memory_rows, merge_server_pins, mint,
     public_read_current, read_denied_op, read_json, read_state_migrating, validate_runtime_tool,
-    view, write_denied, write_denied_op, zone_all_rows, zone_rows,
+    write_denied, write_denied_op, zone_all_rows, zone_rows,
 };
 
 /// Native proof domain fixed by the historical CB2 session vector.
@@ -172,18 +172,6 @@ impl std::fmt::Debug for OnboardOutcome {
             .field("auditor_mandate", &self.auditor_mandate)
             .finish_non_exhaustive()
     }
-}
-
-/// A clear, serialisable view of one gamma entry — what steps and
-/// exports consume, without leaking core types across the bridge.
-#[derive(Debug, Clone, Serialize)]
-pub struct EntryView {
-    pub id: String,
-    pub at: String,
-    pub kind: String,
-    pub target: Option<String>,
-    pub authorized_via: Option<Vec<String>>,
-    pub payload: Option<serde_json::Value>,
 }
 
 /// A clear, serialisable view of one memory note — what the journal
@@ -4939,17 +4927,6 @@ pub fn owner_read_hub_manifest(
     let manifest: ApprovedManifest = serde_json::from_slice(&plain).map_err(bridge_err)?;
     validate_approved(&manifest)?;
     Ok(manifest)
-}
-
-/// Owner/test-side view of any ethos gamma (opens the store read-only).
-pub fn gamma_view(store: GatewayStore) -> Result<Vec<EntryView>> {
-    let bundle = Bundle::open(store).map_err(bridge_err)?;
-    Ok(bundle
-        .gamma_entries()
-        .map_err(bridge_err)?
-        .iter()
-        .map(view)
-        .collect())
 }
 
 /// Owner/ops-side view of a journal's memory shelf: the CLEAR index

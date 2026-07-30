@@ -254,17 +254,6 @@ pub fn proposed_manifest_catalog_digest(manifest: &ProposedManifest) -> Result<S
     )
 }
 
-pub(crate) fn view(e: &aithos_core::gamma::Entry) -> EntryView {
-    EntryView {
-        id: e.id.clone(),
-        at: e.at.clone(),
-        kind: e.kind.clone(),
-        target: e.target.clone(),
-        authorized_via: e.authorized_via.clone(),
-        payload: e.payload.clone(),
-    }
-}
-
 pub(crate) fn hash_of(value: &serde_json::Value) -> Result<String> {
     let canon = aithos_core::jcs::canonical_bytes(value).map_err(bridge_err)?;
     Ok(format!("sha256:{}", aithos_core::gamma::sha256_hex(&canon)))
