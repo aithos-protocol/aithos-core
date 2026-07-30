@@ -860,6 +860,34 @@ mod tests {
     }
 
     #[test]
+    fn migrated_gateway_state_rides_the_vault_subtree_row() {
+        use aithos_core::mandate::PerimeterEntry;
+
+        // SPL-2 : `x/gateway/state.json` est un objet `x/<id>/**` ordinaire.
+        // Le mandat de la gateway (`act.x.gateway.*`) le couvre en lecture ET
+        // en écriture — là où l'ancienne clé `gateway/state.json` n'est même
+        // pas une route (`bundle_internal_keys_stay_outside_the_wire`).
+        let target = parse_target(&t("x/gateway/state.json")).expect("parses");
+        let TargetKind::Object(object) = target.kind else {
+            panic!("expected object");
+        };
+        assert_eq!(object.key(), "x/gateway/state.json");
+        aithos_bundle::validate_store_key("x/gateway/state.json")
+            .expect("bundle grammar accepts the migrated key");
+
+        let perimeter = vec![PerimeterEntry::parse("act.x.gateway.*").unwrap()];
+        for method in ["GET", "PUT"] {
+            assert!(
+                mandated_covers(&perimeter, &TargetKind::Object(object.clone()), method),
+                "act.x.gateway.* must cover {method} x/gateway/state.json"
+            );
+        }
+        // Le mandat d'un autre connecteur ne couvre pas l'état de la gateway.
+        let other = vec![PerimeterEntry::parse("act.x.gmail.*").unwrap()];
+        assert!(!mandated_covers(&other, &TargetKind::Object(object), "GET"));
+    }
+
+    #[test]
     fn gateway_governance_can_fetch_but_not_publish_new_connector_carriers() {
         use aithos_core::mandate::PerimeterEntry;
 
