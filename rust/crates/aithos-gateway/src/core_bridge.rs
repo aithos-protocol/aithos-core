@@ -91,9 +91,10 @@ pub(crate) use aithos_owner::{
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
 pub use aithos_owner::{
-    owner_add_section, owner_deliver_circle_line, owner_grant_connector_config, owner_init_context,
-    owner_init_journal, owner_read_journal_note, owner_revoke_mandate_id, ConnectorConfigGrant,
-    EquipOutcome, MandateWindow, OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH,
+    owner_add_section, owner_deliver_circle_line, owner_grant_connector_config,
+    owner_grant_context, owner_grant_session_delegate, owner_init_context, owner_init_journal,
+    owner_read_journal_note, owner_revoke_mandate_id, ConnectorConfigGrant, EquipOutcome,
+    MandateWindow, OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH,
     LLM_BUDGET_REF, MEMORY_FOLDER, STATE_PATH,
 };
 
@@ -4596,120 +4597,12 @@ pub fn owner_replicate_history_to_remote(
     Ok((did, report))
 }
 
-/// Équipement d'un contexte — wrapper gateway : mappe les noms d'outils
-/// MCP sur la grammaire de mandat (convention `policy::op_for_tool`,
-/// domaine gateway) puis délègue la cérémonie à `aithos-owner`.
-#[allow(clippy::too_many_arguments)]
-pub fn owner_grant_context(
-    master: &[u8; 32],
-    label: &str,
-    agent_pub_mb: &str,
-    gateway_pub_mb: &str,
-    read_tools: &[String],
-    store: GatewayStore,
-    window: &MandateWindow,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<EquipOutcome> {
-    let read_ops: Vec<String> = read_tools.iter().map(|t| op_for_tool(t)).collect();
-    aithos_owner::owner_grant_context_ops(
-        master,
-        label,
-        agent_pub_mb,
-        gateway_pub_mb,
-        &read_ops,
-        store,
-        window,
-        now,
-        ent,
-    )
-    .map_err(GatewayError::from)
-}
-
 /// Governed replacement result: fresh active equipment plus the prior
 /// certificates that were politically revoked in the same owner gesture.
 #[derive(Debug, Clone)]
 pub struct ReenrollOutcome {
     pub equipment: EquipOutcome,
     pub revoked_mandates: Vec<String>,
-}
-
-/// Enrol one person public key as a session issuer for an existing context.
-/// The enterprise keeps the owner key; the gateway receives only this signed
-/// root mandate. The delegate may attenuate the listed actions exactly one
-/// level, with at most three simultaneously active MCP sessions.
-#[allow(clippy::too_many_arguments)]
-pub fn owner_grant_session_delegate(
-    master: &[u8; 32],
-    label: &str,
-    delegate_pub_mb: &str,
-    gateway_audience: &str,
-    tools: &[String],
-    store: GatewayStore,
-    window: &MandateWindow,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<String> {
-    let owner = derived_owner(master, "context", label);
-    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    let delegate_pub = decode_pub(delegate_pub_mb)?;
-    // Each granted line is either a raw perimeter entry (act.…, or an
-    // ethos entry like `read.public` — the zone rights a delegated
-    // session may carry, lot 1) or a bare tool name projected onto the
-    // gateway's own connector. `self` is refused at the gesture: never
-    // delegable until the delegated self-resolution core lot.
-    let mut perimeter = Vec::new();
-    for tool in tools {
-        let entry = if tool.starts_with("act.") {
-            PerimeterEntry::parse(tool).map_err(bridge_err)?
-        } else if let Ok(parsed) = PerimeterEntry::parse(tool) {
-            parsed
-        } else {
-            PerimeterEntry::parse(&op_for_tool(tool)).map_err(bridge_err)?
-        };
-        if matches!(
-            &entry,
-            PerimeterEntry::Ethos {
-                zone: Zone::Self_,
-                ..
-            } | PerimeterEntry::EthosId {
-                zone: Zone::Self_,
-                ..
-            }
-        ) {
-            return Err(GatewayError::ConfigRejected(
-                "zone `self` is refused in a session delegate: it is never delegable — the delegated self-resolution is its own core lot"
-                    .into(),
-            ));
-        }
-        perimeter.push(entry);
-    }
-    perimeter.push(PerimeterEntry::Issue { depth: 1 });
-    let mandate = mint_entries(
-        &owner,
-        &bundle,
-        ent,
-        "session-delegate",
-        &delegate_pub,
-        perimeter,
-        serde_json::json!({
-            "max_sessions": 3,
-            "purpose": gateway_audience,
-        }),
-        window,
-        now,
-    )?;
-    bundle
-        .store
-        .put(
-            &cert_path(&mandate.id),
-            &serde_json::to_vec_pretty(&mandate).map_err(bridge_err)?,
-        )
-        .map_err(bridge_err)?;
-    bundle
-        .log_owner_grant(&owner, &mandate.id, now, ent)
-        .map_err(bridge_err)?;
-    Ok(mandate.id)
 }
 
 /// Discover/approval has already produced a validated manifest. Pin it

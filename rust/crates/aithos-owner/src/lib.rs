@@ -694,3 +694,128 @@ pub fn owner_init_journal<S: OwnerStore>(
         ent,
     )
 }
+
+/// The connector namespace for MCP tools in the mandate grammar.
+/// One place to change if the core grammar evolves.
+pub const MCP_CONNECTOR: &str = "mcp";
+
+/// The action name a tool maps to in the mandate grammar. The grammar
+/// splits `act.x.<connector>.<action>` at the LAST dot, so dotted MCP
+/// tool names ("user.read") cannot be actions verbatim: dots become
+/// underscores. The raw tool name still travels in the clear payload of
+/// every logged act. Collisions ("user.read" vs "user_read") are
+/// rejected at config time — never aliased silently.
+pub fn action_name(tool: &str) -> String {
+    tool.replace('.', "_")
+}
+
+/// The op string an MCP tool call maps to (`act.x.mcp.<action>`).
+pub fn op_for_tool(tool: &str) -> String {
+    format!("act.x.{MCP_CONNECTOR}.{}", action_name(tool))
+}
+
+/// Equip a context ethos from tool names: maps each MCP tool onto the
+/// mandate grammar ([`op_for_tool`]) then runs the ceremony.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_context<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    gateway_pub_mb: &str,
+    read_tools: &[String],
+    store: S,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<EquipOutcome> {
+    let read_ops: Vec<String> = read_tools.iter().map(|t| op_for_tool(t)).collect();
+    owner_grant_context_ops(
+        master,
+        label,
+        agent_pub_mb,
+        gateway_pub_mb,
+        &read_ops,
+        store,
+        window,
+        now,
+        ent,
+    )
+}
+
+/// Enrol one person public key as a session issuer for an existing context.
+/// The enterprise keeps the owner key; the gateway receives only this signed
+/// root mandate. The delegate may attenuate the listed actions exactly one
+/// level, with at most three simultaneously active MCP sessions.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_grant_session_delegate<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    delegate_pub_mb: &str,
+    gateway_audience: &str,
+    tools: &[String],
+    store: S,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<String> {
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(owner_err)?;
+    let delegate_pub = decode_pub(delegate_pub_mb)?;
+    // Each granted line is either a raw perimeter entry (act.…, or an
+    // ethos entry like `read.public` — the zone rights a delegated
+    // session may carry, lot 1) or a bare tool name projected onto the
+    // gateway's own connector. `self` is refused at the gesture: never
+    // delegable until the delegated self-resolution core lot.
+    let mut perimeter = Vec::new();
+    for tool in tools {
+        let entry = if tool.starts_with("act.") {
+            PerimeterEntry::parse(tool).map_err(owner_err)?
+        } else if let Ok(parsed) = PerimeterEntry::parse(tool) {
+            parsed
+        } else {
+            PerimeterEntry::parse(&op_for_tool(tool)).map_err(owner_err)?
+        };
+        if matches!(
+            &entry,
+            PerimeterEntry::Ethos {
+                zone: Zone::Self_,
+                ..
+            } | PerimeterEntry::EthosId {
+                zone: Zone::Self_,
+                ..
+            }
+        ) {
+            return Err(OwnerError::Rejected(
+                "zone `self` is refused in a session delegate: it is never delegable — the delegated self-resolution is its own core lot"
+                    .into(),
+            ));
+        }
+        perimeter.push(entry);
+    }
+    perimeter.push(PerimeterEntry::Issue { depth: 1 });
+    let mandate = mint_entries(
+        &owner,
+        &bundle,
+        ent,
+        "session-delegate",
+        &delegate_pub,
+        perimeter,
+        serde_json::json!({
+            "max_sessions": 3,
+            "purpose": gateway_audience,
+        }),
+        window,
+        now,
+    )?;
+    bundle
+        .store
+        .put(
+            &cert_path(&mandate.id),
+            &serde_json::to_vec_pretty(&mandate).map_err(owner_err)?,
+        )
+        .map_err(owner_err)?;
+    bundle
+        .log_owner_grant(&owner, &mandate.id, now, ent)
+        .map_err(owner_err)?;
+    Ok(mandate.id)
+}

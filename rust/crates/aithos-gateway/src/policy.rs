@@ -8,22 +8,13 @@
 //! - `core_bridge::authorize`: op string → `verify_op` against the mandate
 //!   chain at T. The gateway relays only if *both* layers say yes.
 
+/// La convention de nommage des outils MCP dans la grammaire de mandat
+/// (`act.x.mcp.<action>`) vit avec les cérémonies (`aithos-owner`,
+/// SPL-4) : la CLI et la gateway mappent identiquement.
+pub use aithos_owner::{action_name, op_for_tool, MCP_CONNECTOR};
+
 use crate::config::{ToolAccess, ToolMap};
 use crate::{GatewayError, Result};
-
-/// The connector namespace for MCP tools in the mandate grammar.
-/// One place to change if the core grammar evolves.
-pub const MCP_CONNECTOR: &str = "mcp";
-
-/// The action name a tool maps to in the mandate grammar. The grammar
-/// splits `act.x.<connector>.<action>` at the LAST dot, so dotted MCP
-/// tool names ("user.read") cannot be actions verbatim: dots become
-/// underscores. The raw tool name still travels in the clear payload of
-/// every logged act. Collisions ("user.read" vs "user_read") are
-/// rejected at config time — never aliased silently.
-pub fn action_name(tool: &str) -> String {
-    tool.replace('.', "_")
-}
 
 /// MCP-safe server id used both as a mandate connector and as a vault
 /// path segment. Double underscores stay valid; path separators, dots,
@@ -43,11 +34,6 @@ pub fn hub_exposed_name(server: &str, raw_tool: &str) -> String {
 /// flattened only in the action segment.
 pub fn hub_op_for_tool(server: &str, raw_tool: &str) -> String {
     format!("act.x.{server}.{}", action_name(raw_tool))
-}
-
-/// The op string an MCP tool call maps to (`act.x.mcp.<action>`).
-pub fn op_for_tool(tool: &str) -> String {
-    format!("act.x.{MCP_CONNECTOR}.{}", action_name(tool))
 }
 
 /// The declared tool map, wrapped with fail-closed lookups.
