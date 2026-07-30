@@ -387,9 +387,30 @@ l'ancienne clé n'ayant jamais été supprimée.
 **Objectif.** Préparer SPL-4 en séparant ce qui sert au runtime de ce qui sert
 aux cérémonies. Aucun changement de comportement.
 
+**Recomptage du 2026-07-30 (entrée de lot), après SPL-1/SPL-2.** La
+suppression d'`owner_read_briefing` (SPL-1) a rendu cinq helpers du tableau
+runtime-only (`zone_all_rows`, `ethos_row_is_covered`, `commitment_of`,
+`public_read_current`, `view` : owner = 0) ; `read_state_migrating` (né en
+SPL-2, 1/5), `cert_path` (9/15) et `bridge_err` (partout) manquaient au
+tableau. Périmètre exécuté : **tout helper hors bloc owner** (partagé OU
+runtime-only, y compris les utilisés par `hub`/`connectors`/`oauth`/
+`proxy_mcp`/`main`) part dans `core_bridge/shared.rs` ; les six lecteurs
+owner sans appelant runtime (`gamma_view`, `journal_notes_view`,
+`cert_grantee_pub`, `cert_constraints`, `cert_perimeter`) et les helpers à
+runtime = 0 restent avec le bloc owner pour SPL-4.
+
+**Gate recalibrée le 2026-07-30 (arbitrage Mathieu, session split).** La
+forme d'origine « descend sous 6 000 lignes » était inatteignable par
+arithmétique : fichier à 7 036 lignes, masse déplaçable hors bloc owner
+≈ 620 lignes (+ ~150 de tests), bloc owner (~1 500) réservé à SPL-4 et
+`impl` intouchables — plancher ≈ 6 270. Gate remplacée par la forme
+structurelle ci-dessous ; le < 6 000 arrivera mécaniquement au départ du
+bloc owner en SPL-4.
+
 **Actions.** Créer `core_bridge/shared.rs` et y déplacer les helpers utilisés
-**des deux côtés** de la frontière (comptages relevés le 2026-07-30, runtime =
-l. 404-4732, owner = l. 4732-6870) :
+**des deux côtés** de la frontière (comptages d'origine du 2026-07-30,
+runtime = l. 404-4732, owner = l. 4732-6870 — corrigés par le recomptage
+ci-dessus) :
 
 | Helper | runtime | owner |
 |---|---|---|
@@ -408,7 +429,11 @@ Les helpers à **runtime = 0** (`derived_owner`, `derived_succession`, `equip`,
 owner : ils partiront en SPL-4.
 
 **Critères de sortie.** `scripts/split-baseline.sh` vert ; `core_bridge.rs`
-descend sous 6 000 lignes ; aucun `pub` nouveau hors du crate.
+ne contient plus **aucune fonction libre hors bloc owner** (tout helper vit
+dans `core_bridge/shared.rs` ; ne restent que les `impl`, les types, les
+constantes, les `pub fn owner_*`, leurs six lecteurs et les helpers à
+runtime = 0) ; aucun `pub` nouveau hors du crate (les re-exports gardent
+les chemins publics existants).
 
 ### SPL-4 — remonter les cérémonies propriétaire
 
