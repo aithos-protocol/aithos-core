@@ -1,0 +1,4 @@
+interface:
+  display_name: "Correct C — Headers"
+  short_description: "Implement assigned c-headers findings"
+  default_prompt: "Use $correct-c-headers to implement only the findings assigned by features/.agents/c-headers/STATE.md."

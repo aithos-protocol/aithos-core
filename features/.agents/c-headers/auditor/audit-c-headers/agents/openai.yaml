@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit C — Headers"
+  short_description: "Audit c-headers.feature semantic proof"
+  default_prompt: "Use $audit-c-headers to run the mode requested by features/.agents/c-headers/STATE.md."
