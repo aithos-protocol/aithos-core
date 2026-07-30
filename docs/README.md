@@ -34,6 +34,11 @@ même lorsqu'ils contiennent un résultat de test valable à leur date.
   protocolaires fermés, surface owner/lifecycle/preview encore partielle ;
 - [`CHANTIER-REFACTOR-OAUTH-LIBRAIRIES-STANDARD-2026-07-22.md`](CHANTIER-REFACTOR-OAUTH-LIBRAIRIES-STANDARD-2026-07-22.md) :
   refactor futur, non bloquant pour la première démo ;
+- [`CHANTIER-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](CHANTIER-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md) :
+  assainissement de la frontière protocole/service (grammaire de bundle,
+  cérémonies propriétaire, surface CLI) puis scission en `aithos-core` et
+  `aithos-service` ; cadré, non démarré, brief d'amorçage dans
+  [`PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md) ;
 - [`GMAIL-SEND-EXTENSION-ARCHITECTURE.md`](GMAIL-SEND-EXTENSION-ARCHITECTURE.md) :
   architecture désormais implémentée localement, qualification live Gmail
   encore ouverte.
