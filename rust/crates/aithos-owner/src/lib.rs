@@ -645,3 +645,52 @@ pub fn read_json<S: Store, T: serde::de::DeserializeOwned>(
         .ok_or_else(|| OwnerError::Failed(format!("missing {path}")))?;
     serde_json::from_slice(&bytes).map_err(owner_err)
 }
+
+/// Create the agent's journal: an isolated Ethos owned by the enterprise.
+/// The agent's key gets the xref pen (`act.x.xref.*`), the gateway its
+/// governance pen (`act.x.gateway.*`); both grants are logged — that IS
+/// the journal's « mandate received » record. The agent's key ALSO gets
+/// the MEMORY pen (lot C2): a separate `append` mandate on the
+/// `circle:memory/` shelf this function prepares (folder + publish,
+/// mirroring the pass-L given) — one pen per usage, independently
+/// revocable. With `token_budget`, a budgeted inference pen joins them
+/// (Phase C): a separate mandate carrying `budgets: [{id: "llm",
+/// token_budget}]` — separate on purpose, so the xref pen never has to
+/// cite a budget.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_init_journal<S: OwnerStore>(
+    master: &[u8; 32],
+    agent_label: &str,
+    agent_pub_mb: &str,
+    gateway_pub_mb: &str,
+    token_budget: Option<u64>,
+    store: S,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<EquipOutcome> {
+    let owner = derived_owner(master, "journal", agent_label);
+    let succession = derived_succession(master, "journal", agent_label);
+    let mut bundle =
+        Bundle::init(store, &owner, &succession.verifying_key(), ent, now).map_err(owner_err)?;
+    // The memory shelf: an owner-prepared circle folder the memory pen
+    // will write into. An append perimeter grows content, never the
+    // tree shape — the folder must pre-exist.
+    bundle
+        .ensure_folder(Zone::Circle, MEMORY_FOLDER, &owner, ent)
+        .map_err(owner_err)?;
+    bundle.publish(&owner, now).map_err(owner_err)?;
+    equip(
+        bundle,
+        &owner,
+        agent_pub_mb,
+        gateway_pub_mb,
+        &["act.x.xref.*".to_owned()],
+        false,
+        token_budget,
+        Some(MEMORY_FOLDER),
+        window,
+        now,
+        ent,
+    )
+}

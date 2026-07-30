@@ -92,8 +92,8 @@ pub(crate) use aithos_owner::{
 /// Les chemins publics historiques sont préservés.
 pub use aithos_owner::{
     owner_add_section, owner_deliver_circle_line, owner_grant_connector_config, owner_init_context,
-    owner_read_journal_note, owner_revoke_mandate_id, ConnectorConfigGrant, EquipOutcome,
-    MandateWindow, OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH,
+    owner_init_journal, owner_read_journal_note, owner_revoke_mandate_id, ConnectorConfigGrant,
+    EquipOutcome, MandateWindow, OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH,
     LLM_BUDGET_REF, MEMORY_FOLDER, STATE_PATH,
 };
 
@@ -4632,56 +4632,6 @@ pub fn owner_grant_context(
 pub struct ReenrollOutcome {
     pub equipment: EquipOutcome,
     pub revoked_mandates: Vec<String>,
-}
-
-/// Create the agent's journal: an isolated Ethos owned by the enterprise.
-/// The agent's key gets the xref pen (`act.x.xref.*`), the gateway its
-/// governance pen (`act.x.gateway.*`); both grants are logged — that IS
-/// the journal's « mandate received » record. The agent's key ALSO gets
-/// the MEMORY pen (lot C2): a separate `append` mandate on the
-/// `circle:memory/` shelf this function prepares (folder + publish,
-/// mirroring the pass-L given) — one pen per usage, independently
-/// revocable. With `token_budget`, a budgeted inference pen joins them
-/// (Phase C): a separate mandate carrying `budgets: [{id: "llm",
-/// token_budget}]` — separate on purpose, so the xref pen never has to
-/// cite a budget.
-#[allow(clippy::too_many_arguments)]
-pub fn owner_init_journal(
-    master: &[u8; 32],
-    agent_label: &str,
-    agent_pub_mb: &str,
-    gateway_pub_mb: &str,
-    token_budget: Option<u64>,
-    store: GatewayStore,
-    window: &MandateWindow,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<EquipOutcome> {
-    let owner = derived_owner(master, "journal", agent_label);
-    let succession = derived_succession(master, "journal", agent_label);
-    let mut bundle =
-        Bundle::init(store, &owner, &succession.verifying_key(), ent, now).map_err(bridge_err)?;
-    // The memory shelf: an owner-prepared circle folder the memory pen
-    // will write into. An append perimeter grows content, never the
-    // tree shape — the folder must pre-exist.
-    bundle
-        .ensure_folder(Zone::Circle, MEMORY_FOLDER, &owner, ent)
-        .map_err(bridge_err)?;
-    bundle.publish(&owner, now).map_err(bridge_err)?;
-    equip(
-        bundle,
-        &owner,
-        agent_pub_mb,
-        gateway_pub_mb,
-        &["act.x.xref.*".to_owned()],
-        false,
-        token_budget,
-        Some(MEMORY_FOLDER),
-        window,
-        now,
-        ent,
-    )
-    .map_err(GatewayError::from)
 }
 
 /// Enrol one person public key as a session issuer for an existing context.
