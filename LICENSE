@@ -8,7 +8,8 @@ software under the Open Source Definition.
 The following terms apply by path:
 
 - `rust/crates/aithos-core`, `rust/crates/aithos-bundle`,
-  `rust/crates/aithos-cli`, `rust/crates/aithos-wasm`, `features/`,
+  `rust/crates/aithos-cli`, `rust/crates/aithos-owner`,
+  `rust/crates/aithos-wasm`, `features/`,
   `docker/`, `.github/`, and `ui-mockup/` are licensed under the Business
   Source License 1.1 with the Aithos Core Additional Use Grant found in
   `rust/crates/aithos-core/LICENSE`.

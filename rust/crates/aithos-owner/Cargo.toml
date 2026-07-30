@@ -1,0 +1,18 @@
+[package]
+name = "aithos-owner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Aithos owner-side ceremonies — mandate minting and context equipment over any Store, consumed by the CLI and the gateway alike."
+keywords = ["aithos", "protocol", "mandate", "owner", "ceremony"]
+categories = ["authentication", "cryptography"]
+
+[dependencies]
+aithos-core.workspace = true
+aithos-bundle.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

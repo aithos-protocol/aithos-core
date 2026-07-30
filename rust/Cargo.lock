@@ -112,6 +112,7 @@ dependencies = [
  "aithos-bundle",
  "aithos-client",
  "aithos-core",
+ "aithos-owner",
  "aithos-provider",
  "assert_cmd",
  "axum",
@@ -146,6 +147,19 @@ dependencies = [
  "ureq",
  "yamux",
  "zeroize",
+]
+
+[[package]]
+name = "aithos-owner"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "aithos-bundle",
+ "aithos-core",
+ "ed25519-dalek",
+ "hex",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

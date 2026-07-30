@@ -102,3 +102,15 @@ impl GatewayError {
         }
     }
 }
+
+/// Une cérémonie propriétaire (`aithos-owner`, lot SPL-4) refuse ou échoue
+/// dans la taxonomie du crate appelant : les variantes historiques et les
+/// messages sont préservés octet pour octet.
+impl From<aithos_owner::OwnerError> for GatewayError {
+    fn from(error: aithos_owner::OwnerError) -> Self {
+        match error {
+            aithos_owner::OwnerError::Rejected(message) => GatewayError::ConfigRejected(message),
+            aithos_owner::OwnerError::Failed(message) => GatewayError::BridgeFailed(message),
+        }
+    }
+}

@@ -479,6 +479,33 @@ Recommandation : **(b)**, parce que les cérémonies propriétaire sont exacteme
 ce que la CLI et la gateway consomment toutes les deux, et qu'un crate dédié rend
 cette consommation lisible au lieu de l'enfouir dans le bundle.
 
+**Décision prise le 2026-07-30 à l'ouverture du lot : (b), crate
+`aithos-owner` neuf** (membre de workspace, entrée dans le `LICENSE` racine
+sous le Core Grant, couvert par le job workspace de la CI). Erreurs :
+`OwnerError::{Rejected, Failed}` avec `From<OwnerError> for GatewayError`
+qui préserve variantes et messages octet pour octet ; aucun test n'asserte
+de variante d'erreur sur les fonctions de la famille A (vérifié). Store :
+trait `OwnerStore: Store` avec `legacy_state_bytes()` (défaut `None`) pour
+porter la migration SPL-2 sans coupler le crate au store de la gateway.
+
+**Reclassements arbitrés par le compilateur à l'ouverture du lot** (le
+critère l'emporte sur la liste écrite d'avance, comme prévu par la
+méthode) :
+
+- `equip` : **famille A** — ne touche ni les manifests approuvés ni la
+  politique (dépendances : `decode_pub`, `mint_entries`) ; ses appelants B
+  (`owner_enroll_servers`, `owner_reenroll_server`) le consommeront depuis
+  `aithos-owner`.
+- `owner_replicate_history_to_remote` : **famille B** — construit
+  `RemoteStore`/`KeySigner` (transport provider A.2) : ce n'est pas une
+  cérémonie protocolaire génériquisable sur `S: Store`. Reste côté
+  service.
+- `owner_preview_call` / `owner_preview_mandate` : **famille B** (comme
+  écrit) — consomment `effective_call_verdict` / `describe_effective_policy`
+  (politique d'outils) via `preview_load` (manifests du hub).
+- Les cinq lecteurs (`gamma_view`, `journal_notes_view`, `cert_grantee_pub`,
+  `cert_constraints`, `cert_perimeter`) : famille A, purs protocole.
+
 **Critères de sortie.**
 
 - `grep -c 'pub fn owner_' rust/crates/aithos-gateway/src/core_bridge.rs` ne

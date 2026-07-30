@@ -1069,3 +1069,12 @@ mod tests {
         }
     }
 }
+
+/// Le store d'accueil des cérémonies propriétaire (`aithos-owner`) : la
+/// gateway surface son état pré-migration SPL-2 par la lecture brute de
+/// territoire pod, les stores protocolaires purs n'en ont pas.
+impl aithos_owner::OwnerStore for GatewayStore {
+    fn legacy_state_bytes(&self) -> std::io::Result<Option<Vec<u8>>> {
+        GatewayStore::legacy_state_bytes(self)
+    }
+}

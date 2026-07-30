@@ -4,6 +4,7 @@ members = [
     "crates/aithos-core",
     "crates/aithos-bundle",
     "crates/aithos-cli",
+    "crates/aithos-owner",
     "crates/aithos-wasm",
     "crates/aithos-gateway",
     "crates/aithos-provider",
@@ -107,6 +108,7 @@ instant-acme = { version = "0.7", default-features = false, features = ["hyper-r
 # internal
 aithos-core = { version = "0.1.0-alpha.1", path = "crates/aithos-core" }
 aithos-bundle = { version = "0.1.0-alpha.1", path = "crates/aithos-bundle" }
+aithos-owner = { version = "0.1.0-alpha.1", path = "crates/aithos-owner" }
 aithos-wasm = { version = "0.1.0-alpha.1", path = "crates/aithos-wasm" }
 # Offline Ethos engine. The path resolves to the sibling development crate,
 # whose own core/bundle dependencies resolve back to the exact workspace
