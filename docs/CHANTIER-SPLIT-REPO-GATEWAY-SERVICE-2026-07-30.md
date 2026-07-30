@@ -2,7 +2,7 @@
 
 Date : 2026-07-30
 
-Statut : **en cours — SPL-0 fait (2026-07-30), SPL-1 entamé.** Ce document est
+Statut : **en cours — SPL-0, SPL-1, SPL-2 faits (2026-07-30).** Ce document est
 le backlog canonique du chantier ; le brief d'amorçage est
 [`PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md).
 Baseline figée : [`audits/split/baseline-2026-07-30.md`](audits/split/baseline-2026-07-30.md)
@@ -362,6 +362,25 @@ Vérifié aussi : aucun vecteur gelé ne mentionne `gateway/state.json` ni
 
 **Rollback.** Le lot est un rename plus un pont de lecture : revert du commit,
 l'ancienne clé n'ayant jamais été supprimée.
+
+**Sortie du lot — 2026-07-30, gates atteintes.** Notes d'exécution :
+
+- `bundle_internal_keys_stay_outside_the_wire` est resté vert **sans
+  modification** : le wire n'a jamais accepté `gateway/*`, et ses deux
+  entrées l'assertent toujours. Le test symétrique d'acceptation est
+  `pathmap::migrated_gateway_state_rides_the_vault_subtree_row`.
+- Custodie inchangée, décision consignée : la clé migrée reste routée
+  sidecar en mode B (`sidecar_key`) et sautée par le sweep de réplication
+  propriétaire — le lot retire une arme nominative sans créer de trafic
+  wire nouveau ; la couverture wire est prouvée mais non exercée par le
+  runtime.
+- Découverte d'exécution : les deux stores canoniques valident la
+  grammaire à l'accès (`checked_join` / `MemStore::get`) — le pont de
+  migration lit donc l'ancien objet en accès brut de territoire pod
+  (`legacy_state_bytes`), pas via `Store::get`. Attrapé par le harnais
+  SPL-0 avant commit.
+- Vecteur nouveau : `cb2-store-key-consumer-neutrality.json` (+ test
+  bundle dédié). Aucun vecteur gelé touché.
 
 ### SPL-3 — isoler les helpers partagés de `core_bridge.rs`
 
