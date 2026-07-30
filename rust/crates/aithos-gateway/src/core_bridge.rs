@@ -5476,35 +5476,6 @@ pub fn owner_set_briefing(
     bundle.publish(&owner, now).map_err(bridge_err)
 }
 
-/// Owner-side read of one zone's directive (test/ops assertions — the
-/// sovereignty mirror of `owner_read_journal_note`).
-pub fn owner_read_briefing(
-    master: &[u8; 32],
-    label: &str,
-    zone: &str,
-    store: GatewayStore,
-) -> Result<String> {
-    let zone = match zone {
-        "public" => Zone::Public,
-        "circle" => Zone::Circle,
-        "self" => Zone::Self_,
-        other => {
-            return Err(GatewayError::ConfigRejected(format!(
-                "briefing zone must be public, circle or self, not `{other}`"
-            )))
-        }
-    };
-    let owner = derived_owner(master, "context", label);
-    let bundle = Bundle::open(store).map_err(bridge_err)?;
-    bundle
-        .read_section(
-            zone,
-            &format!("{BRIEFING_FOLDER}/{BRIEFING_SECTION}"),
-            &owner,
-        )
-        .map_err(bridge_err)
-}
-
 fn replace_hub_manifest(
     bundle: &mut Bundle<GatewayStore>,
     owner: &OwnerKeys,
