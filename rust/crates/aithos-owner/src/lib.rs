@@ -51,6 +51,14 @@ pub trait OwnerStore: Store {
     }
 }
 
+/// A plain filesystem bundle store is a protocol store: it never carried
+/// the pre-SPL-2 `gateway/state.json` key (that deployment shape is the
+/// gateway's `GatewayStore`), so the trait default `legacy_state_bytes()
+/// -> None` is exactly right. Declared here — the orphan rule forbids the
+/// CLI from implementing this local trait on `aithos-bundle`'s type
+/// (lot SPL-5, consigned in the chantier document).
+impl OwnerStore for aithos_bundle::FsStore {}
+
 pub(crate) fn owner_err(error: impl std::fmt::Display) -> OwnerError {
     OwnerError::Failed(error.to_string())
 }

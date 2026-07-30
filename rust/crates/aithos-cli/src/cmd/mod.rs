@@ -28,6 +28,7 @@ pub mod mandate_verify;
 pub mod move_folder;
 pub mod node_key;
 pub mod oauth;
+pub mod owner;
 pub mod prove;
 pub mod revoke;
 pub mod section_add;

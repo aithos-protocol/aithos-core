@@ -48,6 +48,7 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "aithos-bundle",
  "aithos-core",
+ "aithos-owner",
  "aithos-wasm",
  "assert_cmd",
  "base64 0.22.1",

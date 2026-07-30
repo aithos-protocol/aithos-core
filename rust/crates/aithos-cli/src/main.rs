@@ -105,6 +105,10 @@ enum Command {
     LogAudit(cmd::log_audit::Args),
     /// Owner search over the log (spec 07.8): every present filter narrows.
     LogQuery(cmd::log_query::Args),
+    /// OWNER SIDE ceremonies over a local store (famille A, ported from
+    /// the aithos-gateway binary at lot SPL-5): journal/context equipment,
+    /// grants, briefing and sections. One ceremony, one path.
+    Owner(cmd::owner::Args),
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -149,5 +153,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::LogVerify(args) => cmd::log_verify::run(args),
         Command::LogAudit(args) => cmd::log_audit::run(args),
         Command::LogQuery(args) => cmd::log_query::run(args),
+        Command::Owner(args) => cmd::owner::run(args),
     }
 }

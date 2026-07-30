@@ -1460,3 +1460,165 @@ fn edition_merge_joins_two_disjoint_copies() {
     .failure()
     .stderr(predicate::str::contains("conflict"));
 }
+
+// ---------------------------------------------------------------------------
+// Lot SPL-5 — the `owner` group: famille-A ceremonies ported from the
+// gateway binary. Additions only; no earlier assertion was touched.
+
+fn multibase_pub(seed_hex: &str) -> String {
+    let out = ac()
+        .args([
+            "approve",
+            "--approver-seed-hex",
+            seed_hex,
+            "--mandate",
+            "none",
+            "--key-only",
+            "act",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    String::from_utf8(out.stdout).unwrap().trim().to_owned()
+}
+
+#[test]
+fn owner_group_exposes_the_family_a_ceremonies() {
+    let output = ac()
+        .args(["owner", "--help"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let help = String::from_utf8(output.stdout).unwrap();
+    for sub in [
+        "init-journal",
+        "init-context",
+        "grant-context",
+        "grant-session-delegate",
+        "revoke-mandate",
+        "grant-briefing",
+        "grant-ethos-read",
+        "add-section",
+        "set-briefing",
+    ] {
+        assert!(help.contains(sub), "owner --help must list `{sub}`");
+    }
+}
+
+#[test]
+fn owner_session_delegate_and_revocation_keep_the_master_seed_off_argv() {
+    for sub in ["grant-session-delegate", "revoke-mandate"] {
+        let output = ac()
+            .args(["owner", sub, "--help"])
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        let help = String::from_utf8(output.stdout).unwrap();
+        assert!(help.contains("--store-root"), "{sub}: --store-root");
+        assert!(help.contains("stdin"), "{sub}: stdin custody is documented");
+        assert!(
+            !help.contains("--master-seed-hex"),
+            "{sub}: the master seed must never ride argv"
+        );
+    }
+}
+
+#[test]
+fn owner_init_journal_equips_a_local_fs_store_and_leaks_no_secret() {
+    let dir = TempDir::new().unwrap();
+    let agent_pub = multibase_pub(AGENT);
+    let gateway_pub = multibase_pub(SUCCESSION);
+    let out = ac()
+        .args([
+            "owner",
+            "init-journal",
+            "--master-seed-hex",
+            OWNER,
+            "--agent-label",
+            "lea",
+            "--agent-pub",
+            &agent_pub,
+            "--gateway-pub",
+            &gateway_pub,
+            "--store-root",
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("journal_did: did:aithos:"))
+        .stdout(predicate::str::contains("agent_mandate: "))
+        .stdout(predicate::str::contains("gateway_mandate: "))
+        .get_output()
+        .clone();
+    // The ceremony writes protocol objects under the canonical grammar
+    // only — the SPL-2 neutral key, never the legacy one, never a seed file.
+    assert!(dir.path().join("gamma").exists(), "gamma segments exist");
+    assert!(dir.path().join("x/gateway/state.json").exists());
+    assert!(!dir.path().join("gateway").exists());
+    let printed = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // The DEV warning fires, and no derived secret surfaces.
+    assert!(printed.contains("DEV ONLY"));
+}
+
+#[test]
+fn owner_grant_ethos_read_lights_the_pen_on_an_equipped_context() {
+    let dir = TempDir::new().unwrap();
+    let agent_pub = multibase_pub(AGENT);
+    let gateway_pub = multibase_pub(SUCCESSION);
+    let root = d(&dir);
+    ac().args([
+        "owner",
+        "init-context",
+        "--master-seed-hex",
+        OWNER,
+        "--label",
+        "brand",
+        "--store-root",
+        &root,
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("context_did: did:aithos:"));
+    ac().args([
+        "owner",
+        "grant-context",
+        "--master-seed-hex",
+        OWNER,
+        "--label",
+        "brand",
+        "--agent-pub",
+        &agent_pub,
+        "--gateway-pub",
+        &gateway_pub,
+        "--read",
+        "brand.read",
+        "--store-root",
+        &root,
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("agent_mandate: "))
+    .stderr(predicate::str::contains("STORE the auditor seed COLD"));
+    ac().args([
+        "owner",
+        "grant-ethos-read",
+        "--master-seed-hex",
+        OWNER,
+        "--label",
+        "brand",
+        "--agent-pub",
+        &agent_pub,
+        "--store-root",
+        &root,
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("ethos_read_mandate: "));
+}
