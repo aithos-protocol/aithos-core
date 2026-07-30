@@ -85,8 +85,7 @@ pub use control::{
 mod shared;
 
 pub(crate) use aithos_owner::{
-    cert_path, decode_pub, derived_owner, derived_succession, equip, mint_entries, no_constraints,
-    BridgeState,
+    cert_path, decode_pub, derived_owner, equip, mint_entries, no_constraints, BridgeState,
 };
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
