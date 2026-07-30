@@ -181,13 +181,43 @@ par défaut ne sélectionneront pas le même ensemble. À traiter avant, pas apr
 
 ## Critères de fin, pour le rôle de revue
 
-- [ ] Les trois gates GREEN sont rejoués et sortent en 0, compteurs lus, pas
+Rejoués le 2026-07-30 hors du poste de travail d'origine, `rustc` 1.95.0,
+`aithos-client` à `c6f6151`, sur `main` fusionné avec la branche (`240c658`,
+puis rejoués sur `8b9ba15`).
+
+- [x] Les trois gates GREEN sont rejoués et sortent en 0, compteurs lus, pas
       seulement le code de sortie.
-- [ ] Les deux sondes RED sont rejouées et sortent en non-zéro.
-- [ ] `cargo test --workspace --no-fail-fast` est vert, ou ses échecs sont
+      → suite non filtrée : 18 features / 114 rules / 836 scenarios (836 passed) /
+      3577 steps (3577 passed), exit 0. `--tags @b-derivation` `6/6` exit 0 ;
+      `--tags @a-identity` `30/30` exit 0 ; `--tags @c-headers` `8/8` exit 0.
+- [x] Les deux sondes RED sont rejouées et sortent en non-zéro.
+      → sonde 1, mutation XOR par segment dans `node_key` : 831 passed / 5 failed
+      des deux côtés, exit 0 sur le runner pré-correctif, **exit 101** sur le
+      post-correctif. Sonde 2, phrase de step rendue non résolue : 5 passed /
+      1 *skip* silencieux et exit 0 avant ; `✘ Step doesn't match any function`,
+      1 failed et **exit 101** après.
+- [x] `cargo test --workspace --no-fail-fast` est vert, ou ses échecs sont
       documentés comme préexistants.
-- [ ] `cargo fmt --all -- --check` : l'échec `core_bridge.rs:1355` est reconnu
+      → vert, doctests comprises.
+- [x] `cargo fmt --all -- --check` : l'échec `core_bridge.rs:1355` est reconnu
       comme préexistant et non absorbé ici.
-- [ ] Le diff se limite à `fn main` de `rust/crates/aithos-bundle/tests/cucumber.rs`,
+      → exit 0. Le résidu a été absorbé entre-temps par `240c658` ; il n'y a plus
+      rien à excuser, et ce lot ne l'a pas absorbé.
+- [x] Le diff se limite à `fn main` de `rust/crates/aithos-bundle/tests/cucumber.rs`,
       à l'entrée `BDER-011` de l'audit public et à ce document.
-- [ ] `BDER-011` passe à `VERIFIED` **par la revue**, jamais par ce lot.
+      → trois fichiers, conformes à la déclaration ; `fn main` est la seule
+      construction touchée dans `cucumber.rs`.
+- [x] `BDER-011` passe à `VERIFIED` **par la revue**, jamais par ce lot.
+      → passé à `VERIFIED` le 2026-07-30 par la revue indépendante.
+
+`main` a avancé pendant la revue (`3803fe8`, `8b9ba15`, `af32734`, lot
+`c-headers`) sans qu'aucun fichier `.rs`, `.toml` ni `.lock` ne diffère de
+`240c658` : la vérification tient sur `main` courant et le patch s'applique sans
+conflit.
+
+Résidu ouvert relevé par la revue, **hors périmètre de ce lot** : le filtre
+`@wip` de ce runner ne teste que `scenario.tags`, là où celui d'`aithos-gateway`
+teste aussi les tags de `Feature` et de `Rule`. Aucun `.feature` ne porte `@wip`
+aujourd'hui, donc aucun effet actuel, mais un `@wip` posé au niveau `Feature` ou
+`Rule` serait exécuté. À joindre au piège `--tags` documenté plus haut, avant la
+reprise du rituel `@wip`.

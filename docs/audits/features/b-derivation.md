@@ -12,7 +12,7 @@
 | Implémentation principale | `aithos-core::{derive,path,ids}` |
 | Surfaces contrôlées | Core, Bundle, CLI ; vecteurs `vectors/` et leurs générateurs |
 | Méthode | Deux passes, Pass A aveugle à l'historique en trois unités de revue isolées (une par `Rule`), puis passe d'intégration, revue challenger adverse, et Pass B différentielle |
-| Statut de la note | **OUVERTE — ronde 1 revue et acceptée ; deux écarts nouveaux, une décision en attente** |
+| Statut de la note | **OUVERTE — ronde 1 revue et acceptée ; `BDER-011` `VERIFIED` (2026-07-30) ; `BDER-012` ouvert, une décision en attente** |
 
 ## Verdict
 
@@ -455,7 +455,7 @@ aucun scénario n'a été supprimé.
 
 ### BDER-011 — Le gate Cucumber d'`aithos-bundle` ne peut pas rapporter d'échec
 
-**Priorité : P1 — `IMPLEMENTED` (lot transverse, 2026-07-29, non vérifié) — préexistant à `fa8fa79` — portée dépôt entier**
+**Priorité : P1 — `VERIFIED` (revue indépendante, 2026-07-30) — préexistant à `fa8fa79` — portée dépôt entier**
 
 `rust/crates/aithos-bundle/tests/cucumber.rs:19716` appelle
 `ProtocolWorld::cucumber().filter_run(...)` et jette l'écrivain retourné. Avec
@@ -488,7 +488,7 @@ correction de la ronde 1 n'en est ni la cause ni l'aggravation, et ce n'est pas
 rougir des scénarios aujourd'hui « verts » dans d'autres features. Routé à la
 revue d'impact comme premier point.
 
-#### Correctif candidat (2026-07-29, `IMPLEMENTED`)
+#### Correctif (2026-07-29, `VERIFIED` le 2026-07-30)
 
 Branche `codex/fix-bder-011-cucumber-gate`. `fn main` d'`aithos-bundle` passe à
 `.fail_on_skipped().filter_run_and_exit(...)`, idiome déjà en place chez
@@ -513,8 +513,47 @@ GREEN : suite non filtrée `836/836` exit 0 ; `--tags @b-derivation` `6/6` exit 
 `.fail_on_skipped()` n'interagit pas avec le filtrage par tag.
 
 Détail, périmètre, pièges et critères de fin :
-`docs/HANDOFF-BDER-011-CUCUMBER-GATE-2026-07-29.md`. Ce lot ne se marque
-qu'`IMPLEMENTED` ; le passage à `VERIFIED` appartient à une revue indépendante.
+`docs/HANDOFF-BDER-011-CUCUMBER-GATE-2026-07-29.md`.
+
+#### Revue indépendante (2026-07-30) — `VERIFIED`
+
+Les six critères de fin du handoff ont été rejoués hors du poste de travail
+d'origine, `rustc` 1.95.0, `aithos-client` à `c6f6151`, sur `main` fusionné avec
+la branche — d'abord sur `240c658`, puis rejoués sur `8b9ba15`.
+
+GREEN, compteurs lus et pas seulement le code de sortie : suite non filtrée
+18 features, 114 rules, 836 scenarios (836 passed), 3577 steps (3577 passed),
+exit 0 ; `--tags @b-derivation` `6/6` exit 0 ; `--tags @a-identity` `30/30`
+exit 0 ; `--tags @c-headers` `8/8` exit 0.
+
+RED, les deux sondes rejouées de part et d'autre de la bascule :
+
+| Sonde | Comptes observés | Avant | Après |
+|---|---|---:|---:|
+| Mutation XOR par segment dans `node_key` | 831 passed / 5 failed des deux côtés | exit 0 | **exit 101** |
+| Phrase de step rendue non résolue | avant : 5 passed / 1 *skip* silencieux ; après : `✘ Step doesn't match any function`, 1 failed | exit 0 | **exit 101** |
+
+Le premier cas montre que des scénarios rouges ne suffisaient pas à faire rougir
+le binaire ; le second, que `.fail_on_skipped()` transforme bien le *skip*
+silencieux en échec nommé.
+
+`cargo test --workspace --no-fail-fast` est vert, doctests comprises.
+`cargo fmt --all -- --check` sort en 0 : le résidu `core_bridge.rs:1355` que le
+handoff annonçait comme préexistant a été absorbé entre-temps par `240c658`, il
+n'y a plus rien à excuser.
+
+Le diff se limite aux trois fichiers déclarés et `fn main` est la seule
+construction touchée dans `cucumber.rs`. `main` a avancé pendant la revue
+(`3803fe8`, `8b9ba15`, `af32734`, lot `c-headers`) sans qu'aucun fichier `.rs`,
+`.toml` ni `.lock` ne diffère de `240c658` : la vérification tient sur `main`
+courant et le patch s'applique sans conflit.
+
+Résidu ouvert, hors périmètre de ce lot : le filtre `@wip` de ce runner ne teste
+que `scenario.tags`, là où celui d'`aithos-gateway` teste aussi les tags de
+`Feature` et de `Rule`. Aucun `.feature` ne porte `@wip` aujourd'hui, donc aucun
+effet actuel, mais un `@wip` posé au niveau `Feature` ou `Rule` serait exécuté.
+À joindre au piège `--tags` déjà documenté dans le handoff, avant la reprise du
+rituel `@wip`.
 
 ### BDER-012 — Les négatifs corrigés restent des échantillons bornés
 
