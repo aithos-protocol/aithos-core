@@ -1104,3 +1104,83 @@ pub fn owner_grant_ethos_read<S: OwnerStore>(
         .map_err(owner_err)?;
     Ok(mandate.id)
 }
+
+/// Dev/harness emission path pending the G8.c product surface: the
+/// owner mints a `read.circle` + `issue#depth=1` mandate to a FRESH
+/// delegate key (born from the injected entropy), the delegate
+/// immediately sub-mints `read.circle` to the agent key, both
+/// certificates land in the store, the agent's circle line is
+/// delivered (§04.3 — issuance appends the needed lines) and both
+/// grants are journalized. Exercises the REAL sub-mandate path: the
+/// runtime scan must light the surface from this chain exactly as from
+/// an owner-minted pen.
+#[allow(clippy::too_many_arguments)]
+pub fn owner_issue_ethos_read_subchain<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    agent_pub_mb: &str,
+    store: S,
+    window: &MandateWindow,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<(String, String)> {
+    let owner = derived_owner(master, "context", label);
+    let agent_pub = decode_pub(agent_pub_mb)?;
+    let mut bundle = Bundle::open(store).map_err(owner_err)?;
+    let delegate_sk = SigningKey::from_bytes(&ent.e32());
+    let circle_read = || PerimeterEntry::Ethos {
+        verb: Verb::Read,
+        zone: Zone::Circle,
+        dir: Vec::new(),
+        tag: None,
+    };
+    let issue = PerimeterEntry::parse("issue#depth=1").map_err(owner_err)?;
+    let parent = mint_entries(
+        &owner,
+        &bundle,
+        ent,
+        "ethos-delegate",
+        &delegate_sk.verifying_key(),
+        vec![circle_read(), issue],
+        no_constraints(),
+        window,
+        now,
+    )?;
+    let sub = Mandate::build_sub(
+        &parent,
+        &delegate_sk,
+        &MandateSpec {
+            id: format!(
+                "mandate_{}",
+                aithos_core::ids::Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
+            ),
+            subject: bundle.did.clone(),
+            grantee_id: "urn:aithos:agent:ethos-read-sub".to_owned(),
+            grantee_label: "ethos-read-sub".to_owned(),
+            grantee_pub: &agent_pub,
+            perimeter: vec![circle_read()],
+            constraints: no_constraints(),
+            not_before: window.not_before.clone(),
+            not_after: window.not_after.clone(),
+            issued_at: now.to_owned(),
+            nonce: hex::encode(ent.e16()),
+        },
+    )
+    .map_err(owner_err)?;
+    for mandate in [&parent, &sub] {
+        bundle
+            .store
+            .put(
+                &cert_path(&mandate.id),
+                &serde_json::to_vec_pretty(mandate).map_err(owner_err)?,
+            )
+            .map_err(owner_err)?;
+        bundle
+            .log_owner_grant(&owner, &mandate.id, now, ent)
+            .map_err(owner_err)?;
+    }
+    bundle
+        .deliver_zone_line(&owner, &agent_pub, Zone::Circle, "", None, ent)
+        .map_err(owner_err)?;
+    Ok((parent.id.clone(), sub.id.clone()))
+}

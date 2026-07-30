@@ -40,7 +40,7 @@ use aithos_core::ids::Sid;
 use aithos_core::keys::{ed2x, grantee_kex_secret, succession_from_entropy, MasterSeed, OwnerKeys};
 use aithos_core::mandate::{
     covers_act, covers_op, covers_section_op, verify_chain, verify_chain_revocable, verify_op,
-    ActOp, GammaQuery, Mandate, MandateSpec, Op, PerimeterEntry, SectionOp, Verb,
+    ActOp, GammaQuery, Mandate, Op, PerimeterEntry, SectionOp, Verb,
 };
 use aithos_core::operation::{
     verify_delegated_session as verify_delegated_session_core, verify_session,
@@ -85,17 +85,18 @@ pub use control::{
 mod shared;
 
 pub(crate) use aithos_owner::{
-    cert_path, decode_pub, derived_owner, equip, mint_entries, no_constraints, BridgeState,
+    cert_path, decode_pub, derived_owner, equip, no_constraints, BridgeState,
 };
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
 pub use aithos_owner::{
     owner_add_section, owner_deliver_circle_line, owner_grant_briefing,
     owner_grant_connector_config, owner_grant_context, owner_grant_ethos_read,
-    owner_grant_session_delegate, owner_init_context, owner_init_journal, owner_read_journal_note,
-    owner_revoke_mandate_id, owner_set_briefing, ConnectorConfigGrant, EquipOutcome, MandateWindow,
-    OwnerError, BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH, LLM_BUDGET_REF,
-    MEMORY_FOLDER, STATE_PATH,
+    owner_grant_session_delegate, owner_init_context, owner_init_journal,
+    owner_issue_ethos_read_subchain, owner_read_journal_note, owner_revoke_mandate_id,
+    owner_set_briefing, ConnectorConfigGrant, EquipOutcome, MandateWindow, OwnerError,
+    BRIEFING_FOLDER, BRIEFING_SECTION, LEGACY_STATE_PATH, LLM_BUDGET_REF, MEMORY_FOLDER,
+    STATE_PATH,
 };
 
 pub use shared::{
@@ -4938,86 +4939,6 @@ pub fn owner_read_hub_manifest(
     let manifest: ApprovedManifest = serde_json::from_slice(&plain).map_err(bridge_err)?;
     validate_approved(&manifest)?;
     Ok(manifest)
-}
-
-/// Dev/harness emission path pending the G8.c product surface: the
-/// owner mints a `read.circle` + `issue#depth=1` mandate to a FRESH
-/// delegate key (born from the injected entropy), the delegate
-/// immediately sub-mints `read.circle` to the agent key, both
-/// certificates land in the store, the agent's circle line is
-/// delivered (§04.3 — issuance appends the needed lines) and both
-/// grants are journalized. Exercises the REAL sub-mandate path: the
-/// runtime scan must light the surface from this chain exactly as from
-/// an owner-minted pen.
-#[allow(clippy::too_many_arguments)]
-pub fn owner_issue_ethos_read_subchain(
-    master: &[u8; 32],
-    label: &str,
-    agent_pub_mb: &str,
-    store: GatewayStore,
-    window: &MandateWindow,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<(String, String)> {
-    let owner = derived_owner(master, "context", label);
-    let agent_pub = decode_pub(agent_pub_mb)?;
-    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    let delegate_sk = SigningKey::from_bytes(&ent.e32());
-    let circle_read = || PerimeterEntry::Ethos {
-        verb: Verb::Read,
-        zone: Zone::Circle,
-        dir: Vec::new(),
-        tag: None,
-    };
-    let issue = PerimeterEntry::parse("issue#depth=1").map_err(bridge_err)?;
-    let parent = mint_entries(
-        &owner,
-        &bundle,
-        ent,
-        "ethos-delegate",
-        &delegate_sk.verifying_key(),
-        vec![circle_read(), issue],
-        no_constraints(),
-        window,
-        now,
-    )?;
-    let sub = Mandate::build_sub(
-        &parent,
-        &delegate_sk,
-        &MandateSpec {
-            id: format!(
-                "mandate_{}",
-                aithos_core::ids::Sid(ulid::Ulid::from(u128::from_be_bytes(ent.e16())))
-            ),
-            subject: bundle.did.clone(),
-            grantee_id: "urn:aithos:agent:ethos-read-sub".to_owned(),
-            grantee_label: "ethos-read-sub".to_owned(),
-            grantee_pub: &agent_pub,
-            perimeter: vec![circle_read()],
-            constraints: no_constraints(),
-            not_before: window.not_before.clone(),
-            not_after: window.not_after.clone(),
-            issued_at: now.to_owned(),
-            nonce: hex::encode(ent.e16()),
-        },
-    )
-    .map_err(bridge_err)?;
-    for mandate in [&parent, &sub] {
-        bundle
-            .store
-            .put(
-                &cert_path(&mandate.id),
-                &serde_json::to_vec_pretty(mandate).map_err(bridge_err)?,
-            )
-            .map_err(bridge_err)?;
-        bundle
-            .log_owner_grant(&owner, &mandate.id, now, ent)
-            .map_err(bridge_err)?;
-    }
-    bundle
-        .deliver_zone_line(&owner, &agent_pub, Zone::Circle, "", None, ent)
-        .map_err(bridge_err)?;
-    Ok((parent.id.clone(), sub.id.clone()))
 }
 
 /// Owner/test-side view of any ethos gamma (opens the store read-only).
