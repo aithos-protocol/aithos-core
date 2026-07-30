@@ -15,6 +15,7 @@ use aithos_bundle::bundle::Bundle;
 use aithos_bundle::entropy::EntropySource;
 use aithos_bundle::Store;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
+use aithos_core::path::Zone;
 use ed25519_dalek::SigningKey;
 
 /// Every way an owner ceremony can refuse or fail. Mirrors the callers'
@@ -103,4 +104,33 @@ pub fn owner_revoke_mandate_id<S: OwnerStore>(
         .log_revoke_owner(&owner, mandate_id, reason, now, ent)
         .map_err(owner_err)?;
     Ok(())
+}
+
+/// The journal's memory shelf: the circle folder `owner-init-journal`
+/// prepares and the memory pen writes into (lot C2).
+pub const MEMORY_FOLDER: &str = "memory";
+/// The context's briefing shelf (lot K): the owner's directives live as
+/// sections of a `briefing/` folder in the public and circle zones of
+/// the CONTEXT ethos — `self` holds owner-only notes and never reaches
+/// the agent (the briefing pen simply carries no self entry).
+pub const BRIEFING_FOLDER: &str = "briefing";
+/// The one briefing section per zone (v1): `owner-set-briefing` creates
+/// it on first use and rewrites it afterwards — the directive has a
+/// stable address, so a hot edit is served on the very next read.
+pub const BRIEFING_SECTION: &str = "directives";
+
+/// Owner-side read of one memory note body (sovereignty §3bis.3: the
+/// journal is enterprise-owned — the owner audits its agent's memory
+/// with its own derived keys, no pen involved).
+pub fn owner_read_journal_note<S: OwnerStore>(
+    master: &[u8; 32],
+    agent_label: &str,
+    store: S,
+    name: &str,
+) -> Result<String> {
+    let owner = derived_owner(master, "journal", agent_label);
+    let bundle = Bundle::open(store).map_err(owner_err)?;
+    bundle
+        .read_section(Zone::Circle, &format!("{MEMORY_FOLDER}/{name}"), &owner)
+        .map_err(owner_err)
 }

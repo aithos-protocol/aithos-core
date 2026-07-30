@@ -87,7 +87,10 @@ mod shared;
 pub(crate) use aithos_owner::{derived_owner, derived_succession};
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
-pub use aithos_owner::{owner_init_context, owner_revoke_mandate_id, OwnerError};
+pub use aithos_owner::{
+    owner_init_context, owner_read_journal_note, owner_revoke_mandate_id, OwnerError,
+    BRIEFING_FOLDER, BRIEFING_SECTION, MEMORY_FOLDER,
+};
 
 pub use shared::{
     agent_kex_pub_multibase, agent_pub_multibase, approved_manifest_catalog_digest,
@@ -113,18 +116,6 @@ pub const STATE_PATH: &str = "x/gateway/state.json";
 /// rewrite the bytes under [`STATE_PATH`]; never deleted, never written
 /// again.
 pub const LEGACY_STATE_PATH: &str = "gateway/state.json";
-/// The journal's memory shelf: the circle folder `owner-init-journal`
-/// prepares and the memory pen writes into (lot C2).
-pub const MEMORY_FOLDER: &str = "memory";
-/// The context's briefing shelf (lot K): the owner's directives live as
-/// sections of a `briefing/` folder in the public and circle zones of
-/// the CONTEXT ethos — `self` holds owner-only notes and never reaches
-/// the agent (the briefing pen simply carries no self entry).
-pub const BRIEFING_FOLDER: &str = "briefing";
-/// The one briefing section per zone (v1): `owner-set-briefing` creates
-/// it on first use and rewrites it afterwards — the directive has a
-/// stable address, so a hot edit is served on the very next read.
-pub const BRIEFING_SECTION: &str = "directives";
 /// The one budget profile id the gateway cites on inference entries —
 /// the same id `owner-init-journal --token-budget` writes into the
 /// inference mandate (v1: one profile, one tap).
@@ -5863,22 +5854,6 @@ pub fn journal_notes_view(store: GatewayStore) -> Result<Vec<NoteView>> {
             text: None,
         })
         .collect())
-}
-
-/// Owner-side read of one memory note body (sovereignty §3bis.3: the
-/// journal is enterprise-owned — the owner audits its agent's memory
-/// with its own derived keys, no pen involved).
-pub fn owner_read_journal_note(
-    master: &[u8; 32],
-    agent_label: &str,
-    store: GatewayStore,
-    name: &str,
-) -> Result<String> {
-    let owner = derived_owner(master, "journal", agent_label);
-    let bundle = Bundle::open(store).map_err(bridge_err)?;
-    bundle
-        .read_section(Zone::Circle, &format!("{MEMORY_FOLDER}/{name}"), &owner)
-        .map_err(bridge_err)
 }
 
 /// The grantee public key (multibase) named by a stored certificate.
