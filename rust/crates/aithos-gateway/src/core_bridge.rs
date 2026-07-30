@@ -87,7 +87,7 @@ mod shared;
 pub(crate) use aithos_owner::{derived_owner, derived_succession};
 /// Cérémonies propriétaire — extraites vers `aithos-owner` (lot SPL-4).
 /// Les chemins publics historiques sont préservés.
-pub use aithos_owner::{owner_init_context, OwnerError};
+pub use aithos_owner::{owner_init_context, owner_revoke_mandate_id, OwnerError};
 
 pub use shared::{
     agent_kex_pub_multibase, agent_pub_multibase, approved_manifest_catalog_digest,
@@ -5700,27 +5700,6 @@ pub fn owner_deliver_circle_line(
     let _ = now;
     bundle
         .deliver_zone_line(&owner, &recipient_pub, Zone::Circle, "", None, ent)
-        .map_err(bridge_err)?;
-    Ok(())
-}
-
-/// Owner revocation of one mandate on a context store (lot G6 scenario
-/// surface; the M3 product surface `owner-revoke-mandate` subsumes it
-/// later). One `revoke` entry — the runtime scan sees it on the very
-/// next call, no restart.
-pub fn owner_revoke_mandate_id(
-    master: &[u8; 32],
-    label: &str,
-    mandate_id: &str,
-    reason: &str,
-    store: GatewayStore,
-    now: &str,
-    ent: &mut dyn EntropySource,
-) -> Result<()> {
-    let owner = derived_owner(master, "context", label);
-    let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    bundle
-        .log_revoke_owner(&owner, mandate_id, reason, now, ent)
         .map_err(bridge_err)?;
     Ok(())
 }

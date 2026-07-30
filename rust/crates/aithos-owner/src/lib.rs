@@ -83,3 +83,24 @@ pub fn owner_init_context<S: OwnerStore>(
         Bundle::init(store, &owner, &succession.verifying_key(), ent, now).map_err(owner_err)?;
     Ok(bundle.did)
 }
+
+/// Owner revocation of one mandate on a context store (lot G6 scenario
+/// surface; the M3 product surface `owner-revoke-mandate` subsumes it
+/// later). One `revoke` entry — the runtime scan sees it on the very
+/// next call, no restart.
+pub fn owner_revoke_mandate_id<S: OwnerStore>(
+    master: &[u8; 32],
+    label: &str,
+    mandate_id: &str,
+    reason: &str,
+    store: S,
+    now: &str,
+    ent: &mut dyn EntropySource,
+) -> Result<()> {
+    let owner = derived_owner(master, "context", label);
+    let mut bundle = Bundle::open(store).map_err(owner_err)?;
+    bundle
+        .log_revoke_owner(&owner, mandate_id, reason, now, ent)
+        .map_err(owner_err)?;
+    Ok(())
+}
