@@ -271,7 +271,8 @@ Feature: Advanced agentic constraints — windows, budgets, inference, kinds, se
     verify_chain today attenuates absolute windows and obligations;
     the norm (spec 05.3) is wider. Every family below gets the same
     treatment: typed validation, then fail-closed containment, one
-    gate shared by offline verification and the gateway. Unknown
+    gate shared by offline verification and the online enforcement
+    point. Unknown
     constraint keys in a sub-delegation link are a rejection —
     M0 decision (c), 2026-07-16: fail-closed, no copy-through.
 
