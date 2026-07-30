@@ -1,0 +1,42 @@
+{
+  "vector": "CB2-STORE-KEY-CONSUMER-NEUTRALITY-1",
+  "description": "SPL-2 oracle: the closed store-key grammar names no consumer. The gateway runtime state rides the ordinary x/<id>/** connector namespace at x/gateway/state.json (already accepted by the pre-SPL-2 grammar); the legacy nominative keys gateway/state.json and gateway/keys.json are removed from the grammar. Removal only — this vector introduces no new grammar form.",
+  "cases": [
+    {
+      "id": "migrated-state-key-is-ordinary-x-namespace",
+      "input_kind": "store_key",
+      "value": "x/gateway/state.json",
+      "expected": "accepted"
+    },
+    {
+      "id": "another-consumer-rides-x-the-same-way",
+      "input_kind": "store_key",
+      "value": "x/runner/state.json",
+      "expected": "accepted"
+    },
+    {
+      "id": "legacy-state-key-removed",
+      "input_kind": "store_key",
+      "value": "gateway/state.json",
+      "expected": "rejected"
+    },
+    {
+      "id": "legacy-keys-key-removed",
+      "input_kind": "store_key",
+      "value": "gateway/keys.json",
+      "expected": "rejected"
+    },
+    {
+      "id": "no-bare-consumer-directory",
+      "input_kind": "store_key",
+      "value": "gateway/anything.json",
+      "expected": "rejected"
+    },
+    {
+      "id": "x-namespace-stays-closed-at-depth-1",
+      "input_kind": "store_key",
+      "value": "x/state.json",
+      "expected": "rejected"
+    }
+  ]
+}

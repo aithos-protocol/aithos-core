@@ -6568,7 +6568,9 @@ fn read_json<T: serde::de::DeserializeOwned>(
 /// never deleted — then read back from the new key.
 fn read_state_migrating(bundle: &mut Bundle<GatewayStore>) -> Result<BridgeState> {
     if bundle.store.get(STATE_PATH).map_err(bridge_err)?.is_none() {
-        if let Some(legacy) = bundle.store.get(LEGACY_STATE_PATH).map_err(bridge_err)? {
+        // The legacy key left the canonical grammar with SPL-2 — the read
+        // is a raw pod-territory access, never a Store::get.
+        if let Some(legacy) = bundle.store.legacy_state_bytes().map_err(bridge_err)? {
             bundle.store.put(STATE_PATH, &legacy).map_err(bridge_err)?;
         }
     }

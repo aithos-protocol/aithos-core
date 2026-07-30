@@ -21,7 +21,7 @@
 //! keys live client-side; the gateway holds agent+gateway seeds only).
 //! The `s3` refusal stays as-is.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use aithos_bundle::entropy::EntropySource;
@@ -144,6 +144,22 @@ fn sidecar_key(path: &str) -> bool {
         || path == crate::core_bridge::STATE_PATH
 }
 
+/// Raw pod-territory read of the pre-SPL-2 bridge state at
+/// [`crate::core_bridge::LEGACY_STATE_PATH`] under `root`. The legacy key
+/// left the canonical store grammar with SPL-2, so the migration cannot go
+/// through [`Store::get`] (both stores enforce the grammar on access): it
+/// reads the file directly where a pre-migration deployment wrote it. The
+/// pod root is the runner's own directory — the same trust as every other
+/// sidecar artifact.
+pub(crate) fn legacy_state_bytes_at(root: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    let path = root.join(crate::core_bridge::LEGACY_STATE_PATH);
+    match std::fs::read(&path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 /// Mode-A bookkeeping: which paths changed since the last replication
 /// sweep, and the in-flight background sweep (joined by tests and by
 /// the drain path — errors are LOGGED, never propagated: the primary
@@ -155,6 +171,22 @@ pub struct ReplicationState {
 }
 
 impl GatewayStore {
+    /// Pre-SPL-2 bridge state, read raw from the pod's own filesystem
+    /// territory (see [`legacy_state_bytes_at`]). Memory stores answer
+    /// `None`: they are ephemeral by contract (tests and dry-runs), so a
+    /// pre-migration artifact cannot exist in one.
+    pub(crate) fn legacy_state_bytes(&self) -> std::io::Result<Option<Vec<u8>>> {
+        match self {
+            GatewayStore::Fs(root) => legacy_state_bytes_at(root),
+            GatewayStore::Mem(_) => Ok(None),
+            GatewayStore::Remote { sidecar, .. } => match sidecar {
+                Sidecar::Fs(root) => legacy_state_bytes_at(root),
+                Sidecar::Mem(_) => Ok(None),
+            },
+            GatewayStore::Replicated { root, .. } => legacy_state_bytes_at(root),
+        }
+    }
+
     /// Provider coordinates for the operation-scoped `aithos-client`
     /// transport. Only provider-primary contexts qualify; local and
     /// replicated stores retain their historical mutation path.
@@ -331,8 +363,7 @@ impl GatewayStore {
         let state = match current {
             Some(bytes) => bytes,
             None => {
-                let legacy = Self::fs(root)
-                    .get(crate::core_bridge::LEGACY_STATE_PATH)
+                let legacy = legacy_state_bytes_at(root)
                     .map_err(|error| {
                         GatewayError::ConfigRejected(format!("gateway state: {error}"))
                     })?

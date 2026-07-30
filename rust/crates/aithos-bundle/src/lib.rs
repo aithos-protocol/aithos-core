@@ -153,8 +153,6 @@ pub fn validate_store_key(value: &str) -> io::Result<()> {
                 | "e/self/root.enc"
                 | "e/x/header.json"
                 | "gamma/gamma.jsonl"
-                | "gateway/state.json"
-                | "gateway/keys.json"
         )
         || value
             .strip_prefix("e/public/")
