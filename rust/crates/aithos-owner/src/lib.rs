@@ -1324,3 +1324,11 @@ pub fn cert_grantee_pub<S: OwnerStore>(store: S, mandate_id: &str) -> Result<Str
     let m: Mandate = read_json(&bundle, &cert_path(mandate_id))?;
     Ok(m.grantee.pubkey)
 }
+
+/// The constraints block carried by a stored certificate (owner/test-side
+/// assertions — e.g. the token budget on the inference pen).
+pub fn cert_constraints<S: OwnerStore>(store: S, mandate_id: &str) -> Result<serde_json::Value> {
+    let bundle = Bundle::open(store).map_err(owner_err)?;
+    let m: Mandate = read_json(&bundle, &cert_path(mandate_id))?;
+    Ok(m.constraints)
+}
