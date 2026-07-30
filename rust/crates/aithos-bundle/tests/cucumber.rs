@@ -19726,9 +19726,16 @@ fn main() {
     // Ritual (docs/EXECUTION-PLAN.md): each phase's .feature is co-written and
     // committed BEFORE implementation, its scenarios tagged @wip. The filter
     // keeps the suite green until a scenario is implemented and untagged.
+    // BDER-011: `filter_run` returns its writer and never exits, so under
+    // `harness = false` this binary used to exit 0 with scenarios failing.
+    // `filter_run_and_exit` propagates the failure, `fail_on_skipped` makes an
+    // unresolved step phrase an error instead of a silent skip. Same idiom as
+    // aithos-gateway/tests/cucumber.rs and aithos-provider/tests/cucumber.rs.
     futures::executor::block_on(
-        ProtocolWorld::cucumber().filter_run(features, |_, _, scenario| {
-            !scenario.tags.iter().any(|t| t == "wip")
-        }),
+        ProtocolWorld::cucumber()
+            .fail_on_skipped()
+            .filter_run_and_exit(features, |_, _, scenario| {
+                !scenario.tags.iter().any(|t| t == "wip")
+            }),
     );
 }

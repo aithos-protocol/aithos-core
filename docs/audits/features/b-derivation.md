@@ -455,7 +455,7 @@ aucun scénario n'a été supprimé.
 
 ### BDER-011 — Le gate Cucumber d'`aithos-bundle` ne peut pas rapporter d'échec
 
-**Priorité : P1 — OUVERT — préexistant à `fa8fa79` — portée dépôt entier**
+**Priorité : P1 — `IMPLEMENTED` (lot transverse, 2026-07-29, non vérifié) — préexistant à `fa8fa79` — portée dépôt entier**
 
 `rust/crates/aithos-bundle/tests/cucumber.rs:19716` appelle
 `ProtocolWorld::cucumber().filter_run(...)` et jette l'écrivain retourné. Avec
@@ -487,6 +487,34 @@ correction de la ronde 1 n'en est ni la cause ni l'aggravation, et ce n'est pas
 à un correcteur `b-derivation` de le trancher. La remise en état peut faire
 rougir des scénarios aujourd'hui « verts » dans d'autres features. Routé à la
 revue d'impact comme premier point.
+
+#### Correctif candidat (2026-07-29, `IMPLEMENTED`)
+
+Branche `codex/fix-bder-011-cucumber-gate`. `fn main` d'`aithos-bundle` passe à
+`.fail_on_skipped().filter_run_and_exit(...)`, idiome déjà en place chez
+`aithos-gateway/tests/cucumber.rs:10848-10850` et
+`aithos-provider/tests/cucumber.rs:3698-3699`. Aucun autre fichier modifié :
+aucun scénario, aucune assertion, aucun fichier de production, aucun vecteur.
+
+Mesure de cadrage prise **avant** la bascule, sur `ae88f7f`, en lisant les
+compteurs : 18 features, 114 rules, 836 scenarios (836 passed), 3577 steps
+(3577 passed) — zéro échec, zéro *skip*. La bascule est donc sans effet
+comportemental sur cette révision ; elle rend exigible ce qui était déjà vrai.
+
+Preuves RED, avant → après le correctif :
+
+| Sonde | Avant | Après |
+|---|---:|---:|
+| Mutant XOR par segment dans `node_key` (4 scénarios en échec) | exit 0 | **exit 101** |
+| Phrase de step rendue non résolue (1 step non apparié) | *skip* silencieux, exit 0 | **`✘`, exit 101** |
+
+GREEN : suite non filtrée `836/836` exit 0 ; `--tags @b-derivation` `6/6` exit 0 ;
+`--tags @a-identity` `30/30` exit 0 — les deux gates filtrés vérifient que
+`.fail_on_skipped()` n'interagit pas avec le filtrage par tag.
+
+Détail, périmètre, pièges et critères de fin :
+`docs/HANDOFF-BDER-011-CUCUMBER-GATE-2026-07-29.md`. Ce lot ne se marque
+qu'`IMPLEMENTED` ; le passage à `VERIFIED` appartient à une revue indépendante.
 
 ### BDER-012 — Les négatifs corrigés restent des échantillons bornés
 
