@@ -134,9 +134,14 @@ impl Sidecar {
 /// The wire A.1 exclusions the pod keeps to itself: runner state and
 /// derived caches (micro-redline P3 kept them OUT deliberately —
 /// `gateway/**` is the runner's, `manifests/*` are server-written slots
-/// or re-derivable trees/indexes).
+/// or re-derivable trees/indexes). The bridge state keeps that pod-local
+/// custody at its migrated SPL-2 address `x/gateway/state.json`: the key
+/// changed namespace (wire-coverable by `act.x.gateway.*`, see
+/// aithos-provider `pathmap`), the custody did not.
 fn sidecar_key(path: &str) -> bool {
-    path.starts_with("gateway/") || path.starts_with("manifests/")
+    path.starts_with("gateway/")
+        || path.starts_with("manifests/")
+        || path == crate::core_bridge::STATE_PATH
 }
 
 /// Mode-A bookkeeping: which paths changed since the last replication
@@ -317,14 +322,34 @@ impl GatewayStore {
             gateway_mandate: String,
         }
 
-        let state = Self::fs(root)
-            .get("gateway/state.json")
-            .map_err(|error| GatewayError::ConfigRejected(format!("gateway state: {error}")))?
-            .ok_or_else(|| {
-                GatewayError::ConfigRejected(
-                    "replicated context has no gateway/state.json for binding refresh".into(),
-                )
-            })?;
+        // SPL-2 migration at context open: read the state at its current
+        // key; when only the legacy key exists, copy the bytes under the
+        // new key (never deleting the legacy object), then proceed.
+        let current = Self::fs(root)
+            .get(crate::core_bridge::STATE_PATH)
+            .map_err(|error| GatewayError::ConfigRejected(format!("gateway state: {error}")))?;
+        let state = match current {
+            Some(bytes) => bytes,
+            None => {
+                let legacy = Self::fs(root)
+                    .get(crate::core_bridge::LEGACY_STATE_PATH)
+                    .map_err(|error| {
+                        GatewayError::ConfigRejected(format!("gateway state: {error}"))
+                    })?
+                    .ok_or_else(|| {
+                        GatewayError::ConfigRejected(
+                            "replicated context has no x/gateway/state.json for binding refresh"
+                                .into(),
+                        )
+                    })?;
+                Self::fs(root)
+                    .put(crate::core_bridge::STATE_PATH, &legacy)
+                    .map_err(|error| {
+                        GatewayError::ConfigRejected(format!("gateway state migration: {error}"))
+                    })?;
+                legacy
+            }
+        };
         let state: StoredGatewayState = serde_json::from_slice(&state).map_err(|error| {
             GatewayError::ConfigRejected(format!("gateway state is invalid: {error}"))
         })?;

@@ -79,8 +79,16 @@ pub use control::{
     ControlRawArtifact, PreparedControlEnvelope,
 };
 
-/// Where the bridge keeps its non-secret runtime state in the store.
-pub const STATE_PATH: &str = "gateway/state.json";
+/// Where the bridge keeps its non-secret runtime state in the store —
+/// under the vault namespace of the node its own governance mandate
+/// covers (`act.x.gateway.*` → `/x/gateway`, spec §08). Migrated from
+/// [`LEGACY_STATE_PATH`] at context open (SPL-2); custody is unchanged:
+/// the state stays pod-local (sidecar / primary fs), never replicated.
+pub const STATE_PATH: &str = "x/gateway/state.json";
+/// Pre-SPL-2 address of the bridge state. Read once at context open to
+/// rewrite the bytes under [`STATE_PATH`]; never deleted, never written
+/// again.
+pub const LEGACY_STATE_PATH: &str = "gateway/state.json";
 /// The journal's memory shelf: the circle folder `owner-init-journal`
 /// prepares and the memory pen writes into (lot C2).
 pub const MEMORY_FOLDER: &str = "memory";
@@ -540,8 +548,8 @@ impl Bridge {
         keyholder: Arc<Keyholder>,
         entropy: Box<dyn EntropySource + Send>,
     ) -> Result<Self> {
-        let bundle = Bundle::open(store).map_err(bridge_err)?;
-        let state: BridgeState = read_json(&bundle, STATE_PATH)?;
+        let mut bundle = Bundle::open(store).map_err(bridge_err)?;
+        let state: BridgeState = read_state_migrating(&mut bundle)?;
         let agent = read_json(&bundle, &cert_path(&state.agent_mandate))?;
         let gateway = read_json(&bundle, &cert_path(&state.gateway_mandate))?;
         let auditor_mandate = match &state.auditor_mandate {
@@ -5221,7 +5229,7 @@ pub fn owner_reenroll_server(
     let owner = derived_owner(master, "context", label);
     let reopen = store.clone();
     let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    let state: BridgeState = read_json(&bundle, STATE_PATH)?;
+    let state: BridgeState = read_state_migrating(&mut bundle)?;
     let old_agent: Mandate = read_json(&bundle, &cert_path(&state.agent_mandate))?;
     let expected_agent = decode_pub(agent_pub_mb)?;
     if old_agent.grantee_pub().map_err(bridge_err)? != expected_agent {
@@ -5268,7 +5276,7 @@ pub fn owner_reenroll_server(
     // server replaces the TOOL mandates, never the owner's directive
     // channel — the pen survives the pin swap, unrevoked.
     if state.briefing_mandate.is_some() {
-        let mut fresh: BridgeState = read_json(&bundle, STATE_PATH)?;
+        let mut fresh: BridgeState = read_state_migrating(&mut bundle)?;
         fresh.briefing_mandate = state.briefing_mandate.clone();
         bundle
             .store
@@ -5319,7 +5327,7 @@ pub fn owner_grant_briefing(
     let owner = derived_owner(master, "context", label);
     let agent_pub = decode_pub(agent_pub_mb)?;
     let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    let mut state: BridgeState = read_json(&bundle, STATE_PATH)?;
+    let mut state: BridgeState = read_state_migrating(&mut bundle)?;
     let expected_agent = &state.agent_mandate;
     let agent_cert: Mandate = read_json(&bundle, &cert_path(expected_agent))?;
     if agent_cert.grantee_pub().map_err(bridge_err)? != agent_pub {
@@ -5850,7 +5858,7 @@ pub fn owner_grant_ethos_read(
     let owner = derived_owner(master, "context", label);
     let agent_pub = decode_pub(agent_pub_mb)?;
     let mut bundle = Bundle::open(store).map_err(bridge_err)?;
-    let state: BridgeState = read_json(&bundle, STATE_PATH)?;
+    let state: BridgeState = read_state_migrating(&mut bundle)?;
     let agent_cert: Mandate = read_json(&bundle, &cert_path(&state.agent_mandate))?;
     if agent_cert.grantee_pub().map_err(bridge_err)? != agent_pub {
         return Err(GatewayError::ConfigRejected(
@@ -6222,8 +6230,8 @@ fn preview_load(
     servers: &[String],
     store: GatewayStore,
 ) -> Result<PreviewInputs> {
-    let bundle = Bundle::open(store.clone()).map_err(bridge_err)?;
-    let state: BridgeState = read_json(&bundle, STATE_PATH)?;
+    let mut bundle = Bundle::open(store.clone()).map_err(bridge_err)?;
+    let state: BridgeState = read_state_migrating(&mut bundle)?;
     let mandate: Mandate = read_json(&bundle, &cert_path(&state.agent_mandate))?;
     let doc: DidDocument = read_json(&bundle, "did.json")?;
     let entries = bundle.gamma_entries().map_err(bridge_err)?;
@@ -6552,6 +6560,19 @@ fn read_json<T: serde::de::DeserializeOwned>(
         .map_err(bridge_err)?
         .ok_or_else(|| GatewayError::BridgeFailed(format!("missing {path}")))?;
     serde_json::from_slice(&bytes).map_err(bridge_err)
+}
+
+/// Read the bridge state, migrating the pre-SPL-2 key on first touch:
+/// when [`STATE_PATH`] is absent and [`LEGACY_STATE_PATH`] present, the
+/// bytes are copied verbatim under the new key — the legacy object is
+/// never deleted — then read back from the new key.
+fn read_state_migrating(bundle: &mut Bundle<GatewayStore>) -> Result<BridgeState> {
+    if bundle.store.get(STATE_PATH).map_err(bridge_err)?.is_none() {
+        if let Some(legacy) = bundle.store.get(LEGACY_STATE_PATH).map_err(bridge_err)? {
+            bundle.store.put(STATE_PATH, &legacy).map_err(bridge_err)?;
+        }
+    }
+    read_json(bundle, STATE_PATH)
 }
 
 fn bridge_err(e: impl std::fmt::Display) -> GatewayError {

@@ -210,7 +210,7 @@ async fn provider_primary_session_writes_are_scoped_and_fail_closed() {
     let mut state: serde_json::Value = serde_json::from_slice(
         &local_bundle
             .store
-            .get("gateway/state.json")
+            .get(aithos_gateway::core_bridge::STATE_PATH)
             .expect("gateway state read")
             .expect("gateway state"),
     )
@@ -219,7 +219,7 @@ async fn provider_primary_session_writes_are_scoped_and_fail_closed() {
     local_bundle
         .store
         .put(
-            "gateway/state.json",
+            aithos_gateway::core_bridge::STATE_PATH,
             &serde_json::to_vec_pretty(&state).expect("gateway state encode"),
         )
         .expect("gateway state update");

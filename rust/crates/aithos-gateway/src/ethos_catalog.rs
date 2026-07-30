@@ -708,8 +708,9 @@ fn persist_bridge_state(sidecar: &Path, agent_mandate: &str, gateway_mandate: &s
         "gateway_mandate": gateway_mandate,
     }))
     .map_err(|_| catalog_invalid())?;
-    let directory = sidecar.join("gateway");
     let path = sidecar.join(STATE_PATH);
+    let directory = path.parent().ok_or_else(catalog_invalid)?.to_path_buf();
+    std::fs::create_dir_all(&directory).map_err(|_| catalog_unavailable())?;
     let serial = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
     let temp = directory.join(format!(".state.json.tmp-{}-{serial}", std::process::id()));
     let result = (|| -> io::Result<()> {

@@ -566,9 +566,9 @@ async fn gateway_session_working_set_creates_circle_content_on_the_real_provider
         .expect("Gateway circle delivery");
 
     let sidecar = tempfile::tempdir().expect("sidecar");
-    std::fs::create_dir_all(sidecar.path().join("gateway")).expect("sidecar directory");
+    std::fs::create_dir_all(sidecar.path().join("x/gateway")).expect("sidecar directory");
     std::fs::write(
-        sidecar.path().join("gateway/state.json"),
+        sidecar.path().join(aithos_gateway::core_bridge::STATE_PATH),
         serde_json::to_vec_pretty(&serde_json::json!({
             "agent_mandate": agent_parent.publication().mandate_id(),
             "gateway_mandate": gateway_parent.publication().mandate_id(),
@@ -966,9 +966,9 @@ async fn gateway_session_working_set_creates_named_folder_content_on_the_real_pr
         .expect("Gateway circle delivery");
 
     let sidecar = tempfile::tempdir().expect("sidecar");
-    std::fs::create_dir_all(sidecar.path().join("gateway")).expect("sidecar directory");
+    std::fs::create_dir_all(sidecar.path().join("x/gateway")).expect("sidecar directory");
     std::fs::write(
-        sidecar.path().join("gateway/state.json"),
+        sidecar.path().join(aithos_gateway::core_bridge::STATE_PATH),
         serde_json::to_vec_pretty(&serde_json::json!({
             "agent_mandate": agent_parent.publication().mandate_id(),
             "gateway_mandate": gateway_parent.publication().mandate_id(),
