@@ -269,7 +269,10 @@ fn timestamp_window(parent: &EligibleParent, verified_at: &str) -> Result<(Strin
     if after <= before {
         return Err("eligible parent has no usable delegated-session window".into());
     }
-    Ok((crate::ts(before as u64), crate::ts(after as u64)))
+    Ok((
+        crate::cmd::common::ts(before as u64),
+        crate::cmd::common::ts(after as u64),
+    ))
 }
 
 fn write_tokens(path: &PathBuf, document: &Value) -> Result<()> {
