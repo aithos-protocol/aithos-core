@@ -12,7 +12,7 @@
 | Branch | `codex/audit-c-headers` |
 | Worktree state | clean except the pre-existing untracked `_to_delete/` |
 | Scope | the semantic truth of the eight existing scenarios; four `Rule` blocks |
-| Finding prefix | `CHDR-*` |
+| Finding prefix | `CHDR-*` (`CHDR-001` … `CHDR-016`) |
 | Domain | `features/.agents/c-headers/DOMAIN.md` |
 | Run report | `features/.agents/c-headers/auditor/runs/2026-07-30-audit-initial.md` |
 
@@ -68,12 +68,13 @@ fact, and the two are not equivalent:
 - "the revoked **gets no line**" is proved as "the revoked cannot open";
 - "**every other** line untouched" is proved against a header with one line;
 - "bound to its node **and version**" varies only the node;
-- "an up-link wrap **restores derivation**" performs no derivation at all.
+- "an up-link wrap **restores derivation**" performs no content-tree
+  derivation at all.
 
 One scenario is a semantic false positive: `An up-link wrap restores derivation
-for the parent holder` contains no derived node, no rotation, no parent, and no
-derivation. It seals a constant under a constant and opens it with the same
-constant, two steps later, in the same scenario.
+for the parent holder` contains no derived node, no rotation, and no
+content-tree derivation. It seals a constant under a constant and opens it with
+the same constant, two steps later, in the same scenario.
 
 Two `Then` functions — `opening_rejected` and `revoked_cannot_open` — are bare
 `is_err()` checks on an API that returns a byte-identical error for every
@@ -118,7 +119,51 @@ exits `0` even when scenarios fail. The observed `GATE_EXIT=0` is reported here
 only for completeness and carries no verdict.
 
 The auditor ran no unfiltered Cucumber, no broad regression, and no workspace
-gate. No focused test was needed: no semantic contradiction required one.
+gate during the audit itself, and needed no focused test: no semantic
+contradiction arose.
+
+### Adversarial verification of the top findings (disclosed deviation)
+
+After the audit was written, its four highest-severity claims were handed to an
+independent verifier instructed to **refute** them. All four survived. Two were
+settled by mutation experiment rather than by code reading, which is stronger
+evidence than an initial audit normally produces and is recorded here as such.
+
+**`CHDR-003`.** `Header::check_rotation`'s body was replaced by an
+unconditional `panic!`, the workspace rebuilt, and the feature gate re-run:
+
+```
+1 feature / 4 rules / 8 scenarios (8 passed) / 28 steps (28 passed)
+```
+
+Identical counts with a `check_rotation` that cannot execute. No `c-headers`
+step reaches it.
+
+**`CHDR-006`.** `line_aad` was rewritten to emit
+`purpose ‖ 0 ‖ did ‖ 0 ‖ node`, dropping the `key_version` component while
+leaving the shared `aad()` helper — and therefore `wrap_aad` and `blob_aad` —
+byte-for-byte untouched. Feature gate: `8 scenarios (8 passed)`. Then, to
+establish blast radius, the unfiltered suite:
+
+```
+18 features / 114 rules / 836 scenarios (836 passed) / 3577 steps (3577 passed)
+```
+
+The whole BDD layer is blind to it. The only failure anywhere in the workspace
+was `aithos-core::c1_header_seal::c1_owner_and_grantee_lines`, the byte
+cross-check against the Python-generated vector. That run also exposed
+`CHDR-016` below.
+
+Both mutations were reverted and the restoration verified by `diff` and
+`md5sum` against pre-edit backups; a final clean-tree run reproduced the
+baseline gate and `3 passed; 0 failed` for `c1_header_seal`.
+
+**Disclosed deviation from the role boundary.** `PROCESS.md` forbids the
+auditor from running unfiltered Cucumber. That unfiltered run happened, as a
+refutation attempt by an adversarial verifier measuring the blast radius of a
+deliberate mutation. It is reported here as the measurement it is and is
+**not** offered as a regression-gate claim; the corrector still owns the global
+gates. Reporting it is better than concealing it.
 
 One environment note, disclosed because it affects reproducibility rather than
 the verdict: the gate was executed against a `git archive` extract of the
@@ -146,9 +191,10 @@ Totals: 2 `PROVEN`, 5 `PARTIAL`, 1 `SEMANTIC_FALSE_POSITIVE`.
 
 ### `CHDR-001` — the up-link wrap scenario proves nothing it claims — `OPEN`, P1
 
-**Status:** `SEMANTIC_FALSE_POSITIVE`. **Scenario 8.**
+**Status:** `SEMANTIC_FALSE_POSITIVE`. **Scenario 8.** Independently verified by
+adversarial refutation — see §4.
 
-The scenario contains no derived node, no rotation, no parent and no
+The scenario contains no derived node, no rotation, and no content-tree
 derivation. `Given a derived node rotated to a fresh random key` is an empty
 body (`cucumber.rs:7597-7600`) that writes nothing; `w.header` stays `None` for
 the whole scenario. The `When` (`cucumber.rs:8163-8174`) constructs
@@ -157,13 +203,23 @@ the whole scenario. The `When` (`cucumber.rs:8163-8174`) constructs
 `PARENT_KEY` and compares the result with `DK2`. That is an AEAD round-trip
 under a constant, asserted two steps after the seal.
 
-`PARENT_KEY = [0x55; 32]` (`cucumber.rs:265`) is a bare fixture: it is produced
-by no `derive_key`, it is opened from no header line, and it is not the key of
-the node the wrap names as its parent — everywhere else in this feature
-`NODE_A`'s key is `DK = [0x77; 32]`. `DK2 = [0x66; 32]` is produced by no
-rotation in this scenario. Nothing computes `node_key` for `CHILD_NODE`, so the
-derivation path the wrap is supposed to *restore* is never established, never
-severed, and never re-established.
+Two precisions, because the loose form of this finding is refutable. First,
+`derive_key` **is** reached: `wrap_seal` and `wrap_open` both call
+`derive_key(CTX_WRAP_KEY, via_key)` (`seal.rs:136-137`, `:150`). What is absent
+is *content-tree* derivation — no `node_key` walk, no `folder_label` /
+`section_label` step, no parent→child link. Second, `via = NODE_A =
+"/e/circle"` **is** textually the path-parent of `CHILD_NODE`; that relation is
+simply inert. `via` is stored as a struct field, never enters the AAD
+(`wrap_aad` is computed over the *wrapped* node, `header.rs:340`, `:352`), and
+is read by neither `Wrap::open` nor the `Then`.
+
+`PARENT_KEY = [0x55; 32]` (`cucumber.rs:265`) is a bare fixture: it is the
+output of no `node_key` walk, it is opened from no header line, and it is not
+the key of the node the wrap names as its parent — everywhere else in this
+feature `NODE_A`'s key is `DK = [0x77; 32]`. `DK2 = [0x66; 32]` is produced by
+no rotation in this scenario. Nothing computes `node_key` for `CHILD_NODE`, so
+the derivation path the wrap is supposed to *restore* is never established,
+never severed, and never re-established.
 
 Spec `03-headers.md:69-78` and `:83-87` state the purpose: holders of the
 parent *or of any ancestor of it* keep reading the rotated node by derivation
@@ -204,7 +260,7 @@ call `header.check_rotation(2).unwrap()` there (see `CHDR-003`).
 
 ### `CHDR-003` — the Rule's contract is owned by a function it never calls — `OPEN`, P2
 
-**Status:** `PARTIAL`. **Scenario 7.**
+**Status:** `PARTIAL`. **Scenario 7.** Proven by mutation — see §4.
 
 `Header::check_rotation` (`header.rs:275-305`) implements exactly the
 well-formedness the Rule title asserts: every new-version `kid` must exist in
@@ -215,8 +271,12 @@ call sites are all elsewhere: `aithos-bundle/src/revoke.rs:199`,
 `aithos-bundle/src/vault.rs:400`, `cucumber.rs:15260` (a `g-revocation` step),
 `aithos-core/tests/g2_rotation.rs:79,92`.
 
-Consequence: the `c-headers` Rule that names rotation as its subject would stay
-green if `check_rotation` were deleted.
+Consequence: the `c-headers` Rule that names rotation as its subject stays
+green when `check_rotation`'s body is replaced by an unconditional `panic!` —
+verified, §4. (Stated precisely: *deleting* the function would break
+compilation of `revoke.rs:199`, `vault.rs:400`, `cucumber.rs:15260` and
+`g2_rotation.rs:79,92`, so the gate would not build. Neutralising its body is
+the meaningful test, and the gate does not notice.)
 
 This is not a report that a smuggled-recipient scenario is missing — that would
 be out of scope. It is that the scenario which *does* claim the cut never
@@ -259,7 +319,8 @@ Subsumed by `CHDR-001`'s correction if that correction rotates a real child.
 
 ### `CHDR-006` — the "version" half of the binding scenario is never exercised — `OPEN`, P2
 
-**Status:** `PARTIAL`. **Scenario 4.**
+**Status:** `PARTIAL`. **Scenario 4.** Proven by mutation, and **worse than the
+scenario-level statement suggests** — see §4.
 
 The line AAD binds `subject_did ‖ node ‖ key_version` (`seal.rs:21-31`,
 `:35-37`; spec `03-headers.md:124-126`). In `replay_line_other_node`
@@ -267,12 +328,14 @@ The line AAD binds `subject_did ‖ node ‖ key_version` (`seal.rs:21-31`,
 (`header.rs:116`) and the open is at version 1, so `subject_did` and
 `key_version` are identical on both sides and only `node` differs.
 
-A regression that dropped `key_version` — or `subject_did` — from `line_aad`
-would leave all four scenarios of RU-1 green. Cross-version line replay, the
-exact threat §3.8 is written against, has no Gherkin coverage. The only
-version-mismatch check in the repository is
-`aithos-core/tests/c1_header_seal.rs:105-107`, at the primitive level, outside
-the Gherkin, and not reached by any scenario.
+A regression that drops `key_version` from `line_aad` leaves not merely the
+four scenarios of this Rule green but **the entire Cucumber suite green — all
+18 features, 836 scenarios, 3577 steps** (measured, §4). Cross-version line
+replay, the exact threat §3.8 is written against, has no behavioral coverage
+anywhere in the repository. The single detector is the byte-exactness
+cross-check `aithos-core/tests/c1_header_seal.rs:66` against the independently
+generated Python vector — and see `CHDR-016`, which is the reason that detector
+is the *only* one.
 
 **Closure criteria.** Add a second recorded attempt that transplants the same
 v1 owner line into a v2 key version of the *same* node (or opens it at
@@ -495,6 +558,39 @@ I3-violating header can enter or survive an edition through a path the scenario
 never crosses. It does not qualify scenario 5's `PROVEN` verdict: the Gherkin
 claims only build-time rejection, and absence of a scenario is out of scope.
 
+### `CHDR-016` — the one test that guards version binding guards it vacuously — `OPEN`, P2
+
+**Status:** `PARTIAL`. **Not a scenario finding** — a core-test finding
+surfaced by the `CHDR-006` mutation, recorded here because it is the reason
+`CHDR-006` matters more than it looks.
+
+`aithos-core/tests/c1_header_seal.rs:105-107` is the repository's only explicit
+negative test for key-version binding:
+
+```rust
+let other_ver = line_aad(&v.subject_did, &v.node, v.key_version + 1);
+assert!(open_line(&sk, &epk, &c, &n, &other_ver).is_err());
+```
+
+Under the `CHDR-006` mutation — `line_aad` with the `key_version` component
+removed — this assertion **still passed**. It passed vacuously: with
+`key_version` gone, the recomputed AAD no longer matches the vector's
+ciphertext at all, so the open fails for an entirely different reason than the
+one the test names. The same reasoning applies to the sibling assertions in
+`c1_fail_closed` (`:92-107`), each of which asserts only `is_err()` on a
+ciphertext whose baseline openability is established in a *different* test
+function.
+
+So version binding in this repository is protected by exactly one thing: the
+byte cross-check at `c1_header_seal.rs:66` against independently generated
+Python bytes. Nothing behavioral defends it, including the test written to
+defend it.
+
+**Closure criteria.** Give `c1_fail_closed` a positive control in its own body
+— assert that the unmodified `(sk, epk, c, n, aad)` tuple opens to `dk_hex`
+first — so that each subsequent negative assertion is a genuine differential
+against a known-good baseline rather than an unanchored `is_err()`.
+
 ## 7. Implementation plan
 
 Ordered by value. The whole set is test-and-fixture work in
@@ -515,7 +611,7 @@ the evidence, not the product.
 | 4 | `CHDR-006` | Add the cross-version replay attempt to scenario 4 | Drop `key_version` from `line_aad` → must fail, where today it passes |
 | 5 | `CHDR-010`, `CHDR-011`, `CHDR-012` | Two-recipient fixture for scenario 6, whole-vector snapshot, prefix + length assertions, post-append owner re-open | Change `push` to `insert(0, …)` → must fail; re-seal the surviving lines on append → must fail |
 | 6 | `CHDR-008` | Derive the kid list from the header; assert attempt count | Add a third line to the fixture → must fail |
-| 7 | `CHDR-009` | Vector-anchor the `Header` layer in `c1_header_seal.rs` | Swap the recipient/ephemeral zip order in `build_lines` → must fail |
+| 7 | `CHDR-009`, `CHDR-016` | Vector-anchor the `Header` layer in `c1_header_seal.rs`; give `c1_fail_closed` a positive control | Swap the recipient/ephemeral zip order in `build_lines` → must fail; drop `key_version` from `line_aad` → `c1_fail_closed` must fail *on its version case*, not merely somewhere |
 | 8 | `CHDR-013`, `CHDR-014` | Populate the three empty `Given`s; assert the typed I3 error | Reword the I3 message → must **not** fail after the fix |
 
 Lot 1 and lot 2 are the security-relevant ones and should land first.

@@ -271,9 +271,56 @@ Performed last, over the four frozen reports and the shared fixture layer.
   rotation posts the up-link wrap. The weaknesses found are in the evidence
   layer, not in `aithos-core` or `aithos-bundle`.
 
+## Adversarial verification pass
+
+After the audit was drafted, its four highest-severity claims (`CHDR-001`,
+`CHDR-002`, `CHDR-003`, `CHDR-006`) were handed to an independent verifier
+instructed to refute them, defaulting to "refuted" on any claim it could not
+independently confirm. **All four survived.** Two were settled empirically:
+
+- `CHDR-003`: `check_rotation`'s body replaced by an unconditional `panic!` →
+  the gate still printed `8 scenarios (8 passed) / 28 steps (28 passed)`.
+- `CHDR-006`: `key_version` removed from `line_aad` (shared `aad()` helper, and
+  therefore `wrap_aad`/`blob_aad`, left untouched) → the feature gate stayed
+  green, and so did the **unfiltered** suite: `18 features / 114 rules / 836
+  scenarios (836 passed) / 3577 steps (3577 passed)`. The only failure in the
+  workspace was `c1_header_seal::c1_owner_and_grantee_lines`.
+
+Both mutations were reverted; restoration was verified by `diff` and `md5sum`
+against pre-edit backups and by a clean-tree re-run.
+
+The verifier returned three wording corrections, all applied to the public
+audit before it was committed:
+
+1. `CHDR-001`'s "no derivation" was literally false — `wrap_seal`/`wrap_open`
+   do call `derive_key(CTX_WRAP_KEY, …)` (`seal.rs:136-137`, `:150`). Corrected
+   to "no **content-tree** derivation: no `node_key` walk, no
+   `folder_label`/`section_label` step, no parent→child link".
+2. `CHDR-001`'s "no parent" was overstated — `via = "/e/circle"` *is* the
+   textual path-parent of `CHILD_NODE`. Corrected to state that the relation is
+   inert: `via` never enters the AAD and is read by neither `Wrap::open` nor the
+   `Then`.
+3. `CHDR-003`'s "would stay green if `check_rotation` were deleted" was false as
+   written — deletion breaks compilation at four call sites. Corrected to
+   "stays green when its body is neutralised", which is what was measured.
+
+The verifier also found the audit **understated** `CHDR-006` (blast radius is
+the whole suite, not one Rule) and surfaced one new finding, `CHDR-016`: the
+repository's only explicit key-version-binding negative test
+(`c1_header_seal.rs:105-107`) passed *vacuously* under the mutation, because it
+asserts `is_err()` on a ciphertext whose baseline openability is established in
+a different test function. Version binding is therefore defended by exactly one
+byte cross-check and by nothing behavioral — including by the test written to
+defend it.
+
+**Disclosed deviation.** `PROCESS.md` forbids the auditor from running
+unfiltered Cucumber. That run happened, inside the refutation pass, to measure
+a mutation's blast radius. It is reported as a measurement and is not offered
+as a regression-gate claim; the corrector still owns the global gates.
+
 ## Findings
 
-Fifteen findings, `CHDR-001` … `CHDR-015`, all `OPEN`, detailed in
+Sixteen findings, `CHDR-001` … `CHDR-016`, all `OPEN`, detailed in
 `docs/audits/features/c-headers.md` §6 with evidence, expected behavior and
 closure criteria. `CHDR-015` is `DECISION_REQUIRED`.
 
@@ -296,6 +343,7 @@ Mapping from the frozen Pass A identifiers:
 | `CHDR-013` | RU2-a, RU1-e, and RU-4's third empty `Given` |
 | `CHDR-014` | RU2-b (absorbing RU2-c and RU2-d as informational notes) |
 | `CHDR-015` | RU2-e |
+| `CHDR-016` | none — surfaced by the adversarial verification pass |
 
 ## Gherkin markers
 
@@ -363,8 +411,9 @@ Not findings of this feature; recorded so they are not lost.
   implementation is correct beyond what they touch. Every trace that reached
   `aithos-core` found it faithful to spec §03, but that is a by-product of
   tracing the scenarios, not an audit of `header.rs`.
-- No mutation experiment was run. Statements of the form "a regression that
-  dropped X would leave the scenario green" are derived from reading the
+- Mutation experiments were run for `CHDR-003` and `CHDR-006` only, during the
+  adversarial verification pass. Every other statement of the form "a regression
+  that dropped X would leave the scenario green" is derived from reading the
   assertions and the control flow, not from a reproduced RED run. The
   corrector's RED tests will supply that proof; the "Expected RED" column of the
   implementation plan states what each must demonstrate.

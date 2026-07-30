@@ -10,7 +10,7 @@
 | Audited revision (frozen, immutable) | `3803fe806702143d5bb887b5ddc33fd3e0526285` |
 | Worktree state at audit | clean except the pre-existing untracked `_to_delete/` |
 | Gate evidence | 1 feature / 4 rules / 8 scenarios (8 passed) / 28 steps (28 passed) |
-| Findings | `CHDR-001` … `CHDR-015`, all `OPEN` |
+| Findings | `CHDR-001` … `CHDR-016`, all `OPEN` |
 | Findings `DECISION_REQUIRED` | `CHDR-015` |
 | Verdict | 2 `PROVEN`, 5 `PARTIAL`, 1 `SEMANTIC_FALSE_POSITIVE` |
 | Audit run | `auditor/runs/2026-07-30-audit-initial.md` |
@@ -52,8 +52,13 @@ happen.
 ### Assigned after lots 1 and 2 land
 
 `CHDR-007`, `CHDR-006`, `CHDR-010`, `CHDR-011`, `CHDR-012`, `CHDR-008`,
-`CHDR-009`, `CHDR-013` (scenarios 1 and 5), `CHDR-014` — in the order given by
-§7 of the public audit.
+`CHDR-009`, `CHDR-016`, `CHDR-013` (scenarios 1 and 5), `CHDR-014` — in the
+order given by §7 of the public audit.
+
+`CHDR-006` and `CHDR-016` belong together: dropping `key_version` from
+`line_aad` was measured to leave all 836 scenarios of the whole suite green,
+and the one core test written to catch it passes vacuously. Fix both or the
+mutation stays undetectable behaviorally.
 
 ### Not assigned
 

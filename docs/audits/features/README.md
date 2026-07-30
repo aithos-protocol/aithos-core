@@ -76,4 +76,4 @@ presented as a silent substitute for another.
 |---|---|---|
 | `a-identity.feature` | [`a-identity.md`](a-identity.md) | Round 2 audit and impact review complete; AID-001/002/005 verified within pilot scope; AID-003 open; AID-004 decision required |
 | `b-derivation.feature` | [`b-derivation.md`](b-derivation.md) | Round 1 review accepted: BDER-001/002/003/004/005/009 `VERIFIED`; BDER-011 (harness, repo-wide) and BDER-012 opened; BDER-006 decision still required |
-| `c-headers.feature` | [`c-headers.md`](c-headers.md) | Round 1 initial audit: 2 `PROVEN`, 5 `PARTIAL`, 1 `SEMANTIC_FALSE_POSITIVE`; CHDR-001..014 open, CHDR-015 decision required |
+| `c-headers.feature` | [`c-headers.md`](c-headers.md) | Round 1 initial audit: 2 `PROVEN`, 5 `PARTIAL`, 1 `SEMANTIC_FALSE_POSITIVE`; CHDR-001..014 and CHDR-016 open, CHDR-015 decision required |
