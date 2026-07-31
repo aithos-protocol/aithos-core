@@ -17,6 +17,35 @@ promotion (spec §09.2).
 3. **Frozen once green.** A merged vector never changes; a spec change that
    would alter one requires a new vector id and an explicit spec redline.
 
+## Ownership across the repo split
+
+The gateway/service repo split
+(`docs/CHANTIER-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`, lot SPL-7) gives
+every entry of this directory exactly one owner, materialized in
+[`ownership.json`](ownership.json) and enforced by
+`rust/crates/aithos-bundle/tests/vectors_ownership.rs`:
+
+- **`owner: core`** — protocol vectors (`a*`, `b*`, `c1*`, `cb*`, `e*`,
+  `f*`, `g*`, `h*`, `i*`), their generators, and this README. They stay in
+  `aithos-core`, under CC BY 4.0 (`LICENSE-DOCUMENTATION.md`).
+- **`owner: service`** — provider wire vectors (`p1` → `p9`) and their
+  tooling (`gen-p*`, `verify-p*`, `red-replay-p*`, `bench-p4.py`,
+  `deployed-replay-*`, `gen-p7-bundle/`). They leave with the
+  `aithos-service` repository at lot SPL-8; until then they cohabit here
+  unchanged.
+- **`shared: true`** — core-owned vectors also consumed by service-side
+  crates (`a1-genesis.json` and `cb2-draft2-carriers.json` by
+  `aithos-provider`; `cb2-session-proof.json` and
+  `cb14-delegated-session-chain.json` by `aithos-gateway`). Their single
+  owner is `aithos-core`; after the split, the service repo consumes them
+  read-only at a pinned `aithos-core` version — **never duplicated, never
+  re-committed there**.
+
+The manifest also pins the SHA-256 of every vector, which makes rule 3
+mechanical: a frozen vector that drifts by one byte turns the ownership
+test red. Adding a vector means adding its manifest entry (name, owner,
+digest) in the same change.
+
 ## Schema
 
 ```jsonc

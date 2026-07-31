@@ -1,0 +1,534 @@
+{
+  "manifest": "vectors-ownership",
+  "version": 1,
+  "updated": "2026-07-31 (lot SPL-7)",
+  "rule": "Every entry has exactly one owner. owner=core stays in aithos-core (CC BY 4.0); owner=service leaves with the aithos-service repo at lot SPL-8. shared=true marks core-owned vectors consumed by service-side crates: they stay here and are exposed to the service repo read-only at a pinned version, never duplicated. Enforced by rust/crates/aithos-bundle/tests/vectors_ownership.rs.",
+  "entries": [
+    {
+      "name": "README.md",
+      "kind": "doc",
+      "owner": "core"
+    },
+    {
+      "name": "a1-genesis.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "ffb5ac6cda6591e91ecc80feb44ddc816a10d0fd6fbf63cb41df54ca9dcf4292",
+      "shared": true,
+      "service_consumers": [
+        "aithos-provider"
+      ]
+    },
+    {
+      "name": "a2-did.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "e677bd59f9ceefc7eae725f2222b715f07d9dbf066dc4296a1a9ad21a13bca36"
+    },
+    {
+      "name": "b2-derivation.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "73a4740d5d0c4361e91fc54c3def279517701689e653f8f99928b186a007b139"
+    },
+    {
+      "name": "bench-p4.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "c1-header-seal.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "af0f63bd874123b825601beecb09be3f15575fec7411f37cf4548aa9dae3650d"
+    },
+    {
+      "name": "cb14-delegated-session-chain.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "1a744d4f7fc48cf0676264f4c56ee38804999395c4e7423e1d1933fa1d9c9a84",
+      "shared": true,
+      "service_consumers": [
+        "aithos-gateway"
+      ]
+    },
+    {
+      "name": "cb15-external-delegated-grant.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "bf7a73082b4ef93f76672dc0ae42178c720b515d22df311be073a35d4e4fc440"
+    },
+    {
+      "name": "cb2-bundle-authority-flows.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "30545958c170fda12e53817d3c5b7adb295432a4352e1abcbc7749fdd5c7eca0"
+    },
+    {
+      "name": "cb2-bundle-boundaries.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "73149da64fbdc73bcfd81f8a3d11c83e9421e43f2053ad649bf0db0f585ee187"
+    },
+    {
+      "name": "cb2-bundle-concurrency-final.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "6bf4dadde60b902ac114685c52abc1893f9eaa8b09dcc0bcd06876d31f6a83d1"
+    },
+    {
+      "name": "cb2-bundle-structure-vault.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "ebaf4871a233f1f4631f1ec21c63a3cec68fd0829c6a9dddfe3d6d9aa4179f5d"
+    },
+    {
+      "name": "cb2-bundle-version-coexistence.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "61b53d0765c278a56adfa1b35bee99f5144d8ceeb78430be59aa50a8a519ba3c"
+    },
+    {
+      "name": "cb2-connector-catalog.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "f73b35d29602217983c6401f06fbb49c73032a955d0ac14356d3a988181fe43c"
+    },
+    {
+      "name": "cb2-core-bundle-red-ledger.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "a19618e7736f75fcd980be41dfec3b82a9b8ebba96990e47b19dd2944ed4b554",
+      "frozen": false
+    },
+    {
+      "name": "cb2-delegated-counts.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "c1edd459b00ff72f2693e54370a60d2c8b981c18ee10d213a4b26897ed2618f1"
+    },
+    {
+      "name": "cb2-draft2-carriers.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "2e75e9af30ba0207bd01a6f347cac1a263f816a7ae0fb3d583f75beabef2badc",
+      "shared": true,
+      "service_consumers": [
+        "aithos-provider"
+      ]
+    },
+    {
+      "name": "cb2-gamma-v2-replay.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "a3cc536ea452940af061ce421c238e08f0894923562b8c8193dbb8d8b853cd06"
+    },
+    {
+      "name": "cb2-mandate-contracts.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "771eef3b92314a5cc6a37882a35cc81cbbb2b4e0d4976c4d555a10ba05cf1e3e"
+    },
+    {
+      "name": "cb2-max-children-versioning.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "b0f49be51b9ed2097234ad161f11a1b0af546e6ec4f8a99e1cc43c83eef5b1ec"
+    },
+    {
+      "name": "cb2-operation-facts-action-inference.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "4e1f319439ec4cc5faef2012a2a8aa198ba8d62fced2f330d2bbd13580c78b71"
+    },
+    {
+      "name": "cb2-operation-facts-mutation.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "dc3a57de91ff50895b680111da4da981e1518ad2dcd638d862e63be9eb29b83d"
+    },
+    {
+      "name": "cb2-operation-facts-read.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "b8b4014b390fc3ebc65897f8b59d084da78c97137e9ad7f7703dbe5b0e0194db"
+    },
+    {
+      "name": "cb2-operation-facts-structural.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "1be1d239055e5a66f0c64d3ca2c2b00cd102bac44a7cd8c2147d16dce8d275e3"
+    },
+    {
+      "name": "cb2-operation-projection.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "99bc175e0b4f07dece0afa828fff22be9be75d4b66f8b00fee3e7d427021e14c"
+    },
+    {
+      "name": "cb2-operation-receipts.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "2ce3d53bda43dc28ce599a8f7ec97d0050c3bf61b8f9ade4b51e8a74336ff22c"
+    },
+    {
+      "name": "cb2-session-proof.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "17553dd95f515e8045e17e8e46816b1d7e2007d4985eec0048fcac34197bef74",
+      "shared": true,
+      "service_consumers": [
+        "aithos-gateway"
+      ]
+    },
+    {
+      "name": "cb2-store-key-consumer-neutrality.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "bc809473159f81b83d7f9b168117864e084650a2e5d29e90f353cba80228777e"
+    },
+    {
+      "name": "deployed-replay-etape6.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "deployed-replay-p3.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "deployed-replay-witness.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "e1-mandate.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "e243e2348f3778c8e9ec9a3bbc350d480aeb779c4cadac0f8d00f9007264d45e"
+    },
+    {
+      "name": "eplus-attenuation.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "9822d9da417487740b50efc1a760883addf8fffcaa0fa2008e029ab473d1db8c"
+    },
+    {
+      "name": "f1-gamma-chain.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "38d466f934f17e99acbbdb76fb236efafb36f7b1c4070e9729d6edca17768ca3"
+    },
+    {
+      "name": "f2-gamma-counting.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "d593d204144ffa81c2ba51393d8190081d80f29246f41fdfa3fed96db77d230f"
+    },
+    {
+      "name": "f3-gamma-liveness.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "20d06f2d8d59fa21c391be6f97c4141a53244def27d8a2dbc249e8364c9cd30e"
+    },
+    {
+      "name": "fplus-constraints.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "36ef0237501a3911487057a86c5022da7d254f19750b71b38a5150ec6830dc98"
+    },
+    {
+      "name": "g1-revocation.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "a568cc943b38c8b2fd146163244269d58f7d85f54247adda5dff948310ec8a00"
+    },
+    {
+      "name": "g2-rotation.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "be223ff1064bb297115f9da9ebbaf18a328c70b6af4f408ff529e1effe17eb49"
+    },
+    {
+      "name": "g3-move.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "32bc86a117bf56a93f13a693aead2976354c68594863f6c685ba15f68611ad98"
+    },
+    {
+      "name": "gen-cb14-delegated-session-chain.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb15-external-delegated-grant.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-bundle-authority-flows.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-bundle-boundaries.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-bundle-concurrency-final.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-bundle-structure-vault.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-bundle-version-coexistence.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-connector-catalog.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-delegated-counts.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-draft2-carriers.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-gamma-v2-replay.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-mandate-contracts.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-max-children.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-operation-facts-action-inference.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-operation-facts-mutation.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-operation-facts-read.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-operation-facts-structural.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-operation-projection.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-operation-receipts.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-cb2-session-proof.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-eplus.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-f.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-fplus.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-g.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-gplus.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-h.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-h2.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-i.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
+      "name": "gen-p.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "gen-p7-bundle",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "gen-p7.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "gen-p8.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "gen-p9.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "gplus-obligations.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "f74f6c2b4611e798c0c00bd35ccdfb056e26de2d558efc0e2c3ad04ae57a7285"
+    },
+    {
+      "name": "h1-merkle.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "590efdd79e03859a17ba677e3f23cf9c3b2c83b473b255154c4376ba117274bd"
+    },
+    {
+      "name": "h2-gamma-roots.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "c497b9b2bced8fbf449ab249ea193cda956d2438a003f7bd06f6173c3486ef50"
+    },
+    {
+      "name": "i1-concurrency.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "556de81a4e842e04ada7b0521c89845000e3174d66ddd7c1736cdfb24b3e7864"
+    },
+    {
+      "name": "p1-store-envelope.json",
+      "kind": "vector",
+      "owner": "service",
+      "sha256": "038a815f8959b662913af5b668b0d467dec1cad474a77196773e5e4014ebc877"
+    },
+    {
+      "name": "p2-store-cas.json",
+      "kind": "vector",
+      "owner": "service",
+      "sha256": "163ff8b6ce891d0c13a32eaf12ee55ce2648d71ab49fb730857dcd65aca76b41"
+    },
+    {
+      "name": "p3-tunnel-register.json",
+      "kind": "vector",
+      "owner": "service",
+      "sha256": "6d06ee4565061a9a16f7d83b77b01dee9066435f2fe15fb58bb3eb8de86b9f34"
+    },
+    {
+      "name": "p4-witness-checkpoint.json",
+      "kind": "vector",
+      "owner": "service",
+      "sha256": "38087e8ccfd955d3fd94fe9df1bcb02b83dfc880979a5d0e791ec23f97b51d5d"
+    },
+    {
+      "name": "p5-tunnel-sni.json",
+      "kind": "vector",
+      "owner": "service",
+      "sha256": "60b5af0dfccfdc3bf8ce99fd7ca0144a7e0657ba99827ac9e4f6e542640b6d39"
+    },
+    {
+      "name": "p6-acme-txt.json",
+      "kind": "vector",
+      "owner": "service",
+      "sha256": "644d26860c25f5e486cbe41c9a88c5f85f617b394bcc22dce97b01a406ca190e"
+    },
+    {
+      "name": "p7-bundle-packages.json",
+      "kind": "vector",
+      "owner": "service",
+      "sha256": "00793c25b89837b69a1a68aafbe825ebaa42161b6bc04b199839639b6bc05324"
+    },
+    {
+      "name": "p7-store-publication.json",
+      "kind": "vector",
+      "owner": "service",
+      "sha256": "b1cdfd4676a8d53fed45c558a8b96e771e309325e18bed13309e0a809132877a"
+    },
+    {
+      "name": "p8-cold-roundtrip.json",
+      "kind": "vector",
+      "owner": "service",
+      "sha256": "1a71b9e6a12dc6d90ba0c9c2a86f3e5707185f2f7e5d48b08b7039aa1de9112c"
+    },
+    {
+      "name": "p9-store-reads.json",
+      "kind": "vector",
+      "owner": "service",
+      "sha256": "4b4aff7473c8d06be9b0883c6aeb0a8ae304a297fc0d21779219507ab8b967a1"
+    },
+    {
+      "name": "red-replay-p7.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "red-replay-p9.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "verify-p.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "verify-p7.py",
+      "kind": "tooling",
+      "owner": "service"
+    },
+    {
+      "name": "verify-p9.py",
+      "kind": "tooling",
+      "owner": "service"
+    }
+  ]
+}
