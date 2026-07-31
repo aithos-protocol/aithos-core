@@ -55,3 +55,46 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: check wasm surface
         run: cargo check -p aithos-wasm --target wasm32-unknown-unknown --manifest-path rust/Cargo.toml
+
+  # SPL-6 — le bundle de cérémonie servi par la gateway est un build vérifié.
+  # Reconstruit aithos-wasm sous la recette EXACTE gravée dans
+  # assets/ceremony/wasm-bundle-digest.json (toolchain pinnée, chemins
+  # remappés) et échoue si la source, les assets commités ou le pin
+  # divergent. Publie js + wasm + digest en artefact de run.
+  wasm-bundle:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aithos-core
+    steps:
+      - name: Checkout aithos-core
+        uses: actions/checkout@v4
+        with:
+          path: aithos-core
+      - name: Checkout pinned aithos-client
+        uses: actions/checkout@v4
+        with:
+          repository: aithos-protocol/aithos-client
+          ref: c6f615123ca3dc83708ba029b898375409551719
+          path: aithos-client
+      # Toolchain de la recette du pin — pas `stable` : le digest n'est
+      # comparable que sous la toolchain qui l'a produit. Un bump de
+      # toolchain se fait par `scripts/wasm-bundle.sh regen` + commit du
+      # pin, puis alignement de cette version.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95.0"
+          targets: wasm32-unknown-unknown
+      - name: install wasm-bindgen-cli (version du pin)
+        run: cargo install wasm-bindgen-cli --version 0.2.126 --locked
+      - name: rebuild bundle and compare digests (fail on drift)
+        run: scripts/wasm-bundle.sh check
+      - name: upload bundle + digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: aithos-wasm-ceremony-bundle
+          path: |
+            aithos-core/rust/crates/aithos-gateway/assets/ceremony/aithos_wasm.js
+            aithos-core/rust/crates/aithos-gateway/assets/ceremony/aithos_wasm_bg.wasm
+            aithos-core/rust/crates/aithos-gateway/assets/ceremony/wasm-bundle-digest.json
+          if-no-files-found: error

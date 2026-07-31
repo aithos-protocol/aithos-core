@@ -672,6 +672,31 @@ chaque scellement. Notes d'exécution :
 **Objectif.** Que l'artefact WASM servi par la gateway soit produit, versionné et
 vérifié, au lieu d'être commité à la main.
 
+**Ouverture du lot — 2026-07-31, références revérifiées.** Constat §2.4
+conforme : `assets/ceremony/` porte `aithos_wasm_bg.wasm` (540 872 o) et
+`aithos_wasm.js` (24 268 o) ; la CI (`ci.yml`, job `wasm`) ne fait que
+`cargo check`. Le glue est chargé en ESM (`wasm-bindgen --target web`),
+servi par `include_str!`/`include_bytes!` (`proxy_mcp.rs:1306/1313`) ;
+aucun test n'asservit les octets des assets. Décisions d'exécution :
+
+- **Recette reproductible** : `cargo build --locked -p aithos-wasm
+  --release --target wasm32-unknown-unknown` + `wasm-bindgen --target web`
+  (wasm-opt volontairement absent, conforme au choix existant du crate),
+  chemins remappés (workspace, CARGO_HOME, HOME) ; toolchain et version de
+  wasm-bindgen-cli **gravées dans le pin** — un check sous une autre
+  recette échoue fail-closed au lieu de comparer des octets incomparables.
+- **Pin** : `assets/ceremony/wasm-bundle-digest.json` (recette + SHA-256
+  des deux artefacts), à côté des assets — il partira avec eux au SPL-8.
+- **Outil unique** : `scripts/wasm-bundle.sh` (`check` | `regen` |
+  `print`), utilisé tel quel par la CI et en local.
+- **Dérive constatée à l'ouverture, prouvée au premier build** : le glue
+  JS reconstruit est byte-identique au commité (même wasm-bindgen-cli
+  0.2.126 le 22/07), mais le `.wasm` commité (sha256:08ddbe68…) diverge
+  du build courant du crate (sha256:7c06c9ee…, 540 872 → 541 906 o) — le
+  trou anticipé par le constat était bien réel. Le lot régénère l'artefact
+  depuis la source courante (le glue identique prouve l'ABI inchangée ;
+  la cérémonie consomme les mêmes exports).
+
 **Actions.**
 
 1. Ajouter à la CI `aithos-core` un job qui construit le bundle
@@ -686,6 +711,36 @@ vérifié, au lieu d'être commité à la main.
 **Critères de sortie.** Le job de build WASM vert ; le test de digest rouge si
 l'on modifie `aithos-wasm/src/lib.rs` sans régénérer l'artefact — à prouver par
 une modification jetable.
+
+**Sortie du lot SPL-6 — 2026-07-31, gates atteintes.** Livré :
+
+- `scripts/wasm-bundle.sh` (`check` | `regen` | `print`) — build
+  reproductible (recette gravée, chemins remappés), comparaison
+  fail-closed des trois côtés : source ↔ pin ↔ assets commités.
+- Artefact **régénéré** depuis la source courante : la dérive réelle
+  constatée à l'ouverture (`.wasm` commité 08ddbe68… ≠ build 7c06c9ee…,
+  glue JS byte-identique) est fermée ; pin
+  `assets/ceremony/wasm-bundle-digest.json` commité avec les assets.
+- Test gateway `tests/wasm_bundle_digest.rs` (2 tests, nouveau harnais) :
+  les octets servis par `include_bytes!` doivent égaler le pin, et le pin
+  doit porter une recette complète.
+- Job CI `wasm-bundle` (`ci.yml`) : reconstruit sous la toolchain du pin
+  (1.95.0 explicite, PAS `stable` — un digest n'est comparable que sous
+  la toolchain qui l'a produit), échoue sur toute dérive, publie
+  js + wasm + digest en artefact de run.
+
+Preuves consignées : (1) modification jetable de `aithos-wasm/src/lib.rs`
+→ `wasm-bundle.sh check` **rouge** (« la source a dérivé du pin »), revert
+→ vert ; (2) octet ajouté à `aithos_wasm.js` → `cargo test
+wasm_bundle_digest` **rouge** (« diverge du pin »), revert → vert ;
+baseline verte au scellement. Le job CI a été exécuté localement commande
+par commande (mêmes étapes que le YAML) ; son premier vert GitHub Actions
+sera constaté au premier push — consigné comme reste à observer, pas comme
+gate atteinte sur parole. Interprétation consignée : l'action 2 (fetch à
+version pinnée côté dépôt service) attend l'existence du dépôt service
+(SPL-8) ; la « publication de release » taggée viendra avec la scission —
+pendant la cohabitation, l'artefact de run CI + le pin commité couvrent le
+besoin (action 3 livrée, le trou de dérive est fermé dès maintenant).
 
 ### SPL-7 — scinder `vectors/`
 

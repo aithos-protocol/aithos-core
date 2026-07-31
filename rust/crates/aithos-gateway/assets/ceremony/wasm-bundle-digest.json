@@ -1,0 +1,13 @@
+{
+  "recipe": {
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "wasm_bindgen_cli": "0.2.126",
+    "target": "wasm32-unknown-unknown",
+    "profile": "release",
+    "build": "scripts/wasm-bundle.sh regen"
+  },
+  "artifacts": {
+    "aithos_wasm.js": "sha256:ef8e0c0d13985886f939c6d5aa1a782eb882ad184124f344f23b563cb7bc3080",
+    "aithos_wasm_bg.wasm": "sha256:7c06c9ee38133738cf3049fbd973699bbfaa3e0bc38a69beeb6bd4ef2a57a0e4"
+  }
+}
