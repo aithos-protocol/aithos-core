@@ -32,6 +32,9 @@ use cucumber::{given, then, when, World as _};
 use ed25519_dalek::SigningKey;
 use tower::ServiceExt as _;
 
+#[path = "fixtures/vectors.rs"]
+mod fixtures_vectors;
+
 // ------------------------------------------------------------ log capture
 
 static LOG_BUFFER: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
@@ -94,10 +97,11 @@ fn fixtures() -> &'static Fixtures {
             &std::fs::read_to_string(format!("{vectors}/p1-store-envelope.json")).unwrap(),
         )
         .unwrap();
-        let a1: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(format!("{vectors}/a1-genesis.json")).unwrap(),
-        )
-        .unwrap();
+        // `a1-genesis.json` est un vecteur `shared` (owner: core) : il se
+        // résout via le helper SPL-1 (`AITHOS_VECTORS_DIR` côté dépôt
+        // service, repli monorepo inchangé ici).
+        let a1: serde_json::Value =
+            serde_json::from_str(&fixtures_vectors::vector_str("a1-genesis.json")).unwrap();
         let p6: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(format!("{vectors}/p6-acme-txt.json")).unwrap(),
         )

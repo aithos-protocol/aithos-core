@@ -31,6 +31,9 @@ use aithos_provider::time::render_rfc3339z;
 use cucumber::{given, then, when, World as _};
 use ed25519_dalek::SigningKey;
 
+#[path = "fixtures/vectors.rs"]
+mod fixtures_vectors;
+
 // ------------------------------------------------------------- fixtures
 
 struct Fixtures {
@@ -62,7 +65,11 @@ fn fixtures() -> &'static Fixtures {
                 .unwrap()
         };
         let p1 = read("p1-store-envelope.json");
-        let a1 = read("a1-genesis.json");
+        // `a1-genesis.json` est un vecteur `shared` (owner: core) : il se
+        // résout via le helper SPL-1 (`AITHOS_VECTORS_DIR` côté dépôt
+        // service, repli monorepo inchangé ici).
+        let a1: serde_json::Value =
+            serde_json::from_str(&fixtures_vectors::vector_str("a1-genesis.json")).unwrap();
         let p7 = read("p7-store-publication.json");
         let seed: [u8; 32] = hex::decode(a1["seed_hex"].as_str().unwrap())
             .unwrap()

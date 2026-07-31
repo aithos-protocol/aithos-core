@@ -23,6 +23,9 @@ use aithos_provider::objects::MemObjects;
 use aithos_provider::service::{build_router, AppState};
 use aithos_provider::time::render_rfc3339z;
 
+#[path = "fixtures/vectors.rs"]
+mod fixtures_vectors;
+
 struct SeqEntropy(u64);
 
 impl EntropySource for SeqEntropy {
@@ -57,10 +60,11 @@ async fn local_cache_navigation_p50_under_5ms() {
     let mandate: serde_json::Value =
         serde_json::from_str(p1["mandate_jcs"].as_str().unwrap()).unwrap();
     let mandate_id = mandate["id"].as_str().unwrap();
-    let a1: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(format!("{vectors}/a1-genesis.json")).unwrap(),
-    )
-    .unwrap();
+    // `a1-genesis.json` est un vecteur `shared` (owner: core) : il se
+    // résout via le helper SPL-1 (`AITHOS_VECTORS_DIR` côté dépôt
+    // service, repli monorepo inchangé ici).
+    let a1: serde_json::Value =
+        serde_json::from_str(&fixtures_vectors::vector_str("a1-genesis.json")).unwrap();
     let seed: [u8; 32] = hex::decode(a1["seed_hex"].as_str().unwrap())
         .unwrap()
         .try_into()

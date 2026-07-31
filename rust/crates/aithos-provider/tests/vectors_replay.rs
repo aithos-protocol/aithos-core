@@ -39,8 +39,18 @@ use serde_json::Value;
 
 const VECTORS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../vectors");
 
+#[path = "fixtures/vectors.rs"]
+mod fixtures_vectors;
+
 fn load(name: &str) -> Value {
     serde_json::from_str(&std::fs::read_to_string(format!("{VECTORS}/{name}")).unwrap())
+        .unwrap_or_else(|e| panic!("{name}: {e}"))
+}
+
+/// Vecteurs `shared` (owner: core) : résolution via le helper SPL-1
+/// (`AITHOS_VECTORS_DIR` côté dépôt service, repli monorepo inchangé ici).
+fn load_shared(name: &str) -> Value {
+    serde_json::from_str(&fixtures_vectors::vector_str(name))
         .unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 
@@ -307,7 +317,7 @@ fn p1_cases_replay_byte_exact_against_the_real_binary() {
 // ------------------------------------------------------- deployed mode
 
 fn owner_root_key() -> SigningKey {
-    let a1 = load("a1-genesis.json");
+    let a1 = load_shared("a1-genesis.json");
     let seed: [u8; 32] = hex::decode(a1["seed_hex"].as_str().unwrap())
         .unwrap()
         .try_into()
@@ -873,7 +883,7 @@ fn p2_cases_replay_wire_exact_against_the_real_binary() {
 fn p7_cases_replay_wire_exact_against_the_real_binary() {
     let p1 = load("p1-store-envelope.json");
     let p7 = load("p7-store-publication.json");
-    let cb2 = load("cb2-draft2-carriers.json");
+    let cb2 = load_shared("cb2-draft2-carriers.json");
     let cb2_did_json = synth_cb2_did_json(&cb2);
     let tenant = p7["tenant"].as_str().unwrap();
     let did = p7["did"].as_str().unwrap();
