@@ -2,7 +2,7 @@
 
 Date : 2026-07-30
 
-Statut : **en cours — SPL-0 → SPL-5 faits (2026-07-30).** Ce document est
+Statut : **en cours — SPL-0 → SPL-6 faits (SPL-6 le 2026-07-31).** Ce document est
 le backlog canonique du chantier ; le brief d'amorçage est
 [`PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md).
 Baseline figée : [`audits/split/baseline-2026-07-30.md`](audits/split/baseline-2026-07-30.md)
