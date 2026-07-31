@@ -2,7 +2,9 @@
 
 Date : 2026-07-30
 
-Statut : **en cours — SPL-0 → SPL-7 faits (SPL-7 le 2026-07-31).** Ce document est
+Statut : **en cours — SPL-0 → SPL-7 faits, SPL-8 préparé (2026-07-31 :
+gates locales atteintes ; push GitHub, deux CI vertes et amputation
+différés à Mathieu — voir la sortie du lot SPL-8).** Ce document est
 le backlog canonique du chantier ; le brief d'amorçage est
 [`PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md).
 Baseline figée : [`audits/split/baseline-2026-07-30.md`](audits/split/baseline-2026-07-30.md)
@@ -980,6 +982,129 @@ du lot SPL-9 (8 `DEMO-*`, 3 `RUNBOOK-*`, 4 `OLR-*`, `GATEWAY-BOOTSTRAP.md`,
 **Rollback.** Le dépôt d'origine n'est pas amputé avant que les deux CI soient
 vertes. La suppression des crates dans `aithos-core` est le **dernier** commit du
 lot, isolé et revertible.
+
+**Sortie du lot SPL-8 — 2026-07-31 : extraction préparée, gates locales
+atteintes, gates GitHub différées au push (aucun push effectué, règle du
+chantier).**
+
+**Livré côté core** (branche `split/spl-8-extraction`, baseline VERTE à
+chaque scellement, crates service toujours en place — règle de rollback) :
+
+- ouverture consignée (arbitrages + décisions d'exécution ci-dessus) ;
+- helper SPL-1 porté sur les quatre harnais provider consommateurs de
+  `shared` — preuve rouge/vert : `AITHOS_VECTORS_DIR=/nonexistent` fait
+  échouer `vectors_replay` sur `a1-genesis.json` / `cb2-draft2-carriers.json`
+  (« vector fixture … unreadable »), sans la variable le repli monorepo
+  reste vert ;
+- `docs/audits/split/spl8-amputation.patch` (5,2 Mo, diff `--binary`,
+  190 chemins supprimés + 6 fichiers édités), **jamais appliqué à la
+  branche**.
+
+**Livré : dépôt `aithos-service`** (extrait du mirror complet du dépôt,
+439 commits, fsck propre) :
+
+- `git filter-repo` sur copie du mirror, 52 chemins conservés (crates
+  gateway/provider, 3 Dockerfiles service, `provider-image.yml`,
+  `run-olr-oauth-local.sh`, `demo/integrated/`, 24 entrées vectors
+  `owner: service`, 21 docs service) — **429 commits en tête de branche →
+  145 conservés** ; vérification par `commit-map` : les 145 commits
+  originaux qui touchent ≥ 1 chemin service ont **tous** une image
+  non-nulle (bijection exacte, zéro commit mixte perdu ; les commits
+  purs-protocole sont élagués, comme attendu) ;
+- workspace `rust/` : membres gateway + provider ; `aithos-core`,
+  `aithos-bundle`, `aithos-owner`, `aithos-client` en **path deps
+  siblings** (patron aithos-client) — `aithos-wasm` n'est pas consommé
+  par les crates service (vérifié par `cargo metadata`), il n'entre pas
+  au workspace malgré la liste de l'action 2 ; `aithos-provider` reste
+  dev-dependency de la gateway (action 5, inchangé) ;
+- `Cargo.lock` trimé du lock monorepo : **0 version changée, 0 ajout**,
+  15 retraits — les versions testées sont préservées ;
+- `LICENSE` racine = Service Grant (ex `rust/crates/aithos-provider/LICENSE`) ;
+- `vectors/ownership.json` réduit aux 24 entrées service (digests
+  identiques au manifeste core) ; les 4 `shared` **jamais commités** —
+  lus au checkout core pinné via `AITHOS_VECTORS_DIR` (CI) ;
+- `ci.yml` (fmt + clippy + test + build release, checkouts pinnés) et
+  `provider-image.yml` adaptés ; Dockerfiles service : build-context
+  `aithos-core` ajouté ;
+- le pin `aithos-core` des workflows service est gravé après le dernier
+  scellement core du lot (= ce commit de sortie) — consigné dans le
+  commit service correspondant.
+
+**Gates du lot, preuve par preuve :**
+
+- `cargo test --workspace` **vert dans les deux dépôts**. Core (arbre
+  complet, scellement e79a28f) : 652 tests, 1 365 scénarios, 6 495 steps —
+  ≥ baseline par harnais (`split-baseline` VERT, hausses attendues
+  seules). Service : 51/51 harnais/métriques service de la baseline SPL-0
+  présents, **aucun en baisse**, une hausse attendue
+  (`aithos_provider::unittests_lib` 60 > 59) + le harnais SPL-6
+  `wasm_bundle_digest` (2) ; 331 tests, 529 scénarios, 2 918 steps.
+  Somme des deux dépôts : 983 tests, 1 894 scénarios, 9 413 steps ≥
+  baseline (638 / 1 365 / 6 495).
+- `cargo build --release` **vert des deux côtés** (service 14 min 24 s,
+  core 14 min 01 s).
+- `docker build` : **invérifiable ici, à constater en CI** — le démon
+  docker du conteneur démarre, mais l'egress des conteneurs passe par un
+  proxy TLS intercepté que l'image `rust:1.96-alpine` ne truste pas
+  (`apk add` échoue « server certificate not trusted » dès la première
+  couche, avec et sans `--network=host`). Rien n'a été simulé ; les
+  adaptations des trois Dockerfiles service se limitent au build-context
+  `aithos-core` (path deps siblings), et `docker/Dockerfile` core est
+  intouché par le lot.
+- « deux CI vertes sur commit vide » : **différé au push de Mathieu**
+  (rien n'est poussé depuis cet environnement, périmètre du chantier).
+- Duplication inter-dépôts (gate chantier, différé SPL-7) : les 24
+  vecteurs service du dépôt service portent les digests épinglés du
+  manifeste core ; les 4 `shared` n'existent qu'en core. Zéro octet
+  dupliqué entre les deux arbres.
+
+**Patch d'amputation — mode d'emploi (après DEUX CI vertes sur GitHub,
+jamais avant) :**
+
+1. `git checkout -b split/spl8-amputation <tête du lot>` ;
+2. `git apply --index docs/audits/split/spl8-amputation.patch` ;
+3. commit isolé (« dernier commit du lot, revertible ») ; le patch reste
+   en docs/ comme trace.
+
+Contenu du patch : retrait des membres gateway/provider du workspace
+(+ entrée `aithos-provider` des workspace.dependencies), suppression des
+deux crates, des 3 Dockerfiles service, de `provider-image.yml`, de
+`run-olr-oauth-local.sh`, de `demo/integrated/` et des 24 entrées vectors
+service ; `LICENSE` racine sans l'entrée Service Grant ; `ci.yml` sans le
+job `wasm-bundle` (ses assets partent avec la gateway — le job de
+publication post-split est une décision SPL-9) ; `ownership.json` réduit
+(68 entrées core, flags `shared` conservés) ; garde post-amputation dans
+`vectors_ownership.rs` (le sens service→shared s'observe désormais dans le
+dépôt service) ; TSV `baseline-counts` refitté (46 lignes service
+retirées, `@wip` 36 → 1 — les 35 autres tags vivent dans les features des
+crates service) ; `Cargo.lock` trimé (sous-ensemble strict : 220 paires
+retirées, 0 nouvelle, 0 changée). **Vérifié sur copie jetable** :
+`git apply --check` puis application → arbre octet-identique à la copie
+compilée ; `cargo check --workspace` vert ; `vectors_ownership` **5/5
+vert** sur l'arbre amputé (garde exercée).
+
+**Notes d'environnement / exécution :**
+
+- Historique complet rapatrié du Mac en morceaux de 32 Mo
+  (device_stage_files plafonne bas en pratique ; les process détachés de
+  la VM sont tués entre les appels — tout passage long doit être
+  synchrone < 45 s) ;
+- disque conteneur tenu sous pression : les binaires de test debug du
+  target core (~19 Go) purgés après scellement pour loger le build
+  service ; les deux workspaces partagent `CARGO_TARGET_DIR` (artefacts
+  hachés par crate et par fingerprint — aucun mélange, décision
+  d'environnement, ne préjuge pas de la CI qui buildera séparé) ;
+- flake « Relay outage » : non observé (299/299 scénarios gateway au run
+  service).
+
+**Reste à faire hors de cet environnement (Mathieu)** : création du dépôt
+GitHub `aithos-service`, push des deux branches, deux CI vertes sur
+commit vide, puis application du patch d'amputation (mode d'emploi
+ci-dessus) ; enfin SPL-9 (docs/index, README du dépôt service, devenir du
+job `wasm-bundle` et de `scripts/wasm-bundle.sh` post-split, politique de
+bump du pin core — au premier bump post-amputation, les sites p3/p6
+gateway passés par le helper devront redevenir locaux ou être servis par
+un répertoire fusionné en CI).
 
 ### SPL-9 — documentation et index
 
