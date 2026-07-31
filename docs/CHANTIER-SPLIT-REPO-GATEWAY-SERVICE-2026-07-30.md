@@ -2,7 +2,7 @@
 
 Date : 2026-07-30
 
-Statut : **en cours — SPL-0 → SPL-6 faits (SPL-6 le 2026-07-31).** Ce document est
+Statut : **en cours — SPL-0 → SPL-7 faits (SPL-7 le 2026-07-31).** Ce document est
 le backlog canonique du chantier ; le brief d'amorçage est
 [`PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md`](PROMPT-REPRISE-SPLIT-REPO-GATEWAY-SERVICE-2026-07-30.md).
 Baseline figée : [`audits/split/baseline-2026-07-30.md`](audits/split/baseline-2026-07-30.md)
@@ -819,6 +819,64 @@ Décisions d'exécution :
 **Critères de sortie.** Aucune duplication d'octet entre les deux dépôts (à
 prouver par comparaison de digests) ; les 7 sites du §2.4 résolvent via le helper
 de SPL-1.
+
+**Sortie du lot SPL-7 — 2026-07-31, gates atteintes.** Livré :
+
+- **Classement matérialisé** : `vectors/ownership.json` — partition des
+  92 entrées (core : 39 vecteurs + 28 outils + README ; service :
+  10 vecteurs `p1` → `p9` + 14 outils), digest SHA-256 épinglé de chaque
+  vecteur, `shared: true` sur les quatre vecteurs core consommés côté
+  service. Aucun fichier déplacé : le départ physique des entrées
+  `owner: service` est le geste `git filter-repo` de SPL-8, qui conserve
+  les chemins (le `COPY vectors/` des trois Dockerfiles service et les
+  chemins provider en dur restent vrais, le repli « chemin historique »
+  du helper SPL-1 aussi).
+- **Règle de propriété** (action 4) : section « Ownership across the
+  repo split » de `vectors/README.md` — un propriétaire unique par
+  entrée, `shared` jamais dupliqués, règle 3 (« frozen once green »)
+  rendue mécanique par les digests.
+- **Harnais `aithos_bundle::vectors_ownership`** (5 tests, nouveau
+  harnais, hausse de compteur consignée) : partition exacte manifeste ↔
+  répertoire ; digests épinglés ; le côté core ne référence aucune
+  entrée service ; le côté service ne consomme que ses vecteurs et les
+  `shared` déclarés — et chaque `shared` est réellement consommé (liste
+  exacte dans les deux sens) ; aucune duplication d'octet d'un vecteur
+  hors `vectors/` (scan `rust/crates`, `features`, `docker`, `scripts`,
+  `spec`, `demo`).
+
+Gates :
+
+- **« Aucune duplication d'octet »** — prouvée dans la forme atteignable
+  avant SPL-8 : zéro copie intra-dépôt (374 fichiers scannés au premier
+  passage, asservi en continu par le test 5) ; les listes de digests par
+  propriétaire sont matérialisées pour la comparaison inter-dépôts, à
+  rejouer à SPL-8 quand le second dépôt existera.
+- **« Les 7 sites §2.4 résolvent via le helper SPL-1 »** — vrai, gate
+  grep SPL-1 rejouée (seul le helper matche) ; aucun fichier déplacé,
+  le repli du helper reste vrai.
+- **Preuves rouge/vert** (modifications jetables, arbre restauré
+  vérifié) : (1) octet ajouté à `e1-mandate.json` →
+  `vectors_match_their_pinned_digests` **rouge** (« drifted from its
+  pinned digest »), restore → vert ; (2) entrée non classée
+  `zz-preuve-temp.json` → partition **rouge** (« unclassified on
+  disk »), suppression → vert ; (3) copie de `p3-tunnel-register.json`
+  sous `aithos-gateway/tests/` → non-duplication **rouge**
+  (« duplicates p3-tunnel-register.json »), suppression → vert.
+  Baseline VERTE au scellement (hausses attendues seules).
+
+Différé à SPL-8, consigné (même patron que l'action 2 de SPL-6) :
+
+- le départ physique des 24 entrées `owner: service` (filter-repo) et la
+  mise à jour symétrique de `ownership.json` + du harnais dans les deux
+  dépôts (côté service : manifeste réduit à ses vecteurs, les `shared`
+  fetchés jamais commités) ;
+- l'exposition read-only des quatre `shared` au dépôt service —
+  recommandation : fetch à SHA pinné depuis `aithos-core` (patron
+  aithos-client/SPL-6), pas de sous-module ; à trancher à l'ouverture de
+  SPL-8 ;
+- la comparaison de digests inter-dépôts (gate chantier « aucune
+  duplication de vecteur entre les deux dépôts »), mécanique une fois
+  les deux arbres présents.
 
 ### SPL-8 — extraction du dépôt `aithos-service`
 
