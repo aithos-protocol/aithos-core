@@ -747,6 +747,61 @@ besoin (action 3 livrée, le trou de dérive est fermé dès maintenant).
 **Objectif.** Chaque dépôt possède ses vecteurs, et les vecteurs partagés ont un
 propriétaire unique.
 
+**Ouverture du lot — 2026-07-31, références revérifiées.** Recalages sur
+le constat :
+
+- `vectors/` porte **92 entrées**, pas 91 : le vecteur nouveau
+  `cb2-store-key-consumer-neutrality.json` (né en SPL-2) s'est ajouté aux
+  91 du constat. Classement exécuté : 39 vecteurs + 28 outils + README
+  côté core ; 10 vecteurs (`p1` → `p9`, dont deux `p7-*`) + 14 outils
+  (`gen-p*`, `verify-p*`, `red-replay-p*`, `bench-p4.py`,
+  `deployed-replay-*`, `gen-p7-bundle/`) côté service.
+- Les **7 sites §2.4 résolvent tous via le helper SPL-1**
+  (`fixtures/vectors.rs`, trois copies identiques gateway/cli/wasm ; gate
+  grep SPL-1 rejouée : seul le helper matche). Lignes recalées après
+  SPL-3/4/5 : `core_bridge.rs:5203/5208`, `public_tls.rs:1026`,
+  `relay.rs:488`, `cucumber.rs:9580`, `delegated_oauth.rs:74`,
+  `aithos-wasm/src/lib.rs:394`.
+- **Le jeu « consommé des deux côtés » est plus large que le constat** :
+  `a1-genesis.json` et `cb2-draft2-carriers.json` sont aussi consommés
+  par `aithos-provider` (`tests/cucumber.rs`, `cucumber_remote.rs`,
+  `remote_cache_nav.rs`, `vectors_replay.rs`) — classés core + `shared`,
+  aux côtés de `cb2-session-proof.json` et
+  `cb14-delegated-session-chain.json` (gateway).
+- **Contre-constat sur `cb15-external-delegated-grant.json`** : aucun
+  consommateur dans `aithos-client` @ c6f61512 (grep `cb15` /
+  `external-delegated` / `AITHOS_VECTORS` : zéro occurrence) ; ses
+  consommateurs sont tous côté core (bundle, cli, wasm). Il reste
+  core-owned comme prescrit par l'action 2, sans marque `shared` — la
+  mention §2.4 « aithos-client côté dépôt séparé » ne se vérifie pas sur
+  l'arbre.
+
+Décisions d'exécution :
+
+- **Aucun déplacement physique avant SPL-8.** Les chemins provider sont
+  en dur (`CARGO_MANIFEST_DIR/../../../vectors`, 5 harnais), les trois
+  Dockerfiles service font `COPY vectors/`, le repli « chemin
+  historique » du helper SPL-1 doit rester vrai, et `git filter-repo`
+  (SPL-8) conserve les chemins : déplacer maintenant casserait sans rien
+  acheter. Le classement est matérialisé par manifeste, pas par
+  arborescence.
+- **`vectors/ownership.json`** : partition complète (92 entrées, un
+  propriétaire chacune) + digest SHA-256 épinglé de chaque vecteur
+  (`frozen: false` consigné pour `cb2-core-bundle-red-ledger.json`,
+  registre annoncé non gelé par le README). La règle de propriété est
+  énoncée dans `vectors/README.md` (action 4).
+- **Nouveau harnais `aithos_bundle::vectors_ownership` (5 tests)** —
+  compteur en hausse, consigné : partition exacte manifeste ↔
+  répertoire ; digests (gel mécanique, invariant 1) ; le côté core ne
+  référence jamais une entrée service ; le côté service ne consomme que
+  ses vecteurs et les `shared` déclarés (liste exacte dans les deux
+  sens) ; aucune duplication d'octet d'un vecteur hors `vectors/`.
+- **Exposition des `shared` au dépôt service : différée à SPL-8** (le
+  dépôt n'existe pas — même patron que l'action 2 de SPL-6).
+  Recommandation consignée : fetch à SHA pinné depuis `aithos-core` (le
+  patron aithos-client/SPL-6), pas de sous-module ; à trancher à
+  l'ouverture de SPL-8.
+
 **Actions.**
 
 1. Classer les 91 entrées : protocolaires (`a*`, `b*`, `c1*`, `cb*`), provider
