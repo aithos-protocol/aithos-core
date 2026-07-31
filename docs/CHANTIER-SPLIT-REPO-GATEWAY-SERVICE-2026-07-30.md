@@ -883,6 +883,70 @@ Différé à SPL-8, consigné (même patron que l'action 2 de SPL-6) :
 **Objectif.** Le déplacement Git, une fois qu'il ne reste plus que de la
 mécanique.
 
+**Ouverture du lot — 2026-07-31, références revérifiées.** Historique
+complet rapatrié depuis le Mac (439 commits, `main` = c6307530,
+`split/spl-7-vecteurs` = cadd3f1, fsck propre) — le clone de travail est
+shallow, le filter-repo opère sur ce mirror. Périmètre revérifié :
+24 entrées `owner: service` dans `vectors/ownership.json` (10 vecteurs +
+14 outils, dont le répertoire `gen-p7-bundle/`) ; 21 docs service au sens
+du lot SPL-9 (8 `DEMO-*`, 3 `RUNBOOK-*`, 4 `OLR-*`, `GATEWAY-BOOTSTRAP.md`,
+`HUB-MCP.md`, `INFRA-PROVIDER.md`, `DEPLOYMENT-CONTAINMENT.md`,
+`EXPLORATION-DESKTOP-GATEWAY.md`).
+
+**Arbitrages rendus par Mathieu (session split, consignés à l'ouverture) :**
+
+- **Exposition des 4 vecteurs `shared` au dépôt service : fetch à SHA
+  pinné** — la CI service checkout `aithos-core` à un SHA pinné,
+  exactement le patron `aithos-client`. Pas de sous-module, pas
+  d'artefact de release.
+- **Recalage cb15** (aucun consommateur dans `aithos-client`, contre-constat
+  SPL-7) : acté.
+
+**Décisions d'exécution :**
+
+- **Recalage de l'action 2** : « `git` dep pinnée par SHA » se lit comme
+  le patron `aithos-client` réellement en place — **`path` deps vers des
+  checkouts siblings** (`../../aithos-core/rust/crates/…`,
+  `../../aithos-client/crates/aithos-client`) **+ SHA pinné dans les
+  workflows CI** qui font le checkout. C'est ce que fait `aithos-client`
+  aujourd'hui (path dep + `ref:` pinné), et ce que la §1 du doc décrit.
+- **Câblage des vecteurs côté service** : le helper SPL-1
+  (`fixtures/vectors.rs`) est porté sur les quatre fichiers provider qui
+  consomment les `shared` (`tests/cucumber.rs`, `tests/cucumber_remote.rs`,
+  `tests/remote_cache_nav.rs`, `tests/vectors_replay.rs`) — lectures
+  `a1-genesis.json` / `cb2-draft2-carriers.json` via `vector_str`, comme
+  les sites gateway. La CI service définit
+  `AITHOS_VECTORS_DIR=<checkout core pinné>/vectors` ; les lectures de
+  vecteurs `owner: service` (`p*`) restent au chemin du dépôt porteur
+  (`CARGO_MANIFEST_DIR/../../../vectors`), qui reste vrai après
+  filter-repo. Limite consignée : le pin (pré-amputation) contient tous
+  les vecteurs ; au premier bump de pin post-amputation, les sites p3/p6
+  gateway qui passent par le helper devront redevenir locaux ou être
+  servis par un répertoire fusionné en CI — hors lot.
+- **`provider-image.yml`** part avec sa logique test/build/push/redeploy
+  inchangée, modulo l'adaptation mécanique des checkouts (self =
+  `aithos-service` ; + checkout `aithos-core` pinné ; build-context
+  `aithos-core` ajouté au `docker build`) — « tel quel » ne peut pas
+  couvrir les steps de checkout, qui référencent le dépôt porteur.
+- **Pin CI service** = SHA du scellement final du lot côté core (sortie
+  de lot comprise) ; le commit service qui grave le pin est donc
+  **postérieur** au dernier scellement core — pas de placeholder, un
+  ordre d'exécution.
+- **Chemins additionnels au filter-repo**, service-scoped vérifiés :
+  `scripts/run-olr-oauth-local.sh` (n'exerce que `aithos-gateway`, son
+  runbook part au service) et `demo/integrated/**` (gateway.example.yaml,
+  provider.env, préflight — référencé par `src/config.rs` gateway et les
+  docs DEMO service).
+- **Patch d'amputation** (règle de rollback, jamais committé sur la
+  branche) : retrait des deux membres service du workspace + suppression
+  des crates, `LICENSE` racine sans les deux entrées service, `ci.yml`
+  sans le job `wasm-bundle` (ses assets partent avec la gateway ; le job
+  de publication post-split est une décision SPL-9),
+  `provider-image.yml`, Dockerfiles service, vecteurs `owner: service`
+  et `scripts/run-olr-oauth-local.sh` + `demo/integrated/` supprimés,
+  `ownership.json` réduit et harnais `vectors_ownership` rescopé.
+  Vérifié « s'applique et compile » sur copie jetable.
+
 **Actions.**
 
 1. `git filter-repo` sur une copie, en conservant l'historique des chemins
