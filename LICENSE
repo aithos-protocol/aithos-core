@@ -13,9 +13,6 @@ The following terms apply by path:
   `docker/`, `.github/`, and `ui-mockup/` are licensed under the Business
   Source License 1.1 with the Aithos Core Additional Use Grant found in
   `rust/crates/aithos-core/LICENSE`.
-- `rust/crates/aithos-provider` and `rust/crates/aithos-gateway` are licensed
-  under the Business Source License 1.1 with the Aithos Service Additional
-  Use Grant found in `rust/crates/aithos-provider/LICENSE`.
 - `spec/`, `vectors/`, `docs/`, and Markdown documentation at the repository
   root are licensed under Creative Commons Attribution 4.0 International. See
   `LICENSE-DOCUMENTATION.md`.

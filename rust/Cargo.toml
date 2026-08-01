@@ -6,8 +6,6 @@ members = [
     "crates/aithos-cli",
     "crates/aithos-owner",
     "crates/aithos-wasm",
-    "crates/aithos-gateway",
-    "crates/aithos-provider",
 ]
 
 [workspace.package]
@@ -59,16 +57,13 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 axum = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 # OLR-0 (2026-07-22): standard OAuth/OIDC clients for the upstream
-# protocol seam. Kept rustls-only. `oauth2` is wired in aithos-gateway;
-# `openidconnect` stays optional until OLR-3.
+# protocol seam. Kept rustls-only. Consumed by the service repo
+# (aithos-gateway) since lot SPL-8; entries kept for lock parity.
 oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest", "rustls-tls"] }
 openidconnect = { version = "4.0.1", default-features = false, features = ["reqwest", "rustls-tls"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 serde_yaml = "0.9"
 
-# provider service (piste P, lot P1 — INFRA-PROVIDER annexes A/B/C);
-# the path dep lets the gateway's P3 e2e run the REAL service in-process
-aithos-provider = { path = "crates/aithos-provider" }
 base64 = "0.22"
 url = "2"
 # P3 RemoteStore client (aithos-bundle feature `remote`, arbitrage ①

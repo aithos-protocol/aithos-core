@@ -224,6 +224,13 @@ fn core_side_never_references_service_entries() {
 /// les deux sens).
 #[test]
 fn service_side_consumes_only_its_own_and_declared_shared_vectors() {
+    // Post-SPL-8 : les crates service sont partis avec le dépôt
+    // aithos-service ; la consommation service des `shared` s'observe
+    // là-bas (harnais du dépôt service, checkout core pinné). Tant que
+    // les crates cohabitent ici, l'assertion joue dans les deux sens.
+    if SERVICE_ROOTS.iter().all(|r| !repo_root().join(r).is_dir()) {
+        return;
+    }
     let entries = manifest();
     let core_vectors: Vec<&Entry> = entries
         .iter()

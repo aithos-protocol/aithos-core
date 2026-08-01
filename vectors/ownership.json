@@ -1,8 +1,8 @@
 {
   "manifest": "vectors-ownership",
   "version": 1,
-  "updated": "2026-07-31 (lot SPL-7)",
-  "rule": "Every entry has exactly one owner. owner=core stays in aithos-core (CC BY 4.0); owner=service leaves with the aithos-service repo at lot SPL-8. shared=true marks core-owned vectors consumed by service-side crates: they stay here and are exposed to the service repo read-only at a pinned version, never duplicated. Enforced by rust/crates/aithos-bundle/tests/vectors_ownership.rs.",
+  "updated": "2026-07-31 (lot SPL-8 — amputation post-scission)",
+  "rule": "Every entry has exactly one owner. owner=core stays in aithos-core (CC BY 4.0); owner=service entries left with the aithos-service repo at lot SPL-8 (their frozen digests are pinned in that repo's vectors/ownership.json). shared=true marks core-owned vectors consumed by service-side crates: they stay here and are exposed to the service repo read-only at a pinned version, never duplicated. Enforced by rust/crates/aithos-bundle/tests/vectors_ownership.rs.",
   "entries": [
     {
       "name": "README.md",
@@ -30,11 +30,6 @@
       "kind": "vector",
       "owner": "core",
       "sha256": "73a4740d5d0c4361e91fc54c3def279517701689e653f8f99928b186a007b139"
-    },
-    {
-      "name": "bench-p4.py",
-      "kind": "tooling",
-      "owner": "service"
     },
     {
       "name": "c1-header-seal.json",
@@ -186,21 +181,6 @@
       "kind": "vector",
       "owner": "core",
       "sha256": "bc809473159f81b83d7f9b168117864e084650a2e5d29e90f353cba80228777e"
-    },
-    {
-      "name": "deployed-replay-etape6.py",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
-      "name": "deployed-replay-p3.py",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
-      "name": "deployed-replay-witness.py",
-      "kind": "tooling",
-      "owner": "service"
     },
     {
       "name": "e1-mandate.json",
@@ -397,31 +377,6 @@
       "owner": "core"
     },
     {
-      "name": "gen-p.py",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
-      "name": "gen-p7-bundle",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
-      "name": "gen-p7.py",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
-      "name": "gen-p8.py",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
-      "name": "gen-p9.py",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
       "name": "gplus-obligations.json",
       "kind": "vector",
       "owner": "core",
@@ -444,91 +399,6 @@
       "kind": "vector",
       "owner": "core",
       "sha256": "556de81a4e842e04ada7b0521c89845000e3174d66ddd7c1736cdfb24b3e7864"
-    },
-    {
-      "name": "p1-store-envelope.json",
-      "kind": "vector",
-      "owner": "service",
-      "sha256": "038a815f8959b662913af5b668b0d467dec1cad474a77196773e5e4014ebc877"
-    },
-    {
-      "name": "p2-store-cas.json",
-      "kind": "vector",
-      "owner": "service",
-      "sha256": "163ff8b6ce891d0c13a32eaf12ee55ce2648d71ab49fb730857dcd65aca76b41"
-    },
-    {
-      "name": "p3-tunnel-register.json",
-      "kind": "vector",
-      "owner": "service",
-      "sha256": "6d06ee4565061a9a16f7d83b77b01dee9066435f2fe15fb58bb3eb8de86b9f34"
-    },
-    {
-      "name": "p4-witness-checkpoint.json",
-      "kind": "vector",
-      "owner": "service",
-      "sha256": "38087e8ccfd955d3fd94fe9df1bcb02b83dfc880979a5d0e791ec23f97b51d5d"
-    },
-    {
-      "name": "p5-tunnel-sni.json",
-      "kind": "vector",
-      "owner": "service",
-      "sha256": "60b5af0dfccfdc3bf8ce99fd7ca0144a7e0657ba99827ac9e4f6e542640b6d39"
-    },
-    {
-      "name": "p6-acme-txt.json",
-      "kind": "vector",
-      "owner": "service",
-      "sha256": "644d26860c25f5e486cbe41c9a88c5f85f617b394bcc22dce97b01a406ca190e"
-    },
-    {
-      "name": "p7-bundle-packages.json",
-      "kind": "vector",
-      "owner": "service",
-      "sha256": "00793c25b89837b69a1a68aafbe825ebaa42161b6bc04b199839639b6bc05324"
-    },
-    {
-      "name": "p7-store-publication.json",
-      "kind": "vector",
-      "owner": "service",
-      "sha256": "b1cdfd4676a8d53fed45c558a8b96e771e309325e18bed13309e0a809132877a"
-    },
-    {
-      "name": "p8-cold-roundtrip.json",
-      "kind": "vector",
-      "owner": "service",
-      "sha256": "1a71b9e6a12dc6d90ba0c9c2a86f3e5707185f2f7e5d48b08b7039aa1de9112c"
-    },
-    {
-      "name": "p9-store-reads.json",
-      "kind": "vector",
-      "owner": "service",
-      "sha256": "4b4aff7473c8d06be9b0883c6aeb0a8ae304a297fc0d21779219507ab8b967a1"
-    },
-    {
-      "name": "red-replay-p7.py",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
-      "name": "red-replay-p9.py",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
-      "name": "verify-p.py",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
-      "name": "verify-p7.py",
-      "kind": "tooling",
-      "owner": "service"
-    },
-    {
-      "name": "verify-p9.py",
-      "kind": "tooling",
-      "owner": "service"
     }
   ]
 }
