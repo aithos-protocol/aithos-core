@@ -21,7 +21,6 @@ use aithos_provider::heads::MemHeads;
 use aithos_provider::nonces::MemNonces;
 use aithos_provider::objects::MemObjects;
 use aithos_provider::service::{build_router, AppState};
-use aithos_provider::time::render_rfc3339z;
 
 #[path = "fixtures/vectors.rs"]
 mod fixtures_vectors;
@@ -39,12 +38,13 @@ impl EntropySource for SeqEntropy {
     }
 }
 
-fn real_now() -> String {
-    let ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("clock")
-        .as_millis() as i64;
-    render_rfc3339z(ms - ms.rem_euclid(1000))
+/// Deterministic harness instant, mid-window of the frozen p1 mandate
+/// (2026-07-01 → 2026-08-01): the real clock made this test a time bomb
+/// that went off when the vector window closed on 2026-08-01.
+const TEST_NOW: &str = "2026-07-15T12:00:00Z";
+
+fn harness_now() -> String {
+    TEST_NOW.to_owned()
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -106,11 +106,22 @@ async fn local_cache_navigation_p50_under_5ms() {
         dns: Arc::new(MemDnsTxt::new()),
         acme: AcmeState::new(),
         authority: format!("127.0.0.1:{port}"),
-        test_now_enabled: false,
+        test_now_enabled: true,
         browser_origins: Arc::default(),
     });
     tokio::spawn(async move {
-        axum::serve(listener, build_router(state)).await.ok();
+        // Deterministic service clock: every request carries the harness
+        // instant, matching the client's injected `at` (skew 0).
+        let router = build_router(state).layer(axum::middleware::from_fn(
+            |mut request: axum::extract::Request, next: axum::middleware::Next| async move {
+                request.headers_mut().insert(
+                    "x-aithos-test-now",
+                    axum::http::HeaderValue::from_static(TEST_NOW),
+                );
+                next.run(request).await
+            },
+        ));
+        axum::serve(listener, router).await.ok();
     });
 
     let url = format!("http://127.0.0.1:{port}");
@@ -121,7 +132,7 @@ async fn local_cache_navigation_p50_under_5ms() {
             &tenant,
             &did,
             Arc::new(KeySigner::owner("#root", root_sk)),
-            Arc::new(real_now),
+            Arc::new(harness_now),
             Box::new(SeqEntropy(0)),
         )
         .expect("client");

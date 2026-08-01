@@ -939,6 +939,43 @@ du lot SPL-9 (8 `DEMO-*`, 3 `RUNBOOK-*`, 4 `OLR-*`, `GATEWAY-BOOTSTRAP.md`,
   runbook part au service) et `demo/integrated/**` (gateway.example.yaml,
   provider.env, préflight — référencé par `src/config.rs` gateway et les
   docs DEMO service).
+**Post-push — 2026-08-01, premier contact avec la CI réelle.** Le job
+`test` du ci core est tombé rouge sur la branche : les runners GitHub ont
+avancé `stable` à rust 1.97, dont clippy porte une lint `question_mark`
+plus large — `aithos-provider/src/pathmap.rs:616` (`else if let` +
+`else { return None }`) sous `-D warnings`. Correction : la réécriture
+suggérée par clippy, sémantiquement identique (le `?` porte le
+`return None`). Workspace revérifié vert sous 1.95.0 (toolchain du
+chantier) ET 1.97.0 (stable des runners), 282 crates, zéro autre lint.
+Conséquence mécanique : le **patch d'amputation a été régénéré** (son
+hunk de suppression de `pathmap.rs` ne s'appliquait plus — « removal
+patch leaves file contents ») et revérifié à l'identique : apply +
+`cargo check --workspace` + `vectors_ownership` 5/5 sur copie jetable.
+La même correction est portée au dépôt `aithos-service` (même fichier).
+Leçon, déjà écrite au SPL-6 pour les digests : `stable` dérive — la
+question d'un pin de toolchain pour les jobs `test` (core et service)
+est renvoyée à SPL-9.
+
+**Seconde détonation, même journée : la fenêtre du vecteur gelé s'est
+refermée.** Le mandat de `p1-store-envelope.json` porte
+`not_after: 2026-08-01T00:00:00Z` ; à minuit UTC, les deux harnais
+remote qui vérifiaient la chaîne p1 à l'horloge RÉELLE
+(`cucumber_remote.rs`, `remote_cache_nav.rs`) sont passés de
+`not_covered` à `chain_invalid` (l'ordre normatif A.2 : la fenêtre #9
+répond avant `covers()` #10) — 21→19 scénarios. Rien à voir avec le
+split : la bombe était armée depuis la gravure du vecteur. Correction,
+sans toucher au vecteur (invariant 1) : les harnais deviennent
+DÉTERMINISTES — horloge injectée `TEST_NOW = 2026-07-15T12:00:00Z`
+(milieu de fenêtre) côté client, header `x-aithos-test-now` estampillé
+par le middleware du harnais côté service (`test_now_enabled: true`,
+surface prévue pour ça), skew 0. Suite provider rejouée : 224/224
+scénarios, tous harnais verts. `public_remote_store` et les replays
+vérifiés sains (leurs `at` viennent des vecteurs, pas de l'horloge).
+Le patch d'amputation est régénéré une seconde fois (les deux harnais
+sont des fichiers supprimés par l'amputation) et revérifié : apply +
+`cargo check --workspace` + `vectors_ownership` 5/5. Même correction
+portée aux deux fichiers du dépôt service.
+
 - **Patch d'amputation** (règle de rollback, jamais committé sur la
   branche) : retrait des deux membres service du workspace + suppression
   des crates, `LICENSE` racine sans les deux entrées service, `ci.yml`

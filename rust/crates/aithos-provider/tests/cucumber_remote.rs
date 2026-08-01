@@ -10,8 +10,12 @@
 //! Fixtures are the committed vectors (p1 owner keys + mandate, p7 real
 //! bundle publications) — never re-invented crypto. The client's
 //! signer, clock and nonce entropy are INJECTED (arbitrage ② and the
-//! §00 purity rule); the clock is the REAL one here (the service runs
-//! on its real clock too — skew ~0, exactly the deployed situation).
+//! §00 purity rule). The clock is DETERMINISTIC since 2026-08-01: the
+//! harness runs at [`TEST_NOW`], mid-window of the frozen p1 mandate
+//! (2026-07-01 → 2026-08-01) — the counting middleware stamps every
+//! request with `x-aithos-test-now` and the service opts in, so client
+//! and server share the same instant (skew 0). The real clock made the
+//! suite a time bomb that went off when the vector window closed.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -27,7 +31,6 @@ use aithos_provider::heads::MemHeads;
 use aithos_provider::nonces::MemNonces;
 use aithos_provider::objects::{MemObjects, ObjectStore as _};
 use aithos_provider::service::{build_router, AppState};
-use aithos_provider::time::render_rfc3339z;
 use cucumber::{given, then, when, World as _};
 use ed25519_dalek::SigningKey;
 
@@ -204,7 +207,7 @@ async fn boot_wire() -> Wire {
         // The authority the CLIENT addresses (A.2 host = request
         // authority): the proxy's socket.
         authority: format!("127.0.0.1:{}", proxy_addr.port()),
-        test_now_enabled: false,
+        test_now_enabled: true,
         browser_origins: Arc::default(),
     });
 
@@ -213,13 +216,19 @@ async fn boot_wire() -> Wire {
     let router = build_router(state).layer(axum::middleware::from_fn_with_state(
         counters.clone(),
         |axum::extract::State(counters): axum::extract::State<Arc<Mutex<HashMap<String, u32>>>>,
-         request: axum::extract::Request,
+         mut request: axum::extract::Request,
          next: axum::middleware::Next| async move {
             *counters
                 .lock()
                 .expect("counters")
                 .entry(format!("{} {}", request.method(), request.uri().path()))
                 .or_insert(0) += 1;
+            // Deterministic service clock: same instant as the client's
+            // injected `at` (skew 0), inside the frozen vector window.
+            request.headers_mut().insert(
+                "x-aithos-test-now",
+                axum::http::HeaderValue::from_static(TEST_NOW),
+            );
             next.run(request).await
         },
     ));
@@ -295,13 +304,12 @@ impl std::fmt::Debug for RemoteClientWorld {
     }
 }
 
-fn real_now() -> String {
-    let ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("clock")
-        .as_millis() as i64;
-    // Whole-second render, the wire's RFC 3339 Z convention.
-    render_rfc3339z(ms - ms.rem_euclid(1000))
+/// The harness instant: inside the frozen p1 mandate window, far from
+/// both edges. Client `at` and service `now` both use it.
+const TEST_NOW: &str = "2026-07-15T12:00:00Z";
+
+fn harness_now() -> String {
+    TEST_NOW.to_owned()
 }
 
 impl RemoteClientWorld {
@@ -334,7 +342,7 @@ impl RemoteClientWorld {
             &f.tenant,
             &f.did,
             signer,
-            Arc::new(real_now),
+            Arc::new(harness_now),
             Box::new(SaltedEntropy::fresh()),
         )
         .expect("client builds")

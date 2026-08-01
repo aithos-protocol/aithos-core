@@ -613,13 +613,12 @@ pub fn parse_list_query(query: &str) -> Option<ListQuery> {
                 return None;
             }
             after = Some(value.to_owned());
-        } else if let Some(value) = param.strip_prefix("limit=") {
+        } else {
+            let value = param.strip_prefix("limit=")?;
             if limit.is_some() || value.is_empty() || value.len() > 6 {
                 return None;
             }
             limit = Some(value.parse().ok()?);
-        } else {
-            return None;
         }
     }
     Some(ListQuery {
