@@ -57,8 +57,6 @@ Feature: Content-tree derivation
 
   Rule: Each tag anchor is a distinct derivation
 
-    @audit-partial @bder-006
-    # AUDIT BDER-006 — PARTIAL / DECISION_REQUIRED; see the public audit.
     Scenario: A folder-local tag view is its own lock
       Given a zone key and a folder
       When I derive the tag view "toto" at the folder and at the zone root

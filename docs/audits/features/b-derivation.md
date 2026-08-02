@@ -12,7 +12,7 @@
 | Implémentation principale | `aithos-core::{derive,path,ids}` |
 | Surfaces contrôlées | Core, Bundle, CLI ; vecteurs `vectors/` et leurs générateurs |
 | Méthode | Deux passes, Pass A aveugle à l'historique en trois unités de revue isolées (une par `Rule`), puis passe d'intégration, revue challenger adverse, et Pass B différentielle |
-| Statut de la note | **OUVERTE — ronde 1 acceptée et intégrée (2026-08-02) ; `BDER-011` `VERIFIED` (2026-07-30) ; décisions `BDER-006` et `BDER-008` arbitrées le 2026-08-02 ; ronde 2 corrigée et en attente de revue indépendante (`REVIEW_REQUESTED`, candidat `4f5921e`)** |
+| Statut de la note | **OUVERTE — rondes 1 et 2 acceptées ; `BDER-001`…`BDER-005`, `BDER-009`, `BDER-011` `VERIFIED` ; `BDER-006` et `BDER-008` `VERIFIED` par la revue indépendante de la ronde 2 (2026-08-02, candidat `4f5921e`) ; `BDER-007`, `BDER-010`, `BDER-012` et `BDER-013` ouverts ; état `REVIEW_ACCEPTED`, revue d'impact attendue** |
 
 ## Verdict
 
@@ -585,7 +585,12 @@ elles, pour que la ronde suivante parte d'une base honnête.
 
 ### BDER-006 — Périmètre de la `Rule` « Tag views anchor at folders »
 
-**Priorité : P2 — DÉCISION REQUISE**
+**Priorité : P2 — `VERIFIED` (décision du 2026-08-02, option A ; corrigé ronde 2,
+revue indépendante du 2026-08-02 — voir « Revue indépendante de la ronde 2 »)**
+
+L'analyse ci-dessous est celle qui a motivé la décision ; elle est conservée
+telle quelle. Le titre est désormais « Each tag anchor is a distinct
+derivation » et les marqueurs Gherkin ont été retirés par la revue.
 
 La phrase du `Then` est honnête et complète. Ce qui manque est la sémantique
 d'ancrage §02.9 elle-même : l'ancre ne donne rien par dérivation descendante,
@@ -636,7 +641,8 @@ La correction doit le dire, pas le laisser croire.
 
 ### BDER-008 — La provenance indépendante du vecteur B2 n'est pas reproductible
 
-**Priorité : P3 — OUVERT**
+**Priorité : P3 — `VERIFIED` (décision du 2026-08-02 ; corrigé ronde 2, revue
+indépendante du 2026-08-02 ; résidu détaché en `BDER-013`)**
 
 `vectors/README.md:8-11` pose la règle : « the generator used is named in
 `description` ». La `description` de B2 ne nomme qu'une technique — « generated
@@ -769,3 +775,203 @@ Statuts portés par le correcteur, à vérifier — ce rôle ne marque rien
   `cargo fmt --all -- --check` verts.
 
 `BDER-007`, `BDER-010` et `BDER-012` restent ouverts et visibles.
+
+## Revue indépendante de la ronde 2 — 2026-08-02, `VERIFIED`
+
+| Champ | Valeur |
+|---|---|
+| Rôle | auditeur indépendant, `audit-b-derivation` en mode `review`, ronde 2 |
+| Baseline | `513b366` |
+| Candidat | `4f5921e` (immuable) |
+| Rapport | [`auditor/runs/2026-08-02-audit-review-02.md`](../../../features/.agents/b-derivation/auditor/runs/2026-08-02-audit-review-02.md) |
+| Méthode | Pass A aveugle à l'historique, écrite et gelée dans un commit dédié (`9c52a7a`) avant toute ouverture du diff, des messages de commit, du rapport correcteur ou de la présente note ; puis Pass B sur `513b366..4f5921e` |
+| Contaminations déclarées | 3 — un fait historique (`1b7d258`) porté par une fiche de décision normative ; le périmètre assigné de `STATE.md` qui pré-décrit les corrections ; un `diff -rq` prématuré de l'auditeur entre les deux arbres exportés, qui n'a exposé que la *liste* des chemins modifiés |
+
+### Preuves rejouées par ce rôle
+
+```text
+1) features/.agents/scripts/verify-feature-tags.sh   candidat  -> EXIT=1
+2) features/.agents/scripts/verify-feature-tags.sh   baseline  -> EXIT=1 (identique)
+3) cargo test -p aithos-bundle --test cucumber -- --tags @b-derivation   (candidat, une fois)
+   -> reconstruction propre (aithos-core + aithos-bundle recompilés, 1m 26s)
+   -> Feature: Content-tree derivation
+      1 feature / 3 rules / 6 scénarios (6 passed) / 30 steps (30 passed)
+4) recalcul indépendant des cinq clés attendues de B2 (python3 + blake3 1.0.9)
+   -> 5 / 5 MATCH
+5) sha256 de vectors/b2-derivation.json aux deux révisions vs leurs pins ownership
+   -> concordants des deux côtés
+6) après retrait des marqueurs @bder-006 par la revue : 3 rules / 6 scénarios / 30 steps
+```
+
+Les gates ont tourné sur un export `git archive` des deux révisions immuables,
+SHA-256 vérifié des deux côtés — **aucune n'a tourné sur le poste**, qui n'a pas
+de toolchain Rust. Une première tentative a silencieusement réutilisé une
+compilation préexistante du conteneur ; ce résultat a été jeté et refait avec un
+`CARGO_TARGET_DIR` propre, lignes de compilation à l'appui.
+
+Non rejoués par ce rôle, et attribués au correcteur : Cucumber global
+(18 features / 836 scénarios), `cargo test --workspace --no-fail-fast`,
+`cargo fmt --check`, et le RED/GREEN focalisé `vectors_ownership`. Le RED de ce
+dernier est toutefois arithmétiquement certain : le pin de la baseline
+(`73a4740d…`) diffère du digest du fichier candidat (`ec5be797…`), et
+`vectors_ownership.rs:182` compare exactement ces octets.
+
+### `BDER-006` → `VERIFIED`
+
+Le titre de la baseline, « Tag views anchor at folders », était écrit dans le
+vocabulaire du §02.9 (relation d'ancrage et son point d'attache) alors que
+l'unique scénario du bloc ne prouve que des dérivations. Le titre candidat,
+« Each tag anchor is a distinct derivation », ne parle plus que du §02.5.
+
+Trace indépendante du scénario sur le candidat : `cucumber.rs:7541`
+(`a_zone_key` charge la DK de zone depuis le vecteur B2, pas d'un littéral
+local), `:8079` (le paramètre Gherkin `"toto"` est réellement lié et alimente
+`NodePath::tag_view` local, `tag_view` racine et `NodePath::folder`, chacun
+passé à `node_key`), `:12295` (garde d'arité à 3 puis `BTreeSet` de cardinal 3).
+`derive.rs:38-40,46-56` applique bien
+`K(ancre) = derive("aithos-core/v1/t/"+tag, K(dossier))`. Le titre promet
+exactement cela.
+
+L'obligation liée de la fiche de décision — l'élargissement de `d-bundle` —
+survit à l'acceptation : elle est consignée dans
+`features/.agents/orchestrator/STATE.md:15-18` sous « Tracked follow-ups », là
+où le cycle `d-bundle` la lira. La revue a confirmé indépendamment que
+`d-bundle.feature` ne contient toujours aucun scénario de vue de tag ni de
+`wrap` : la dette est réelle et ouverte, et l'option A ne dégénère pas en « A
+seule ».
+
+Geste de la revue, conformément à `PROCESS.md` §« Gherkin audit-marker
+lifecycle » : `@audit-partial @bder-006` et son commentaire adjacent sont
+retirés de `features/b-derivation.feature`. Le marqueur `@bder-012` reste.
+
+Résidu consigné, non imputé : « Each » est exhibé par un seul tag et une seule
+paire de sites d'ancrage, et la couche Gherkin n'assère aucune des deux valeurs
+`tag_anchor_*_hex`. C'est de la largeur d'échantillon, donc du ressort de
+`BDER-012`, atténué par `b2_derivation.rs::b2_deep_chain_and_anchors` et par la
+présence de `tag_label` dans la batterie de 21 labels de `cucumber.rs:208-216`.
+
+### `BDER-008` → `VERIFIED`, résidu détaché en `BDER-013`
+
+Le critère de clôture écrit dans cette note avant la ronde est rempli, et chaque
+moitié a été vérifiée par la revue plutôt qu'acceptée sur parole :
+
+| Affirmation de la `description` | Vérification indépendante |
+|---|---|
+| aucun générateur B2 indépendant dans ce dépôt | aucun `gen-b2*` dans `vectors/` ; `git log --all --diff-filter=A -- 'vectors/gen-b*'` vide sur **toutes** les branches |
+| vecteur, fixtures et `b2_derivation.rs` nés dans `1b7d258` | `git log --diff-filter=A` sur les deux fichiers → `1b7d258` (2026-07-09) ; le même commit ajoute les 160 lignes de steps à `cucumber.rs` |
+| `folder1_key_hex` recalculé par cinq scripts | `gen-f.py:104-108`, `gen-g.py:150-153`, `gen-h.py:68-73`, `gen-h2.py:95-100`, `gen-i.py:76-81` — exactement cinq, exactement ceux-là |
+| `deep_section_key_hex` par `gen-f.py` seul | `gen-f.py:107,109` ; aucun autre script ne mentionne le champ |
+| `sibling_section_*`, `tag`, `tag_anchor_*` sans témoin externe | recherche dépôt-large hors `*.rs` : zéro occurrence ; seuls `b2_derivation.rs:41-68` les assèrent, via le code testé |
+| aucune valeur ne change | comparaison champ par champ `513b366` vs `4f5921e` : seule `description` bouge, ordre des clés préservé |
+
+En complément, la revue a **recalculé les cinq clés attendues depuis zéro** en
+Python `blake3` à partir de `zone_dk_hex`, des sids et du tag, en appliquant
+directement les formules du §02.5 : cinq `MATCH`. Cela ne rend pas le vecteur
+indépendamment *généré* — c'est une vérification de conformité, pas de
+provenance — mais cela établit qu'aucune valeur du candidat n'est fausse, y
+compris les deux ancres de tag qui n'ont aucun témoin externe.
+
+Le mécanisme du vecteur figé est cohérent : `ownership.json` épingle un SHA-256
+par vecteur, `vectors_ownership.rs:182` l'asservit, et le pin de chaque
+révision égale le fichier de cette révision. Deux bornes à énoncer : le pin
+porte sur le fichier entier et ne distingue donc pas une édition de prose d'une
+édition de valeur — le re-pin était mécaniquement obligatoire et ne prouve rien
+à lui seul sur ce qui a bougé ; et les cinq garde-fous Python ne sont toujours
+pas branchés en CI (`ci.yml` ne lance que `fmt`, `clippy`, `test`), de sorte que
+l'autorité effective en CI reste `b2_derivation.rs`, c'est-à-dire le code testé.
+Les deux points sont déjà portés par la fiche de décision et par `BDER-007`.
+
+Pourquoi `VERIFIED` malgré le résidu ci-dessous : le critère de clôture écrit de
+`BDER-008` est rempli au mot près, le résidu est *déclaré* par le correcteur et
+non dissimulé, et la fiche de décision ne nommait qu'une seule action exécutable
+pour cette ronde (« réécrire la `description` du vecteur »). Ce dépôt a déjà
+traité exactement cette forme : la revue 01 a accepté `BDER-002` en `VERIFIED`
+en ouvrant `BDER-012` sur son résidu. Le résidu reçoit donc son propre
+identifiant stable et reste visible.
+
+### BDER-013 — La revendication de provenance retirée survit dans le test de conformité Rust
+
+**Priorité : P3 — OUVERT — ouvert par la revue de la ronde 2 (2026-08-02)**
+
+#### Constat
+
+`rust/crates/aithos-core/tests/b2_derivation.rs:1-2`, sur le candidat `4f5921e` :
+
+```rust
+//! Conformance vector B2 — content-tree derivation (spec 01.3, 02.5).
+//! Expected values generated independently (Python blake3).
+```
+
+Après la ronde 2, le dépôt affirme deux choses contradictoires sur les mêmes
+cinq valeurs attendues. La `description` de `vectors/b2-derivation.json` dit
+qu'aucun générateur B2 indépendant n'existe et que `sibling_section_*`, `tag` et
+les deux `tag_anchor_*_hex` sont auto-certifiés par `aithos-core::derive`
+**via `b2_derivation.rs`** ; `b2_derivation.rs` dit que ses valeurs attendues
+ont été générées indépendamment en Python `blake3` — la phrase même que la
+fiche de décision `BDER-008` retire.
+
+Le lecteur qui arrive par le test Rust — la route que `DOMAIN.md` désigne comme
+le « Test de conformité » de cette feature, et celle que la nouvelle
+`description` nomme elle-même — reçoit donc toujours la revendication retirée,
+sans atténuation.
+
+Ce n'est pas `BDER-007`. `BDER-007` demande qu'un générateur indépendant
+*existe* ; `BDER-013` demande seulement que le dépôt cesse d'affirmer qu'il en
+existe un.
+
+#### Implémentation attendue
+
+Remplacer la ligne 2 par la provenance honnête que porte désormais le vecteur,
+ou la faire pointer vers la `description` du vecteur au lieu de re-énoncer une
+provenance. Aucune valeur, aucune assertion, aucun nom de test ne change ; les
+cinq assertions du fichier restent telles quelles.
+
+#### Critère de clôture
+
+Aucun fichier du dépôt n'affirme une génération indépendante pour les valeurs
+attendues de B2 tant qu'aucun `gen-b2-derivation.py` n'existe. Naturellement
+groupable avec le lot « générateur B2 » qui clôt `BDER-007`, mais sans en
+dépendre : la revendication peut être retirée aujourd'hui.
+
+#### Portée vérifiée
+
+`derive.rs` ne porte aucune revendication de provenance ; `cucumber.rs:141-152`
+est déjà honnête et énonce correctement le partage cinq générateurs / un
+générateur / aucun témoin. Les autres familles de vecteurs portant la mention
+« generated independently » (`a1-genesis`, `a2-did`, `e1`, `f1`, `g1`, `g2`,
+`g3`, `h1`, `h2`, `i1`, `cb2-max-children-versioning`) ont toutes un `gen-*.py`
+commité : B2 est la seule sans. L'écart est spécifique à B2 et ne se généralise
+pas.
+
+### Écart de processus constaté, hors périmètre de cette feature
+
+`features/.agents/scripts/verify-feature-tags.sh` sort en **1 dès la baseline**
+comme sur le candidat, à cause de
+`features/gateway-delegated-client-surfaces.feature` dont la première ligne est
+`@wip @g4 @wasm @cli` au lieu de `@gateway-delegated-client-surfaces` (fichier
+byte-identique aux deux révisions). `PROCESS.md` §« Feature targeting and gate
+pyramid » impose de lancer ce script « before any audit, correction, or
+review » : tout rôle, sur toute feature, est donc aujourd'hui tenu de passer une
+pré-gate qu'aucun ne peut passer. La revue n'a ni contourné ni réparé cet écart,
+a établi qu'il **préexiste au candidat** et ne l'a pas laissé bloquer un verdict
+qui n'en dépend pas. Soit le script tolère les features `@wip`, soit ce fichier
+reçoit son tag canonique, soit `PROCESS.md` dit ce que fait un rôle devant une
+pré-gate rouge pour un fichier étranger. Propriétaire attendu : le propriétaire
+du processus, via l'orchestrateur.
+
+### Limites de ce verdict
+
+`VERIFIED` signifie ici que les deux écarts assignés remplissent leur critère de
+clôture écrit, sous preuve indépendamment rejouée. Cela ne rend pas la `Rule`
+des vues de tag `PROUVÉE` au sens de `PROCESS.md` : son scénario reste un
+échantillon borné (`BDER-012`) dont les ancres n'ont aucun témoin externe
+(`BDER-007`), et la moitié comportementale du §02.9 reste sans preuve dans tout
+le corpus exécutable jusqu'à ce que le cycle `d-bundle` acquitte sa dette
+élargie.
+
+État résultant : `REVIEW_ACCEPTED`. Rôle suivant : revue d'impact globale
+(`review-gherkin-impacts`) sur la plage `513b366..4f5921e`. L'intégration dans
+`main` reste une décision humaine.
+
+`BDER-007`, `BDER-010`, `BDER-012` et désormais `BDER-013` restent ouverts et
+visibles.
