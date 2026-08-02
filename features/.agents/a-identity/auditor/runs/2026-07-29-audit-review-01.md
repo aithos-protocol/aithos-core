@@ -232,3 +232,12 @@ Route first to the protocol owner:
    correction is required;
 3. leave AID-002 and AID-005 unchanged and verified within pilot scope;
 4. do not address AID-003/AID-004 in this round.
+
+---
+
+**Annotation (2026-08-02, per the b-derivation impact review, rec. 4).** The
+`EXIT=0` lines of the gate transcripts above are not proof: at this run's
+revision the `aithos-bundle` Cucumber runner exited 0 regardless of failures
+(`BDER-011`, pre-existing, fixed and `VERIFIED` on 2026-07-30). The printed
+scenario and step counters that follow each `EXIT=0` line remain valid
+evidence. This report is otherwise unmodified.

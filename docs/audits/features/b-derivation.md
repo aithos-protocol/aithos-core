@@ -12,7 +12,7 @@
 | Implémentation principale | `aithos-core::{derive,path,ids}` |
 | Surfaces contrôlées | Core, Bundle, CLI ; vecteurs `vectors/` et leurs générateurs |
 | Méthode | Deux passes, Pass A aveugle à l'historique en trois unités de revue isolées (une par `Rule`), puis passe d'intégration, revue challenger adverse, et Pass B différentielle |
-| Statut de la note | **OUVERTE — ronde 1 revue et acceptée ; `BDER-011` `VERIFIED` (2026-07-30) ; `BDER-012` ouvert, une décision en attente** |
+| Statut de la note | **OUVERTE — ronde 1 acceptée et intégrée (2026-08-02) ; `BDER-011` `VERIFIED` (2026-07-30) ; décisions `BDER-006` et `BDER-008` arbitrées le 2026-08-02, ronde 2 `CORRECTION_REQUESTED`** |
 
 ## Verdict
 
@@ -695,3 +695,29 @@ Aucune de ces deux décisions ne doit être prise implicitement dans le code.
 - [ ] `cargo test --workspace --no-fail-fast` vert.
 - [ ] `cargo fmt --all -- --check` vert.
 - [ ] Le vecteur `b2-derivation.json` est inchangé en valeurs.
+
+## Décisions arbitrées — 2026-08-02
+
+Les deux décisions listées ci-dessus (« Décisions à trancher ») ont été
+arbitrées par le propriétaire du protocole le 2026-08-02. Les sections
+antérieures de cette note ne sont pas réécrites ; le détail et les motifs sont
+dans `features/.agents/b-derivation/decisions/`.
+
+1. **BDER-006 → option A, avec extension obligatoire de `d-bundle`.** La
+   `Rule` reste de la dérivation pure et son titre sera reformulé (ronde 2).
+   La moitié comportementale du §02.9 (tag-view/`wrap`) est à prouver dans le
+   futur cycle `d-bundle`, dont le suivi ciblé est élargi en conséquence —
+   sans cette extension, la décision dégénérerait en « A seule », ce qui n'est
+   pas ce qui est décidé.
+   Voir `decisions/2026-08-02-bder-006-tag-view-rule-scope.md`.
+2. **BDER-008 → corriger la revendication de provenance.** La `description`
+   de `b2-derivation.json` dira la provenance réelle et le statut exact de
+   corroboration de chaque champ ; aucune valeur ne change. Le générateur
+   indépendant `gen-b2-derivation.py` reste la cible d'un lot futur — seule
+   voie de fermeture de `BDER-007` — qui devra aussi brancher en CI les
+   garde-fous B2 de `gen-f/g/h/h2/i`.
+   Voir `decisions/2026-08-02-bder-008-b2-provenance.md`.
+
+Conséquence d'état : `b-derivation` passe en `CORRECTION_REQUESTED` (ronde 2)
+avec pour périmètre exact ces deux corrections. `BDER-007`, `BDER-010`
+(informatif) et `BDER-012` restent ouverts et visibles.

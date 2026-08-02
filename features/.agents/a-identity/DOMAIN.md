@@ -115,3 +115,13 @@ Audit only the semantic truth of existing scenarios and the tests added to
 close AID-001, AID-002, and AID-005. Do not design new general scenarios.
 AID-003 and AID-004 remain open until explicitly assigned to a correction
 round.
+
+### Gate exit-code caveat (recorded 2026-08-02, per the b-derivation impact review)
+
+Until `BDER-011` was fixed (`78c06ba`, merged `090d11a`, `VERIFIED` `c630753`
+on 2026-07-30), the `aithos-bundle --test cucumber` runner called `filter_run`
+under `harness = false` and exited 0 even when scenarios failed. Any
+`EXIT=0` claim from that gate **predating the fix** is not evidence by itself;
+only the printed per-scenario counters are. Claims after the fix carry normal
+evidentiary weight. This aligns with
+`features/.agents/b-derivation/DOMAIN.md` (gate semantics section).

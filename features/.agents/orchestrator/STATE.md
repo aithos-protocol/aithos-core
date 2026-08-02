@@ -2,36 +2,36 @@
 
 | Field | Value |
 |---|---|
-| Status | `AWAITING_HUMAN_ACCEPTANCE` |
+| Status | `COMPLETE` (b-derivation round 1 cycle) |
 | Source feature | `b-derivation.feature` |
-| Candidate baseline | `fa8fa797b897a762a0dfd7fc20910f053ce349ed` |
-| Accepted candidate | `ae88f7f` (correction `3d6fa51`, candidate tip `1ab331a`) |
-| Accepted review | `b-derivation/auditor/runs/2026-07-29-audit-review-01.md` |
 | Impact report | `runs/2026-07-29-b-derivation-impact-review.md` |
-| Result | no `FULL_AUDIT`; one `TARGETED` (`d-bundle`); one cross-cutting lot to open (`BDER-011`) |
-| Next role | human owner — accept the impact review, then integrate `codex/audit-b-derivation` into local `main` |
+| Human acceptance | 2026-08-02 (Mathieu) |
+| Integration | audit branch content on local `main` (correction `3d6fa51`, review `ae88f7f`, candidate tip `1ab331a`, impact review `7854895`) |
+| `BDER-011` cross-cutting lot | done — fix `78c06ba`, merge `090d11a`, `VERIFIED` `c630753` (2026-07-30) |
+| Decisions recorded | `b-derivation/decisions/2026-08-02-bder-006-tag-view-rule-scope.md` ; `b-derivation/decisions/2026-08-02-bder-008-b2-provenance.md` |
+| Next cycle | `b-derivation` round 2 correction (`BDER-006` retitle + `BDER-008` provenance), then independent review, then impact review |
 
-## Pending recommendations from the report
+## Tracked follow-ups
 
-1. Accept the review and integrate `codex/audit-b-derivation` into local `main`
-   (recorded base `5c3a618`). Unresolved findings — `BDER-006`, `BDER-007`,
-   `BDER-008`, `BDER-010`, `BDER-011`, `BDER-012` — survive the integration.
-2. Open `BDER-011` as a dedicated cross-cutting lot led by a corrector/execution
-   role, before the next round claims a green gate as evidence.
-   See `docs/HANDOFF-BDER-011-CUCUMBER-GATE-2026-07-29.md`.
-3. Align `features/.agents/a-identity/DOMAIN.md:88-99` with
-   `features/.agents/b-derivation/DOMAIN.md:108-115` on the meaning of the gate's
-   exit code, and annotate the `EXIT=0` line of
-   `features/.agents/a-identity/auditor/runs/2026-07-29-audit-review-01.md:177-183`
-   without rewriting the report.
-4. Record the `d-bundle` targeted follow-up in its future domain and audit. This
-   is not a request to reopen its audit; restarting an audit stays manual.
-5. Record the Gherkin layer's new dependency on `vectors/b2-derivation.json`.
+1. **`d-bundle` targeted follow-up (widened by the BDER-006 decision):** its
+   future cycle must record the co-owned steps (impact report §9.5) **and add
+   the tag-view/`wrap` scenarios proving the behavioral half of spec §02.9**.
+   Restarting that audit remains a manual decision.
+2. **Future B2 generator lot:** commit an independent, named
+   `gen-b2-derivation.py` (closes `BDER-007`), and wire the existing B2
+   cross-check guards of `gen-f/g/h/h2/i` into CI. No deadline imposed by this
+   cycle (see the BDER-008 decision).
+3. Remaining from the impact report: record the Gherkin layer's dependency on
+   `vectors/b2-derivation.json` in `vectors/README.md` or the `b-derivation`
+   `DOMAIN.md`; verify that the a-identity `DOMAIN.md` alignment and the
+   `EXIT=0` annotation were carried by the BDER-011 lot, and do them if not.
 
-## Previous cycle
+## Previous cycles
 
-The `a-identity` round 2 audit and impact-review cycle was accepted by the human
-owner on 2026-07-29 (`runs/2026-07-29-a-identity-impact-review.md`, no
-`FULL_AUDIT`). Its `AID-003` and `AID-004` findings remain open, and its targeted
-follow-ups are tracked in
-`docs/HANDOFF-A-IDENTITY-IMPACT-FOLLOWUPS-2026-07-29.md`.
+- `a-identity` round 2 accepted 2026-07-29
+  (`runs/2026-07-29-a-identity-impact-review.md`, no `FULL_AUDIT`); `AID-003`
+  and `AID-004` remain open; follow-ups in
+  `docs/HANDOFF-A-IDENTITY-IMPACT-FOLLOWUPS-2026-07-29.md`.
+- `b-derivation` round 1 accepted 2026-08-02 (this file); open findings
+  `BDER-006`/`BDER-008` assigned to round 2, `BDER-007`/`BDER-010`/`BDER-012`
+  survive visibly per `PROCESS.md`.

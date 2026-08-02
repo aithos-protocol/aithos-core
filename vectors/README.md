@@ -280,3 +280,12 @@ vectors yet. Their classified results are recorded one behavior per entry in
   (`6bf4dadde60b902ac114685c52abc1893f9eaa8b09dcc0bcd06876d31f6a83d1`);
   Rust consumer: `aithos-bundle/tests/cb2_bundle_concurrency_final.rs`
   (`2d863c0144b425e01bedf890679f6f8c1b551f61ea06d28ba0a7e88397ef7f1e`).
+
+## `b2-derivation.json` consumers (recorded 2026-08-02)
+
+This vector now has **three** consumer classes: `rust/crates/aithos-core/tests/b2_derivation.rs`,
+five Python generators cross-checking `folder1_key_hex` (and one for
+`deep_section_key_hex`), and the Gherkin layer of `features/b-derivation.feature`.
+`sibling_section_sid`, `sibling_section_key_hex` and `tag` have **no generator
+witness** (`BDER-007`, `BDER-008`; provenance decision of 2026-08-02 in
+`features/.agents/b-derivation/decisions/`). Values are frozen.
