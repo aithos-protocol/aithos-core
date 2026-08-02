@@ -55,7 +55,7 @@ Feature: Content-tree derivation
       Then the derived key of "projets/intime/note1" is unchanged
       And the owner reads the same section at "projets/intime/note1"
 
-  Rule: Tag views anchor at folders
+  Rule: Each tag anchor is a distinct derivation
 
     @audit-partial @bder-006
     # AUDIT BDER-006 — PARTIAL / DECISION_REQUIRED; see the public audit.
