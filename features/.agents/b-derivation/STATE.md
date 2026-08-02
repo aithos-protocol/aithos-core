@@ -9,6 +9,7 @@
 | Correction branch | `codex/fix-b-derivation-bder-006-008-decisions` |
 | Baseline (immutable) | `513b366d0542fe1cd97b4a7fd17f5d6f73f34ea3` |
 | Candidate (immutable) | `4f5921e0c8335dde9ea9e54ab81a83e0aea1cf41` |
+| Reviewable range | `513b366..4f5921e` — the two corrections, three files, no production code. The branch also carries this round's documentation commits (run report, this file, public audit) on top of the candidate; they are not part of the behavioural candidate. |
 | Corrector run | `corrector/runs/2026-08-02-correction-02.md` |
 | Round 1 integration | accepted by the human owner on 2026-08-02; audit branch content on `main` (`3d6fa51`, `ae88f7f`, `1ab331a`, impact review `7854895`) |
 | Impact review | `orchestrator/runs/2026-07-29-b-derivation-impact-review.md` — accepted 2026-08-02, no `FULL_AUDIT`, one `TARGETED` (`d-bundle`), widened by decision `BDER-006` to owe the tag-view/`wrap` scenarios |
