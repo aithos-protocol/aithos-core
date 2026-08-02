@@ -12,7 +12,7 @@
 | Implémentation principale | `aithos-core::{derive,path,ids}` |
 | Surfaces contrôlées | Core, Bundle, CLI ; vecteurs `vectors/` et leurs générateurs |
 | Méthode | Deux passes, Pass A aveugle à l'historique en trois unités de revue isolées (une par `Rule`), puis passe d'intégration, revue challenger adverse, et Pass B différentielle |
-| Statut de la note | **OUVERTE — ronde 1 acceptée et intégrée (2026-08-02) ; `BDER-011` `VERIFIED` (2026-07-30) ; décisions `BDER-006` et `BDER-008` arbitrées le 2026-08-02, ronde 2 `CORRECTION_REQUESTED`** |
+| Statut de la note | **OUVERTE — ronde 1 acceptée et intégrée (2026-08-02) ; `BDER-011` `VERIFIED` (2026-07-30) ; décisions `BDER-006` et `BDER-008` arbitrées le 2026-08-02 ; ronde 2 corrigée et en attente de revue indépendante (`REVIEW_REQUESTED`, candidat `4f5921e`)** |
 
 ## Verdict
 
@@ -721,3 +721,51 @@ dans `features/.agents/b-derivation/decisions/`.
 Conséquence d'état : `b-derivation` passe en `CORRECTION_REQUESTED` (ronde 2)
 avec pour périmètre exact ces deux corrections. `BDER-007`, `BDER-010`
 (informatif) et `BDER-012` restent ouverts et visibles.
+
+## Ronde 2 — candidat en attente de revue (2026-08-02)
+
+| Champ | Valeur |
+|---|---|
+| Branche | `codex/fix-b-derivation-bder-006-008-decisions` |
+| Baseline | `513b366` (clôture de la ronde 1 + fiches de décision) |
+| Candidat | `4f5921e` |
+| Rapport | `features/.agents/b-derivation/corrector/runs/2026-08-02-correction-02.md` |
+
+Statuts portés par le correcteur, à vérifier — ce rôle ne marque rien
+`VERIFIED` :
+
+1. **`BDER-006` → `IMPLEMENTED`.** `features/b-derivation.feature:58`, titre de
+   `Rule` seul : « Tag views anchor at folders » → « Each tag anchor is a
+   distinct derivation ». Aucun scénario, step, tag ni commentaire modifié ;
+   le marqueur `@audit-partial @bder-006` reste en place jusqu'à la revue. Le
+   bloc Cucumber compte toujours 3 rules / 6 scénarios / 30 steps. La moitié
+   comportementale du §02.9 reste due par le cycle `d-bundle`.
+2. **`BDER-008` → `IMPLEMENTED`.** `vectors/b2-derivation.json`, `description`
+   seule : la revendication « generated independently (Python blake3) » est
+   remplacée par la provenance réelle (vecteur, fixtures et
+   `b2_derivation.rs` nés dans `1b7d258`) et le statut de corroboration champ
+   par champ (`folder1_key_hex` par cinq scripts, `deep_section_key_hex` par
+   `gen-f.py` seul, le reste sans témoin externe). **Aucune valeur ne change**,
+   vérifié clé par clé. Conséquence mécanique dans le même changement : le
+   digest SHA-256 épinglé dans `vectors/ownership.json` est re-épinglé
+   (`73a4740d…` → `ec5be797…`), sans quoi
+   `aithos_bundle::vectors_ownership::vectors_match_their_pinned_digests` part
+   au rouge.
+
+Écarts déclarés par le correcteur, à trancher par la revue :
+
+- `features/.agents/scripts/verify-feature-tags.sh` est **rouge dès la
+  baseline** — `features/gateway-delegated-client-surfaces.feature` commence
+  par `@wip @g4 @wasm @cli`. Régression pré-existante depuis `48ac462`
+  (SPL-1, 2026-07-30), étrangère à cette feature, non corrigée : elle bloque la
+  pré-gate obligatoire de *toutes* les features et demande sa propre décision.
+- `rust/crates/aithos-core/tests/b2_derivation.rs:2` porte encore la même
+  revendication rétractée ; hors périmètre assigné, laissée en place et
+  signalée.
+- Les gates ont été exécutées sur un export conteneurisé du candidat (la VM du
+  poste n'expose aucune toolchain Rust). Gates : feature `@b-derivation`
+  1 feature / 3 rules / 6 scénarios / 30 steps, Cucumber global 18 features /
+  836 scénarios, `cargo test --workspace --no-fail-fast` et
+  `cargo fmt --all -- --check` verts.
+
+`BDER-007`, `BDER-010` et `BDER-012` restent ouverts et visibles.

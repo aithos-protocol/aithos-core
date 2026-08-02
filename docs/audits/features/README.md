@@ -75,4 +75,4 @@ presented as a silent substitute for another.
 | Feature | Note | Current verdict |
 |---|---|---|
 | `a-identity.feature` | [`a-identity.md`](a-identity.md) | Round 2 audit and impact review complete; AID-001/002/005 verified within pilot scope; AID-003 open; AID-004 decision required |
-| `b-derivation.feature` | [`b-derivation.md`](b-derivation.md) | Round 1 review accepted: BDER-001/002/003/004/005/009 `VERIFIED`; BDER-011 (harness, repo-wide) `VERIFIED` 2026-07-30; BDER-012 open; BDER-006 decision still required |
+| `b-derivation.feature` | [`b-derivation.md`](b-derivation.md) | Round 1 review accepted: BDER-001/002/003/004/005/009 `VERIFIED`; BDER-011 (harness, repo-wide) `VERIFIED` 2026-07-30; BDER-006 and BDER-008 decided 2026-08-02 and `IMPLEMENTED` in round 2 (candidate `4f5921e`, review pending); BDER-007, BDER-010, BDER-012 open |
