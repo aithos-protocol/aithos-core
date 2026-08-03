@@ -25,8 +25,33 @@ policy:
   disclosure_gate: true
 
 budget:
-  agents_per_cycle: 60
-  wallclock_minutes_per_cycle: 240
+  # Panel size is refuters_per_finding x (number of P1/P2 findings), so this
+  # figure follows the finding yield, not the scenario count. Set to 300 by the
+  # owner on 2026-08-03, after run 2026-08-03-r1 spent 55 on c-headers, whose
+  # 8 scenarios yielded 16 P1/P2 findings. The headroom is meant to cover
+  # f-gamma (74 scenarios) without a budget stop mid-panel.
+  #
+  # At this size the agent count stops being a guardrail and becomes a runaway
+  # backstop. Wallclock is now the binding limit: raised 240 -> 600 so the two
+  # do not contradict each other. A c-headers-sized cycle took ~105 min.
+  agents_per_cycle: 300
+  wallclock_minutes_per_cycle: 600
+
+# Model per role. Set to opus everywhere by the owner on 2026-08-03. Run
+# 2026-08-03-r1 ran I1 and G2 on sonnet: the warden nonetheless caught a real
+# disclosure leak, a gate whose counters contradicted its declared scope, a
+# stale summary-table cell, and the structural gap in the state model. Sonnet
+# was not the weak link there; opus is the owner's call, not a fix.
+models:
+  inventory: opus
+  pass_a: opus
+  refuter: opus
+  pass_b: opus
+  corrector: opus
+  reviewer: opus
+  impact: opus
+  warden: opus
+  bootstrapper: opus
 
 # Features are processed strictly in this order, one at a time. A feature whose
 # STATE.md reports COMPLETE is skipped. A feature file present on disk but
