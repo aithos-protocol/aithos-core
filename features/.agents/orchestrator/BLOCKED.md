@@ -9,6 +9,75 @@ conditions". Anything absent from that list is not a reason to stop.
 
 ## Open
 
+### 2026-08-03-r1 · c-headers · condition 1 — `DECISION_REQUIRED` on two findings
+
+- **Raised:** 2026-08-03T12:55:00Z
+- **Stage:** `AUDIT_INITIAL`, integration pass
+- **Evidence:** `docs/audits/features/c-headers.md` §6 (both findings now stated
+  in full, embargo lifted 2026-08-03); `pass-a/refutation.json`
+
+**Question.** `CHDR-007` and `CHDR-012` cannot be closed without choosing
+between competing readings of the protocol. Which reading holds?
+
+Both turn on the same axis: whether an invariant the specification states in
+the passive voice binds a verifying surface, or only describes a property of an
+object. The competing readings, their evidence and their consequences are set
+out in full in `docs/audits/features/c-headers.md` §6, one table per finding.
+The disclosure ruling of 2026-08-03 decided what is published; it did not decide
+this.
+
+**Options.** They are the two readings themselves; the audit states each with
+its evidence. `PROCESS.md`, section "Decision required", forbids a corrector
+from choosing implicitly, and forbids the orchestrator from choosing at all.
+
+**What the train did not do.** It did not pick a reading, and it assigned
+neither finding to a corrector. The other twenty-one findings did move to
+`CORRECTION_REQUESTED`: `PROCESS.md` keeps `DECISION_REQUIRED` findings open and
+visible rather than holding the whole cycle for them.
+
+## Template
+
+```markdown
+### <run-id> · <feature> · condition <n> — <short title>
+
+- **Raised:** <RFC 3339>
+- **Stage:** <status the cycle stopped in>
+- **Evidence:** <ledger ids — gate transcripts, agent outputs>
+
+**Question.** One sentence, answerable.
+
+**Options.**
+
+1. <option> — consequence, cost.
+2. <option> — consequence, cost.
+
+**What the train did not do.** The work left untouched, so the cost of each
+option is legible.
+```
+
+## Resolved
+
+### Ruling — 2026-08-03, Mathieu Colla (owner)
+
+> Publish both embargoed findings in full. `CHDR-007` is already public in
+> substance on `codex/audit-c-headers`; `CHDR-012` is published despite the
+> absence of a fix, so that the corrector can cite what it repairs.
+
+Raise `budget.agents_per_cycle` from 40 to 60. Keep
+`policy.refuters_per_finding: 3` — a two-refuter panel has no rule attached to a
+1–1 split.
+
+This ruling closes conditions **9**, **6** and **7**. It closes 6 because the
+text the warden flagged is no longer withheld material: there is nothing left to
+leak. It does **not** touch condition 1 — the ruling decides what is published,
+not which reading of the protocol holds. `CHDR-007` and `CHDR-012` remain
+`DECISION_REQUIRED` and are assigned to no corrector.
+
+Resumed under run `2026-08-03-r2`. Gate after the rewrite: `ev-91717a6d`,
+exit 0, 1 feature / 4 rules / 8 scenarios / 28 steps — the contract is unchanged.
+
+---
+
 ### 2026-08-03-r1 · c-headers · condition 6 — two warden invalidations, run stopped
 
 - **Raised:** 2026-08-03T13:05:00Z
@@ -94,32 +163,6 @@ push. It did not write either statement to a tracked file.
 
 ---
 
-### 2026-08-03-r1 · c-headers · condition 1 — `DECISION_REQUIRED` on two findings
-
-- **Raised:** 2026-08-03T12:55:00Z
-- **Stage:** `AUDIT_INITIAL`, integration pass
-- **Evidence:** `docs/audits/features/c-headers.md` (identifiers and neutral
-  titles only); `pass-a/refutation.json`
-
-**Question.** `CHDR-007` and `CHDR-012` cannot be closed without choosing
-between competing readings of the protocol. Which reading holds?
-
-Both turn on the same axis, stated here without the detail the disclosure gate
-withholds: whether an invariant the specification states in the passive voice
-binds a verifying surface, or only describes a property of an object. The
-competing readings, their evidence and their consequences are set out in
-`docs/audits/features/c-headers.md`, sections 7 and 11, to the extent the
-disclosure gate allows.
-
-**Options.** They are the two readings themselves; the audit states each with
-its evidence. `PROCESS.md`, section "Decision required", forbids a corrector
-from choosing implicitly, and forbids the orchestrator from choosing at all.
-
-**What the train did not do.** It did not pick a reading, did not assign either
-finding to a corrector, and did not set `STATE.md` to `CORRECTION_REQUESTED`.
-
----
-
 ### 2026-08-03-r1 · c-headers · condition 7 — agent budget exceeded
 
 - **Raised:** 2026-08-03T12:40:00Z, recorded after the fact
@@ -156,26 +199,4 @@ That was a judgement call and it is yours to confirm or reverse.
 
 **What the train did not do.** It did not edit `QUEUE.yaml`.
 
-## Template
 
-```markdown
-### <run-id> · <feature> · condition <n> — <short title>
-
-- **Raised:** <RFC 3339>
-- **Stage:** <status the cycle stopped in>
-- **Evidence:** <ledger ids — gate transcripts, agent outputs>
-
-**Question.** One sentence, answerable.
-
-**Options.**
-
-1. <option> — consequence, cost.
-2. <option> — consequence, cost.
-
-**What the train did not do.** The work left untouched, so the cost of each
-option is legible.
-```
-
-## Resolved
-
-*(none)*

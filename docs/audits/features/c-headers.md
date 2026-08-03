@@ -93,7 +93,10 @@ Trois constats structurent la ronde.
    il vient de la passe d'état partagé.
 
 Deux findings appellent une décision humaine avant toute correction :
-`CHDR-007` (P1) et `CHDR-012` (P2). Les deux sont sous barrière de divulgation.
+`CHDR-007` (P1) et `CHDR-012` (P2). Les deux ont été retenus par la barrière de
+divulgation pendant le cycle, puis publiés en entier sur décision du
+propriétaire le 2026-08-03 (§6, préambule ; trace complète en §15). Ils restent
+`DECISION_REQUIRED` et ne sont assignés à aucun correcteur.
 
 ### Compteurs exacts
 
@@ -178,56 +181,258 @@ question ouverte** (`PROCESS.md` § *Adversarial refutation*) : la ligne
 « réconciliation » de chaque bloc dit ce que le Pass B en a fait, sur preuve de
 code courant.
 
-### Barrière de divulgation
+### Barrière de divulgation — levée le 2026-08-03
 
-`aithos-core` est public et cette branche y sera poussée. Deux findings restent
-sous embargo à l'issue de la ronde : **`CHDR-007`** et **`CHDR-012`**. Ils
-n'apparaissent ci-dessous que par leur identifiant et un titre neutre.
-Détail retenu au titre de la barrière de divulgation (`PROCESS.md`,
-§ *Disclosure gate*) ; condition de blocage 9 ouverte.
+`aithos-core` est public et cette branche y sera poussée. Le Pass A avait marqué
+quatre findings `disclosure: embargo` : `CHDR-003`, `CHDR-007`, `CHDR-008` et
+`CHDR-012`. **Aucun ne l'est plus.**
 
-Les deux autres findings qu'avait marqués le Pass A — `CHDR-003` et `CHDR-008` —
-sont **retirés** par la réconciliation. Leur embargo tombe avec eux et leur
-énoncé est publié en clair ci-dessous.
+- `CHDR-003` et `CHDR-008` sont **retirés** par la réconciliation (§7) ; leur
+  embargo tombe avec eux.
+- `CHDR-007` et `CHDR-012` sont **publiés en entier sur décision du propriétaire
+  humain**, enregistrée le 2026-08-03 :
+
+> « Publier les deux en entier. `CHDR-007` est déjà public en substance sur
+> `codex/audit-c-headers` ; `CHDR-012` est publié malgré l'absence de correctif,
+> au motif que le correcteur doit pouvoir citer ce qu'il répare. »
+>
+> — Mathieu Colla, propriétaire du protocole, 2026-08-03. Run de reprise
+> `2026-08-03-r2`.
+
+La condition de blocage 9 est donc **résolue**. La barrière a réellement joué
+pendant ce cycle et la trace en est conservée en §15 : ce n'est pas une
+formalité rétroactive.
+
+**Ce que la décision ne tranche pas.** La levée de l'embargo est une décision de
+publication, non de sémantique. `CHDR-007` et `CHDR-012` restent tous deux
+`DECISION_REQUIRED` : la question normative qu'ils posent — un invariant que la
+spécification énonce à la voix passive lie-t-il une surface vérifiante, ou
+décrit-il seulement une propriété d'objet ? — n'est pas tranchée et ne doit pas
+l'être par un correcteur. **Ces deux findings ne sont assignés à aucun
+correcteur** (§11 lot 0, §12, §15).
 
 ---
 
 ### `CHDR-007` — `DECISION_REQUIRED`, P1 — 1/3 réfutations (survit)
 
-**Titre neutre : « Edition-level half of I3 in the edition verifier ».**
+**La moitié « édition » de I3 n'est imposée par aucun vérificateur d'édition.**
 **Scénario 5 / RU-2 — finding de surface publique.**
 
-Détail retenu au titre de la barrière de divulgation (`PROCESS.md`,
-§ *Disclosure gate*) ; condition de blocage 9 ouverte.
+`spec/00-overview.md:33-34` et `spec/03-headers.md:36-37` énoncent I3 en **deux**
+propositions :
 
-**Réconciliation.** Maintenu. Le Pass B confirme la lecture du Pass A sur le
-code courant et ne l'élargit pas. Deux sémantiques de protocole concurrentes
-s'affrontent ; aucune ne peut être choisie par un correcteur.
-`DECISION_REQUIRED`, propriétaire attendu : le propriétaire du protocole.
+> **I3 — Owner line.** Every header MUST contain a line for the owner. A header
+> without one is invalid, **and so is the edition carrying it.**
+>
+> **I3:** every `key_versions[*].lines` MUST include the owner line. **An edition
+> whose any header violates this is invalid.**
 
-**Critère de clôture.** Une décision enregistrée, antérieure à toute
-correction, puis la correction que cette décision impose.
+La première moitié est imposée en quatre points de `aithos-core`
+(`check_owner_line` sur `build`/`build_at` à `header.rs:133`, sur `rotate` à
+`:201`, la branche owner de `check_rotation` à `:298-303`, et `validate` à
+`:308-315`). **La seconde ne l'est nulle part.**
+
+`Bundle::verify` (`bundle.rs:1654-1769`), le vérificateur d'édition hors ligne,
+contrôle le document DID (`:1656`), la chaîne et les signatures de manifestes,
+la hauteur et `prev_hash`, les fusions et résolutions de fork, les digests
+SHA-256 des fichiers épinglés, l'absence de fichier non épinglé, les liens gamma
+et `gamma_head`, et les racines Merkle d'état et gamma. **Il n'appelle jamais
+`Header::validate`** ; recherche exhaustive sur son corps entier
+(`bundle.rs:1654-1769`) : aucune occurrence de `Header` ni de `validate`.
+
+Le seul contact de la vérification avec les headers est indirect :
+`header_hash_at` (`state.rs:57-62`, « `BLAKE3(JCS(header.json))` if the node was
+ever granted, else zeros ») et `vault_build` (`state.rs:240-248`) les
+désérialisent en `serde_json::Value` **opaque** pour en calculer le digest JCS.
+Un header dépourvu de ligne owner y produit un hash parfaitement valide, qui est
+plié dans la racine Merkle d'état, épinglé au manifeste, et signé.
+
+**Portée élargie par un réfuteur, vérifiée :** `publication::cold_verify`
+(`publication.rs:836-939`) est un **second** vérificateur d'édition, tout aussi
+muet sur I3.
+
+**Conséquence rattachée par le même réfuteur.**
+`spec/10-threat-model.md:19` inscrit « Owner un-lockable-out » à la table des
+menaces et n'y cite qu'une seule contre-mesure : « owner line mandatory in every
+header (I3) ». Producteur possible identifié : un délégué signant une édition
+ordinaire — branche `m.version == CORE_DRAFT2_VERSION` de `verify`,
+`bundle.rs:1664` — qui publie une rotation dont la nouvelle `key_version` omet la
+ligne owner et ré-encrypte sous une DK' aléatoire. Un header sans ligne owner ne
+peut pas être *créé* par les constructeurs de `aithos-core`, mais un header
+arrivant par une autre route — `header.json` édité à la main, bundle importé,
+écrivain futur, aller-retour `serde` — serait haché dans l'arbre d'état, épinglé,
+signé dans un manifeste, et passerait `verify` sans opposition.
+
+### Les deux lectures concurrentes — exposées, non arbitrées
+
+| | Lecture A — I3 est un invariant d'édition | Lecture B — I3 est un invariant de construction |
+|---|---|---|
+| Fondement | `spec/00-overview.md:33-34` et `spec/03-headers.md:36-37` disent « and so is the edition carrying it » / « An edition whose any header violates this is invalid » : la phrase vise l'édition, donc le vérificateur d'édition | la spécification énonce I3 à la **voix passive** et ne l'impose explicitement à aucun vérificateur ; aucun vecteur de `spec/09-cli-and-conformance.md` §9.2 ne gate le cas |
+| Conséquence | `Bundle::verify` et `publication::cold_verify` doivent valider chaque header de l'édition | l'architecture actuelle — fail-closed à l'écriture (`header.rs:133`, `:201`) plus validation au parse (`header.rs:308-315`, appelée en `bundle.rs:630`, `:637`, `log.rs:425`, `session.rs:363`, `aithos-cli/src/cmd/header_open.rs:28`) — est **conforme** |
+| Coût | parser chaque header à chaque `verify` | la phrase de spec doit être resserrée pour dire ce que le code fait |
+| Porté par | l'auditeur et deux réfuteurs sur trois | le réfuteur dissident |
+
+Une troisième lecture est ouverte et n'a été portée par personne : déplacer la
+validation sur les seuls chemins de lecture. **Aucun correcteur ne peut choisir
+implicitement.** `DECISION_REQUIRED`, propriétaire attendu : le propriétaire du
+protocole.
+
+**Réconciliation.** Maintenu à P1. Le Pass B confirme la lecture du Pass A sur le
+code courant et ne l'élargit pas ; il y absorbe `CHDR-008` (§7), dont l'énoncé
+— la couverture inégale de `Header::validate` sur les chemins de lecture — est un
+sous-ensemble strict de la même question normative.
+
+**Rapport à l'étalon de juillet.** L'étalon publie déjà ce constat en clair sur
+la branche publique `codex/audit-c-headers` (`af32734`), sous
+`CHDR-015 — I3 is not enforced at the edition level — DECISION_REQUIRED, P2`.
+Cette ronde le retrouve indépendamment, le relève à P1, et ajoute deux éléments
+que juillet n'avait pas : le second vérificateur `publication::cold_verify`, et
+le rattachement explicite à `spec/10-threat-model.md:19`.
+
+**Référence de spec.** `spec/00-overview.md:33-34` ; `spec/03-headers.md:36-37` ;
+`spec/10-threat-model.md:19` ; `spec/09-cli-and-conformance.md` §9.2.
+
+**Critère de clôture.** Une décision enregistrée du propriétaire du protocole,
+**antérieure** à toute correction, désignant laquelle des trois lectures fait
+foi ; puis, selon cette décision, soit l'appel de `Header::validate` sur chaque
+header de l'édition dans `Bundle::verify` **et** `publication::cold_verify`, soit
+le resserrement de la phrase de spec, soit la validation sur les chemins de
+lecture — et, dans les trois cas, un test qui échoue sur la baseline auditée pour
+la raison nommée.
 
 ---
 
-### `CHDR-012` — `DECISION_REQUIRED`, P2 — 0/3 réfutations (survit intégralement)
+### `CHDR-012` — `DECISION_REQUIRED`, P2 — **0/3 réfutations**
 
-**Titre neutre : « Field on which I3 is checked, versus the field the
-specification declares authoritative ».**
+**I3 est vérifié sur un champ que la spécification déclare non autorisant, et
+non sur celui qu'elle déclare définitoire.**
 **Scénario 5 / RU-2 — finding de surface publique.**
 
-Détail retenu au titre de la barrière de divulgation (`PROCESS.md`,
-§ *Disclosure gate*) ; condition de blocage 9 ouverte.
+C'est le finding le plus solide du cycle : **aucun des trois réfuteurs ne l'a
+entamé**, deux l'ont renforcé depuis des angles que le Pass A n'avait pas pris,
+et il est **absent de l'étalon manuel de juillet**.
 
-**Réconciliation.** Maintenu. Aucun des trois réfuteurs n'a réfuté ; les trois
-ont renforcé le finding par trois angles indépendants (spec, modèle de menace,
-code). C'est le seul finding de la ronde à sortir du panel intact. Il est
-**absent de l'étalon de juillet**. Deux lectures normatives concurrentes,
-documentées dans le rapport de run sous la même barrière :
-`DECISION_REQUIRED`, propriétaire attendu : le propriétaire du protocole.
+#### Le constat
 
-**Critère de clôture.** Une décision enregistrée qui tranche laquelle des deux
-lectures fait foi, puis la correction correspondante.
+Les quatre points de contrôle I3 de `aithos-core` comparent tous un **label** :
+
+| Point de contrôle | Ligne | Test |
+|---|---|---|
+| `check_owner_line`, appelé par `build_at` (`header.rs:133`) et `rotate` (`:201`) | `header.rs:71-77` | `recipients.iter().any(\|r\| r.to == OWNER_LABEL)` |
+| branche owner de `check_rotation` | `header.rs:298-303` | `new.lines.iter().any(\|l\| l.to == OWNER_LABEL)` |
+| `validate` (parse-time) | `header.rs:308-315` | `kv.lines.iter().any(\|l\| l.to == OWNER_LABEL)` |
+
+Or `spec/03-headers.md:33-35` déclare précisément ce champ non autorisant :
+
+> `to` is a stable label (the grantee's multibase Ed25519 pubkey, or `"owner"`);
+> it is **a routing hint only — the seal is what grants**.
+
+Le commentaire de `header.rs:31-32` reprend la phrase mot pour mot. Les trois
+champs de `Recipient` (`header.rs:16-18`) sont `pub`, donc le constructeur
+`Recipient::owner` (`header.rs:22-28`) — le seul endroit où `to` et le `kid`
+`"owner-kex"` sont posés ensemble — n'est en rien contraignant : n'importe quel
+appelant peut construire un `Recipient { to: "owner", kid: …, pubkey: … }` à la
+main.
+
+#### Angle spec — l'écart est à la lettre, pas seulement à l'intention
+
+`spec/01-identity-and-keys.md:23` définit :
+
+> **owner_kex** is **the recipient key** of the owner's line in every header (I3).
+
+La spécification définit donc la ligne owner **par sa clé destinataire**, pas par
+son label. Le code vérifie l'inverse. Et la comparaison correcte est
+**disponible et non faite** : à `build_at` et à `rotate`, `check_owner_line`
+reçoit des `Recipient` qui portent un `pubkey: XPublicKey` (`header.rs:18`), et
+`OwnerKeys::owner_kex_pub()` (`keys.rs:51-53`) rend exactement la valeur à
+laquelle le comparer.
+
+#### Angle modèle de menace — la garde correspondante n'existe pas
+
+`spec/05-delegation.md:85-91` autorise explicitement un révocateur « owner **or
+ancestor** » à re-sceller les lignes des survivants, **ligne owner comprise** :
+
+> it rotates the node key and republishes the header omitting the revoked
+> child's line but keeping every other line — including lines it did not create
+> (those it re-seals under the new DK using its own access).
+
+La règle de garde qui devrait borner ce pouvoir — un vérificateur rejette une
+rotation de header dont le signataire n'est pas un émetteur autorisé — **n'est
+pas implémentée**, ce que le dépôt constate déjà lui-même :
+`docs/proposals/header-rotation-authority.md:37-48` relève que `check_rotation`
+« ne vérifie que deux choses : aucun destinataire clandestin, la ligne owner est
+présente. **Aucun contrôle d'autorité** », statut *Proposé — non adopté*.
+Conséquence directe : un rotateur émettant `{ to: "owner", kid: <son propre kid,
+déjà présent en v1> }` passe `check_rotation` — la garde anti-clandestin ne voit
+rien puisque le `kid` existait, et la garde I3 ne voit rien puisque le label
+dit `"owner"`.
+
+#### Angle code — la seule liaison réelle est constructive, jamais vérificative
+
+Le seul endroit du dépôt qui relie une ligne owner à la clé publiée dans le
+document DID est `Bundle::owner_kex_recipient` (`grants.rs:171-174`) :
+
+```rust
+pub(crate) fn owner_kex_recipient(&self) -> Result<Recipient> {
+    let doc = self.did_doc()?;
+    let bytes = wire::multibase_to_x25519_pub(&doc.keys.kex)?;
+    Ok(Recipient::owner(bytes.into()))
+}
+```
+
+Il est **côté écrivain**. Aucune contrepartie vérificative n'existe, et il n'en
+existe structurellement pas : `validate(&self)` et `check_rotation(&self, v)`
+prennent le seul `Header` en paramètre et n'ont **aucun accès** au document DID.
+
+#### Surface publique concernée
+
+`aithos-cli/src/cmd/header_seal.rs:30-56` accepte des destinataires au format
+libre `label:kid:x25519_pub_hex`, construit
+`Recipient { to: label, kid, pubkey }` sans aucune contrainte sur `label`, et
+les passe tels quels à `Header::build` (`:56`). En regard,
+`aithos-cli/src/cmd/header_open.rs:27-32` valide puis ouvre — et **accepte** donc
+le fichier ainsi produit, puisque `validate` ne regarde que le label.
+
+#### Atténuations, relevées et pesées
+
+1. `header_seal.rs:1-2` se déclare « DEV surface over test keys » : ce n'est pas
+   une surface de production.
+2. Une ligne owner falsifiée serait remplacée par la vraie à la rotation
+   suivante : `revoke.rs:180`, `structure.rs:259` et `vault.rs:375` remplacent
+   toute ligne dont `line.to == "owner"` par `owner_kex_recipient()`, c'est-à-dire
+   par la clé du document DID. Le mensonge est donc auto-réparant à la première
+   rotation — mais rien ne garantit qu'une rotation survienne, et ces trois sites
+   **font confiance au même label** pour décider quelle ligne remplacer.
+
+Ces atténuations réduisent l'exploitabilité ; elles ne touchent pas le constat,
+qui est un écart entre la lettre de la spécification et le champ testé.
+
+### Les deux lectures concurrentes — exposées, non arbitrées
+
+| | Lecture A — la ligne owner est définie par sa clé | Lecture B — la ligne owner est définie par son label |
+|---|---|---|
+| Fondement | `spec/01-identity-and-keys.md:23` : `owner_kex` **est** « the recipient key of the owner's line » ; `spec/03-headers.md:33-35` retire toute autorité à `to` | I3 est un invariant **structurel** de l'objet header ; `to` est le champ que la structure expose, et lier I3 au document DID ferait sortir `Header` de `aithos-core`, qui ne connaît pas les DID |
+| Conséquence | `check_owner_line` doit comparer `r.pubkey` à `owner_kex_pub()` ; `validate` et `check_rotation` doivent recevoir la clé attendue en paramètre | le code courant est correct, et c'est la couche appelante (`grants.rs:171-174` et ses homologues) qui porte la liaison |
+| Coût | changement de signature de trois fonctions publiques de `aithos-core` ; `validate` cesse d'être `(&self)` | la spécification doit dire que `to` est *aussi* le champ définitoire de I3, ce qui contredit `spec/03-headers.md:33-35` |
+| Porté par | l'auditeur et les trois réfuteurs | personne ne l'a défendue ; elle est reconstruite ici pour que la décision soit posée équitablement |
+
+**Aucun correcteur ne peut choisir implicitement.** `DECISION_REQUIRED`,
+propriétaire attendu : le propriétaire du protocole.
+
+**Réconciliation.** Maintenu à P2, intact. C'est le seul finding de la ronde à
+sortir du panel sans une seule réfutation. Le Pass B n'y a rien retiré et a
+vérifié indépendamment chacune des références ci-dessus sur `a2087f2`.
+
+**Référence de spec.** `spec/01-identity-and-keys.md:23` ;
+`spec/03-headers.md:33-35`, `:36-37`, `:93-96` ; `spec/05-delegation.md:85-91` ;
+`docs/proposals/header-rotation-authority.md:37-48`.
+
+**Critère de clôture.** Une décision enregistrée du propriétaire du protocole
+désignant le champ définitoire de I3 ; puis, si la lecture A est retenue,
+comparer `r.pubkey` à `owner_kex_pub()` dans `check_owner_line` et donner à
+`validate` / `check_rotation` la clé owner attendue — avec un test RED qui
+construit un header portant `{ to: "owner", pubkey: <clé arbitraire> }`, passe
+sur la baseline auditée, et échoue après correction.
 
 ---
 
@@ -1027,7 +1232,7 @@ et 4 (voir `CHDR-002`), ce qui rompt la dépendance.
 | Id | Panel | Décision de réconciliation | Motif, sur preuve de code courant |
 |---|---|---|---|
 | `CHDR-003` | 2/3 réfuté | **retiré** — embargo levé avec le finding | voir ci-dessous |
-| `CHDR-008` | 2/3 réfuté | **retiré** en tant que finding autonome — absorbé par `CHDR-007`, qui reste sous embargo | voir ci-dessous |
+| `CHDR-008` | 2/3 réfuté | **retiré** en tant que finding autonome — absorbé par `CHDR-007`, publié en entier en §6 | voir ci-dessous |
 | `CHDR-022` | 1/3 réfuté (survivait) | **requalifié en impact** `g-revocation` (§9) — n'est plus un finding `c-headers` | voir ci-dessous |
 | `CHDR-023` | 3/3 réfuté | **requalifié hors périmètre** — durcissement défensif | voir ci-dessous |
 
@@ -1074,17 +1279,30 @@ ne soutient une conséquence de sécurité. Le finding est retiré.**
 *Titre neutre du gel : « Coverage of parse-time I3 validation across header read
 paths ».*
 
-Sa base factuelle a été vérifiée et n'est pas contestée. Elle n'est pas
-reproduite ici : détail retenu au titre de la barrière de divulgation
-(`PROCESS.md`, § *Disclosure gate*) ; condition de blocage 9 ouverte.
+Ce finding portait sur la **couverture** de `Header::validate` sur les chemins de
+lecture. Sa base factuelle est vérifiée et n'est pas contestée : `Header` dérive
+`Deserialize` sans hook (`header.rs:47`), cinq sites seulement appellent
+`validate()` — `bundle.rs:630`, `:637`, `log.rs:425`, `session.rs:363`,
+`aithos-cli/src/cmd/header_open.rs:28` — tandis que `Header` est désérialisé sur
+bien plus de sites, dont `grants.rs:287`, `:456`, `:827`, `:1037`, `:1197`,
+`structure.rs:199`, `:751`, `revoke.rs:289`, `:365`, `:510` et `bundle.rs:670`.
+`append_line` (`header.rs:159-188`) ne refait pas `check_owner_line`.
+
+Les deux réfutations acceptées : (i) I3 est une propriété de **disponibilité**,
+non de confidentialité (`spec/10-threat-model.md:19`), et aucun site non validant
+ne produit de résultat faux — `Header::open` échoue fail-shut ; (ii) cinq des
+sept chemins qui **mutent** un header portent un contrôle I3 équivalent via
+`rotate` ou `build_at`, si bien que le trou réel se réduit à `add_line_on`
+(`grants.rs:287-291`), et l'asymétrie propriétaire/délégué invoquée par le Pass A
+est fausse en général — `bundle.rs:670` est un chemin propriétaire non validant.
 
 Le Pass B constate que cet énoncé est **un sous-ensemble strict** de `CHDR-007`,
 dont il partage la question normative et la décision attendue. Le conserver comme
 finding autonome dédoublerait la même décision humaine et lui donnerait deux
 critères de clôture concurrents. Il est donc **retiré et absorbé par
-`CHDR-007`**, dont il devient une pièce de dossier. Sa matière reste sous
-embargo, du fait de `CHDR-007`, non du fait de `CHDR-008` : l'identifiant
-`CHDR-008` est libéré de l'embargo parce qu'il ne porte plus d'énoncé.
+`CHDR-007`**, dont il devient une pièce de dossier. Sa matière est publiée
+ci-dessus, l'embargo ayant été levé sur les deux identifiants le 2026-08-03
+(§6, préambule).
 
 Consigné pour le propriétaire de la décision : le réfuteur dissident (angle
 périmètre) n'a pas pu réfuter et a signalé que
@@ -1207,7 +1425,7 @@ Neuf findings de juillet sont P1 ou P2.
 | `CHDR-006` — la moitié « version » du scénario de liaison n'est jamais exercée (sc. 4) | P2 | **oui** | `CHDR-001` | P2 | identique |
 | `CHDR-007` — les assertions de rejet n'attribuent aucune cause et n'ont aucun contrôle positif (sc. 3 et 4) | P2 | **partiellement** | `CHDR-002` | P3 | la moitié « cause » est réfutée 3/3 et retirée ; la moitié « contrôle positif » n'a été retrouvée qu'au Pass B, **en lisant l'étalon** — pas seule |
 | `CHDR-010` — « touching nobody » exercé sur un header à une ligne (sc. 6) | P2 | **oui** | `CHDR-014` | P2 | identique ; réfuté 2/3 par le panel, rétabli en réconciliation |
-| `CHDR-015` — I3 n'est pas imposé au niveau de l'édition (`DECISION_REQUIRED`) | P2 | **oui** | `CHDR-007` | P1 | sévérité **relevée** P2 → P1 ; embargo posé cette ronde sur une information déjà publiée par l'étalon (§8.5) |
+| `CHDR-015` — I3 n'est pas imposé au niveau de l'édition (`DECISION_REQUIRED`) | P2 | **oui** | `CHDR-007` | P1 | sévérité **relevée** P2 → P1 ; cette ronde ajoute le second vérificateur `publication::cold_verify` (`publication.rs:836-939`) et le rattachement à `spec/10-threat-model.md:19`, absents de l'étalon. Un embargo avait été posé sur ce constat déjà publié par l'étalon ; il a été levé par décision du propriétaire le 2026-08-03 (§6, §15) |
 | `CHDR-016` — le seul test qui garde la liaison de version la garde vacuement | P2 | **non** | `CHDR-025` (Pass B) | P2 | **manqué au Pass A** ; retrouvé au Pass B, indépendamment renforcé par l'absence de générateur `gen-c1*` |
 
 ### 8.4 Manqués — chiffres bruts
@@ -1243,7 +1461,7 @@ construit jamais de `Header`).
 
 | Cette ronde | Sév. | Nature |
 |---|---|---|
-| `CHDR-012` | P2 | absent de l'étalon ; 0/3 réfutation ; sous embargo ; `DECISION_REQUIRED` |
+| `CHDR-012` | P2 | absent de l'étalon ; **0/3 réfutation** — le seul finding de la ronde à sortir du panel intact ; `DECISION_REQUIRED` |
 | `CHDR-016` | P2 | le chemin de grant de production (`Bundle::grant` → `add_line_on`) appende à `KV = 1` après rotation ; absent de l'étalon |
 | `CHDR-013` | P2 | cardinal et position des lignes après append — juillet le portait à P3 (`CHDR-012` de juillet), cette ronde à P2 |
 | `CHDR-009` | P2 | le cas `missing_owner_must_fail` de `vectors/g2-rotation.json:17` n'a aucun consommateur — **trouvaille du panel de réfutation**, absente de l'étalon |
@@ -1290,7 +1508,7 @@ feature.
 | `g-revocation` | `agent_section_key` s'arrête au premier header ouvrable (`grants.rs:1080-1082`) sans réessayer un ancêtre plus haut | `CHDR-022` |
 | `g-revocation`, `d-bundle` | `KV = 1` (`bundle.rs:25`) survit à la livraison de l'étape G ; `add_line_on` appende à la version 1 après rotation | `CHDR-016` |
 | `g-revocation` | `check_rotation` teste une inclusion là où `spec/03-headers.md:93-96` exige une égalité ; une rotation qui supprime un survivant passe (`docs/proposals/header-rotation-authority.md:37-48`) | `CHDR-024` |
-| `h-merkle` | impact signalé ; détail retenu au titre de la barrière de divulgation (`PROCESS.md`, § *Disclosure gate*) ; condition de blocage 9 ouverte | `CHDR-007` |
+| `h-merkle` | le hash du header est plié dans le hash de nœud (`state.rs:57-62`, `:240-248`) via un `serde_json::Value` opaque, sans que `Header::validate` soit jamais appelé sur ce chemin : un header violant I3 y produit un digest valide, épinglé puis signé | `CHDR-007` |
 | transverse | `vectors/c1-header-seal.json` revendique une génération indépendante sans générateur dans le dépôt — obligation `TARGETED` déjà enregistrée | `CHDR-025` |
 | transverse | le motif « kid du révoqué passé à `open_latest` » se retrouve en `cucumber.rs:5013` et `cb10_structure_vault.rs:548-553` | `CHDR-019` |
 
@@ -1322,10 +1540,11 @@ vérification.
   n'expose **aucune** surface de header ou de wrap — zéro occurrence de `Header`,
   `Wrap` ou `seal` dans `rust/crates/aithos-wasm/src/lib.rs`. Vérifié. Trois
   surfaces contournent le verdict exercé et portent chacune un finding :
-  `Bundle::grant` (`CHDR-016`) ; les deux autres sont désignées par leurs seuls
-  identifiants, `CHDR-007` et `CHDR-012` — détail retenu au titre de la barrière
-  de divulgation (`PROCESS.md`, § *Disclosure gate*) ; condition de blocage 9
-  ouverte. Les surfaces
+  `Bundle::grant` (`CHDR-016`), les deux vérificateurs d'édition
+  `Bundle::verify` (`bundle.rs:1654-1769`) et `publication::cold_verify`
+  (`publication.rs:836-939`), muets sur I3 (`CHDR-007`), et la surface CLI de
+  scellement `aithos-cli/src/cmd/header_seal.rs:30-56`, qui accepte un `to`
+  libre (`CHDR-012`). Les surfaces
   conformes — `Session::append_header_recipient` (`session.rs:354-366`),
   `deliver_connector_line` (`grants.rs:454-461`), `header_open`
   (`aithos-cli/src/cmd/header_open.rs:27-32`) — ne sont traversées par aucun pas
@@ -1344,8 +1563,10 @@ Ordonné par valeur. L'ensemble est du travail de test et de fixture dans
 cette note n'exige une modification de production dans `aithos-core`.** Deux
 findings exigent une décision humaine préalable, et l'un d'eux
 (`CHDR-007`) pourrait, selon la décision, entraîner une modification de
-production dont la portée est elle aussi retenue au titre de la barrière de
-divulgation.
+production dans `aithos-bundle` — `Bundle::verify` et `publication::cold_verify`
+— tandis qu'une décision sur `CHDR-012` pourrait toucher trois signatures
+publiques de `aithos-core::header`. Aucune de ces deux corrections n'est
+assignable avant décision.
 
 | Lot | Findings | Changement | RED attendu |
 |---|---|---|---|
@@ -1366,20 +1587,31 @@ premier.
 ## 12. Décisions requises
 
 Deux findings sont `DECISION_REQUIRED`. Aucun correcteur ne peut choisir
-implicitement.
+implicitement, et **ni l'un ni l'autre n'est assigné à un correcteur**.
 
-1. **`CHDR-007`** — P1. Deux sémantiques de protocole concurrentes.
-   Détail retenu au titre de la barrière de divulgation (`PROCESS.md`,
-   § *Disclosure gate*) ; condition de blocage 9 ouverte. Propriétaire : le
-   propriétaire du protocole. Un élément de contexte à peser est consigné au
-   rapport de run : l'information correspondante figure déjà en clair sur la
-   branche publique de l'étalon de juillet. Ce rôle ne décide pas de la levée de
-   l'embargo.
-2. **`CHDR-012`** — P2. Deux lectures normatives concurrentes.
-   Détail retenu au titre de la barrière de divulgation (`PROCESS.md`,
-   § *Disclosure gate*) ; condition de blocage 9 ouverte. Propriétaire : le
-   propriétaire du protocole. Ce finding n'a subi aucune réfutation et est absent
-   de l'étalon de juillet.
+Les deux posent, sous deux formes, **une seule et même question de lecture du
+protocole** : un invariant que la spécification énonce à la voix passive lie-t-il
+une surface vérifiante, ou décrit-il seulement une propriété d'objet ?
+
+1. **`CHDR-007`** — P1, 1/3 réfutations. « An edition whose any header violates
+   this is invalid » (`spec/03-headers.md:37`) est-il une obligation pesant sur
+   `Bundle::verify` et `publication::cold_verify`, ou l'énoncé d'une propriété
+   que l'architecture « fail-closed à l'écriture + validation au parse » satisfait
+   déjà ? Les deux lectures, leurs fondements, leurs conséquences et leurs coûts
+   sont tabulés dans le bloc `CHDR-007` de §6. Propriétaire : le propriétaire du
+   protocole.
+2. **`CHDR-012`** — P2, **0/3 réfutations**. La ligne owner est-elle définie par
+   sa clé destinataire — `spec/01-identity-and-keys.md:23`, « owner_kex is the
+   recipient key of the owner's line in every header (I3) » — ou par son label
+   `to`, que `spec/03-headers.md:33-35` déclare pourtant « a routing hint only » ?
+   Les deux lectures sont tabulées dans le bloc `CHDR-012` de §6. Propriétaire :
+   le propriétaire du protocole. Ce finding n'a subi aucune réfutation et est
+   absent de l'étalon de juillet.
+
+**Ce qui a déjà été décidé, et ne préjuge de rien.** Le propriétaire a tranché le
+2026-08-03 la seule question de *publication* : les deux findings sont publiés en
+entier (§6, préambule). Cette décision lève la condition de blocage 9 ; elle ne
+touche pas la condition 1, qui reste ouverte sur la sémantique.
 
 Une troisième question, qui n'est pas un finding, est portée au même propriétaire
 en §1 : la collision d'identifiants `CHDR-*` entre cette note et l'étalon publié.
@@ -1399,9 +1631,11 @@ en §1 : la collision d'identifiants `CHDR-*` entre cette note et l'étalon publ
 - **Le périmètre est la vérité sémantique des huit scénarios existants.** Aucun
   scénario nouveau n'est conçu. Ce qui touche `g-revocation`, `d-bundle`,
   `n-structural-mutations` ou `h-merkle` est signalé en §9 et n'est pas audité.
-- **Deux findings restent sous barrière de divulgation** et leur énoncé n'est
-  écrit nulle part dans un fichier suivi. La conclusion publique est donc
-  incomplète par construction, et le restera jusqu'à décision du propriétaire.
+- **La conclusion publique est désormais complète.** Aucun finding n'est retenu :
+  `CHDR-007` et `CHDR-012` ont été publiés en entier sur décision du propriétaire
+  du 2026-08-03. Deux findings restent néanmoins `DECISION_REQUIRED` sur leur
+  **sémantique**, ce qui est une limite différente : cette note expose les
+  lectures concurrentes, elle n'en retient aucune.
 - **La ligne `counts` du gel est erronée** (§2) ; le décompte réel est établi
   dans cette note et dans le rapport de run.
 - **Les identifiants `CHDR-*` sont ambigus** tant que la collision de §1 n'est
@@ -1411,10 +1645,12 @@ en §1 : la collision d'identifiants `CHDR-*` entre cette note et l'étalon publ
 
 - Chaque finding `OPEN` ci-dessus est soit `VERIFIED` par une revue indépendante,
   soit explicitement reporté avec un motif enregistré.
-- `CHDR-007` et `CHDR-012` ont une décision enregistrée **avant** qu'une
-  correction ne les touche.
-- La barrière de divulgation est levée ou confirmée par le propriétaire humain,
-  et la note publique est mise à jour en conséquence.
+- `CHDR-007` et `CHDR-012` ont une décision **de sémantique** enregistrée avant
+  qu'une correction ne les touche. La décision de publication du 2026-08-03 ne
+  vaut pas décision de sémantique.
+- ~~La barrière de divulgation est levée ou confirmée par le propriétaire
+  humain~~ — **fait le 2026-08-03** ; la note publique a été mise à jour en
+  conséquence (§6, §15).
 - La collision d'identifiants avec l'étalon de juillet est tranchée.
 - Chaque correction atterrit avec un test RED démontré défaillant sur la baseline
   auditée **pour la bonne raison**, et le correcteur documente les deux
@@ -1426,3 +1662,36 @@ en §1 : la collision d'identifiants `CHDR-*` entre cette note et l'étalon publ
   `cb10_structure_vault`, `vectors_ownership`) puis un gate Cucumber global et un
   gate workspace avant passation.
 - Les marqueurs Gherkin sont retirés pour chaque finding accepté `VERIFIED`.
+
+## 15. Trace de la barrière de divulgation
+
+La barrière a réellement joué pendant ce cycle. Elle est consignée ici parce
+qu'un audit qui effacerait le mécanisme l'ayant contraint ne serait pas un audit
+honnête.
+
+| Étape | Date | Fait |
+|---|---|---|
+| 1 | 2026-08-03 | Le Pass A marque quatre findings `disclosure: embargo` — `CHDR-003`, `CHDR-007`, `CHDR-008`, `CHDR-012` — et lève la condition de blocage 9 (`pass-a/frozen.json`, champ `note`) |
+| 2 | 2026-08-03 | L'auditeur intégrateur écrit la première version de cette note : `CHDR-007` et `CHDR-012` par identifiant et titre neutre seuls ; `CHDR-003` et `CHDR-008`, retirés par la réconciliation, publiés en clair |
+| 3 | 2026-08-03 | Le **gardien de process invalide le cycle** : une ligne d'impact `h-merkle` de §9, rattachée à `CHDR-007`, décrivait le mécanisme au lieu de s'en tenir à l'identifiant. Invalidation n° 1 |
+| 4 | 2026-08-03 | Correction : la ligne fautive et quatre autres occurrences du même genre sont rédigées. Le gardien invalide **une seconde fois** ; la condition de blocage 6 — deux invalidations de la même feature — s'ouvre et arrête le run |
+| 5 | 2026-08-03 | Le propriétaire humain tranche la publication : « Publier les deux en entier. `CHDR-007` est déjà public en substance sur `codex/audit-c-headers` ; `CHDR-012` est publié malgré l'absence de correctif, au motif que le correcteur doit pouvoir citer ce qu'il répare. » — Mathieu Colla. Condition 9 **résolue** ; condition 6 tombe avec elle, la fuite reprochée n'en étant plus une |
+| 6 | 2026-08-03 | Run de reprise `2026-08-03-r2` : `CHDR-007` et `CHDR-012` sont restitués en entier dans cette note, avec le même niveau de citation que les findings jamais retenus |
+
+Ce que l'épisode établit, et qui vaut au-delà de cette feature :
+
+- **La barrière est un gate d'écriture, pas de publication.** `QUEUE.yaml:21-24`
+  le dit : les branches orchestrées sont poussées au dépôt public, donc la
+  rétention doit avoir lieu au moment où un agent écrit, pas au moment où un
+  humain relit. Le gardien a fait exactement ce pour quoi il existe.
+- **Une rétention partielle est instable.** Retenir `CHDR-007` tout en publiant
+  `CHDR-008`, dont l'énoncé en est un sous-ensemble, a produit une incohérence
+  interne que la seconde correction a dû résoudre en retenant les deux. Un
+  périmètre d'embargo doit être fermé par absorption, pas par identifiant.
+- **Un embargo posé sur une information déjà publique coûte sans protéger.**
+  `CHDR-007` figurait déjà en clair sur `codex/audit-c-headers` ; la rétention
+  n'a rien protégé et a seulement rendu cette note moins utile à son lecteur.
+  C'est le motif que le propriétaire a retenu en premier.
+- **La décision de publier n'est pas la décision de trancher.** `CHDR-007` et
+  `CHDR-012` sont désormais lisibles en entier et restent `DECISION_REQUIRED` :
+  la condition de blocage 1 est ouverte, et aucun correcteur ne les reçoit.

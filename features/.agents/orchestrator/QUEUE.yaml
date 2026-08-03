@@ -13,7 +13,7 @@ policy:
   # listed in PROCESS.md, section "Blocking conditions".
   autonomy: until_blocked
   # Adversarial refutation panel size for every P1/P2 finding.
-  # PENDING: 3 gives a clear majority, 2 costs less. Default 3.
+  # Ruled 2026-08-03 by the owner: 3. A 2-panel has no rule for a 1-1 split.
   refuters_per_finding: 3
   # A third rejection of the same finding stops the run.
   max_rejections_per_finding: 3
@@ -25,7 +25,7 @@ policy:
   disclosure_gate: true
 
 budget:
-  agents_per_cycle: 40
+  agents_per_cycle: 60
   wallclock_minutes_per_cycle: 240
 
 # Features are processed strictly in this order, one at a time. A feature whose

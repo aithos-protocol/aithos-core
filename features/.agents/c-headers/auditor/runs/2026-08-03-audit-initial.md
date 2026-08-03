@@ -135,10 +135,10 @@ Journal : `ledger.jsonl`, entrées `role: refutation`, `panel_size: 3`,
 | `CHDR-001` | 1/3 | oui | maintenu P2, énoncé corrigé par le panel puis requalifié par le Pass B |
 | `CHDR-002` | 3/3 | non | reformulé, déclassé P2 → P3 |
 | `CHDR-003` | 2/3 | non | **retiré** ; embargo levé avec lui |
-| `CHDR-007` | 1/3 | oui | maintenu P1, `DECISION_REQUIRED`, embargo maintenu |
+| `CHDR-007` | 1/3 | oui | maintenu P1, `DECISION_REQUIRED` ; publié en entier, embargo levé le 2026-08-03 (§10) |
 | `CHDR-008` | 2/3 | non | **retiré** en tant que finding autonome, absorbé par `CHDR-007` |
 | `CHDR-009` | 2/3 | non | reformulé, maintenu P2 |
-| `CHDR-012` | **0/3** | oui | maintenu P2, `DECISION_REQUIRED`, embargo maintenu |
+| `CHDR-012` | **0/3** | oui | maintenu P2, `DECISION_REQUIRED` ; publié en entier, embargo levé le 2026-08-03 (§10) |
 | `CHDR-013` | 1/3 | oui | maintenu P2 |
 | `CHDR-014` | 2/3 | non | reformulé (clause fausse retirée), **maintenu P2** |
 | `CHDR-015` | 3/3 | non | reformulé, déclassé P2 → P3 |
@@ -301,7 +301,7 @@ indécidable.** Détail complet dans l'audit public §6 et §7 ; synthèse ici.
 |---|---|---|
 | `CHDR-002` | **reformulé, déclassé P3** | moitié « cause » retirée : les cinq sorties de `Header::open` (`header.rs:232`, `:234`, `:235`, `:237`, `:242`) sont toutes `SealRejected` et `open_into` (`:7402`) stringifie ; moitié « contrôle positif » retenue : ni `:7553-7566` ni `:7569-7573` n'ouvrent avant le `When`, donc une ligne owner rendue inouvrable laisserait les scénarios 3 et 4 verts |
 | `CHDR-003` | **retiré ; embargo levé** | `hdr_file` = `e/<zone>/hdr/blake3(node)[..12].json` (`grants.rs:139-146`) ; `open_blob_v` calcule `blob_aad` depuis le `NodePath` de l'appelant, jamais depuis `header.node` (`bundle.rs:504-518`, cf. `:492`) ; `vault_build`/`header_hash_at` indexent le hash par chemin (`state.rs:240-248`, `:58-62`). Aucune conséquence de sécurité ne subsiste |
-| `CHDR-008` | **retiré comme finding autonome, absorbé par `CHDR-007`** | base factuelle confirmée, non reproduite ici — détail retenu au titre de la barrière de divulgation (`PROCESS.md`, § *Disclosure gate*) ; condition de blocage 9 ouverte. L'énoncé est un sous-ensemble strict de `CHDR-007` et dédoublerait la même décision humaine |
+| `CHDR-008` | **retiré comme finding autonome, absorbé par `CHDR-007`** | base factuelle confirmée : cinq sites `.validate()` (`bundle.rs:630`, `:637`, `log.rs:425`, `session.rs:363`, `aithos-cli/src/cmd/header_open.rs:28`) contre une douzaine de sites de désérialisation de `Header` (`grants.rs:287`, `:456`, `:827`, `:1037`, `:1197`, `structure.rs:199`, `:751`, `revoke.rs:289`, `:365`, `:510`, `bundle.rs:670`) ; `append_line` (`header.rs:159-188`) ne refait pas `check_owner_line` ; le trou réel se réduit à `add_line_on` (`grants.rs:287-291`). L'énoncé est un sous-ensemble strict de `CHDR-007` et dédoublerait la même décision humaine |
 | `CHDR-009` | **reformulé, maintenu P2** | réfutation acceptée : les portails 2-4 sont exécutés (`:8148`, `:15249`, `g2_rotation.rs:92`, cinq sites de `validate`). Énoncé retenu : `vectors/g2-rotation.json:17` déclare `missing_owner_must_fail` que la struct `G2` (`g2_rotation.rs:9-16`) ne désérialise pas — vérifié champ par champ ; le champ frère `smuggled_must_fail` (`:16`) est, lui, consommé (`:68-80`) |
 | `CHDR-014` | **reformulé, maintenu P2** | clause fausse retirée : il existe bien deux fixtures multi-destinataires (`:7553` câblé à `c-headers.feature:17` et `:22` ; `:7579` câblé à `:49`). Noyau confirmé : le `Given` du scénario 6 est `sealed_header_owner_only` (`:7569-7573`), un seul destinataire, donc « toute autre ligne » a le cardinal 1 ; `KeyVersion.lines` est `pub` et l'invariant n'est qu'un commentaire (`header.rs:157-158`) |
 | `CHDR-015` | **reformulé, déclassé P3** | réfutation acceptée : `append_line` ne détient aucun secret X25519 (`header.rs:159-188`), la frontière est documentée (`session.rs:352-353`), l'étape 1 est exercée à sa couche (`session.rs:364-365`, `grants.rs:459-460`, `bundle.rs:631`/`:638`), et `assert_eq!(dk, DK)` compare à la constante de module `:263`. Résidu retenu : observation de couverture de la `Rule` |
@@ -438,8 +438,8 @@ négatif, vérifié.
 | Surface | Contourne le verdict ? | Constat |
 |---|---|---|
 | `Bundle::grant` → `deliver_entry` → `add_line_on` (`grants.rs:739`, `:754`, `:276-305`) | **oui** | DK par dérivation pure `node_key(&zone_dk, &node)` (`:321`), append à `KV = 1` (`:289`, `bundle.rs:25`) → `CHDR-016` |
-| surface désignée par le seul identifiant `CHDR-007` | — | détail retenu au titre de la barrière de divulgation (`PROCESS.md`, § *Disclosure gate*) ; condition de blocage 9 ouverte |
-| surface désignée par le seul identifiant `CHDR-012` | — | détail retenu au titre de la barrière de divulgation (`PROCESS.md`, § *Disclosure gate*) ; condition de blocage 9 ouverte |
+| `Bundle::verify` (`bundle.rs:1654-1769`) et `publication::cold_verify` (`publication.rs:836-939`) | **oui** | les deux vérificateurs d'édition ; aucune occurrence de `Header` ni de `validate` dans le corps de `verify`, vérifié exhaustivement → `CHDR-007` |
+| `aithos-cli` `header_seal` (`:30-56`) | **oui** | accepte `label:kid:x25519_pub_hex` libre et construit `Recipient { to: label, … }` sans contrainte sur `label` → `CHDR-012` |
 | `Session::append_header_recipient` (`session.rs:354-366`) | non | conforme à §3.3 : `validate`, `open_latest`, `append_line`. **Touchée par aucun pas de la `Rule`** → `CHDR-015` |
 | `deliver_connector_line` (`grants.rs:454-461`) | non | conforme : `latest_version()`. Touchée par aucun pas |
 | `aithos-cli` `header_open` (`:27-32`) | non | `validate` puis `open` |
@@ -582,52 +582,67 @@ gate is therefore a **write** gate, not a publication gate. »
 | Finding | Embargo au gel | État final | Motif |
 |---|---|---|---|
 | `CHDR-003` | oui | **levé** | finding retiré (§6) ; l'embargo tombe avec lui ; énoncé complet publié dans l'audit public §7 |
-| `CHDR-007` | oui | **maintenu** | finding maintenu P1, `DECISION_REQUIRED` |
-| `CHDR-008` | oui | **levé pour l'identifiant** | finding retiré comme entité autonome ; sa matière est absorbée par `CHDR-007` et reste donc redigée, sous cet identifiant-là |
-| `CHDR-012` | oui | **maintenu** | finding maintenu P2, `DECISION_REQUIRED`, 0/3 réfutation |
+| `CHDR-007` | oui | **levé — décision du propriétaire, 2026-08-03** | publié en entier dans l'audit public §6 ; reste P1, `DECISION_REQUIRED` |
+| `CHDR-008` | oui | **levé** | finding retiré comme entité autonome ; sa matière est publiée sous `CHDR-007`, dont l'embargo est levé lui aussi |
+| `CHDR-012` | oui | **levé — décision du propriétaire, 2026-08-03** | publié en entier dans l'audit public §6 ; reste P2, `DECISION_REQUIRED`, 0/3 réfutation |
 
-Dans tout fichier suivi par git écrit par ce rôle — audit public, `README.md`,
-`c-headers.feature`, ce rapport — `CHDR-007` et `CHDR-012` n'apparaissent que par
-leur **identifiant** et leur **titre neutre** :
+### Chronologie — la barrière a réellement contraint ce run
 
-- `CHDR-007` — « Edition-level half of I3 in the edition verifier » ;
-- `CHDR-012` — « Field on which I3 is checked, versus the field the
-  specification declares authoritative ».
+1. Le Pass A marque quatre findings `disclosure: embargo` et lève la condition 9
+   (`pass-a/frozen.json`, champ `note`).
+2. Ce rôle écrit la première version de l'audit avec `CHDR-007` et `CHDR-012`
+   réduits à leur identifiant et à un titre neutre.
+3. **Le gardien de process (G2) invalide le cycle** : une ligne d'impact
+   `h-merkle` de l'audit §9, rattachée à `CHDR-007`, décrivait le mécanisme.
+   Invalidation n° 1.
+4. Ce rôle corrige la ligne fautive et quatre autres occurrences du même genre.
+   **Le gardien invalide une seconde fois** ; la condition de blocage 6 — deux
+   invalidations sur la même feature — s'ouvre et arrête le run.
+5. Le propriétaire humain tranche la publication.
+6. Run de reprise `2026-08-03-r2` : les deux findings sont restitués en entier.
 
-Aucun chemin de code exploitable, aucun mécanisme, aucune conséquence détaillée,
-aucune ligne de spec pointant la faiblesse n'est écrit à leur sujet. La formule
-« Détail retenu au titre de la barrière de divulgation (`PROCESS.md`,
-§ *Disclosure gate*) ; condition de blocage 9 ouverte » est employée à leur
-place. **Condition de blocage 9 : ouverte.**
+### Décision du propriétaire — citée textuellement
 
-### Fait à peser pour `CHDR-007` — consigné, non tranché
+> « Publier les deux en entier. `CHDR-007` est déjà public en substance sur
+> `codex/audit-c-headers` ; `CHDR-012` est publié malgré l'absence de correctif,
+> au motif que le correcteur doit pouvoir citer ce qu'il répare. »
+>
+> — Mathieu Colla, propriétaire du protocole, 2026-08-03.
 
-L'étalon manuel de juillet **publie déjà ce constat en clair**, sur la branche
+**Condition de blocage 9 : résolue.** La condition 6 tombe avec elle : la fuite
+reprochée n'en est plus une, puisqu'il n'y a plus rien à retenir. Aucun fichier
+suivi écrit par ce rôle ne contient plus de formule de rétention.
+
+### Ce que la décision ne tranche pas
+
+Elle porte sur la **publication**, pas sur la **sémantique**. `CHDR-007` et
+`CHDR-012` restent `DECISION_REQUIRED` ; la condition de blocage 1 reste ouverte ;
+aucun des deux n'est assigné à un correcteur (§15). L'audit public expose les
+lectures concurrentes de chacun sans en retenir aucune.
+
+### Le fait qui a pesé pour `CHDR-007`, consigné
+
+L'étalon manuel de juillet publiait déjà ce constat en clair sur la branche
 publique `codex/audit-c-headers` (`af32734`), sous
-`CHDR-015 — I3 is not enforced at the edition level — DECISION_REQUIRED, P2`.
-Ce texte est accessible à quiconque lit ce dépôt public, et il y est détaillé.
-Ce qu'il contient n'est pas caractérisé ici : détail retenu au titre de la
-barrière de divulgation (`PROCESS.md`, § *Disclosure gate*) ; condition de
-blocage 9 ouverte.
+`CHDR-015 — I3 is not enforced at the edition level — DECISION_REQUIRED, P2` :
+il nomme le mécanisme, les fonctions concernées et les chemins de lecture non
+validants. L'embargo demandé par le Pass A portait donc sur une information déjà
+publiée — son effet protecteur était nul, et son seul effet réel était de rendre
+l'audit de cette ronde incomplet pour un lecteur de bonne foi. C'est le motif que
+le propriétaire a retenu en premier. Le même raisonnement **ne s'appliquait pas**
+à `CHDR-012`, absent de l'étalon et sans précédent public : il est publié sur un
+motif distinct, énoncé par le propriétaire — permettre au correcteur de citer ce
+qu'il répare.
 
-Ce que cela implique, exposé sans décider :
+### Enseignements de méthode, pour les cycles suivants
 
-1. **L'embargo demandé par le Pass A porte sur une information déjà publiée.**
-   Son effet protecteur est nul contre un lecteur qui consulte les branches du
-   dépôt ; son seul effet réel est de rendre l'audit public de cette ronde
-   incomplet pour un lecteur de bonne foi.
-2. **Le maintien de l'embargo a néanmoins un coût de cohérence** : deux documents
-   publics du même dépôt traiteront le même constat, l'un en clair, l'autre
-   redigé, sans que rien n'explique la différence.
-3. **La levée aurait un coût symétrique** : elle validerait rétroactivement une
-   publication qui n'a pas franchi la barrière, et créerait un précédent où
-   l'existence d'une fuite antérieure suffit à ouvrir la barrière.
-4. Le même raisonnement **ne s'applique pas** à `CHDR-012`, absent de l'étalon,
-   qui n'a subi aucune réfutation et qui est le finding le plus lourd de la
-   ronde. Son embargo est intact et sans précédent public.
-
-**La décision appartient au propriétaire humain.** Ce rôle ne la prend pas et ne
-la recommande pas.
+- **La barrière est un gate d'écriture, pas de publication** (`QUEUE.yaml:21-24`).
+  Le gardien a fait exactement ce pour quoi il existe, deux fois.
+- **Une rétention partielle est instable.** Retenir `CHDR-007` tout en publiant
+  `CHDR-008`, dont l'énoncé en est un sous-ensemble strict, a produit une
+  incohérence interne qu'il a fallu résoudre en retenant les deux. Un périmètre
+  d'embargo doit être fermé par absorption, pas par identifiant.
+- **Un embargo sur une information déjà publique coûte sans protéger.**
 
 ## 11. Comparaison à l'étalon de juillet
 
@@ -706,19 +721,25 @@ manqués sont de la même classe.
 | `features/c-headers.feature` | marqueurs d'audit sur les six scénarios portant un finding non résolu ; +43 lignes, **0 suppression** ; aucune phrase de scénario modifiée, aucune renumérotation |
 | `features/.agents/c-headers/auditor/runs/2026-08-03-audit-initial.md` | **créé** — ce rapport |
 
-### Corrections de la barrière de divulgation, après l'invalidation n° 1 (§14)
+### Trajet des passages soumis à la barrière, puis restitués
 
-Cinq occurrences, toutes rédigées avec la formule « Détail retenu au titre de la
-barrière de divulgation (`PROCESS.md`, § *Disclosure gate*) ; condition de
-blocage 9 ouverte » :
+Six passages ont été rédigés après les invalidations du gardien, puis
+**intégralement restitués** au run `2026-08-03-r2` après la décision du
+propriétaire du 2026-08-03 (§10). Aucun n'est plus retenu.
 
-| Fichier | Emplacement | Ce qui a été retiré |
+| Fichier | Emplacement | Rédigé puis restitué |
 |---|---|---|
-| `docs/audits/features/c-headers.md` | §9, ligne d'impact `h-merkle` → `CHDR-007` | **la fuite signalée par le gardien** : chemin de code et absence de contrôle |
-| `docs/audits/features/c-headers.md` | §7, bloc `CHDR-008` | la base factuelle en `fichier:ligne`, dont le rapport déclarait par ailleurs qu'elle restait sous embargo du fait de `CHDR-007` |
-| `docs/audits/features/c-headers.md` | §10, surfaces publiques | la désignation nominale des deux surfaces rattachées à `CHDR-007` et `CHDR-012` |
-| `docs/audits/features/c-headers.md` | §11, chapeau du plan | la portée de production qu'une décision sur `CHDR-007` pourrait entraîner |
-| ce rapport | §6 (ligne `CHDR-008`), §7.5 (deux lignes), §10 (fait à peser) | mêmes retraits, plus la caractérisation du contenu du texte public de juillet |
+| `docs/audits/features/c-headers.md` | §9, ligne d'impact `h-merkle` → `CHDR-007` | **la fuite signalée par le gardien** : chemin de code (`state.rs:57-62`, `:240-248`) et absence d'appel à `Header::validate` |
+| `docs/audits/features/c-headers.md` | §7, bloc `CHDR-008` | la base factuelle en `fichier:ligne` : cinq sites `validate()` contre une douzaine de sites de désérialisation |
+| `docs/audits/features/c-headers.md` | §10, surfaces publiques | la désignation nominale des trois surfaces rattachées à `CHDR-007` et `CHDR-012` |
+| `docs/audits/features/c-headers.md` | §11, chapeau du plan | la portée de production d'une décision sur `CHDR-007` et sur `CHDR-012` |
+| `docs/audits/features/c-headers.md` | §8.3, correspondance `CHDR-015` de juillet → `CHDR-007` | les deux apports de cette ronde absents de l'étalon |
+| ce rapport | §6 (ligne `CHDR-008`), §7.5 (deux lignes), §10 (fait à peser) | mêmes restitutions, plus la caractérisation du contenu du texte public de juillet |
+
+À quoi s'ajoute la restitution principale : les blocs complets de `CHDR-007` et
+`CHDR-012` dans l'audit public §6, avec mécanisme, preuves `fichier:ligne`,
+références de spec, surfaces, conséquence, apports des réfuteurs, tables des
+lectures concurrentes et critères de clôture.
 
 Aucun verdict, aucune sévérité, aucun statut n'est modifié par ces corrections :
 seule la rédaction change.
@@ -783,8 +804,11 @@ Steps — `cucumber.rs` : `ProtocolWorld::open_into`, `dk_and_two_recipients`,
 - **Aucun `VERIFIED`.** L'auditeur ne clôt rien.
 - **Périmètre borné** aux huit scénarios existants. Les impacts sont signalés,
   jamais audités. Aucune autre feature n'est ouverte, fermée ou rouverte.
-- **Deux findings restent sous barrière de divulgation** : la conclusion publique
-  est incomplète par construction jusqu'à décision du propriétaire.
+- **La conclusion publique est complète.** Aucun finding n'est retenu : la
+  barrière a été levée par décision du propriétaire le 2026-08-03 (§10). La
+  limite qui subsiste est différente et porte sur la **sémantique** : `CHDR-007`
+  et `CHDR-012` restent `DECISION_REQUIRED`, l'audit expose leurs lectures
+  concurrentes sans en retenir aucune.
 - **Ce rôle n'a pas exécuté le Pass A** et n'en atteste pas l'isolation autrement
   que par les traces du journal. Il atteste que le gel précède chaque entrée de
   Pass B dans `ledger.jsonl`.
@@ -802,20 +826,18 @@ Steps — `cucumber.rs` : `ProtocolWorld::open_into`, `dk_and_two_recipients`,
 
 | # | Condition | État | Détail |
 |---|---|---|---|
-| 1 | `DECISION_REQUIRED` sur un finding | **ouverte** | `CHDR-007` (P1) et `CHDR-012` (P2) |
+| 1 | `DECISION_REQUIRED` sur un finding | **OUVERTE — la seule** | `CHDR-007` (P1) et `CHDR-012` (P2). La question est unique sous deux formes : un invariant que la spec énonce à la voix passive lie-t-il une surface vérifiante, ou décrit-il seulement une propriété d'objet ? **Non tranchée, et à ne pas trancher par un correcteur.** Les deux findings ne sont assignés à personne |
 | 4 | contamination du Pass A | fermée | `contamination: "none"` pour les quatre unités ; `history_visible: false` au journal |
-| 5 | majorité de panel contre l'auditeur | **ouverte, levable** | 8 findings réfutés à la majorité ; les 8 sont tranchés sur preuve de code courant (§6) ; aucun désaccord ne reste indécidable |
-| 6 | deux invalidations du gardien sur la même feature | fermée | **une** invalidation à ce jour — voir ci-dessous |
-| 9 | finding pris par la barrière de divulgation | **ouverte** | `CHDR-007` et `CHDR-012` ; `CHDR-003` et `CHDR-008` levés |
+| 5 | majorité de panel contre l'auditeur | **résolue** | 8 findings réfutés à la majorité ; les 8 sont tranchés sur preuve de code courant (§6) ; aucun désaccord ne reste indécidable |
+| 6 | deux invalidations du gardien sur la même feature | **résolue** | deux invalidations ont bien eu lieu (§10) et avaient arrêté le run ; elles tombent avec la condition 9 — la fuite reprochée n'en est plus une, puisqu'il n'y a plus rien à retenir |
+| 7 | budget épuisé | **résolue** | `agents_per_cycle` relevé à 60 dans `QUEUE.yaml` par l'orchestrateur ; ce rôle n'a pas touché le fichier |
+| 9 | finding pris par la barrière de divulgation | **résolue** | décision du propriétaire du 2026-08-03, citée textuellement en §10 : `CHDR-007` et `CHDR-012` publiés en entier ; `CHDR-003` et `CHDR-008` déjà levés par retrait. Plus aucune formule de rétention dans aucun fichier suivi |
 
-**Invalidation du gardien de process (G2), n° 1 sur `c-headers` :** le cycle a
-été invalidé une première fois pour une fuite de la barrière de divulgation dans
-`docs/audits/features/c-headers.md` §9, ligne d'impact `h-merkle` rattachée à
-`CHDR-007`, qui décrivait le mécanisme au lieu de s'en tenir à l'identifiant et
-au titre neutre ; les corrections de la présente version — cette ligne et quatre
-autres occurrences du même genre, listées en §12 — en sont la réponse.
+Les conditions 2, 3, 8 et 10 ne sont pas ouvertes par ce run.
 
-Les conditions 2, 3, 7, 8 et 10 ne sont pas ouvertes par ce run.
+**Une seule condition reste ouverte : la 1.** Elle porte sur la sémantique du
+protocole et appartient au propriétaire humain. La décision du 2026-08-03 est une
+décision de publication et ne la préjuge en rien.
 
 **Aucune condition de blocage supplémentaire n'est inventée.** La liste de
 `PROCESS.md` est close ; la collision d'identifiants (§13) en est absente et ne
@@ -825,10 +847,18 @@ justifie donc pas un arrêt, mais elle est portée au propriétaire.
 
 L'orchestrateur écrit la transition ; ce rôle ne touche pas `STATE.md`.
 
-**Transition attendue :** `AUDIT_INITIAL` → `CORRECTION_REQUESTED`, sous réserve
-des conditions de blocage 1 et 9, qui appellent d'abord une décision du
-propriétaire humain sur `CHDR-007` et `CHDR-012` et sur la barrière de
-divulgation.
+**Transition attendue :** `AUDIT_INITIAL` → `CORRECTION_REQUESTED`. Les
+conditions de blocage 5, 6, 7 et 9 sont résolues (§14). La condition 1 reste
+ouverte mais **ne bloque pas la transition** : elle borne le périmètre
+assignable, elle ne l'annule pas. Les vingt et un findings actifs autres que
+`CHDR-007` et `CHDR-012` sont assignables dès maintenant.
+
+**Répartition des décideurs, explicite :**
+
+| Findings | Décideur | Motif |
+|---|---|---|
+| `CHDR-007` (P1), `CHDR-012` (P2) | **le propriétaire humain du protocole** | `DECISION_REQUIRED` : deux lectures normatives concurrentes chacun, exposées sans arbitrage dans l'audit public §6 et §12. **Assignés à aucun correcteur** |
+| les 21 autres findings actifs | **le correcteur** | aucune sémantique concurrente ; critères de clôture écrits ; lots ordonnés à l'audit public §11 |
 
 Invariants de la transition `→ CORRECTION_REQUESTED`
 (`PROCESS.md` § *Guarded transitions*, AM), état à la clôture de ce run :
@@ -851,12 +881,15 @@ Ordre de valeur recommandé pour l'assignation, repris de l'audit public §11 :
 lot 1 (`CHDR-025`, `CHDR-026`), puis lot 2 (`CHDR-021`, `CHDR-020`), puis lot 3
 (`CHDR-019`, `CHDR-024`). Les lots 1 et 2 portent la sécurité.
 
-Avant cela, deux questions pour `BLOCKED.md`, que l'orchestrateur écrit et que ce
-rôle ne résout pas :
+Une seule question demeure pour `BLOCKED.md`, que l'orchestrateur écrit et que ce
+rôle ne résout pas : **la sémantique de `CHDR-007` et celle de `CHDR-012`** — un
+invariant que la spécification énonce à la voix passive lie-t-il une surface
+vérifiante, ou décrit-il seulement une propriété d'objet ? Les deux lectures de
+chaque finding, avec leurs fondements, conséquences, coûts et porteurs, sont
+tabulées dans l'audit public §6.
 
-1. la sémantique de `CHDR-007` et celle de `CHDR-012` ;
-2. la barrière de divulgation sur ces deux findings, en tenant compte du fait
-   consigné en §10 pour `CHDR-007`.
+La question de la barrière de divulgation sur ces deux findings est **close** :
+tranchée par le propriétaire le 2026-08-03 (§10).
 
 Et, hors liste close, portée au propriétaire par la même voie : la collision
 d'identifiants `CHDR-*` avec l'étalon publié.
