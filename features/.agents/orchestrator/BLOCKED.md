@@ -9,6 +9,50 @@ conditions". Anything absent from that list is not a reason to stop.
 
 ## Open
 
+*(none)*
+
+## Template
+
+```markdown
+### <run-id> · <feature> · condition <n> — <short title>
+
+- **Raised:** <RFC 3339>
+- **Stage:** <status the cycle stopped in>
+- **Evidence:** <ledger ids — gate transcripts, agent outputs>
+
+**Question.** One sentence, answerable.
+
+**Options.**
+
+1. <option> — consequence, cost.
+2. <option> — consequence, cost.
+
+**What the train did not do.** The work left untouched, so the cost of each
+option is legible.
+```
+
+## Resolved
+
+### Ruling — 2026-08-03, Mathieu Colla (owner) — condition 1
+
+> Reading A on both findings. I3 binds the recipient key of the owner's line,
+> not its label; and it binds the edition verifier, not only the reader who
+> opens.
+
+Recorded in full, with its evidence and its executable consequences, in
+`features/.agents/c-headers/decisions/2026-08-03-chdr-007-012-i3-authority.md`.
+
+`CHDR-007` and `CHDR-012` leave `DECISION_REQUIRED` and are assigned together to
+lot B, `codex/fix-c-headers-i3-authority`. A specification lot comes first and
+belongs to the owner, not to any agent role: `spec/03-headers.md` §3.1 and §3.4,
+`spec/00-overview.md` §0.2, and a §9.2 conformance vector with its generator.
+The nine test-semantics findings become lot A and follow, so the shared fixtures
+migrate once.
+
+**No blocking condition remains open for `c-headers`.**
+
+---
+
 ### 2026-08-03-r1 · c-headers · condition 1 — `DECISION_REQUIRED` on two findings
 
 - **Raised:** 2026-08-03T12:55:00Z
@@ -35,27 +79,7 @@ neither finding to a corrector. The other twenty-one findings did move to
 `CORRECTION_REQUESTED`: `PROCESS.md` keeps `DECISION_REQUIRED` findings open and
 visible rather than holding the whole cycle for them.
 
-## Template
-
-```markdown
-### <run-id> · <feature> · condition <n> — <short title>
-
-- **Raised:** <RFC 3339>
-- **Stage:** <status the cycle stopped in>
-- **Evidence:** <ledger ids — gate transcripts, agent outputs>
-
-**Question.** One sentence, answerable.
-
-**Options.**
-
-1. <option> — consequence, cost.
-2. <option> — consequence, cost.
-
-**What the train did not do.** The work left untouched, so the cost of each
-option is legible.
-```
-
-## Resolved
+---
 
 ### Ruling — 2026-08-03, Mathieu Colla (owner)
 
@@ -66,6 +90,10 @@ option is legible.
 Raise `budget.agents_per_cycle` from 40 to 60. Keep
 `policy.refuters_per_finding: 3` — a two-refuter panel has no rule attached to a
 1–1 split.
+
+*Superseded the same day, and recorded rather than rewritten: the owner then set
+`agents_per_cycle: 300` and `wallclock_minutes_per_cycle: 600`, and fixed opus
+for every role in the new `models:` block of `QUEUE.yaml`.*
 
 This ruling closes conditions **9**, **6** and **7**. It closes 6 because the
 text the warden flagged is no longer withheld material: there is nothing left to
