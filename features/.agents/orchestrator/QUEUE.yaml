@@ -1,0 +1,63 @@
+# Orchestrated feature train — order, policy, budgets.
+#
+# Read by `features/.agents/scripts/train-status.py`. This file and every
+# `STATE.md` frontmatter use a deliberately restricted YAML subset — see
+# `LEDGER.md`, section "Restricted grammar". The restriction is a feature: a
+# state file an unattended orchestrator depends on must have exactly one
+# reading.
+
+version: 1
+
+policy:
+  # The train advances on its own and stops only on a blocking condition
+  # listed in PROCESS.md, section "Blocking conditions".
+  autonomy: until_blocked
+  # Adversarial refutation panel size for every P1/P2 finding.
+  # PENDING: 3 gives a clear majority, 2 costs less. Default 3.
+  refuters_per_finding: 3
+  # A third rejection of the same finding stops the run.
+  max_rejections_per_finding: 3
+  # Branches are pushed to the public repository; the disclosure gate is
+  # therefore a write gate, not a publication gate.
+  durability_remote: origin
+  run_branch_prefix: agents/train
+  push_main: false
+  disclosure_gate: true
+
+budget:
+  agents_per_cycle: 40
+  wallclock_minutes_per_cycle: 240
+
+# Features are processed strictly in this order, one at a time. A feature whose
+# STATE.md reports COMPLETE is skipped. A feature file present on disk but
+# absent from this list and not COMPLETE is a state error.
+order:
+  - c-headers
+  - g4-client-surfaces
+  - d-bundle
+  - h-merkle
+  - e-mandates
+  - e-mandate-sections
+  - n-structural-mutations
+  - i-concurrency
+  - h2-gamma-roots
+  - g-revocation
+  - l-delegated-writes
+  - m-delegated-editions
+  - o-connector-classes-vault
+  - g-plus-obligations
+  - f-plus-constraints
+  - f-gamma
+  - k-integration
+
+# Prior manual work the train must know about but must not treat as Pass A
+# input. A yardstick is a Pass B input and a truth-milestone comparison only.
+yardsticks:
+  c-headers: codex/audit-c-headers
+
+# Recorded consequences of accepted impact reviews. TARGETED means a future
+# cycle of that feature owes specific scenarios; it never reopens a feature by
+# itself.
+follow_ups:
+  b-derivation-round-2-targeted: [a-identity, c-headers, d-bundle, e-mandates, n-structural-mutations]
+  bder-006-d-bundle: tag-view and wrap scenarios owed by the d-bundle cycle

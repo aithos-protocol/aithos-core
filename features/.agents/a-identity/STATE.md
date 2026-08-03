@@ -1,3 +1,19 @@
+---
+feature: a-identity
+status: COMPLETE
+mode: null
+round: 2
+base_main: null
+audit_revision: dfb79c87120caeb26737c81babd5cc2ad0dc0a3c
+candidate_revision: e6fc5dc206204038e4bac80dcd9dc5f4c4429bc1
+branch: null
+assigned_findings: []
+open_findings: [AID-003, AID-004]
+rejection_count: {}
+blocked: null
+last_transition: 2026-07-29
+---
+
 # Domain state — `a-identity`
 
 | Field | Value |

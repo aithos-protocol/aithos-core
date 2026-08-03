@@ -1,3 +1,19 @@
+---
+feature: b-derivation
+status: COMPLETE
+mode: null
+round: 2
+base_main: 513b366d0542fe1cd97b4a7fd17f5d6f73f34ea3
+audit_revision: 513b366d0542fe1cd97b4a7fd17f5d6f73f34ea3
+candidate_revision: 4f5921e0c8335dde9ea9e54ab81a83e0aea1cf41
+branch: codex/fix-b-derivation-bder-006-008-decisions
+assigned_findings: []
+open_findings: [BDER-007, BDER-010, BDER-012, BDER-013]
+rejection_count: {}
+blocked: null
+last_transition: 2026-08-03
+---
+
 # Domain state — `b-derivation`
 
 | Field | Value |
