@@ -18,6 +18,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: aithos-core
+      - name: feature tags pre-gate
+        run: features/.agents/scripts/verify-feature-tags.sh
       - name: Checkout pinned aithos-client
         uses: actions/checkout@v4
         with:
