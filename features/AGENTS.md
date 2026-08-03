@@ -57,6 +57,13 @@ For `b-derivation.feature`:
 - correction:
   `.agents/b-derivation/corrector/correct-b-derivation/SKILL.md`.
 
+For `c-headers.feature`:
+
+- audit or review:
+  `.agents/c-headers/auditor/audit-c-headers/SKILL.md`;
+- correction:
+  `.agents/c-headers/corrector/correct-c-headers/SKILL.md`.
+
 ## Role boundaries
 
 - The auditor inspects, classifies, documents, and reviews. It does not correct
