@@ -1,0 +1,6 @@
+{"units":[
+ {"id":"RU-1","rule":"A line seals the node key to exactly one recipient","lines":[8,29],"scenarios":["Owner and grantee each open their line","A non-recipient opens nothing","A corrupted line fails closed","A line is bound to its node and version"],"steps":13},
+ {"id":"RU-2","rule":"The owner line is mandatory (I3)","lines":[31,36],"scenarios":["A header without an owner line is invalid"],"steps":3},
+ {"id":"RU-3","rule":"Grant is one appended line, touching nobody","lines":[38,44],"scenarios":["Granting a new reader leaves every other line untouched"],"steps":4},
+ {"id":"RU-4","rule":"Rotation cuts the revoked and re-links the parent","lines":[46,58],"scenarios":["The revoked gets no line in the new version","An up-link wrap restores derivation for the parent holder"],"steps":8}],
+ "totals":{"rules":4,"scenarios":8,"steps":28}}

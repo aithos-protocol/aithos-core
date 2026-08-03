@@ -1,0 +1,462 @@
+Feature: Identity genesis
+Rule: Genesis is deterministic
+    Scenario: The same seed always yields the same identity
+     ✔  Given a master seed
+     ✔  When I derive the owner keys twice
+     ✔  Then both derivations yield the same public identity
+    Scenario: Different seeds yield unrelated identities
+     ✔  Given two different master seeds
+     ✔  When I derive the owner keys from each seed
+     ✔  Then the two identities share no public key
+Rule: Keys are domain-separated
+    Scenario: One identity's keys are pairwise distinct
+     ✔  Given a master seed
+     ✔  When I derive the owner keys
+     ✔  Then the three public keys are pairwise distinct
+Rule: Genesis fails closed
+    Scenario: A seed must be exactly 32 bytes
+     ✔  Given a 31-byte seed candidate
+     ✔  When I try to derive the owner keys
+     ✔  Then genesis is rejected with "invalid seed length"
+Rule: The succession key is independent and cold
+    Scenario: The succession key is not derived from the master seed
+     ✔  Given a master seed
+     ✔  When I generate a succession keypair twice for the same seed
+     ✔  Then the two succession keys differ
+     ✔  And the owner keys are identical both times
+Rule: The DID document publishes the identity
+    Scenario: The DID document lists the four public keys
+     ✔  Given a master seed and a succession keypair
+     ✔  When I build the DID document
+     ✔  Then it contains the root, content, kex and succession public keys
+     ✔  And its identifier is derived from the root public key
+     ✔  And its signature verifies under the root key
+    Scenario: A DID document altered after signing fails closed
+     ✔  Given a signed DID document
+     ✔  When one byte of it is altered after signing
+     ✔  Then verification is rejected
+Rule: A correct root signature is necessary, never sufficient
+    Scenario Outline: A correctly signed but semantically invalid DID document is rejected
+     ✔  Given a signed DID document
+     ✔  When it is rebuilt and re-signed with a content key that is not multibase
+     ✔  Then verification is rejected
+    Scenario Outline: A correctly signed but semantically invalid DID document is rejected
+     ✔  Given a signed DID document
+     ✔  When it is rebuilt and re-signed with a content key in the X25519 codec
+     ✔  Then verification is rejected
+    Scenario Outline: A correctly signed but semantically invalid DID document is rejected
+     ✔  Given a signed DID document
+     ✔  When it is rebuilt and re-signed with a kex key in the Ed25519 codec
+     ✔  Then verification is rejected
+    Scenario Outline: A correctly signed but semantically invalid DID document is rejected
+     ✔  Given a signed DID document
+     ✔  When it is rebuilt and re-signed with a malformed succession key
+     ✔  Then verification is rejected
+    Scenario Outline: A correctly signed but semantically invalid DID document is rejected
+     ✔  Given a signed DID document
+     ✔  When it is rebuilt and re-signed with an unsupported document version
+     ✔  Then verification is rejected
+    Scenario Outline: A correctly signed but semantically invalid DID document is rejected
+     ✔  Given a signed DID document
+     ✔  When it is rebuilt and re-signed with an unsupported signature algorithm
+     ✔  Then verification is rejected
+    Scenario Outline: A correctly signed but semantically invalid DID document is rejected
+     ✔  Given a signed DID document
+     ✔  When it is rebuilt and re-signed with a signature fragment other than #root
+     ✔  Then verification is rejected
+    Scenario Outline: An unknown member on the DID wire is refused, not dropped
+     ✔  Given a signed DID document
+     ✔  When an unknown top-level member is added to its JSON wire
+     ✔  Then the document does not parse as a DID document
+    Scenario Outline: An unknown member on the DID wire is refused, not dropped
+     ✔  Given a signed DID document
+     ✔  When an unknown keys member is added to its JSON wire
+     ✔  Then the document does not parse as a DID document
+    Scenario Outline: An unknown member on the DID wire is refused, not dropped
+     ✔  Given a signed DID document
+     ✔  When an unknown signature member is added to its JSON wire
+     ✔  Then the document does not parse as a DID document
+Rule: Only the succession key can declare a new master key
+    Scenario: An epoch transition signed by the succession key is accepted
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key
+     ✔  Then the successor DID document is accepted
+    Scenario: An epoch transition signed by anything else is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the root key itself
+     ✔  Then the transition is rejected
+Rule: A transition binds the successor document it names
+    Scenario Outline: A transition that does not bind its successor is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key but another successor document is presented
+     ✔  Then the transition is rejected
+    Scenario Outline: A transition that does not bind its successor is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key but the successor document is altered after signing
+     ✔  Then the transition is rejected
+    Scenario Outline: A transition that does not bind its successor is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key but the successor document is re-signed while malformed
+     ✔  Then the transition is rejected
+    Scenario Outline: A transition that does not bind its successor is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key but it declares the previous identity as its successor
+     ✔  Then the transition is rejected
+    Scenario Outline: A transition that does not bind its successor is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key but it declares a malformed next_did
+     ✔  Then the transition is rejected
+    Scenario Outline: A transition that does not bind its successor is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key but it declares a next_did that is not a did:aithos
+     ✔  Then the transition is rejected
+    Scenario Outline: A transition that does not bind its successor is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key but it is signed by another identity's succession key
+     ✔  Then the transition is rejected
+    Scenario Outline: A transition that does not bind its successor is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key but it names a previous identity it was not signed for
+     ✔  Then the transition is rejected
+    Scenario Outline: A transition that does not bind its successor is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key but it declares an unsupported version
+     ✔  Then the transition is rejected
+    Scenario Outline: A transition that does not bind its successor is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the succession key but it declares an unsupported signature algorithm
+     ✔  Then the transition is rejected
+    Scenario: A transition signed by the root key while claiming the succession fragment is rejected
+     ✔  Given an identity and its successor identity
+     ✔  When the transition is signed by the root key claiming to be the succession key
+     ✔  Then the transition is rejected
+[Summary]
+1 feature
+8 rules
+30 scenarios (30 passed)
+93 steps (93 passed)
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded anyhow v1.0.103
+  Downloaded drain_filter_polyfill v0.1.3
+  Downloaded curve25519-dalek-derive v0.1.1
+  Downloaded lazy-regex v3.6.0
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded linked-hash-map v0.5.6
+  Downloaded oorandom v11.1.5
+  Downloaded peg v0.6.3
+  Downloaded chacha20poly1305 v0.10.1
+  Downloaded nom v7.1.3
+  Downloaded curve25519-dalek v4.1.3
+  Downloaded ryu-js v0.2.2
+  Downloaded textwrap v0.16.2
+  Downloaded terminal_size v0.4.4
+  Downloaded zmij v1.0.21
+  Downloaded version_check v0.9.5
+  Downloaded unicode-ident v1.0.24
+  Downloaded typed-builder-macro v0.15.2
+  Downloaded serde_json v1.0.150
+  Downloaded regex v1.12.4
+  Downloaded rustix v1.1.4
+  Downloaded serde v1.0.228
+  Downloaded universal-hash v0.5.1
+  Downloaded unicode-linebreak v0.1.5
+  Downloaded regex-syntax v0.8.11
+  Downloaded regex-syntax v0.7.5
+  Downloaded ulid v1.2.1
+  Downloaded regex-automata v0.4.14
+  Downloaded typed-builder v0.15.2
+  Downloaded tinyvec_macros v0.1.1
+  Downloaded zerocopy-derive v0.8.54
+  Downloaded typenum v1.20.1
+  Downloaded syn v2.0.118
+  Downloaded tinyvec v1.11.0
+  Downloaded unicode-width v0.2.2
+  Downloaded zeroize_derive v1.5.0
+  Downloaded zeroize v1.9.0
+  Downloaded walkdir v2.5.0
+  Downloaded utf8parse v0.2.2
+  Downloaded zerocopy v0.8.54
+  Downloaded tinytemplate v1.2.1
+  Downloaded x25519-dalek v2.0.1
+  Downloaded thiserror-impl v1.0.69
+  Downloaded thiserror v1.0.69
+  Downloaded strsim v0.11.1
+  Downloaded serde_derive v1.0.228
+  Downloaded same-file v1.0.6
+  Downloaded rustc_version v0.4.1
+  Downloaded proc-macro2 v1.0.106
+  Downloaded pin-project v1.1.13
+  Downloaded synthez-core v0.3.1
+  Downloaded synthez-codegen v0.3.1
+  Downloaded subtle v2.6.1
+  Downloaded spki v0.7.3
+  Downloaded smawk v0.3.3
+  Downloaded slab v0.4.12
+  Downloaded signature v2.2.0
+  Downloaded shlex v2.0.1
+  Downloaded sha2 v0.10.9
+  Downloaded serde_jcs v0.1.0
+  Downloaded serde_core v1.0.228
+  Downloaded semver v1.0.28
+  Downloaded sealed v0.5.0
+  Downloaded rand_core v0.6.4
+  Downloaded quote v1.0.46
+  Downloaded pin-project-lite v0.2.17
+  Downloaded peg-runtime v0.6.3
+  Downloaded peg-macros v0.6.3
+  Downloaded linux-raw-sys v0.12.1
+  Downloaded synthez v0.3.1
+  Downloaded smart-default v0.7.1
+  Downloaded pkcs8 v0.10.2
+  Downloaded opaque-debug v0.3.1
+  Downloaded poly1305 v0.8.0
+  Downloaded pin-project-internal v1.1.13
+  Downloaded libc v0.2.186
+  Downloaded bstr v1.12.3
+  Downloaded minimal-lexical v0.2.1
+  Downloaded memchr v2.8.3
+  Downloaded itertools v0.13.0
+  Downloaded itertools v0.10.5
+  Downloaded hkdf v0.12.4
+  Downloaded futures-util v0.3.32
+  Downloaded ed25519-dalek v2.2.0
+  Downloaded der v0.7.10
+  Downloaded cucumber v0.21.1
+  Downloaded criterion v0.5.1
+  Downloaded clap_builder v4.6.0
+  Downloaded cc v1.2.66
+  Downloaded aho-corasick v1.1.4
+  Downloaded blake3 v1.8.5
+  Downloaded once_cell v1.21.4
+  Downloaded num-traits v0.2.19
+  Downloaded log v0.4.33
+  Downloaded ignore v0.4.27
+  Downloaded hmac v0.12.1
+  Downloaded half v2.7.1
+  Downloaded getrandom v0.2.17
+  Downloaded futures-task v0.3.32
+  Downloaded futures-executor v0.3.32
+  Downloaded futures-channel v0.3.32
+  Downloaded futures v0.3.32
+  Downloaded find-msvc-tools v0.1.9
+  Downloaded either v1.16.0
+  Downloaded digest v0.10.7
+  Downloaded derive_more v0.99.20
+  Downloaded cucumber-codegen v0.21.1
+  Downloaded crossbeam-utils v0.8.22
+  Downloaded crossbeam-epoch v0.9.20
+  Downloaded crossbeam-deque v0.8.7
+  Downloaded constant_time_eq v0.4.2
+  Downloaded const-oid v0.9.6
+  Downloaded console v0.15.11
+  Downloaded clap_derive v4.6.1
+  Downloaded clap v4.6.1
+  Downloaded ciborium v0.2.2
+  Downloaded chacha20 v0.9.1
+  Downloaded bytecount v0.6.9
+  Downloaded bitflags v2.13.0
+  Downloaded base64ct v1.8.3
+  Downloaded autocfg v1.5.1
+  Downloaded arrayvec v0.7.8
+  Downloaded anstyle-query v1.1.5
+  Downloaded anstyle-parse v1.0.0
+  Downloaded anstyle v1.0.14
+  Downloaded anstream v1.0.0
+  Downloaded anes v0.1.6
+  Downloaded nom_locate v4.2.0
+  Downloaded lazy-regex-proc_macros v3.6.0
+  Downloaded itoa v1.0.18
+  Downloaded inflections v1.1.1
+  Downloaded humantime v2.4.0
+  Downloaded globset v0.4.18
+  Downloaded gherkin v0.14.0
+  Downloaded errno v0.3.14
+  Downloaded ed25519 v2.2.3
+  Downloaded cucumber-expressions v0.3.0
+  Downloaded criterion-plot v0.5.0
+  Downloaded cipher v0.4.4
+  Downloaded bs58 v0.5.1
+  Downloaded inventory v0.3.24
+  Downloaded inout v0.1.4
+  Downloaded hex v0.4.3
+  Downloaded heck v0.4.1
+  Downloaded globwalk v0.9.1
+  Downloaded generic-array v0.14.7
+  Downloaded futures-sink v0.3.32
+  Downloaded futures-macro v0.3.32
+  Downloaded futures-io v0.3.32
+  Downloaded is-terminal v0.4.17
+  Downloaded heck v0.5.0
+  Downloaded futures-core v0.3.32
+  Downloaded clap_lex v1.1.0
+  Downloaded ciborium-io v0.2.2
+  Downloaded block-buffer v0.10.4
+  Downloaded arrayref v0.3.9
+  Downloaded cpufeatures v0.2.17
+  Downloaded colorchoice v1.0.5
+  Downloaded aead v0.5.2
+  Downloaded crypto-common v0.1.7
+  Downloaded cpufeatures v0.3.0
+  Downloaded ciborium-ll v0.2.2
+  Downloaded cfg-if v1.0.4
+  Downloaded cast v0.3.0
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling unicode-ident v1.0.24
+   Compiling version_check v0.9.5
+   Compiling memchr v2.8.3
+   Compiling syn v2.0.118
+   Compiling generic-array v0.14.7
+   Compiling typenum v1.20.1
+   Compiling crypto-common v0.1.7
+   Compiling regex-syntax v0.8.11
+   Compiling cfg-if v1.0.4
+   Compiling zmij v1.0.21
+   Compiling serde_derive v1.0.228
+   Compiling subtle v2.6.1
+   Compiling itoa v1.0.18
+   Compiling serde_core v1.0.228
+   Compiling zeroize_derive v1.5.0
+   Compiling block-buffer v0.10.4
+   Compiling aho-corasick v1.1.4
+   Compiling heck v0.4.1
+   Compiling cpufeatures v0.2.17
+   Compiling digest v0.10.7
+   Compiling zeroize v1.9.0
+   Compiling regex-automata v0.4.14
+   Compiling semver v1.0.28
+   Compiling serde v1.0.228
+   Compiling either v1.16.0
+   Compiling minimal-lexical v0.2.1
+   Compiling rustc_version v0.4.1
+   Compiling crossbeam-utils v0.8.22
+   Compiling serde_json v1.0.150
+   Compiling rustix v1.1.4
+   Compiling bitflags v2.13.0
+   Compiling curve25519-dalek v4.1.3
+   Compiling zerocopy v0.8.54
+   Compiling thiserror v1.0.69
+   Compiling bytecount v0.6.9
+   Compiling linux-raw-sys v0.12.1
+   Compiling crossbeam-epoch v0.9.20
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling libc v0.2.186
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-parse v1.0.0
+   Compiling cc v1.2.66
+   Compiling regex v1.12.4
+   Compiling sealed v0.5.0
+   Compiling thiserror-impl v1.0.69
+   Compiling zerocopy-derive v0.8.54
+   Compiling curve25519-dalek-derive v0.1.1
+   Compiling inout v0.1.4
+   Compiling futures-sink v0.3.32
+   Compiling anstyle-query v1.1.5
+   Compiling anstyle v1.0.14
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling crossbeam-deque v0.8.7
+   Compiling futures-core v0.3.32
+   Compiling colorchoice v1.0.5
+   Compiling same-file v1.0.6
+   Compiling walkdir v2.5.0
+   Compiling anstream v1.0.0
+   Compiling futures-channel v0.3.32
+   Compiling cipher v0.4.4
+   Compiling synthez-core v0.3.1
+   Compiling blake3 v1.8.5
+   Compiling terminal_size v0.4.4
+   Compiling nom v7.1.3
+   Compiling universal-hash v0.5.1
+   Compiling derive_more v0.99.20
+   Compiling futures-macro v0.3.32
+   Compiling bstr v1.12.3
+   Compiling once_cell v1.21.4
+   Compiling futures-io v0.3.32
+   Compiling slab v0.4.12
+   Compiling heck v0.5.0
+   Compiling clap_lex v1.1.0
+   Compiling strsim v0.11.1
+   Compiling opaque-debug v0.3.1
+   Compiling log v0.4.33
+   Compiling peg-runtime v0.6.3
+   Compiling pin-project-lite v0.2.17
+   Compiling autocfg v1.5.1
+   Compiling signature v2.2.0
+   Compiling unicode-width v0.2.2
+   Compiling regex-syntax v0.7.5
+   Compiling futures-task v0.3.32
+   Compiling futures-util v0.3.32
+   Compiling num-traits v0.2.19
+   Compiling ed25519 v2.2.3
+   Compiling peg-macros v0.6.3
+   Compiling globset v0.4.18
+   Compiling poly1305 v0.8.0
+   Compiling clap_builder v4.6.0
+   Compiling clap_derive v4.6.1
+   Compiling nom_locate v4.2.0
+   Compiling gherkin v0.14.0
+   Compiling synthez-codegen v0.3.1
+   Compiling half v2.7.1
+   Compiling chacha20 v0.9.1
+   Compiling sha2 v0.10.9
+   Compiling hmac v0.12.1
+   Compiling typed-builder-macro v0.15.2
+   Compiling aead v0.5.2
+   Compiling smawk v0.3.3
+   Compiling ciborium-io v0.2.2
+   Compiling unicode-linebreak v0.1.5
+   Compiling anyhow v1.0.103
+   Compiling ryu-js v0.2.2
+   Compiling cpufeatures v0.3.0
+   Compiling arrayvec v0.7.8
+   Compiling constant_time_eq v0.4.2
+   Compiling arrayref v0.3.9
+   Compiling rand_core v0.6.4
+   Compiling x25519-dalek v2.0.1
+   Compiling serde_jcs v0.1.0
+   Compiling textwrap v0.16.2
+   Compiling ciborium-ll v0.2.2
+   Compiling chacha20poly1305 v0.10.1
+   Compiling typed-builder v0.15.2
+   Compiling hkdf v0.12.4
+   Compiling ed25519-dalek v2.2.0
+   Compiling synthez v0.3.1
+   Compiling ignore v0.4.27
+   Compiling clap v4.6.1
+   Compiling cucumber-expressions v0.3.0
+   Compiling peg v0.6.3
+   Compiling futures-executor v0.3.32
+   Compiling lazy-regex-proc_macros v3.6.0
+   Compiling itertools v0.13.0
+   Compiling itertools v0.10.5
+   Compiling pin-project-internal v1.1.13
+   Compiling ulid v1.2.1
+   Compiling hex v0.4.3
+   Compiling cast v0.3.0
+   Compiling bs58 v0.5.1
+   Compiling inflections v1.1.1
+   Compiling cucumber-codegen v0.21.1
+   Compiling pin-project v1.1.13
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+   Compiling criterion-plot v0.5.0
+   Compiling lazy-regex v3.6.0
+   Compiling futures v0.3.32
+   Compiling globwalk v0.9.1
+   Compiling ciborium v0.2.2
+   Compiling console v0.15.11
+   Compiling is-terminal v0.4.17
+   Compiling tinytemplate v1.2.1
+   Compiling smart-default v0.7.1
+   Compiling drain_filter_polyfill v0.1.3
+   Compiling humantime v2.4.0
+   Compiling inventory v0.3.24
+   Compiling oorandom v11.1.5
+   Compiling anes v0.1.6
+   Compiling linked-hash-map v0.5.6
+   Compiling cucumber v0.21.1
+   Compiling criterion v0.5.1
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4m 00s
+     Running tests/cucumber.rs (/root/work/target-shared/debug/deps/cucumber-be4ecf3a035cbebd)

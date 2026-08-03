@@ -1,0 +1,71 @@
+{
+  "feature": "c-headers",
+  "rev": "a2087f2392389fb17e0bc0ba9e20a164d53766d8",
+  "evidence_cited": ["ev-50caa5d6"],
+  "note": "Redacted freeze. Findings marked disclosure=embargo carry an identifier and a neutral title only; their statements are withheld from every tracked file per PROCESS.md, section \"Disclosure gate\". Blocking condition 9 is raised.",
+  "units": [
+    {
+      "id": "RU-1",
+      "rule": "A line seals the node key to exactly one recipient",
+      "contamination": "none",
+      "scenarios": [
+        {"name": "Owner and grantee each open their line", "status": "PROVEN", "findings": ["CHDR-004", "CHDR-006"]},
+        {"name": "A non-recipient opens nothing", "status": "PROVEN", "findings": ["CHDR-005"]},
+        {"name": "A corrupted line fails closed", "status": "PARTIAL", "findings": ["CHDR-002"]},
+        {"name": "A line is bound to its node and version", "status": "PARTIAL", "findings": ["CHDR-001", "CHDR-002", "CHDR-003"]}
+      ]
+    },
+    {
+      "id": "RU-2",
+      "rule": "The owner line is mandatory (I3)",
+      "contamination": "none",
+      "scenarios": [
+        {"name": "A header without an owner line is invalid", "status": "PARTIAL", "findings": ["CHDR-007", "CHDR-008", "CHDR-009", "CHDR-010", "CHDR-011", "CHDR-012"]}
+      ]
+    },
+    {
+      "id": "RU-3",
+      "rule": "Grant is one appended line, touching nobody",
+      "contamination": "none",
+      "scenarios": [
+        {"name": "Granting a new reader leaves every other line untouched", "status": "PARTIAL", "findings": ["CHDR-013", "CHDR-014", "CHDR-015", "CHDR-016", "CHDR-017", "CHDR-018"]}
+      ]
+    },
+    {
+      "id": "RU-4",
+      "rule": "Rotation cuts the revoked and re-links the parent",
+      "contamination": "none",
+      "scenarios": [
+        {"name": "The revoked gets no line in the new version", "status": "PARTIAL", "findings": ["CHDR-019", "CHDR-023", "CHDR-024"]},
+        {"name": "An up-link wrap restores derivation for the parent holder", "status": "PROXY", "findings": ["CHDR-020", "CHDR-021", "CHDR-022"]}
+      ]
+    }
+  ],
+  "findings": [
+    {"id": "CHDR-001", "unit": "RU-1", "severity": "P2", "disclosure": "public", "title": "The scenario \"A line is bound to its node and version\" exercises the node binding only"},
+    {"id": "CHDR-002", "unit": "RU-1", "severity": "P2", "disclosure": "public", "title": "One non-discriminating rejection verdict shared by two rejection scenarios"},
+    {"id": "CHDR-003", "unit": "RU-1", "severity": "P2", "disclosure": "embargo", "title": "Actual reach of the node binding proved by the replay scenario"},
+    {"id": "CHDR-004", "unit": "RU-1", "severity": "P3", "disclosure": "public", "title": "Empty Given: the whole arrangement of scenario 1 lives in its When"},
+    {"id": "CHDR-005", "unit": "RU-1", "severity": "P3", "disclosure": "public", "title": "\"every line\" is not constrained by the assertion of scenario 2"},
+    {"id": "CHDR-006", "unit": "RU-1", "severity": "P3", "disclosure": "public", "title": "No scenario pins the recipient-to-line bijection, and the constructor truncates silently"},
+    {"id": "CHDR-007", "unit": "RU-2", "severity": "P1", "disclosure": "embargo", "title": "Edition-level half of I3 in the edition verifier"},
+    {"id": "CHDR-008", "unit": "RU-2", "severity": "P2", "disclosure": "embargo", "title": "Coverage of parse-time I3 validation across header read paths"},
+    {"id": "CHDR-009", "unit": "RU-2", "severity": "P2", "disclosure": "public", "title": "Three of the four I3 gates in the code are exercised by no Gherkin step"},
+    {"id": "CHDR-010", "unit": "RU-2", "severity": "P3", "disclosure": "public", "title": "Empty Given: the phrase parameters are never bound"},
+    {"id": "CHDR-011", "unit": "RU-2", "severity": "P3", "disclosure": "public", "title": "The Then asserts only a substring of the error message"},
+    {"id": "CHDR-012", "unit": "RU-2", "severity": "P2", "disclosure": "embargo", "title": "Field on which I3 is checked, versus the field the specification declares authoritative"},
+    {"id": "CHDR-013", "unit": "RU-3", "severity": "P2", "disclosure": "public", "title": "\"one appended line\" is asserted nowhere: no check of line count or position after the append"},
+    {"id": "CHDR-014", "unit": "RU-3", "severity": "P2", "disclosure": "public", "title": "\"every other line untouched\" is exercised on a header holding exactly one other line, the owner's"},
+    {"id": "CHDR-015", "unit": "RU-3", "severity": "P2", "disclosure": "public", "title": "Normative step 1 of the grant (open the current DK from one's own line) is not exercised"},
+    {"id": "CHDR-016", "unit": "RU-3", "severity": "P2", "disclosure": "public", "title": "The grant path actually taken in production implements neither step 1 nor step 3 of §3.3, and no step of this Rule touches it"},
+    {"id": "CHDR-017", "unit": "RU-3", "severity": "P3", "disclosure": "public", "title": "The O(1) claim of the Feature narrative is neither measured nor asserted"},
+    {"id": "CHDR-018", "unit": "RU-3", "severity": "P3", "disclosure": "public", "title": "The Then is a shared, hard-wired function unable to tell an appended line from a built one"},
+    {"id": "CHDR-019", "unit": "RU-4", "severity": "P2", "disclosure": "public", "title": "\"the first grantee cannot open the new version\" is decided by the routing hint, never by the seal"},
+    {"id": "CHDR-020", "unit": "RU-4", "severity": "P2", "disclosure": "public", "title": "The composite state of the up-link scenario is stipulated by comment, never constructed"},
+    {"id": "CHDR-021", "unit": "RU-4", "severity": "P2", "disclosure": "public", "title": "The wrap Then is a round trip on itself and discriminates no route"},
+    {"id": "CHDR-022", "unit": "RU-4", "severity": "P2", "disclosure": "public", "title": "The via modelled by the scenario does not match the one the real rotation surface posts"},
+    {"id": "CHDR-023", "unit": "RU-4", "severity": "P2", "disclosure": "public", "title": "Header::rotate validates neither slice lengths nor version monotonicity"},
+    {"id": "CHDR-024", "unit": "RU-4", "severity": "P3", "disclosure": "public", "title": "No step of RU-4 calls check_rotation: the mechanical well-formedness of §3.4 is out of reach of the Rule that names it"}
+  ],
+  "counts": {"total": 24, "P1": 1, "P2": 14, "P3": 9, "embargo": 4}
+}

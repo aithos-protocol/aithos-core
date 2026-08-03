@@ -1,0 +1,82 @@
+{
+ "CHDR-001": {
+  "votes_refuted": 1,
+  "panel": 3,
+  "survives": true
+ },
+ "CHDR-002": {
+  "votes_refuted": 3,
+  "panel": 3,
+  "survives": false
+ },
+ "CHDR-003": {
+  "votes_refuted": 2,
+  "panel": 3,
+  "survives": false
+ },
+ "CHDR-007": {
+  "votes_refuted": 1,
+  "panel": 3,
+  "survives": true
+ },
+ "CHDR-008": {
+  "votes_refuted": 2,
+  "panel": 3,
+  "survives": false
+ },
+ "CHDR-009": {
+  "votes_refuted": 2,
+  "panel": 3,
+  "survives": false
+ },
+ "CHDR-012": {
+  "votes_refuted": 0,
+  "panel": 3,
+  "survives": true
+ },
+ "CHDR-013": {
+  "votes_refuted": 1,
+  "panel": 3,
+  "survives": true
+ },
+ "CHDR-014": {
+  "votes_refuted": 2,
+  "panel": 3,
+  "survives": false
+ },
+ "CHDR-015": {
+  "votes_refuted": 3,
+  "panel": 3,
+  "survives": false
+ },
+ "CHDR-016": {
+  "votes_refuted": 1,
+  "panel": 3,
+  "survives": true
+ },
+ "CHDR-019": {
+  "votes_refuted": 1,
+  "panel": 3,
+  "survives": true
+ },
+ "CHDR-020": {
+  "votes_refuted": 2,
+  "panel": 3,
+  "survives": false
+ },
+ "CHDR-021": {
+  "votes_refuted": 1,
+  "panel": 3,
+  "survives": true
+ },
+ "CHDR-022": {
+  "votes_refuted": 1,
+  "panel": 3,
+  "survives": true
+ },
+ "CHDR-023": {
+  "votes_refuted": 3,
+  "panel": 3,
+  "survives": false
+ }
+}
