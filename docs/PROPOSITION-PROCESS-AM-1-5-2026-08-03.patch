@@ -1,0 +1,174 @@
+--- PROCESS.md.orig	2026-08-03 09:47:22.035477365 +0000
++++ PROCESS.md	2026-08-03 09:48:08.006660339 +0000
+@@ -88,6 +88,26 @@
+   and one final global Cucumber/workspace gate before handoff;
+ - CI may independently reproduce global gates, but that is not audit work.
+ 
++### Orchestrated gate execution
++
++In orchestrated mode no agent runs a gate. The orchestrator executes every
++gate, writes the transcript under the run's `evidence/` directory, hashes it,
++and records an `evidence_id` in the run ledger. The role that owns the gate
++receives that transcript as an input and cites the `evidence_id` in its report.
++
++Ownership does not move. The role remains answerable for the gate its stage
++requires, and a missing, red, or contradicted gate is that role's failure.
++Only the execution moves, and it moves for one reason: a claim an agent cannot
++produce by itself is a claim it cannot fabricate.
++
++A report citing a command with no matching ledger entry is invalid. The process
++warden rejects it and the transition does not occur.
++
++Every gate record keeps both the process exit code and the parsed `[Summary]`
++counters. A gate whose exit code and counters disagree is treated as red and
++raises a blocking condition, whatever the exit code claims. This is a permanent
++probe against a regression of the `BDER-011` class.
++
+ ## Current scope
+ 
+ Include:
+@@ -210,6 +230,40 @@
+ and performs the shared-state integration pass last. A later orchestrator may
+ spawn fresh agents for the review units without changing the evidence model.
+ 
++### Material isolation of Pass A
++
++In orchestrated mode, Pass A isolation is material, not declarative. Each Pass A
++review unit runs against an extract of the immutable revision produced by
++`git archive`, with no `.git` directory. The agent does not refrain from reading
++history; it cannot, because no history is present.
++
++The correction review uses the same device. The reviewer receives an extract of
++the candidate revision, without `.git` and without the corrector's run report,
++until its behavioral verdict is frozen. The diff and the corrector's conclusion
++are delivered only for Pass B.
++
++An instruction not to read history is not sufficient for an unattended agent and
++must not be relied upon as the sole barrier.
++
++## Adversarial refutation
++
++Before an audit hands any finding to a corrector, every finding of severity P1
++or P2 receives an independent refutation panel: fresh agents given the finding
++statement alone, each instructed to refute it and to answer `refuted` when
++uncertain. A finding survives on a majority of non-refutations.
++
++The panel does not replace the auditor's evidence. It removes plausible but
++unproven claims before they cause a code change. Its verdicts are recorded with
++the finding.
++
++A finding refuted by a majority returns to the auditor as an open question, not
++as a closed case. A disagreement the auditor cannot settle with current-code
++evidence is a blocking condition.
++
++The pass is not speculative: on the `c-headers` round it confirmed all four
++P1/P2 claims, corrected three overstated formulations, and surfaced one finding
++the audit had missed.
++
+ ## Artifacts
+ 
+ | Artifact | Purpose |
+@@ -334,7 +388,102 @@
+ 4. writes a global report;
+ 5. does not modify or restart any feature.
+ 
+-The decision to restart an audit remains manual.
++The decision to restart an audit remains manual. This holds in orchestrated
++mode: a `FULL_AUDIT` classification is a blocking condition, never an automatic
++reopening.
++
++The prohibition on launching another agent binds the impact-review *role*, so
++that it cannot subcontract its own analysis. It does not bind the orchestrator,
++which creates that role in the first place.
++
++## Orchestrated mode
++
++The process above is written for named roles. An orchestrator may execute it by
++creating one fresh agent per role and per review unit, under the conditions of
++this section. Nothing here relaxes an evidence requirement; the additions exist
++because an unattended run has no human to catch a shortcut.
++
++### Statelessness
++
++The orchestrator holds no state. A run is a function of the repository. Every
++decision, verdict, and milestone is written to disk and committed before the
++next step begins. Any later session resumes the work by reading the repository
++alone, with no narrative handoff.
++
++### Machine-readable state
++
++Each `.agents/<feature>/STATE.md` carries a YAML frontmatter holding the routing
++fields only — feature, status, mode, round, recorded `main` base, audit and
++candidate revisions, branch, assigned and open findings, rejection counts,
++blocking entry, last transition. Those are exactly the fields Pass A is already
++allowed to read. The human table below it is unchanged.
++
++Three orchestrator artifacts complete the state:
++
++| Artifact | Purpose |
++|---|---|
++| `.agents/orchestrator/QUEUE.yaml` | Feature order, budgets, policy |
++| `.agents/orchestrator/runs/<run>/ledger.jsonl` | Append-only record of every agent launch, command, transcript, and transition |
++| `.agents/orchestrator/BLOCKED.md` | Open questions for the human owner |
++
++### Guarded transitions
++
++A transition occurs only when its invariant is verified by the orchestrator's
++code. An agent's assertion that a condition holds is never the condition.
++
++| Transition | Invariant |
++|---|---|
++| `→ AUDIT_INITIAL` | tag pre-gate green · feature branch created from the current local `main` · revision frozen · feature gate green in the ledger |
++| `→ CORRECTION_REQUESTED` | public audit written · run report complete · frozen Pass A entries precede every Pass B entry in the ledger · Gherkin markers match the unresolved findings · refutation panel recorded for every P1/P2 finding |
++| `→ REVIEW_REQUESTED` | diff confined to the assigned scope · a RED result precedes its GREEN in the ledger · feature gate green after the last change · one global Cucumber gate green · no `VERIFIED` in the corrector's output |
++| `→ REVIEW_ACCEPTED` | reviewer's Pass A frozen before any diff is delivered · each finding accepted or rejected separately · markers of `VERIFIED` findings removed |
++| `→ INTEGRATION` | impact report written · no untracked `FULL_AUDIT` · warden green |
++| `→ COMPLETE` | merged into the run branch · open findings still visible in the public audit and markers · `STATE.md` updated and committed |
++
++### Process warden
++
++One global role verifies conformity, not cryptography: the Pass A/Pass B barrier
++in ledger order, the absence of any cited evidence outside the ledger, the gate
++pyramid, role boundaries, the Gherkin marker lifecycle, and report completeness.
++
++It may invalidate a cycle. Two invalidations of the same feature stop the run.
++A feature closed with no finding is a case for the warden to examine, not a
++success to record.
++
++### Blocking conditions
++
++The orchestrator stops, writes the question to `BLOCKED.md`, and waits. The list
++is closed: anything absent from it does not justify a stop, and nothing present
++in it may be resolved by the orchestrator itself.
++
++1. `DECISION_REQUIRED` on any finding.
++2. A third rejection of the same finding.
++3. A red gate not attributable to the current scope.
++4. Pass A contamination, declared or detected.
++5. A refutation panel majority against the auditor.
++6. Two warden invalidations of the same feature.
++7. An exhausted budget — time, tokens, or disk.
++8. A diff outside the assigned scope.
++9. A finding caught by the disclosure gate.
++10. A `FULL_AUDIT` classification by the impact review.
++
++### Disclosure gate
++
++`aithos-core` is public, and orchestrated branches are pushed to it. A finding
++whose written statement would describe an exploitable weakness before a fix
++exists must not be written to any tracked file. The agent records the finding
++identifier and a neutral title, and raises blocking condition 9. The human owner
++decides what is published, and when.
++
++This gate exists because publication in orchestrated mode happens when an agent
++writes, not when a human reviews.
++
++### Prohibitions
++
++The orchestrator may not reopen a feature already `COMPLETE`, may not push
++`main`, may not choose a semantics under `DECISION_REQUIRED`, may not widen a
++corrector's assigned scope, and may not run a cycle on a repository whose
++recorded `main` base it did not itself verify.
+ 
+ ## Evidence statuses
+ 
