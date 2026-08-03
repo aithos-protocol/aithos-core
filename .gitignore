@@ -17,3 +17,6 @@ rust/crates/aithos-wasm/pkg/
 
 # Claude Code local settings
 **/.claude/settings.local.json
+
+# python bytecode from the agent scripts
+__pycache__/

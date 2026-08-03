@@ -28,16 +28,28 @@ A command executed by the orchestrator on behalf of a role.
 {"ts":"2026-08-03T09:12:44Z","kind":"gate","evidence_id":"ev-0f3a",
  "feature":"c-headers","role":"auditor","tier":"feature",
  "cmd":"cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test cucumber -- --tags @c-headers",
- "rev":"95d00ac","exit":0,
- "summary":{"features":1,"rules":4,"scenarios":8,"passed":8,"failed":0,"skipped":0},
+ "rev":"95d00ac","exit":0,"green":true,
+ "summary":{"features":1,"rules":4,
+            "scenarios":{"total":8,"passed":8},
+            "steps":{"total":28,"passed":28}},
  "transcript":"evidence/ev-0f3a.txt",
  "sha256":"ef5d5a01e0ee19e900d21383636d9acdd632f5d472a4f6451888fc1e2df4886c"}
 ```
 
 `tier` is one of `focused`, `feature`, `regression`, `cucumber`, `workspace` —
-the gate pyramid of `PROCESS.md`. `exit` and `summary` are both recorded: a
-gate whose exit code and counters disagree is red whatever the exit code says,
-and raises blocking condition 3.
+the gate pyramid of `PROCESS.md`.
+
+Counters stay grouped by unit. Flattening them lets a scenario count and a step
+count add into a number that describes nothing, and this record is cited as
+evidence.
+
+`exit`, `summary` and `green` are all recorded, and `green` is computed, never
+asserted. A gate whose exit code and counters disagree is red whatever the exit
+code says, and raises blocking condition 3. Four disagreements are treated as
+red: exit 0 with failures reported (the `BDER-011` shape), exit 0 with no
+counters at all, exit 0 with zero scenarios selected — the tag matched nothing
+— and a non-zero exit with no failure reported, an unattributed red. A gate red
+for one of these reasons also carries `anomaly`, naming which.
 
 ### `agent`
 
