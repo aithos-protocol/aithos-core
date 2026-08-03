@@ -1,4 +1,4 @@
-@wip @g4 @wasm @cli
+@g4-client-surfaces @wip @g4 @wasm @cli
 Feature: Browser and CLI ceremonies use the same Core primitives
   Both clients verify, build and sign the closed delegated-session protocol.
   Neither surface invents JCS or attenuation rules or exports seed material.

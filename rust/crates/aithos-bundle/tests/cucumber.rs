@@ -19736,8 +19736,8 @@ fn main() {
             .fail_on_skipped()
             // Le filtre couvre les trois niveaux de tag (feature, rule,
             // scénario), comme le harnais gateway : un @wip posé sur la
-            // Feature (ex. gateway-delegated-client-surfaces, relogée ici au
-            // lot SPL-1) garde tous ses scénarios hors du run.
+            // Feature (ex. g4-client-surfaces, relogée ici au lot SPL-1)
+            // garde tous ses scénarios hors du run.
             .filter_run_and_exit(features, |feature, rule, scenario| {
                 !feature.tags.iter().any(|t| t == "wip")
                     && rule.is_none_or(|r| !r.tags.iter().any(|t| t == "wip"))

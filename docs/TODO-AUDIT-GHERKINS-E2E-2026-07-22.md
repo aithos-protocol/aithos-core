@@ -291,7 +291,7 @@ pas jouées individuellement.
 Le runner gateway filtre les tags `@wip` au niveau feature, rule et scenario
 (`rust/crates/aithos-gateway/tests/cucumber.rs`, autour des lignes 10838–10842).
 
-- [ ] Activer les 4 scénarios de `gateway-delegated-client-surfaces.feature`.
+- [ ] Activer les 4 scénarios de `g4-client-surfaces.feature`.
 - [ ] Activer tous les scénarios et exemples de `gateway-delegated-session-ceremony.feature`.
 - [ ] Activer tous les scénarios et exemples de `gateway-delegated-session-runtime.feature`.
 - [ ] Activer le self read de `gateway-ethos-read.feature:133`.
