@@ -49,8 +49,12 @@ live Gherkin markers until a later accepted round resolves them.
 
 ## Feature targeting and gate pyramid
 
-Every `features/<name>.feature` file must start with the unique feature-level
-tag `@<name>`. For example, `a-identity.feature` starts with `@a-identity`.
+Every `features/<name>.feature` file must carry its unique feature-level tag
+`@<name>` on its first line, and declare `Feature:` on the second. That first
+line is a tag line: it may carry other tags next to the canonical one (`@wip`,
+plan or surface markers), in any order. For example, `a-identity.feature`
+starts with `@a-identity`, and `g4-client-surfaces.feature` starts with
+`@g4-client-surfaces @wip @g4 @wasm @cli`.
 Run `features/.agents/scripts/verify-feature-tags.sh` before any audit,
 correction, or review. A new feature without its canonical tag is invalid.
 
