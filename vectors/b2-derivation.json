@@ -1,6 +1,6 @@
 {
   "vector": "B2",
-  "description": "Content-tree derivation (spec 01.3, 02.5): one BLAKE3 derive_key per path segment, labels d/<sid>, s/<sid>, t/<tag>. Deep chain zone -> d1 -> d2 -> d3 -> section, plus folder-local vs zone-root tag anchors. Expected values generated independently (Python blake3). Sids are ULIDs of small integers.",
+  "description": "Content-tree derivation (spec 01.3, 02.5): one BLAKE3 derive_key per path segment, labels d/<sid>, s/<sid>, t/<tag>. Deep chain zone -> d1 -> d2 -> d3 -> section, plus folder-local vs zone-root tag anchors. Sids are ULIDs of small integers. Provenance: no independent B2 generator exists in this repository; this vector, its Gherkin fixtures and rust/crates/aithos-core/tests/b2_derivation.rs were all created in the same commit 1b7d258. External corroboration is partial - folder1_key_hex is recomputed from zone_dk_hex by five Python scripts (gen-f.py, gen-g.py, gen-h.py, gen-h2.py, gen-i.py) and deep_section_key_hex by gen-f.py alone, while sibling_section_sid, sibling_section_key_hex, tag and both tag_anchor_*_hex fields have no external witness and are self-certified by aithos-core::derive through b2_derivation.rs. No value changes: the vector stays frozen (README rule 3). An independent gen-b2-derivation.py, to be named here per README rule 1, remains the only way to give the tag-anchor invariant an external witness.",
   "zone_dk_hex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
   "folder_sids": [
     "00000000000000000000000001",

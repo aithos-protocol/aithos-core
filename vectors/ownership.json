@@ -1,7 +1,7 @@
 {
   "manifest": "vectors-ownership",
   "version": 1,
-  "updated": "2026-07-31 (lot SPL-8 — amputation post-scission)",
+  "updated": "2026-08-02 (ronde 2 b-derivation — re-pin de b2-derivation.json après réécriture de sa description ; aucune valeur du vecteur ne change)",
   "rule": "Every entry has exactly one owner. owner=core stays in aithos-core (CC BY 4.0); owner=service entries left with the aithos-service repo at lot SPL-8 (their frozen digests are pinned in that repo's vectors/ownership.json). shared=true marks core-owned vectors consumed by service-side crates: they stay here and are exposed to the service repo read-only at a pinned version, never duplicated. Enforced by rust/crates/aithos-bundle/tests/vectors_ownership.rs.",
   "entries": [
     {
@@ -29,7 +29,7 @@
       "name": "b2-derivation.json",
       "kind": "vector",
       "owner": "core",
-      "sha256": "73a4740d5d0c4361e91fc54c3def279517701689e653f8f99928b186a007b139"
+      "sha256": "ec5be7976b62a9d2810ccfcdc598d9b6bbdcbdaee0b1960db384a875a01abe75"
     },
     {
       "name": "c1-header-seal.json",
