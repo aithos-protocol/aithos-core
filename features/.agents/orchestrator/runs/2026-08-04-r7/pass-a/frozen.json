@@ -1,0 +1,40 @@
+{
+  "feature": "d-bundle",
+  "rev": "d9120d7e0d154cee517b983bf7b6cac0cf8e8096",
+  "evidence_cited": ["ev-6a76a789"],
+  "frozen_before": "any Pass B input, any mutant transcript, any cross-unit reconciliation",
+  "note": "Seven auditors, seven out-of-tree extracts with no .git, no run journal, no ledger, no prior verdict on any feature. They ran in parallel and none saw another's report. Every behavioural claim below is a PREDICTION with a named mutant, not a measurement: no evidence_id had been issued to any of them at freeze time, and each said so unprompted. That is the state this file freezes.",
+  "units": [
+    {"id": "RU-1", "rule": "Editions chain and verify offline", "scenarios": 4, "steps": 14, "contamination": "none",
+     "findings": ["DBND-101", "DBND-102", "DBND-103", "DBND-104", "DBND-105", "DBND-106"]},
+    {"id": "RU-2", "rule": "Content round-trips through the sealed store", "scenarios": 2, "steps": 7, "contamination": "none",
+     "findings": ["DBND-201", "DBND-202", "DBND-203", "DBND-204", "DBND-205"]},
+    {"id": "RU-3", "rule": "The public zone reads without any key", "scenarios": 1, "steps": 4, "contamination": "none",
+     "findings": ["DBND-301", "DBND-302", "DBND-303"]},
+    {"id": "RU-4", "rule": "The self zone leaks no structure", "scenarios": 1, "steps": 4, "contamination": "none",
+     "findings": ["DBND-401", "DBND-402", "DBND-403", "DBND-404", "DBND-405"]},
+    {"id": "RU-5", "rule": "Owner operations have durable parity across all three zones", "scenarios": 15, "steps": 90, "contamination": "none",
+     "findings": ["DBND-501", "DBND-502", "DBND-503", "DBND-504", "DBND-505", "DBND-506", "DBND-507", "DBND-508", "DBND-509"]},
+    {"id": "RU-6", "rule": "A local mutation commits state and Gamma as one transaction", "scenarios": 14, "steps": 108, "contamination": "none",
+     "findings": ["DBND-601", "DBND-602", "DBND-603", "DBND-604", "DBND-605"]},
+    {"id": "RU-7", "rule": "Local capabilities and paths stay narrow", "scenarios": 14, "steps": 72, "contamination": "none",
+     "findings": ["DBND-701", "DBND-702", "DBND-703", "DBND-704", "DBND-705", "DBND-706", "DBND-707", "DBND-708", "DBND-709", "DBND-710", "DBND-711", "DBND-712", "DBND-713", "DBND-714", "DBND-715"]}
+  ],
+  "severities": {
+    "P1": ["DBND-501", "DBND-703"],
+    "P2": ["DBND-101", "DBND-102", "DBND-201", "DBND-202", "DBND-301", "DBND-302", "DBND-401", "DBND-402", "DBND-502", "DBND-503", "DBND-504", "DBND-505", "DBND-601", "DBND-603", "DBND-701", "DBND-702", "DBND-704", "DBND-705", "DBND-706", "DBND-707", "DBND-708", "DBND-709", "DBND-710"],
+    "P3": ["DBND-103", "DBND-104", "DBND-105", "DBND-106", "DBND-203", "DBND-204", "DBND-205", "DBND-303", "DBND-403", "DBND-404", "DBND-405", "DBND-506", "DBND-507", "DBND-508", "DBND-509", "DBND-602", "DBND-604", "DBND-605", "DBND-711", "DBND-712", "DBND-713", "DBND-714", "DBND-715"]
+  },
+  "counts": {"total": 48, "P1": 2, "P2": 23, "P3": 23},
+  "the_two_P1": {
+    "DBND-501": "RU-5 — the clause 'without consuming mandate counters' is asserted as assert_eq!(0, 0): mandate_counter_delta is a literal 0 in the harness, never computed, and Bundle::verify never calls the function that reads the protocol's own observable for the claim",
+    "DBND-703": "RU-7 — the clause 'no seed or private key is accepted or returned' is asserted as assert!(!false): secret_material_exposed is written false at four sites in the harness and nowhere else"
+  },
+  "cross_unit_observations_made_independently": [
+    "RU-2 and RU-3 both found that the step asserting integrity against the signed edition is one shared function whose body never touches the value read, so that property is asserted in NO zone rather than in one. Two auditors, two units, no contact.",
+    "RU-6 and RU-7 both examined the Given and Then shared between their units and reached the same verdict from opposite sides: the shared Then is the principal assertion of RU-6 and is vacuous in RU-7, because every RU-7b row performs a read and the assertion compares a tree to itself around an operation with no write path.",
+    "RU-5 and RU-7 independently reported that 'narrow' carries two senses across the two Rules with no bridge."
+  ],
+  "the_primed_failure_mode_did_not_apply": "Three auditors were told to test first whether their Scenario Outline rows execute distinct bytes, because this repository has 360 Gherkin lines resolving to 19 cached-verdict step definitions. RU-5 reports 15 of 15 distinct, RU-7 reports 14 of 14 distinct, RU-6 found real fault injection. The proxy class does not reach this feature. That is a negative result and it is recorded as one.",
+  "disclosure": "Nothing embargoed. All seven auditors assessed condition 9 independently and all seven raised nothing, each recording why: every finding is a gap between a Gherkin sentence and the assertion behind it, and the production code was read and found intact at d9120d7."
+}
