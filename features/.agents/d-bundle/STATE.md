@@ -3,8 +3,8 @@ feature: d-bundle
 status: READY
 mode: audit
 round: 0
-base_main: null
-audit_revision: null
+base_main: d9120d7
+audit_revision: d9120d7e0d154cee517b983bf7b6cac0cf8e8096
 candidate_revision: null
 branch: codex/audit-d-bundle
 assigned_findings: []
@@ -23,8 +23,8 @@ last_transition: 2026-08-04T00:00:00+00:00
 | Status | `READY` — the domain is bootstrapped and no round has been opened. Per `../scripts/train-status.py`, the next role is **I1 then A2 — inventory and Pass A**: freeze the revision, divide into review units, trace history-blind |
 | Expected mode | `audit` — initial audit, via `auditor/audit-d-bundle/SKILL.md` |
 | Round | 0 |
-| Base of the round | **not frozen** (`base_main: null`). The role that opens the round records the exact local `main` revision here and in its run report |
-| Audit revision | **not frozen** (`audit_revision: null`) |
+| Base of the round | **not frozen** (`base_main: d9120d7`). The role that opens the round records the exact local `main` revision here and in its run report |
+| Audit revision | **not frozen** (`audit_revision: d9120d7e0d154cee517b983bf7b6cac0cf8e8096`) |
 | Candidate revision | none (`candidate_revision: null`) |
 | Canonical branch | `codex/audit-d-bundle`, the `PROCESS.md` default. The name is free: `QUEUE.yaml` registers no yardstick for this feature and no local or `origin` ref is named for it — see `DOMAIN.md`, § *Branch and evidence*, which also names the unrelated product branch `origin/codex/bundle-publication-performance` so it is not mistaken for one |
 | Yardstick | **none.** `../orchestrator/QUEUE.yaml` lists `yardsticks:` for `c-headers` only. There is no prior manual audit branch and no prior public audit note for this feature |
