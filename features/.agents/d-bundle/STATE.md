@@ -1,14 +1,14 @@
 ---
 feature: d-bundle
-status: READY
+status: AUDIT_INITIAL
 mode: audit
-round: 0
+round: 1
 base_main: d9120d7
 audit_revision: d9120d7e0d154cee517b983bf7b6cac0cf8e8096
 candidate_revision: null
 branch: codex/audit-d-bundle
 assigned_findings: []
-open_findings: []
+open_findings: [DBND-101, DBND-102, DBND-201, DBND-202, DBND-301, DBND-302, DBND-401, DBND-402, DBND-501, DBND-502, DBND-503, DBND-504, DBND-505, DBND-601, DBND-603, DBND-701, DBND-702, DBND-703, DBND-704, DBND-705, DBND-706, DBND-707, DBND-708, DBND-709, DBND-710]
 rejection_count: {}
 blocked: null
 last_transition: 2026-08-04T00:00:00+00:00
