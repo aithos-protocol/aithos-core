@@ -1,17 +1,17 @@
 ---
 feature: c-headers
-status: INTEGRATION
-mode: integration
+status: COMPLETE
+mode: complete
 round: 2
 base_main: 2f2d55d
 audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8
 candidate_revision: f335f4919950b6b462882876878460dcf2102a6a
 branch: codex/fix-c-headers-lot-a
 assigned_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-019, CHDR-021, CHDR-025]
-open_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025, CHDR-028, CHDR-029, CHDR-030]
+open_findings: [CHDR-016, CHDR-028, CHDR-029, CHDR-030, CHDR-037, CHDR-038, CHDR-039, CHDR-040, CHDR-042]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-04T11:30:00+00:00
+last_transition: 2026-08-04T11:40:00+00:00
 ---
 
 # Domain state — `c-headers`
@@ -19,11 +19,11 @@ last_transition: 2026-08-04T11:30:00+00:00
 > **Read this section first. Everything below it is round 1 and is kept for the
 > record, not for instruction.** Where the two disagree, this section wins.
 
-## Round 2, lot A — `REVIEW_ACCEPTED`, 2026-08-04
+## Round 2, lot A — `COMPLETE`, integrated into `main` 2026-08-04
 
 | Field | Value |
 |---|---|
-| Status | `REVIEW_ACCEPTED`. All **eight** assigned findings are **`VERIFIED`** by the independent reviewer — `CHDR-001`, `-002`, `-009`, `-013`, `-014`, `-019`, `-021`, `-025`. No `NOT_VERIFIED`, no `REGRESSION`, rejection counter at 0/3 |
+| Status | **`COMPLETE`**. Merged into `main` as `805582a` and pushed; `origin/main` moved `2f2d55d` → `805582a`. Post-merge gates on `main`: full Cucumber `ev-63a76fac` 18/114/836/3577 · workspace `ev-6688eb75` · `cargo fmt --check` `ev-e3b0c442` · clippy `ev-fc6d1551`, all green. All **eight** assigned findings are **`VERIFIED`** by the independent reviewer — `CHDR-001`, `-002`, `-009`, `-013`, `-014`, `-019`, `-021`, `-025`. No `NOT_VERIFIED`, no `REGRESSION`, rejection counter at 0/3 |
 | Review report | `auditor/runs/2026-08-04-review-lot-a.md`. Pass A on an out-of-tree extract of `c1f8380` with no `.git`, without the corrector's run report and without the run journal; Pass B opened only once every requested transcript was delivered, and **moved no verdict** |
 | Candidate revision | `5905bec` on `codex/fix-c-headers-lot-a`. Two commits: `03283b0` the corrector's, `5905bec` the orchestrator's state and journal |
 | Corrector run report | `corrector/runs/2026-08-04-correction-lot-a.md` — withheld from the reviewer until its behavioural verdict was frozen (`../PROCESS.md`, § *Material isolation of Pass A*) |
@@ -187,3 +187,35 @@ now carries the § *Project stage* section: nothing is deployed, no edition has
 been published, so backward compatibility is not a cost and must not be weighed.
 Lot A is where that first bites — several of its findings ask for stronger
 assertions that would have been softened to spare a past that has no content.
+
+---
+
+## `COMPLETE` — what that does and does not mean, 2026-08-04
+
+`COMPLETE` is terminal and this feature is never reopened. It means the two
+correction lots of the Gherkin audit are closed and integrated, not that
+`c-headers` is correct.
+
+**Nine identifiers remain open** and none of them is owed by this feature:
+
+| Identifier | Where it went |
+|---|---|
+| `CHDR-016` | re-routed to `g-revocation` and `d-bundle` as `chdr-016-grant-path` |
+| `CHDR-028` | **held at identifier and neutral title under the disclosure gate**, blocking condition 9, open in `../orchestrator/BLOCKED.md`. Its full statement is outside the repository. The owner rules; no role may publish it |
+| `CHDR-029`, `CHDR-030` | routed by the round 1 impact review to `g-revocation`, `n-structural-mutations`, `o-connector-classes-vault`, `d-bundle` |
+| `CHDR-037`, `-038`, `-039`, `-040`, `-042` | raised by the lot A review; `-040` is P2 and is against the **process**, not the code |
+
+`CHDR-041` is **reserved and never opened**. Do not reuse it.
+
+**Four by-product closures were refused**, and this is deliberate. Lot A happens
+to satisfy the stated closure criteria of `CHDR-017`, `CHDR-018`, `CHDR-024` and
+`CHDR-027`. None was assigned, none had a mutant aimed at it, and no independent
+review examined it. A criterion met by accident is not a finding closed, so
+their markers stay in `features/c-headers.feature` saying exactly that.
+
+**The two facts the lot A impact review measured are larger than this feature**
+and belong to the train, not to `c-headers`: 360 Gherkin lines across nine
+feature files resolve to 19 proxy step definitions (`ev-dd652e01`), and deleting
+a production authority guard in `AithosVault` is caught by no behavioural test
+anywhere in the repository (`ev-dd761130`, `ev-ce3f49ad`, `ev-a82b15ab`). Both
+are in `../orchestrator/QUEUE.yaml` under `chdr-lota-*`.

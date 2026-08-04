@@ -1,0 +1,6 @@
+    Checking aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Checking aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Checking aithos-wasm v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-wasm)
+    Checking aithos-owner v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-owner)
+    Checking aithos-cli v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 13.68s
