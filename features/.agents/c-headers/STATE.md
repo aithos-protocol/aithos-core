@@ -1,17 +1,17 @@
 ---
 feature: c-headers
-status: IMPACT_REVIEW_REQUESTED
+status: CORRECTION_REQUESTED
 mode: correction
-round: 1
-base_main: a2087f2392389fb17e0bc0ba9e20a164d53766d8
+round: 2
+base_main: 2f2d55d
 audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8
 candidate_revision: 9dc58895b5c822d13ea5daf8c25302ccd657b668
-branch: codex/audit-c-headers-r2
-assigned_findings: []
+branch: codex/fix-c-headers-lot-a
+assigned_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025]
 open_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025, CHDR-028, CHDR-029, CHDR-030]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-04T05:45:00+00:00
+last_transition: 2026-08-04T08:10:00+00:00
 ---
 
 # Domain state — `c-headers`
@@ -21,7 +21,7 @@ last_transition: 2026-08-04T05:45:00+00:00
 | Status | `CORRECTION_REQUESTED` — the initial audit completed on runs `2026-08-03-r1` and `-r2`. **All four blocking conditions are now closed.** Conditions 9, 6 and 7 by the disclosure and budget ruling of 2026-08-03; condition 1 by `decisions/2026-08-03-chdr-007-012-i3-authority.md`, which rules reading A on both findings: I3 binds the recipient key, not the label, and it binds the edition verifier |
 | Expected mode | `review` — lot B is implemented and awaits an independent reviewer. `CHDR-007` and `CHDR-012` are `IMPLEMENTED`, never `VERIFIED`: only the reviewer may raise them |
 | Round | 1 |
-| Base of round 1 | not frozen (`base_main: a2087f2392389fb17e0bc0ba9e20a164d53766d8`) — the role that opens the round records the exact local `main` revision here and in its run report |
+| Base of round 1 | not frozen (`base_main: 2f2d55d`) — the role that opens the round records the exact local `main` revision here and in its run report |
 | Audit revision | not frozen (`audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8`) |
 | Candidate revision | `9dc5889` on `codex/fix-c-headers-i3-authority` — lot B, `CHDR-007` and `CHDR-012` at `IMPLEMENTED`. This is the revision the independent reviewer extracts, without `.git` and without the corrector's run report, until its behavioural verdict is frozen |
 | Canonical branch | `codex/audit-c-headers-r2` |
@@ -85,7 +85,7 @@ integrated `main`, which is the `b-derivation` pattern. That is workable, but it
 means an audit cannot hand a corrector two independent lots without a human
 integration between them. Recorded rather than worked around.
 
-## Round 2 — prepared, waiting only on the integration
+## Round 2 — OPENED 2026-08-04. What follows is the plan it was opened on.
 
 Written here rather than held in a session, per the chantier's rule that the
 orchestrator has no memory: a cold session resumes from this file alone.
