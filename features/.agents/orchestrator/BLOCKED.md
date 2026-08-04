@@ -9,6 +9,55 @@ conditions". Anything absent from that list is not a reason to stop.
 
 ## Open
 
+### 2026-08-04-r3 · c-headers · condition 1 — retention versus retroactivity
+
+- **Raised:** 2026-08-04T06:10:00Z
+- **Stage:** impact review complete, before `INTEGRATION`
+- **Evidence:** `runs/2026-08-04-c-headers-impact-review.md` §C.4, §C.5
+
+**Question.** Can an edition written before the 2026-08-03 revision ever be
+made I3-conformant without violating the retention rule the same specification
+imposes?
+
+The impact review established the impasse by reading, and neither the corrector
+nor the reviewer had instructed it. `Header::validate` loops over **every**
+`key_versions` entry. A header written by an older binary carries the literal
+`"owner-kex"` in every one of them. Rotation adds a conformant version but
+`spec/03-headers.md` §3.5 **retains** the old ones, which stay non-conformant
+for ever. The only conformant path is to rewrite every key version of every
+header — which retention forbids. The refusal is keyless, so the data holder
+cannot present a key to work around it, and `validate_as_owner` is stricter,
+not more permissive.
+
+The same impasse hits a legitimate `owner_kex` epoch transition, which is not a
+migration problem and does not go away with time.
+
+Practical scope today is limited: `aithos-core` is `0.1.0-alpha.1` and no
+tracked bundle, fixture or frozen package carries a header in the old format.
+The question is what the specification says, not what today's corpus contains.
+
+**Options.**
+
+1. **Bound the obligation to the current key version.** `validate` checks the
+   latest version only; retained versions are exempt by construction. Cost: an
+   edition can retain a version whose owner line is absent, which is precisely
+   what I3 was strengthened to forbid.
+2. **Grandfather by revision.** Editions published before the revision are
+   verified under the old I3; the obligation binds new issuance only. Cost:
+   this is the `draft.3` profile gating the owner rejected on 2026-08-03,
+   returning through the door rather than the window.
+3. **Allow a conformance rewrite as an explicit, signed operation** that
+   rewrites retained versions and records why, as a bounded exception to §3.5.
+   Cost: a new normative operation, a spec section, and a vector.
+4. **Accept the impasse for the alpha** and revisit before any data exists.
+   Cost: the epoch-transition case remains unsolved on its own terms.
+
+**What the train did not do.** It did not choose. It did not amend `spec/` a
+second time. It did not integrate into `main` — that gesture is the owner's in
+any case.
+
+---
+
 ### 2026-08-04-r2 · c-headers · condition 9 — disclosure gate on `CHDR-028`
 
 - **Raised:** 2026-08-04T05:45:00Z

@@ -86,3 +86,18 @@ yardsticks:
 follow_ups:
   b-derivation-round-2-targeted: [a-identity, c-headers, d-bundle, e-mandates, n-structural-mutations]
   bder-006-d-bundle: tag-view and wrap scenarios owed by the d-bundle cycle
+
+  # Recorded by the c-headers impact review, 2026-08-04. No FULL_AUDIT.
+  chdr-i3-targeted: [a-identity, d-bundle, g-revocation, g4-client-surfaces, k-integration, m-delegated-editions, n-structural-mutations, o-connector-classes-vault]
+  chdr-i3-g4-cli: 'header-seal and header-open are unexercised by cli_surface.rs; the g4 cycle owes both, with one negative case pinning a foreign owner_kex (CHDR-035, CHDR-032)'
+  chdr-i3-d-bundle: 'an edition pinning an I3-violating header must be refused by verify, and publish carries no such guard (CHDR-034, CHDR-030)'
+  chdr-i3-g-revocation: 'a rotation must re-seal the owner line to the DID owner_kex, not to the key the previous owner line carried (spec 03.4, 05.5, 06.2); plus the to != kid survivor case (CHDR-029)'
+  chdr-i3-n-structural: 'move_folder writes the index before the I3 guard and is not transactional (CHDR-031); structural_recipients resolves from the routing label (CHDR-029)'
+  chdr-i3-o-vault: 'connector rotation resolves from the routing label (CHDR-029); read_vault_config_owner never validates (CHDR-030); e/x headers are now edition-verified'
+  chdr-i3-k-integration: 'cold_verify gained the I3 pass and a new did.json precondition at height 1; the cold round-trip owes a mutilated-header defect row'
+  chdr-i3-m-delegated: 'a delegated rotation reproducing a stale owner line invalidates the whole edition (spec 05-delegation.md:89-92)'
+  chdr-i3-a-identity: 'keys.kex is now the field that defines I3; an identity-epoch transition has an unstated header consequence and no migration path. TARGETED, not a reopening of a COMPLETE feature'
+  chdr-i3-cb2-pinning: 'revising one promoted vector costs four levels of pinning across the CB2 slice; g2-rotation.json still freezes the pre-variant-A wire form. Subject of any future lot is the CB2 cascade, never an I3 side effect'
+  chdr-i3-versioning: 'five public aithos-core::header signatures broke and the at-rest header format broke; rust/Cargo.toml still reads 0.1.0-alpha.1 and CHANGELOG Unreleased names neither (CHDR-033)'
+  chdr-i3-retention-vs-retroactivity: 'BLOCKING - spec 00-overview.md re-verifies pre-revision editions under I3, while spec 03-headers.md 3.5 retains old key versions that can never be made conformant. Owner ruling required'
+  chdr-028: 'BLOCKING, embargo - routing requires naming the surface, which describes the mechanism. Held by the orchestrator; no target recorded here'
