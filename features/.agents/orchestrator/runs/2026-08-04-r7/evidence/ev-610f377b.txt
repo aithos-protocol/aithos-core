@@ -1,0 +1,15 @@
+  ok     action disponible
+  ok     queue terminée
+  ok     blocage humain
+  ok     statut inconnu
+  ok     blocked contredit le statut
+  ok     nom != répertoire
+  ok     champ requis manquant
+  ok     rejets à la limite sans blocage
+  ok     feature hors queue et non COMPLETE
+  ok     tabulation
+  ok     frontmatter absent
+  ok     flow non équilibré
+  ok     clé dupliquée
+
+13 cas, tous passent

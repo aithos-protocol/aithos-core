@@ -1,0 +1,4 @@
+interface:
+  display_name: "Correct G4 — Client surfaces"
+  short_description: "Implement assigned g4-client-surfaces findings"
+  default_prompt: "Use $correct-g4-client-surfaces to implement only the findings assigned by features/.agents/g4-client-surfaces/STATE.md."

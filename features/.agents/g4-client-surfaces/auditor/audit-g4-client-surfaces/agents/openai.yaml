@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit G4 — Client surfaces"
+  short_description: "Audit g4-client-surfaces.feature semantic proof"
+  default_prompt: "Use $audit-g4-client-surfaces to run the mode requested by features/.agents/g4-client-surfaces/STATE.md."

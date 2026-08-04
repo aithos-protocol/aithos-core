@@ -95,6 +95,13 @@ For `c-headers.feature`:
 - correction:
   `.agents/c-headers/corrector/correct-c-headers/SKILL.md`.
 
+For `g4-client-surfaces.feature`:
+
+- audit or review:
+  `.agents/g4-client-surfaces/auditor/audit-g4-client-surfaces/SKILL.md`;
+- correction:
+  `.agents/g4-client-surfaces/corrector/correct-g4-client-surfaces/SKILL.md`.
+
 ## Role boundaries
 
 - The auditor inspects, classifies, documents, and reviews. It does not correct
