@@ -1,0 +1,507 @@
+
+running 17 tests
+test constraints::tests::half_open_periodic_window ... ok
+test constraints::tests::attenuation_is_containment ... ok
+test constraints::tests::until_and_count_bound_occurrences ... ok
+test gamma::tests::durations_parse ... ok
+test gamma::tests::epoch_matches_known_instants ... ok
+test jcs::tests::keys_are_sorted_recursively ... ok
+test jcs::tests::stable_across_insertion_order ... ok
+test jcs::tests::numbers_follow_ecmascript_formatting ... ok
+test merkle::tests::empty_and_singleton_mroot ... ok
+test merkle::tests::domains_separate_leaf_from_node ... ok
+test merkle::tests::left_heavy_odd_split ... ok
+test path::tests::covers_is_segment_list_containment ... ok
+test merkle::tests::mroot_path_replays_for_every_index ... ok
+test path::tests::parse_display_roundtrip ... ok
+test path::tests::rejects_malformed_paths ... ok
+test wire::tests::decode_fails_closed ... ok
+test wire::tests::roundtrip_both_codecs ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test a1_normative_ed2x_conversion ... ok
+test a1_deterministic_genesis ... ok
+test genesis_rejects_bad_seed_length ... ok
+test a1_wire_encodings_and_did ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test a2_did_document_matches_and_verifies ... ok
+test a2_tampered_document_fails_closed ... ok
+test aid001_signed_but_semantically_invalid_documents_are_rejected ... ok
+test aid001_unknown_wire_members_are_refused_not_dropped ... ok
+test a2_epoch_transition_succession_only ... ok
+test aid002_transition_binds_the_presented_successor_document ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+
+running 2 tests
+test b2_folder_key_alone_derives_descendants ... ok
+test b2_deep_chain_and_anchors ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test c1_owner_and_grantee_lines ... ok
+test c2_wrap_roundtrip_and_cross_check ... ok
+test c1_fail_closed ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 6 tests
+test c3_keyless_i3_verdicts ... ok
+test c3_line_aad_cross_check ... ok
+test c3_owner_kex_opens_exactly_the_owner_lines ... ok
+test c3_owner_recipient_names_its_key_on_the_wire ... ok
+test c3_owner_kex_tier_verdicts ... ok
+test c3_positive_owner_line_is_byte_exact ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test cb11_k1c_positive_carriers_receive_one_pure_core_verdict ... ok
+test cb11_normal_edition_has_one_actor_and_at_most_one_complete_chain ... ok
+test cb11_k1c_all_32_semantic_defects_are_typed_invalid_operation ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.95s
+
+
+running 3 tests
+test cb14_vector_hash_is_frozen ... ok
+test cb14_verified_non_root_leaf_reuses_sc1_and_both_proofs ... ok
+test cb14_chain_revocation_leaf_selection_proof_and_time_fail_closed ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+
+running 5 tests
+test cb2_cat1_closed_negative_and_api_inventory_preliminary ... ok
+test cb2_cat1_pin_chain_facts_and_class_bytes_preexisting_green ... ok
+test cb2_cat1_historical_hashes_preexisting_green ... ok
+test cb2_cat1_vector_hash_is_stable_preexisting_green ... ok
+test cb2_cat1_signed_documents_and_complete_digests_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+
+running 5 tests
+test cb2_d7_historical_h2_is_byte_identical_preexisting_green ... ok
+test cb2_d7_closed_negative_and_api_inventory_preliminary ... ok
+test cb2_d7_leaf_root_and_proof_bytes_preexisting_green ... ok
+test cb2_d7_occurrence_dedup_and_subtree_inventory_preexisting_green ... ok
+test cb2_d7_vector_hash_is_stable_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+
+running 5 tests
+test cb2_gamma_v2_closed_negative_and_semantic_api_inventory_preliminary ... ok
+test cb2_gamma_v2_historical_hashes_preexisting_green ... ok
+test cb2_gamma_v2_monotonicity_occurrence_and_raw_h2_preexisting_green ... ok
+test cb2_gamma_v2_vector_hash_is_stable_preexisting_green ... ok
+test cb2_gamma_v2_signed_kind_and_reference_bytes_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+
+running 54 tests
+test cb2_delete_covers_read_red ... ok
+test cb2_dir_selector_containment_after_address_change_preexisting_green ... ok
+test cb2_duplicate_dir_invalid_entry_rejected_red ... ok
+test cb2_duplicate_tag_invalid_entry_rejected_red ... ok
+test cb2_fractional_active_window_rejected_red ... ok
+test cb2_id_mandate_jcs_preexisting_green ... ok
+test cb2_historical_e1_f1_hash_and_jcs_preexisting_green ... ok
+test cb2_id_selector_containment_parse_gate_inventory_preliminary ... ok
+test cb2_id_selector_parse_and_roundtrip_red ... ok
+test cb2_known_link_constraint_other_malformed_forms_preexisting_green ... ok
+test cb2_known_link_constraint_shapes_well_formed_preexisting_green ... ok
+test cb2_malformed_active_window_duration_rejected_red ... ok
+test cb2_id_mixed_and_duplicate_invalid_entries_parse_gate_preliminary ... ok
+test cb2_malformed_obligation_shape_rejected_red ... ok
+test cb2_root_malformed_domains_rejected_red ... ok
+test cb2_root_malformed_log_reads_rejected_red ... ok
+test cb2_root_malformed_max_actions_rejected_red ... ok
+test cb2_root_malformed_max_children_rejected_red ... ok
+test cb2_root_known_well_formed_constraint_preexisting_green ... ok
+test cb2_t3_child_announced_signer_key_rejected_red ... ok
+test cb2_t3_child_issuer_mismatch_rejected_preexisting_green ... ok
+test cb2_root_unknown_leaf_structural_preservation_preexisting_green ... ok
+test cb2_t3_child_parent_mismatch_rejected_preexisting_green ... ok
+test cb2_t3_child_subject_change_rejected_preexisting_green ... ok
+test cb2_t3_dir_mixed_with_id_rejected_red ... ok
+test cb2_t3_duplicate_dir_selector_rejected_red ... ok
+test cb2_t3_duplicate_id_selector_rejected_red ... ok
+test cb2_t3_duplicate_tag_selector_rejected_red ... ok
+test cb2_t3_empty_nonce_rejected_red ... ok
+test cb2_t3_form_case_inventory_is_exhaustive ... ok
+test cb2_t3_grantee_kex_mismatch_rejected_preexisting_green ... ok
+test cb2_t3_fractional_zulu_timestamps_and_signature_preexisting_green ... ok
+test cb2_t3_id_mixed_with_dir_rejected_red ... ok
+test cb2_t3_id_mixed_with_tag_rejected_red ... ok
+test cb2_t3_historical_f1_form_and_signature_preexisting_green ... ok
+test cb2_t3_invalid_calendar_timestamp_rejected_red ... ok
+test cb2_t3_issue_depth_zero_rejected_red ... ok
+test cb2_t3_inverted_validity_window_rejected_preexisting_green ... ok
+test cb2_t3_malformed_grantee_signing_key_rejected_red ... ok
+test cb2_t3_malformed_mandate_identifier_rejected_red ... ok
+test cb2_t3_malformed_subject_identifier_rejected_preexisting_green ... ok
+test cb2_t3_non_string_nonce_serde_gate_preliminary ... ok
+test cb2_t3_offset_timestamp_rejected_red ... ok
+test cb2_t3_root_announced_signer_key_rejected_red ... ok
+test cb2_t3_root_parent_identifier_rejected_preexisting_green ... ok
+test cb2_t3_signature_algorithm_rejected_red ... ok
+test cb2_t3_submicrosecond_inverted_window_rejected_preexisting_green ... ok
+test cb2_t3_punctuation_nonce_and_signature_preexisting_green ... ok
+test cb2_t3_supported_draft1_root_and_signature_preexisting_green ... ok
+test cb2_t3_tag_mixed_with_id_rejected_red ... ok
+test cb2_t3_unsupported_protocol_version_rejected_red ... ok
+test cb2_t3_supported_draft2_root_and_signature_preexisting_green ... ok
+test cb2_vector_hash_is_stable_preexisting_green ... ok
+test cb2_unknown_constraints_on_links_fail_closed_preexisting_green ... ok
+
+test result: ok. 54 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+
+running 8 tests
+test cb2_cb3_red_root_builder_emits_the_draft2_vector_bytes ... ok
+test cb2_cb3_red_sub_builder_emits_the_draft2_vector_bytes ... ok
+test cb2_cb3_red_mixed_version_links ... ok
+test cb2_cb5_red_draft2_omission_cases ... ok
+test cb2_historical_hashes_and_all_certificate_bytes_are_green ... ok
+test cb2_migration_reissue_structure_and_gamma_are_green ... ok
+test cb2_direct_children_gamma_count_and_signatures_are_green ... ok
+test cb2_preexisting_green_historical_and_numeric_attenuation_cases ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+
+running 5 tests
+test cb2_k1_action_inference_closed_family_inventory_preliminary ... ok
+test cb2_k1_action_inference_historical_hashes_preexisting_green ... ok
+test cb2_k1_action_inference_operation_bytes_preexisting_green ... ok
+test cb2_k1_action_inference_preimage_bytes_preexisting_green ... ok
+test cb2_k1_action_inference_vector_hash_is_stable_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 5 tests
+test cb2_k1_closed_family_and_error_inventory_preliminary ... ok
+test cb2_k1_historical_vector_hashes_preexisting_green ... ok
+test cb2_k1_operation_commitment_bytes_preexisting_green ... ok
+test cb2_k1_state_commitment_bytes_preexisting_green ... ok
+test cb2_k1_vector_hash_is_stable_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 5 tests
+test cb2_k1_read_closed_family_and_error_inventory_preliminary ... ok
+test cb2_k1_read_operation_commitment_bytes_preexisting_green ... ok
+test cb2_k1_read_historical_vector_hashes_preexisting_green ... ok
+test cb2_k1_read_source_commitment_bytes_preexisting_green ... ok
+test cb2_k1_read_vector_hash_is_stable_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 5 tests
+test cb2_k1_structural_closed_family_inventory_preliminary ... ok
+test cb2_k1_structural_historical_hashes_preexisting_green ... ok
+test cb2_k1_structural_operation_bytes_preexisting_green ... ok
+test cb2_k1_structural_reference_preimages_preexisting_green ... ok
+test cb2_k1_structural_vector_hash_is_stable_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 5 tests
+test cb2_w1_projection_commitment_and_reference_bytes_preexisting_green ... ok
+test cb2_w1_projection_certificate_address_preexisting_green ... ok
+test cb2_w1_projection_negative_and_api_inventory_preliminary ... ok
+test cb2_w1_projection_vector_hash_is_stable_preexisting_green ... ok
+test cb2_w1_projection_historical_hashes_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 5 tests
+test cb2_r2_u1_closed_negative_and_api_inventory_preliminary ... ok
+test cb2_r2_u1_matcher_and_attenuation_bytes_preexisting_green ... ok
+test cb2_r2_u1_historical_v1_hashes_preexisting_green ... ok
+test cb2_r2_u1_vector_hash_is_stable_preexisting_green ... ok
+test cb2_r2_u1_projection_and_receipt_signature_bytes_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 5 tests
+test cb2_sc1_closed_negative_and_api_inventory_preliminary ... ok
+test cb2_sc1_historical_hashes_preexisting_green ... ok
+test cb2_sc1_mandate_certificate_and_digest_bytes_preexisting_green ... ok
+test cb2_sc1_operation_and_double_possession_bytes_preexisting_green ... ok
+test cb2_sc1_vector_hash_is_stable_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+
+running 3 tests
+test cb3_id_selector_containment_reaches_the_semantic_oracle ... ok
+test cb3_section_operation_supplies_its_sid_to_core ... ok
+test cb3_raw_mandate_form_is_a_typed_error_before_signature_trust ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test cb4_action_inference_facts_reach_the_typed_validator ... ok
+test cb4_mutation_operation_facts_reach_the_typed_validator ... ok
+test cb4_read_operation_facts_reach_the_typed_validator ... ok
+test cb4_projection_reference_and_correlation_reach_the_typed_validator ... ok
+test cb4_state_facts_reach_the_typed_validator ... ok
+test cb4_structural_operation_facts_reach_the_typed_validator ... ok
+test cb4_session_bundle_reaches_the_typed_validator ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+
+
+running 2 tests
+test cb5_catalog_documents_reach_the_typed_validator ... ok
+test cb5_catalog_pins_and_classes_reach_the_typed_validator ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+
+running 1 test
+test cb5_unknown_leaf_extensions_fail_closed_for_operations ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test cb5_delegated_count_mandates_reach_the_typed_validator ... ok
+test cb5_draft3_obligation_matchers_reach_the_typed_validator ... ok
+test cb5_max_sessions_lifecycle_reaches_the_typed_validator ... ok
+test cb5_delegated_counts_reach_the_typed_validator ... ok
+test cb5_operation_bound_receipts_reach_typed_validators ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+
+running 2 tests
+test cb6_profile_edges_and_occurrences_reach_typed_state ... ok
+test cb6_gamma_v2_entries_reach_the_typed_admission_gate ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+
+running 3 tests
+test cb6_append_and_cold_replay_share_one_prefix_sensitive_front_door ... ok
+test cb6_mixed_profile_chain_fails_at_the_candidate_prefix ... ok
+test cb6_rejection_does_not_advance_prefix_or_counters ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s
+
+
+running 2 tests
+test e1_canonical_jcs_and_signature ... ok
+test e1_chain_verifies_and_kex_is_checked ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+running 3 tests
+test eplus_matrix_verdicts_match_python ... ok
+test eplus_signed_chain_bytes_match_python ... ok
+test eplus_verifier_closes_the_hole ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 5 tests
+test bodies_open_only_under_the_right_key ... ok
+test mandate_rebuilds_and_chain_verifies ... ok
+test node_key_and_hint_match ... ok
+test tampering_breaks_the_chain ... ok
+test entries_rebuild_byte_for_byte ... FAILED
+
+failures:
+
+---- entries_rebuild_byte_for_byte stdout ----
+
+thread 'entries_rebuild_byte_for_byte' (15673) panicked at crates/aithos-core/tests/f1_gamma.rs:109:5:
+assertion `left == right` failed
+  left: "{\"at\":\"2026-07-01T00:00:00Z\",\"authorized_by\":\"mandate_passA_probe\",\"authorized_via\":[\"mandate_passA_probe\"],\"body_enc\":{\"c\":\"37c736e158dcd0c710cc031faa1ba0f1c183482b401772c8db12095f7e552a302e79031a9ad58db81fc0067b1577772f422dfdb8fa2a30d9e6ceb43b6638db08b4b0a21e9fb3998e37fc9d66d880b0ab07c3a9be038105367e80814eb10a60ff3fd0ffa3d8b0e79fce2ab2c883f1cef1e549da8636a750875a49df\",\"hint\":\"17a63d7a597fbc786298848f422dade44129671ea2421d5c29a1693fd0494c51\",\"n\":\"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\"},\"id\":\"gamma_00000000000000000000000001\",\"kind\":\"section.add\",\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#content\",\"value\":\"ca25eb919b179fd391df7899cf902b778085bad24fd98749fa1aedf9dbff53ae3b04779ffd04a096d9583f9911780032d57d0d2473845dd64c08da54deff8f01\"},\"v\":1}"
+ right: "{\"at\":\"2026-07-01T00:00:00Z\",\"body_enc\":{\"c\":\"37c736e158dcd0c710cc031faa1ba0f1c183482b401772c8db12095f7e552a302e79031a9ad58db81fc0067b1577772f422dfdb8fa2a30d9e6ceb43b6638db08b4b0a21e9fb3998e37fc9d66d880b0ab07c3a9be038105367e80814eb10a60ff3fd0ffa3d8b0e79fce2ab2c883f1cef1e549da8636a750875a49df\",\"hint\":\"17a63d7a597fbc786298848f422dade44129671ea2421d5c29a1693fd0494c51\",\"n\":\"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\"},\"id\":\"gamma_00000000000000000000000001\",\"kind\":\"section.add\",\"prev\":\"\",\"signature\":{\"alg\":\"ed25519\",\"key\":\"#content\",\"value\":\"156fd56c8701b026df210269459e179dab8d5566b8ceae9d9eac52ac2b9a8ea948d0c3f90bc274aee177c86571e7bb53ce2127b4fda843d2111014cd5d69bc09\"},\"v\":1}"
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::panicking::assert_failed_inner
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:439:17
+   3: core::panicking::assert_failed
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:394:5
+   4: f1_gamma::entries_rebuild_byte_for_byte
+             at ./tests/f1_gamma.rs:109:5
+   5: f1_gamma::entries_rebuild_byte_for_byte::{{closure}}
+             at ./tests/f1_gamma.rs:79:35
+   6: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   7: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    entries_rebuild_byte_for_byte
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+
+running 6 tests
+test per_action_rate_counts_only_its_kind ... ok
+test spent_budgets_fail_closed ... ok
+test subtree_counts_match_python ... ok
+test unlogged_grant_kills_the_chain ... ok
+test windowed_counts_match_python ... ok
+test windowed_budgets_replenish ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 4 tests
+test anchor_verdicts_match_python ... ok
+test a_forged_beacon_never_counts ... ok
+test heartbeat_verdicts_match_python ... ok
+test the_owners_return_resumes ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+
+running 4 tests
+test budget_verdicts_match_python ... ok
+test token_tallies_match_python ... ok
+test window_verdicts_match_python ... ok
+test attestation_verdicts_match_python ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 2 tests
+test forward_only_verdicts_match_python ... ok
+test owner_revoke_entry_verifies ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 7 tests
+test a_clean_rotation_is_accepted ... ok
+test a_smuggled_recipient_is_rejected ... ok
+test check_rotation_refuses_a_new_version_without_the_owner_line ... ok
+test survivor_set_is_old_minus_revoked ... ok
+test uplink_wrap_bytes_match_python ... ok
+test rotate_refuses_a_survivor_set_without_the_owner ... ok
+test validate_refuses_a_key_version_without_the_owner_line ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test derivation_below_moved_node_is_stable ... ok
+test nodal_containment_verdicts ... ok
+test new_path_bindings_and_parent_wrap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test attenuation_is_add_only ... ok
+test desugared_obligations_parse ... ok
+test co_sign_owner_desugars_to_the_same_wire ... ok
+test out_of_scope_actions_need_no_receipt ... ok
+test payload_jcs_matches_python ... ok
+test valid_receipts_discharge ... ok
+test negatives_are_refused ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 3 tests
+test the_python_proof_replays_to_the_root ... ok
+test tamper_and_splice_die ... ok
+test tree_hashes_match_python ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test absence_of_the_ghost ... ok
+test counts_trie_matches_python ... ok
+test completeness_closes_the_withhold ... ok
+test negatives_die ... ok
+test segment_roots_match_python ... ok
+test proofs_replay_and_match ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.51s
+     Running unittests src/lib.rs (rust/target/debug/deps/aithos_core-4d7697be8ef0a04b)
+     Running tests/a1_genesis.rs (rust/target/debug/deps/a1_genesis-c068a117cfc42742)
+     Running tests/a2_did.rs (rust/target/debug/deps/a2_did-b2d980c734c428d8)
+     Running tests/b2_derivation.rs (rust/target/debug/deps/b2_derivation-353e7af56948cab0)
+     Running tests/c1_header_seal.rs (rust/target/debug/deps/c1_header_seal-dd2dc2d766bb0340)
+     Running tests/c3_owner_line.rs (rust/target/debug/deps/c3_owner_line-8fd6586dbf24917e)
+     Running tests/cb11_k1c_carriers.rs (rust/target/debug/deps/cb11_k1c_carriers-b7adecf74c84bcd8)
+     Running tests/cb14_delegated_session_chain.rs (rust/target/debug/deps/cb14_delegated_session_chain-e439a0ea0b319b6e)
+     Running tests/cb2_connector_catalog.rs (rust/target/debug/deps/cb2_connector_catalog-e171f8a137bdffe9)
+     Running tests/cb2_delegated_counts.rs (rust/target/debug/deps/cb2_delegated_counts-aab5965c95be2c4d)
+     Running tests/cb2_gamma_v2_replay.rs (rust/target/debug/deps/cb2_gamma_v2_replay-0da53d5886c01eed)
+     Running tests/cb2_mandate_contracts.rs (rust/target/debug/deps/cb2_mandate_contracts-bf7602295324da4b)
+     Running tests/cb2_max_children_versioning.rs (rust/target/debug/deps/cb2_max_children_versioning-b0a27a8412dfbfee)
+     Running tests/cb2_operation_facts_action_inference.rs (rust/target/debug/deps/cb2_operation_facts_action_inference-ffc0a259515f6415)
+     Running tests/cb2_operation_facts_mutation.rs (rust/target/debug/deps/cb2_operation_facts_mutation-1fc55001e4eb2cd3)
+     Running tests/cb2_operation_facts_read.rs (rust/target/debug/deps/cb2_operation_facts_read-d9bf74232ccf6fbc)
+     Running tests/cb2_operation_facts_structural.rs (rust/target/debug/deps/cb2_operation_facts_structural-a3dca1dd158e4007)
+     Running tests/cb2_operation_projection.rs (rust/target/debug/deps/cb2_operation_projection-4d7daae16a283ca6)
+     Running tests/cb2_operation_receipts.rs (rust/target/debug/deps/cb2_operation_receipts-a56c52387d5f6d1a)
+     Running tests/cb2_session_proof.rs (rust/target/debug/deps/cb2_session_proof-433489606d8f3d73)
+     Running tests/cb3_mandate_scopes.rs (rust/target/debug/deps/cb3_mandate_scopes-817a1ff64d11c3c7)
+     Running tests/cb4_operation_contracts.rs (rust/target/debug/deps/cb4_operation_contracts-e628455a95e20568)
+     Running tests/cb5_catalog_contracts.rs (rust/target/debug/deps/cb5_catalog_contracts-23ec761424e355d2)
+     Running tests/cb5_constraint_contracts.rs (rust/target/debug/deps/cb5_constraint_contracts-4962460d096a4b5a)
+     Running tests/cb5_evidence_contracts.rs (rust/target/debug/deps/cb5_evidence_contracts-b6aa4fe290168432)
+     Running tests/cb6_gamma_v2_contracts.rs (rust/target/debug/deps/cb6_gamma_v2_contracts-49048ff943bb1f82)
+     Running tests/cb6_semantic_replay.rs (rust/target/debug/deps/cb6_semantic_replay-745629e61890dc23)
+     Running tests/e1_mandate.rs (rust/target/debug/deps/e1_mandate-117537d53d733d92)
+     Running tests/eplus_attenuation.rs (rust/target/debug/deps/eplus_attenuation-f9acd1e196511458)
+     Running tests/f1_gamma.rs (rust/target/debug/deps/f1_gamma-0db4da8a552d12e3)
+error: test failed, to rerun pass `-p aithos-core --test f1_gamma`
+     Running tests/f2_gamma.rs (rust/target/debug/deps/f2_gamma-33aac47edb142845)
+     Running tests/f3_gamma.rs (rust/target/debug/deps/f3_gamma-4fb03cdf52539a11)
+     Running tests/fplus_constraints.rs (rust/target/debug/deps/fplus_constraints-1e54b41964fc0f32)
+     Running tests/g1_revocation.rs (rust/target/debug/deps/g1_revocation-1497597b9a48cef6)
+     Running tests/g2_rotation.rs (rust/target/debug/deps/g2_rotation-da8231095fab4918)
+     Running tests/g3_move.rs (rust/target/debug/deps/g3_move-142ae24403b352e6)
+     Running tests/gplus_obligations.rs (rust/target/debug/deps/gplus_obligations-5c1a3ef01dd758ff)
+     Running tests/h1_merkle.rs (rust/target/debug/deps/h1_merkle-98c20ef1c234d069)
+     Running tests/h2_gamma_roots.rs (rust/target/debug/deps/h2_gamma_roots-feda68dbbb3ef80b)
+   Doc-tests aithos_core
+error: 1 target failed:
+    `-p aithos-core --test f1_gamma`

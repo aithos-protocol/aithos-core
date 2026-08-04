@@ -1,0 +1,39 @@
+
+running 7 tests
+test cb2_bundle_authority_flow_vector_hash_is_stable_preexisting_green ... ok
+test cb2_bundle_delegated_evidence_atomicity_and_api_inventory_preliminary ... ok
+test cb2_bundle_grantee_grant_and_content_fences_preexisting_green ... ok
+test cb2_bundle_owner_parity_matrix_preexisting_green ... ok
+test cb2_cb8_owner_parity_generic_grants_api_gate ... ok
+test cb2_cb9_delegated_content_gamma_cold_api_gate ... ok
+test cb2_bundle_authority_flow_historical_hashes_preexisting_green ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+
+running 6 tests
+test cb2_bundle_boundary_vector_hash_is_stable_preexisting_green ... ok
+test cb2_bundle_capability_keyless_and_api_inventory_preliminary ... ok
+test cb2_bundle_confinement_decisions_preexisting_green ... ok
+test cb2_bundle_transaction_write_set_and_recovery_preexisting_green ... ok
+test cb2_cb7_bundle_transaction_confinement_api_gate ... ok
+test cb2_bundle_boundary_historical_hashes_preexisting_green ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 6 tests
+test cb7_bundle_mutation_and_publication_share_one_memstore_linearization ... ok
+test cb7_fsstore_failure_recovery_and_reopen_are_byte_exact ... ok
+test cb7_fsstore_rejects_intermediate_and_final_symlink_escape ... ok
+test cb7_memstore_failure_boundaries_are_byte_exact ... ok
+test cb7_vector_paths_reach_the_mandatory_confinement_gate ... ok
+test cb7_bundle_fsstore_commit_reopens_as_one_complete_generation ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.61s
+     Running tests/cb2_bundle_authority_flows.rs (rust/target/debug/deps/cb2_bundle_authority_flows-b6a8b78f209e06b3)
+     Running tests/cb2_bundle_boundaries.rs (rust/target/debug/deps/cb2_bundle_boundaries-44043dd713e85f44)
+     Running tests/cb7_transaction_contracts.rs (rust/target/debug/deps/cb7_transaction_contracts-d070b2650f33d572)
