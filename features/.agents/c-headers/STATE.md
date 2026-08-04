@@ -1,20 +1,72 @@
 ---
 feature: c-headers
-status: CORRECTION_REQUESTED
-mode: correction
+status: REVIEW_REQUESTED
+mode: review
 round: 2
 base_main: 2f2d55d
 audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8
-candidate_revision: 9dc58895b5c822d13ea5daf8c25302ccd657b668
+candidate_revision: 5905bec7b547782bcb50d9f64611f78f633a8334
 branch: codex/fix-c-headers-lot-a
 assigned_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-019, CHDR-021, CHDR-025]
 open_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025, CHDR-028, CHDR-029, CHDR-030]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-04T08:10:00+00:00
+last_transition: 2026-08-04T09:20:00+00:00
 ---
 
 # Domain state — `c-headers`
+
+> **Read this section first. Everything below it is round 1 and is kept for the
+> record, not for instruction.** Where the two disagree, this section wins.
+
+## Round 2, lot A — `REVIEW_REQUESTED`, 2026-08-04
+
+| Field | Value |
+|---|---|
+| Status | `REVIEW_REQUESTED`. Lot A is `IMPLEMENTED` on **eight** findings — `CHDR-001`, `-002`, `-009`, `-013`, `-014`, `-019`, `-021`, `-025`. None is `VERIFIED`: only the independent reviewer may raise them |
+| Candidate revision | `5905bec` on `codex/fix-c-headers-lot-a`. Two commits: `03283b0` the corrector's, `5905bec` the orchestrator's state and journal |
+| Corrector run report | `corrector/runs/2026-08-04-correction-lot-a.md` — **withheld from the reviewer** until its behavioural verdict is frozen (`../PROCESS.md`, § *Material isolation of Pass A*) |
+| `CHDR-016` | out of lot A. Re-routed, not closed and not withdrawn — see below |
+| Method | the lot is test-semantics: no production behaviour was wrong, what was missing was proof. So no assertion is RED against unmutated production code, and each is instead proved by a **named mutant** under which the old assertion is green and the new one red |
+| Mutants run | sixteen, across two waves, all by the orchestrator, all journalled in `../orchestrator/runs/2026-08-04-r6/ledger.jsonl` with both halves where the base fixture can express the mutation |
+| Wider gates | feature `ev-6d38842c` 1/4/8/28 · full cucumber `ev-a1fa00fc` 18/114/836/3577 · workspace `ev-3013c663` · `cargo fmt --check` `ev-e3b0c442` · `clippy --workspace --all-targets -D warnings` `ev-d6ce5ee9`. All green |
+| One Gherkin edit | `features/c-headers.feature:68`, `a sealed header for the owner` → `a sealed header for the owner and an existing reader`. A `Given` announcing one recipient while sealing two lies about the state it establishes; that is the defect class this audit tracks, so the phrase moved with the fixture. Counts unchanged at 1/4/8/28 |
+| Debt named for the reviewer | the corrector reports that the mutant **stated in the public audit for `CHDR-019`** is wrong on the code. It did not edit `docs/audits/`, correctly — the audit belongs to the auditor and the owner. The reviewer inherits this |
+| Debt still standing from round 1 | the markers at `features/c-headers.feature:47-55` still read `DECISION_REQUIRED … neither is assigned to a corrector`, which the decision of 2026-08-03 made false, and the same block carries lot A identifiers, so the edit is not a deletion |
+| Blocked | no |
+
+### The two orchestrator decisions of this round, recorded as the orchestrator's
+
+**`CHDR-016` left lot A.** Its statement is about the production grant path in
+`aithos-bundle`, not about a Gherkin assertion. Correcting it from a branch
+whose scope is this feature's test semantics would have been blocking
+condition 8. It is removed from `assigned_findings`, recorded in
+`../orchestrator/QUEUE.yaml` as `chdr-016-grant-path`, and owed jointly by
+`g-revocation` and `d-bundle`. Neither closed nor withdrawn: re-routed, and the
+feature that inherits it owes it a lot.
+
+**`CHDR-009` was expanded from one mutant to four.** The corrector's patch adds
+three tests against three distinct gates — `check_owner_line` behind both
+`build_at` and `rotate`, the trailing gate in `check_rotation`, and `validate`
+— and a test whose necessity is unproven is the defect this lot exists to
+remove. Each got its own mutant, and each flips exactly one test. The corrector
+then pointed out that the first was not gate-exclusive, so a fourth was run
+deleting only `rotate`'s call: `ev-96710817` green without, `ev-65b6a137` red
+with, and `ev-1a649a8f` green on the whole feature under the same mutant, which
+is what separates the two gates by evidence rather than by assertion.
+
+### What the reviewer receives, and what it does not
+
+It receives a `git archive` of `5905bec` with no `.git`, with
+`corrector/runs/2026-08-04-correction-lot-a.md` and the whole of
+`../orchestrator/runs/2026-08-04-r6/` removed — the run report and the mutation
+journal both. It reaches its own behavioural verdict on the eight findings
+before either is delivered. It runs no gate: it names the command and the
+orchestrator runs it.
+
+---
+
+## Round 1 — kept for the record
 
 | Field | Value |
 |---|---|
