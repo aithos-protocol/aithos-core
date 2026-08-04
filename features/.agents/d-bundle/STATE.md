@@ -8,13 +8,58 @@ audit_revision: d9120d7e0d154cee517b983bf7b6cac0cf8e8096
 candidate_revision: null
 branch: codex/audit-d-bundle
 assigned_findings: []
-open_findings: [DBND-101, DBND-102, DBND-201, DBND-202, DBND-301, DBND-302, DBND-401, DBND-402, DBND-501, DBND-502, DBND-503, DBND-504, DBND-505, DBND-601, DBND-603, DBND-701, DBND-702, DBND-703, DBND-704, DBND-705, DBND-706, DBND-707, DBND-708, DBND-709, DBND-710]
+open_findings: [DBND-001, DBND-002, DBND-003, DBND-004, DBND-005, DBND-006, DBND-007, DBND-008, DBND-009, DBND-010, DBND-011, DBND-012, DBND-013, DBND-014, DBND-015, DBND-016, DBND-017, DBND-018, DBND-019, DBND-021, DBND-022, DBND-023, DBND-024, DBND-025, DBND-027, DBND-028, DBND-029, DBND-031, DBND-032, DBND-033, DBND-034, DBND-036, DBND-037, DBND-038, DBND-039]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-04T00:00:00+00:00
+last_transition: 2026-08-04T18:30:00+00:00
 ---
 
 # Domain state — `d-bundle`
+
+> **Read this section first. Everything below it was written by the bootstrapper
+> before the audit ran, and is kept for the record, not for instruction.** Where
+> the two disagree, this section wins.
+
+## Round 1 — initial audit COMPLETE, `AUDIT_INITIAL`, 2026-08-04
+
+| Field | Value |
+|---|---|
+| Status | `AUDIT_INITIAL`. The initial audit is written and published; the warden has invalidated once and the cycle is being re-submitted |
+| Audited revision | `d9120d7`, frozen. Feature gate `ev-6a76a789`, green, **1 feature / 7 rules / 51 scenarios / 299 steps** — a count the bootstrapper had reached from the file alone before anything ran |
+| Branch | `codex/audit-d-bundle` |
+| Public audit | `docs/audits/features/d-bundle.md` |
+| Findings | **35 active** — 2 P1, 13 P2, 20 P3 — reconciled from 48 frozen in Pass A. Ten more were **removed by the adversarial panel** and are published in §7 with the fact that killed each |
+| Evidential state, per finding | fifteen are **confirmed by a named mutant transcript**; twenty stand **on the record alone** and say so in those words. **No finding survived the adversarial panel** — ten were tested and ten fell, so that category is empty and the audit says so rather than leaving it silently unused |
+| Pass A | six auditors, seven review units — `RU-3` held `RU-4` as well, because the pair is the finding surface. Out-of-tree extracts with no `.git`, no run journal, no ledger, no prior verdict. Frozen at `pass-a/frozen.json` **before any mutant ran**; the warden verified the ordering at 6m15s and the hash |
+| Mutants | **nineteen distinct edits over twenty transcripts**, all run by the orchestrator, every one named and predicted by an auditor before a transcript existed |
+| Warden | **INVALIDATED once**, `runs/2026-08-04-r7/warden.md`. Six breaches, all real, all repaired. **A second invalidation of this feature stops the run** (blocking condition 6) |
+| Blocked | no |
+
+### The two P1
+
+They are the same shape twice, found by two auditors who never spoke: a clause
+of the contract defended by an assertion that cannot fail. One is
+`assert_eq!(0, 0)` on a counter the harness writes as a literal; the other is
+`assert!(!false)` on a flag the harness writes as `false` at four sites. Both
+are confirmed by mutant.
+
+### What the audit says the feature gets right
+
+The 360-line cached-verdict proxy class that dominates `f-gamma` does **not**
+reach this feature. Both columns of the largest `Scenario Outline` were changed
+to values that exist nowhere in the repository and both go red (`ev-f0658ee9`,
+`ev-de8fa887`). That is a measured negative result and it is recorded as one.
+
+### Next role
+
+The **corrector**, once the warden accepts the re-submission. Its lot is the
+findings the audit marks `confirmed by transcript`; the twenty resting on the
+record alone are not assignable until they carry evidence.
+
+---
+
+## Written at bootstrap, before the audit — kept for the record
+
 
 ## Domain state
 

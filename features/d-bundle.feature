@@ -114,15 +114,15 @@ Feature: Bundle and editions
 
   Rule: Owner operations have durable parity across all three zones
 
-    @audit-partial @dbnd-018 @dbnd-019 @dbnd-020 @dbnd-021 @dbnd-022 @dbnd-023 @dbnd-024
-    # AUDIT DBND-018, DBND-019, DBND-020, DBND-021, DBND-022, DBND-023, DBND-024 — PARTIAL.
+    @audit-partial @dbnd-018 @dbnd-019 @dbnd-021 @dbnd-022 @dbnd-023 @dbnd-024
+    # AUDIT DBND-018, DBND-019, DBND-021, DBND-022, DBND-023, DBND-024 — PARTIAL.
     # P1 DBND-018: without consuming mandate counters is assert_eq!(0, 0) and all
     # fifteen rows stay green when every owner entry declares a mandate chain
     # (ev-19a635cf). Three rows satisfy the capability clause on keyless paths
-    # (DBND-019, ev-b6a36f72). Also DBND-020 (narrow has three senses), DBND-021
-    # (vector fields with no consumer), DBND-022 (no resulting edition on six
-    # rows), DBND-023 (the Givens construct nothing), DBND-024 (parity is never
-    # checked comparatively).
+    # (DBND-019, ev-b6a36f72). Also DBND-021 (vector fields with no consumer),
+    # DBND-022 (no resulting edition on six rows), DBND-023 (the Givens construct
+    # nothing), DBND-024 (parity is never checked comparatively).
+    # Withdrawn from this scenario 2026-08-04: DBND-020, refuted by the panel.
     # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: The local owner performs every content operation without a mandate
       Given an owner-local bundle session for zone "<zone>"
@@ -152,14 +152,17 @@ Feature: Bundle and editions
 
   Rule: A local mutation commits state and Gamma as one transaction
 
-    @audit-partial @dbnd-026 @dbnd-023 @dbnd-027 @dbnd-028 @dbnd-036
-    # AUDIT DBND-026, DBND-023, DBND-027, DBND-028, DBND-036 — PARTIAL.
+    @audit-partial @dbnd-023 @dbnd-027 @dbnd-028 @dbnd-036
+    # AUDIT DBND-023, DBND-027, DBND-028, DBND-036 — PARTIAL.
     # The best-proved block in the feature: real fault injection, a three-way byte
-    # comparison, and a control that kills four rows (ev-f0125e0b). What it cannot
-    # see is the staging orphan its own line 99 names, because the snapshot stops
-    # at canonical_base() (DBND-026). Also DBND-023 (the Given constructs
-    # nothing), DBND-027 (four Thens, one boolean), DBND-028 (six boundary names,
-    # at most four injection points), DBND-036 (one sentence, three comparators).
+    # comparison, and a control that kills four rows (ev-f0125e0b). DBND-023 (the
+    # Given constructs nothing), DBND-027 (four Thens, one boolean), DBND-028 (six
+    # boundary names, at most four injection points -- two rows measurably
+    # indistinguishable under ev-f0125e0b), DBND-036 (one sentence, three
+    # comparators).
+    # Withdrawn from this scenario 2026-08-04: DBND-026, refuted by the panel --
+    # the staging orphan it said the snapshot cannot see is reachable on the
+    # reopen path. Line 99 is left with no finding of its own.
     # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
       Given a published "<store>" bundle snapshotted byte for byte
@@ -207,15 +210,18 @@ Feature: Bundle and editions
 
   Rule: Local capabilities and paths stay narrow
 
-    @audit-partial @dbnd-029 @dbnd-030 @dbnd-031 @dbnd-032 @dbnd-020 @dbnd-039
-    # AUDIT DBND-029, DBND-030, DBND-031, DBND-032, DBND-020, DBND-039 — PARTIAL.
+    @audit-partial @dbnd-029 @dbnd-031 @dbnd-032 @dbnd-039
+    # AUDIT DBND-029, DBND-031, DBND-032, DBND-039 — PARTIAL.
     # P1 DBND-029: no seed or private key is accepted or returned is assert!(!false)
     # and a public manifest_private_key() accessor leaves the gate green
-    # (ev-ed18d7ef). The observable_result column is compared as a string, not
-    # evaluated (DBND-030); the mismatched_object column reaches no code
-    # (DBND-031, ev-3fa9d172 with control ev-1eefbb66); lines 137 and 138 are
-    # decided by a grep of session.rs that sign_any defeats (DBND-032,
-    # ev-794d59c3). Also DBND-020, DBND-039.
+    # (ev-ed18d7ef). The mismatched_object column reaches no code (DBND-031,
+    # ev-3fa9d172 with control ev-1eefbb66); the two Then lines about cross-class
+    # substitution are decided by a grep of session.rs that sign_any defeats
+    # (DBND-032, ev-794d59c3). DBND-039: the {string} Then is an unbounded
+    # wildcard over the whole suite.
+    # Withdrawn from this scenario 2026-08-04: DBND-020 and DBND-030, both refuted
+    # by the panel. DBND-030's removal leaves DBND-039 as the only finding asking
+    # for the observable_result Then to be rewritten.
     # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: A bundle operation uses only its narrow opaque cryptographic capability
       Given one Ethos-and-actor session backed by a purpose-bound opaque "<capability>" capability
@@ -234,15 +240,17 @@ Feature: Bundle and editions
         | open       | node-and-version-bound sealed body      | body from a sibling node or version      | the expected plaintext is recovered only locally |
         | wrap       | node-version-and-recipient header line  | line for another node or recipient       | only the intended recipient opens the wrapped key |
 
-    @audit-partial @dbnd-033 @dbnd-034 @dbnd-035 @dbnd-020 @dbnd-023 @dbnd-036 @dbnd-037 @dbnd-038
-    # AUDIT DBND-033, DBND-034, DBND-035, DBND-020, DBND-023, DBND-036, DBND-037, DBND-038 — PARTIAL.
+    @audit-partial @dbnd-033 @dbnd-034 @dbnd-023 @dbnd-036 @dbnd-037 @dbnd-038
+    # AUDIT DBND-033, DBND-034, DBND-023, DBND-036, DBND-037, DBND-038 — PARTIAL.
     # The six FsStore rows are genuinely discriminating against a real per-segment
     # symlink walk and are credited. The four MemStore rows are not: all ten stay
     # green with validate_display_path reduced to Ok(()) (DBND-033, DBND-034,
-    # ev-2d2ebd1b), and no row supplies a valid input. The spec names six
-    # confinement surfaces and this outline exercises one (DBND-035). Also
-    # DBND-020, DBND-023, DBND-036, DBND-037 (row 162 is out-of-layout, not
-    # out-of-root), DBND-038 (row 161's escape detector cannot fire).
+    # ev-2d2ebd1b), and no row supplies a valid input. Also DBND-023, DBND-036,
+    # DBND-037 (row e/circle/unlisted-object.json is out-of-layout, not
+    # out-of-root), DBND-038 (the ../../outside row's escape detector cannot fire).
+    # Withdrawn from this scenario 2026-08-04: DBND-035, refuted by the panel --
+    # the repository's own matrix declares the six confinement surfaces as
+    # application points of one check, not six coverage obligations.
     # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: An untrusted path or Store key can never escape its selected root
       Given a published "<store>" bundle snapshotted byte for byte

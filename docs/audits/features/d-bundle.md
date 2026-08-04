@@ -10,21 +10,77 @@
 | Observed revision | `d9120d7e0d154cee517b983bf7b6cac0cf8e8096` (`d9120d7`) |
 | Branch | `codex/audit-d-bundle` |
 | Orchestrated run | `2026-08-04-r7` (`features/.agents/orchestrator/runs/2026-08-04-r7/`) |
-| Worktree state | clean. `git diff d9120d7..HEAD -- rust/ spec/ features/*.feature vectors/` is **empty**: every commit on this branch since the freeze is an audit artifact or an evidence transcript. The audited bytes and the current bytes are the same bytes |
+| Worktree state | `rust/`, `spec/` and `vectors/` are **byte-identical** to `d9120d7`: `git diff d9120d7..HEAD -- rust/ spec/ vectors/` is empty. `features/d-bundle.feature` is **not**: commit `b19c7fd` inserted 99 marker lines into it and this note's round-2 marker edit brings the total to 107, changing no scenario, rule, step or `Examples` row, and moving every line number below the first insertion. Round 1 of this note claimed the audited bytes and the current bytes were the same bytes; that was false for the feature file and is corrected here (§8.4) |
+| Feature file, audited | `d9120d7:features/d-bundle.feature`, 165 lines, sha256 `59a6f361598de459fa063e7bff9915427c5e3d70423c20204d26f294b618c8b5` — the numbering used by `INVENTORY.md`, by all six Pass A reports and by `frozen.json` |
+| Feature file, current | `features/d-bundle.feature` as delivered by this note, 272 lines, sha256 `9913e2aaf034dc5ba68b6eb9f13b74d0b536042515cc7953cbb6f0ae17033ceb` |
+| Line-citation convention | **every `d-bundle.feature` line number in this note is a line of the audited file**, never of the current one. §5.2 translates each to its current line. See the block below |
 | Scope | the semantic truth of the 51 scenarios of `d-bundle.feature`; seven `Rule` blocks |
 | Finding prefix | `DBND-*` (`docs/audits/features/README.md`, § *Convention*) |
 | Domain | `features/.agents/d-bundle/DOMAIN.md` |
 | Pass A freeze | `pass-a/frozen.json`, sha256 `d3f8f33324c48e3c12bfd425b19238b0ba80bc502a662a5255073e980c3a685b` |
 | Post-freeze measurements | `VERDICTS.md` (orchestrator), `EVIDENCE.md` (run `2026-08-04-r7`) |
-| Language | English, matching `a-identity.md`, `b-derivation.md` and the seven Pass A reports. The structure is `c-headers.md`'s; only the language differs |
+| Language | English, matching `a-identity.md`, `b-derivation.md` and the six Pass A reports. The structure is `c-headers.md`'s; only the language differs |
+| Warden | `features/.agents/orchestrator/runs/2026-08-04-r7/warden.md`. Round 1 of this note was **`INVALIDATED`**; all six breaches were real and are repaired here, each named at the point of repair |
 
-**Renumbering.** Pass A ran seven blind auditors who could not coordinate
+### The authorities this note rests on, and where they are
+
+Round 1 of this note asserted that the Pass A reports were committed in this
+repository. **At the time of writing they were not**, and the warden invalidated
+the cycle for it: a reader could not have followed a single citation back to
+what an auditor actually wrote. They are committed now, each with its sha256 in
+the run ledger, and this note cites these paths and no others.
+
+| Authority | Path under `features/.agents/orchestrator/runs/2026-08-04-r7/` |
+|---|---|
+| Pass A freeze | `pass-a/frozen.json` |
+| Pass A reports (six, covering seven units) | `pass-a/RU-1.md`, `RU-2.md`, `RU-3.md` (holds RU-3 **and** RU-4), `RU-5.md`, `RU-6.md`, `RU-7.md` |
+| Structural inventory (role I1) | `INVENTORY.md` |
+| Post-freeze measurements and panel rulings | `VERDICTS.md` |
+| Evidence index | `EVIDENCE.md`; transcripts under `evidence/` |
+| Warden verdict on round 1 of this note | `warden.md` |
+
+### How this note cites the feature file, and why
+
+The marker commit `b19c7fd` inserted 99 lines into `features/d-bundle.feature`
+and shifted every line below the first insertion. Round 1's line citations were
+written against the audited file and published against the marked one, so they
+pointed at the wrong text: `:139`, the clause carrying a P1, had become an
+`Examples` row, and `:148`, the confinement outline, had become the row `| self |
+read |`. That is the warden's second breach.
+
+**Re-anchoring to `HEAD` would fix it once and break it again**, because the
+correction lots of §11 will move these lines a second time and every later
+marker edit a third. So this note does the opposite, and says so here rather
+than leaving a reader to discover it:
+
+> **Every `features/d-bundle.feature` line number in this note — whether written
+> `features/d-bundle.feature:99` or, inside a citation cluster, as a bare
+> `` `:99` `` — is a line of the file *as audited*, at `d9120d7`, sha256
+> `59a6f361…`. It is never a line of the current file.** That numbering is the
+> one `INVENTORY.md`, all six Pass A reports and `frozen.json` use, so a reader
+> holding any of them can follow a citation straight through. **§5.2 translates
+> every audited line to its line in the current file**, and the translation is a
+> constant offset per scenario block, so it stays correct without being rewritten
+> when the markers move again.
+
+Line numbers into `rust/`, `spec/` and `vectors/` are unaffected: those trees are
+byte-identical to `d9120d7`.
+
+### Renumbering
+
+Pass A ran six blind auditors over seven units, unable to coordinate
 identifiers, so the frozen findings are numbered `DBND-101`…`DBND-715` by
 hundred-block. This note renumbers them into one `DBND-001`… series, ordered by
-review unit and then by severity. **The seven Pass A reports are committed in
-this repository and a reader will arrive here carrying their numbers**, so the
-complete old→new map is published in §6.0 and no `DBND-1xx`…`DBND-7xx`
-identifier is reused for anything else, ever.
+review unit and then by severity, and publishes the complete old→new map in
+§6.0.
+
+**Round 2 removed four more findings and did not renumber again.** `DBND-020`,
+`DBND-026`, `DBND-030` and `DBND-035` are **retired identifiers**: the series
+runs `DBND-001`…`DBND-039` with those four absent. Renumbering a second time in
+two commits would defeat the purpose of §6.0 — round 1 of this note is committed
+at `b19c7fd` and a reader will arrive carrying its numbers, exactly as readers
+arrive carrying the Pass A numbers. **No `DBND-*` identifier retired at any
+stage is ever reused for anything else.**
 
 ## 2. Method provenance
 
@@ -46,23 +102,44 @@ issues an `evidence_id`. This Pass B role likewise ran **no gate, no test and no
 | RU-6 | A local mutation commits state and Gamma as one transaction | `:89` | 14 | 108 | none |
 | RU-7 | Local capabilities and paths stay narrow | `:129` | 14 | 72 | none |
 
-RU-3 and RU-4 were held by one auditor and read as one sitting, per
-`INVENTORY.md` § 1.8; their report is `pass-a/RU-3.md`.
+**Six auditors, seven units.** RU-3 and RU-4 were held by one auditor and read
+as one sitting, per `INVENTORY.md` § 1.8; their single report is
+`pass-a/RU-3.md`, and no `RU-4.md` exists. `pass-a/frozen.json` says *"Seven
+auditors"* and is **wrong**. It is hashed, cited by that hash, and therefore
+**not edited**: a freeze that can be corrected after the fact is not a freeze.
+The ledger carries the superseding correction and this note states the true
+number wherever it states a number. Round 1 of this note disclosed the six
+correctly here and then said "seven" in §6.1 and twice in §15; that is the
+warden's third breach, repaired at all three sites.
 
 **What happened after the freeze, in order.** The 48 frozen findings were
 measured in three ways, and the three are kept visibly distinct on every finding
 block below because they are not worth the same thing:
 
-1. **Seventeen mutants** were applied to a clean tree at `d9120d7` and reverted
-   before the next. Sixteen of seventeen landed exactly as predicted. Fifteen
-   findings are **confirmed by transcript**.
+1. **Nineteen distinct code edits** were applied to a clean tree at `d9120d7`
+   and reverted before the next, producing **twenty transcripts** — eighteen
+   experiments under the ledger's own grouping, since one mutant
+   (`gamma.rs:300`) was measured by two commands and one entry
+   (*RU-5 parameter reachability*) is two separate edits. All but one landed
+   exactly as predicted. Fifteen findings are **confirmed by transcript**.
+   Round 1 of this note reported *"seventeen mutants"*, inheriting an
+   undercount from the ledger's prose; that is the warden's fourth breach,
+   corrected here and in §4.2 and §8.5. No evidence identifier, verdict or
+   counter changes with it.
 2. **An adversarial panel** was run, by owner ruling, only on the ten P1/P2
    findings carrying no confirmed mutant — the other fifteen are settled by a
    transcript and a vote adds nothing to one. Each refuter saw the code and
    **one** finding statement: not the report, not the other findings, not the
    mutant results, not the author, and not that any other refuter existed. Each
    refuter was instructed to refute and to answer *refuted* when uncertain.
-   **Six were killed** and are removed in §7. **Four survived.**
+   Round 1 reported six killed and four surviving. The warden then ruled the
+   four **under-panelled**, on the orchestrator's own stated rule that a
+   refutation resting on judgement rather than on a checkable fact gets the full
+   panel — a rule that had not been applied to them. A second refuter was run on
+   all four. **All four fell, each on a fact verified in the source.**
+   The panel result is therefore **ten tested, ten refuted, none survived**, and
+   all ten are in §7. **No finding in this note carries the evidential state
+   *survived the adversarial panel*, because none survived one.**
 3. **The 23 P3 findings had neither.** That was a budget decision, recorded in
    `VERDICTS.md` § D — the panel budget was spent where it changes what a
    corrector does. This note rules on them **on the record alone** and says so
@@ -71,8 +148,22 @@ block below because they are not worth the same thing:
 **Contamination disclosure for this pass.** The Pass B role reads git history,
 the specification, the other features' published audits, `STATE.md`,
 `QUEUE.yaml`, the mutant transcripts and the panel verdicts. That is the
-definition of Pass B. None of it was visible to any Pass A unit. Two Pass A
-numbers are corrected here from the current tree rather than repeated: see §8.4.
+definition of Pass B. None of it was visible to any Pass A unit. Numbers taken
+from Pass A, from the orchestrator and from round 1 of this note that did not
+survive re-checking are corrected in §8.4 rather than repeated.
+
+**What the warden checked and found holding**, recorded because an invalidation
+notice is not a verdict on everything it did not overturn: all 148 evidence
+identifiers resolve; all 33 transcripts match their digests; **zero `ev-` tokens
+appear in any Pass A report**, and no transcript of any kind exists anywhere in
+the Pass A window, so no auditor could have been issued evidence even had it
+asked; isolation is clean across all seven extracts, with no `.git` and no run
+journal in any of them; the freeze was written 6 min 15 s before the first
+mutant, hashes match, single commit, never amended; the seven units sum to
+51 scenarios and 299 steps and the 48 identifiers partition cleanly across them;
+all 22 counters cross-check against the ledger; and sixteen tables, 191 table
+lines and all thirteen Gherkin markers were read separately from the prose for
+the disclosure gate.
 
 ## 3. Verdict
 
@@ -117,12 +208,22 @@ carry the round.
    this feature. That is recorded as a negative result, not as an absence
    (§10).
 
-**Reconciled count: 39 findings — 2 P1, 17 P2, 20 P3** — from 48 frozen: six
-removed by the panel (§7), five merged into two (§8.1), one split into two
+**Reconciled count: 35 findings — 2 P1, 13 P2, 20 P3** — from 48 frozen: **ten
+removed by the panel** (§7), five merged into two (§8.1), one split into two
 (§8.2). Nothing was invented in Pass B; two findings gained a transcript they
 did not have, from a control run designed for something else (§8.5).
 
-**Two findings this cycle owes but does not open**: `chdr-028` and
+**The panel killed everything it examined: ten tested, ten refuted.** Round 1 of
+this note published four survivors; the warden ruled them under-panelled and a
+second refuter killed all four on checkable facts (§7). A reader should draw the
+obvious inference and this note draws it first: **on this feature, a P1 or P2
+finding that met a serious adversary did not survive it.** The fifteen findings
+that stand on a transcript stand on a transcript, not on having been attacked —
+the panel never examined them, by the same owner ruling that scoped it. Of the
+35 findings published here, fifteen are confirmed by a mutant and **twenty rest
+on reading alone**.
+
+**Two debts this cycle owes but does not open**: `chdr-028` and
 `chdr-016-grant-path`. `d-bundle` is first in line for both by the `order:` list
 and neither is discharged here; §9 records why and what would discharge them.
 
@@ -170,7 +271,7 @@ execution does. Transcripts:
 | `ev-1eefbb66` | RED | 50/51 | `d-bundle.feature:143`, `observable_result` cell replaced. Control for `DBND-031` |
 | `ev-bec6b91e` | RED | — | `aithos-core`'s `entries_rebuild_byte_for_byte` under the `DBND-018` mutant |
 
-### 4.2 The fifteen confirming mutants
+### 4.2 The confirming mutants — fourteen rows, fifteen findings
 
 Each was named with its predicted outcome by its auditor **before any transcript
 existed**, in a report frozen under `frozen.json`.
@@ -192,7 +293,16 @@ existed**, in a report frozen under `frozen.json`.
 | `session.rs` — a `sign_any()` universal byte-signing oracle, named around the grep | `ev-794d59c3` | GREEN 51/51 | `DBND-032` |
 | `lib.rs` — `validate_display_path` reduced to `Ok(())` | `ev-2d2ebd1b` | GREEN 51/51 | `DBND-033`, `DBND-034` |
 
-**The single partial.** `ev-23aeba39` is the one of seventeen that did not land
+**Campaign totals, corrected.** Nineteen distinct code edits over twenty
+transcripts, eighteen experiments under the ledger's grouping: `gamma.rs:300` is
+one edit measured by two commands (`ev-19a635cf`, `ev-bec6b91e`), and the
+*RU-5 parameter reachability* entry is two edits (`ev-f0658ee9`, `ev-de8fa887`).
+The table above has **fourteen rows and fifteen evidence identifiers**, one row
+citing two, and it confirms fifteen findings because `ev-2d2ebd1b` confirms two.
+Round 1 headed it *"the fifteen confirming mutants"* over fourteen rows and
+reported the campaign as seventeen; both are corrected here (§8.4).
+
+**The single partial.** `ev-23aeba39` is the one edit that did not land
 exactly. Its author predicted `:34`, `:39` and `:47` green and `:55` red; the run
 is 50/51 with the single casualty in RU-4 — which is the prediction, but it is
 recorded as partial because the prediction named four scenarios and the
@@ -249,17 +359,77 @@ the largest outline. §10 records it as the negative result it is.
 | S13 (`:148`) | the four `MemStore` rows | survive `ev-2d2ebd1b` because `resolve_clear` returns `Err(InvalidPath)` for a path naming no existing section whether or not the grammar refused it first |
 | S13 (`:148`) | `:160`, `:164`, `:165` | reach `checked_join`'s per-segment `symlink_metadata` walk at an intermediate component, a final component and the signed manifest. Genuinely discriminating; the panel established this against `DBND-708` (§7) |
 
+### 5.2 Line index — audited line to current line
+
+Every `d-bundle.feature` line number in this note is a line of the **audited**
+file (`d9120d7`, 165 lines, sha256 `59a6f361598de459fa063e7bff9915427c5e3d70423c20204d26f294b618c8b5`).
+The marker edits — `b19c7fd` plus this note's round-2 revision of four blocks —
+insert 107 comment and tag lines above scenario headers and change nothing else,
+so the shift is a **constant offset within each block**. To translate any cited
+line, find the block it falls in and add the offset. The current file is 272
+lines, sha256
+`9913e2aaf034dc5ba68b6eb9f13b74d0b536042515cc7953cbb6f0ae17033ceb`.
+
+| Block | Audited | Current | Offset |
+|---|---|---|---|
+| Feature header and description | `:1`–`:7` | `:1`–`:7` | +0 |
+| `Rule:` Editions chain and verify offline | `:8` | `:8` | +0 |
+| `Scenario:` Initialising a bundle publishes a verifiable first edition | `:10`–`:14` | `:17`–`:21` | **+7** |
+| `Scenario:` Every publication extends the chain | `:16`–`:20` | `:28`–`:32` | **+12** |
+| `Scenario:` A tampered file fails the edition | `:22`–`:25` | `:40`–`:43` | **+18** |
+| `Scenario:` A broken chain fails closed | `:27`–`:30` | `:52`–`:55` | **+25** |
+| `Rule:` Content round-trips through the sealed store | `:32` | `:57` | **+25** |
+| `Scenario:` The owner reads back what was written | `:34`–`:37` | `:65`–`:68` | **+31** |
+| `Scenario:` Display paths resolve through names, keys through sids | `:39`–`:43` | `:77`–`:81` | **+38** |
+| `Rule:` The public zone reads without any key | `:45` | `:83` | **+38** |
+| `Scenario:` A stranger reads public content with no key at all | `:47`–`:51` | `:93`–`:97` | **+46** |
+| `Rule:` The self zone leaks no structure | `:53` | `:99` | **+46** |
+| `Scenario:` Self is a flat sea of opaque blobs | `:55`–`:59` | `:109`–`:113` | **+54** |
+| `Rule:` Owner operations have durable parity across all three zones | `:61` | `:115` | **+54** |
+| `Scenario Outline:` The local owner performs every content operation without a mandate, with its `Examples` | `:63`–`:87` | `:127`–`:151` | **+64** |
+| `Rule:` A local mutation commits state and Gamma as one transaction | `:89` | `:153` | **+64** |
+| `Scenario Outline:` Failure before the logical commit point preserves the old bundle byte for byte, with its `Examples` | `:91`–`:114` | `:167`–`:190` | **+76** |
+| `Scenario Outline:` A successful local transaction publishes content and Gamma together, with its `Examples` | `:116`–`:127` | `:198`–`:209` | **+82** |
+| `Rule:` Local capabilities and paths stay narrow | `:129` | `:211` | **+82** |
+| `Scenario Outline:` A bundle operation uses only its narrow opaque cryptographic capability, with its `Examples` | `:131`–`:146` | `:226`–`:241` | **+95** |
+| `Scenario Outline:` An untrusted path or Store key can never escape its selected root, with its `Examples` | `:148`–`:165` | `:255`–`:272` | **+107** |
+
+The two citations the warden named are the worked examples. `:139` — *no seed or
+private key is accepted or returned by the bundle operation*, the clause carrying
+the P1 `DBND-029` — is **`:234`** in the current file; read as a current line it
+lands on an `Examples` row. `:148` — the head of the confinement outline — is
+**`:255`**; read as a current line it lands inside the `Examples` grid of a
+different Rule. Both citations are correct as audited lines and both were
+misleading as published. That is why the convention is now stated rather than
+assumed.
+
+**This table moved once already, between round 1 and round 2 of this note**, for
+the same reason it will move again: four marker blocks were rewritten to drop
+the findings the panel killed, and four offsets changed with them. The audited
+column never moves.
+
+**This table does not need rewriting when the markers move again.** The
+audited file is immutable at `d9120d7`; only the *Current* and *Offset* columns
+describe `HEAD`, and both are regenerable by diffing the two revisions.
+
 ## 6. Findings
 
-Every block carries its **evidential state** in one of exactly three forms, at
-the top, before the statement, so that no reader has to infer it:
+Every block carries its **evidential state** at the top, before the statement,
+so that no reader has to infer it. Round 1 of this note defined three states.
+**There are now two, and the reason the third is gone is itself a result:**
 
 - **confirmed by transcript** — a named mutant ran and the prediction landed; the
-  `evidence_id` is cited;
-- **survived the adversarial panel** — attacked by a fresh refuter who saw only
-  the statement, was instructed to refute, and to answer *refuted* when
-  uncertain; the strongest attack and why it failed are stated;
-- **on the record alone** — neither of the above. Stated in those words.
+  `evidence_id` is cited. Fifteen findings.
+- **on the record alone** — no mutant ran against it and the panel did not
+  examine it. Stated in those words. Twenty findings.
+- ~~**survived the adversarial panel**~~ — **this state no longer exists and no
+  finding holds it.** Round 1 gave it to four findings. The warden ruled them
+  under-panelled against the orchestrator's own rule — a refutation resting on
+  judgement rather than on a checkable fact gets the full panel — and a second
+  refuter killed all four on facts in the source. Ten findings were examined by
+  the panel and ten were refuted. All ten are in §7. The category is struck
+  rather than left standing with an empty membership, because a reader scanning
+  for it is entitled to learn that nothing earned it.
 
 `OPEN` is the state of every finding in this note: this is round 1 and no
 corrector has run.
@@ -292,9 +462,9 @@ Pass A → this note. Ordered by unit, then by severity within the unit. The
 | `DBND-405` | RU-4 | P3 | **`DBND-017`** | carried |
 | `DBND-501` | RU-5 | **P1** | **`DBND-018`** | carried |
 | `DBND-502` | RU-5 | P2 | **`DBND-019`** | carried |
-| `DBND-503` | RU-5 | P2 | **`DBND-020`** | **merged** with `DBND-714` and `DBND-715` |
-| `DBND-714` | RU-7 | P3 | **`DBND-020`** | **merged** into `DBND-503` |
-| `DBND-715` | RU-7 | P3 | **`DBND-020`** | **merged** into `DBND-503` |
+| `DBND-503` | RU-5 | P2 | ~~`DBND-020`~~ | merged with `DBND-714`/`DBND-715`, then **removed by the panel, round 2** (§7). Identifier retired |
+| `DBND-714` | RU-7 | P3 | ~~`DBND-020`~~ | merged into `DBND-503`, removed with it (§7) |
+| `DBND-715` | RU-7 | P3 | ~~`DBND-020`~~ | merged into `DBND-503`, removed with it (§7) |
 | `DBND-504` | RU-5 | P2 | — | **removed by the panel** (§7) |
 | `DBND-505` | RU-5 | P2 | — | **removed by the panel** (§7) |
 | `DBND-506` | RU-5 | P3 | **`DBND-021`** | carried, **narrowed** (§8.3) |
@@ -303,24 +473,43 @@ Pass A → this note. Ordered by unit, then by severity within the unit. The
 | `DBND-605` | RU-6 | P3 | **`DBND-023`** | **merged** with `DBND-508` |
 | `DBND-509` | RU-5 | P3 | **`DBND-024`** | carried |
 | `DBND-601` | RU-6 | P2 | **`DBND-025`** | carried |
-| `DBND-603` | RU-6 | P2 | **`DBND-026`** | carried, **two refuter corrections applied in the text** |
+| `DBND-603` | RU-6 | P2 | ~~`DBND-026`~~ | **removed by the panel, round 2** (§7). Identifier retired. Its two round-1 refuter corrections are kept in §8.4 |
 | `DBND-602` | RU-6 | P3 | **`DBND-027`** | carried, **narrowed** (§8.3) |
 | `DBND-604` | RU-6 | P3 | **`DBND-028`** | carried, **gained a transcript** (§8.5) |
 | `DBND-703` | RU-7 | **P1** | **`DBND-029`** | carried |
-| `DBND-701` | RU-7 | P2 | **`DBND-030`** | carried, refuter's added evidence folded in |
+| `DBND-701` | RU-7 | P2 | ~~`DBND-030`~~ | **removed by the panel, round 2** (§7). Identifier retired |
 | `DBND-702` | RU-7 | P2 | **`DBND-031`** | carried |
 | `DBND-704` | RU-7 | P2 | **`DBND-032`** | carried |
 | `DBND-705` | RU-7 | P2 | — | **removed by the panel** (§7) |
 | `DBND-706` | RU-7 | P2 | **`DBND-033`** | carried |
 | `DBND-707` | RU-7 | P2 | **`DBND-034`** | carried |
 | `DBND-708` | RU-7 | P2 | — | **removed by the panel** (§7) |
-| `DBND-709` | RU-7 | P2 | **`DBND-035`** | carried, one ancillary sentence conceded |
+| `DBND-709` | RU-7 | P2 | ~~`DBND-035`~~ | **removed by the panel, round 2** (§7). Identifier retired |
 | `DBND-710` | RU-7 | P2 | — | **removed by the panel** (§7) |
 | `DBND-711` | RU-7 | P3 | **`DBND-036`** | carried, **narrowed** — a limb resting on the killed `DBND-710` is struck (§8.3) |
 | `DBND-712` | RU-7 | P3 | **`DBND-037`**, **`DBND-038`** | **split** (§8.2) |
 | `DBND-713` | RU-7 | P3 | **`DBND-039`** | carried |
 
-48 in, 39 out: 6 removed, 5 merged into 2, 1 split into 2.
+48 in, **35 out**: 10 removed by the panel, 5 merged into 2, 1 split into 2.
+
+**Four identifiers of this note's own series are retired.** `DBND-020`,
+`DBND-026`, `DBND-030` and `DBND-035` were published in round 1 (`b19c7fd`) and
+are removed in round 2. The series is **not** renumbered a second time and those
+four numbers are never reused: a reader arriving with round 1 in hand must be
+able to look up a number and find out that it died, which is the whole reason
+this table exists for the Pass A numbers. **Reader's shortcut: if a `DBND-0xx`
+number appears nowhere in §6, it is in §7.**
+
+*A caution about one of them, recorded because it cost real work.* The
+orchestrator's remediation brief identified the four newly refuted findings by
+their Pass A numbers and, for two of them, by the wrong reconciled identifier —
+`DBND-701` was given as `DBND-035` and `DBND-709` as `DBND-039`. The Pass A
+numbers are authoritative and this note holds the mapping, so the refutations
+were applied to `DBND-030` and `DBND-035`. The arithmetic confirms it
+independently: the brief's own target of 2 P1 / 13 P2 / 20 P3 is reached only by
+removing four P2s, and `DBND-039` is a P3. Had the identifiers been followed
+literally, a P3 nobody attacked would have been removed and a P2 the panel
+killed would still be open.
 
 ### 6.1 Disclosure barrier — assessed by this pass, not inherited
 
@@ -328,8 +517,10 @@ Pass A → this note. Ordered by unit, then by severity within the unit. The
 9 retains, from every tracked file, the *statement* of a finding that would
 describe an exploitable weakness for which no fix exists.
 
-All seven Pass A auditors assessed the condition independently and all seven
-raised nothing, each recording why (`frozen.json`, field `disclosure`). **This
+All six Pass A auditors assessed the condition independently, across all seven
+units, and all six raised nothing, each recording why (`frozen.json`, field
+`disclosure` — whose own text says "seven auditors" and is wrong on that count,
+§2). **This
 pass re-assessed rather than inherited it**, because a barrier that is only ever
 inherited has stopped being a barrier. Three candidates were examined in full;
 none is retained. The reasoning, the searches and the tables re-checked
@@ -1172,7 +1363,7 @@ execution path could have been measured.
 definition (`aithos-core/src/gamma.rs:494`) and `gamma_replay.rs:289`, reached
 from `log.rs:860`, a separate replay entry point. **`Bundle::verify` does not
 call it.** `bundle.rs:1691-1790`, read in full: the Gamma section calls only
-`aithos_core::gamma::verify_links(&entries)` (`:1770`) and the `gamma_head` pin;
+`aithos_core::gamma::verify_links(&entries)` (`:1772`) and the `gamma_head` pin;
 `verify_links` calls `check_form`, which inspects `v`, `id`, `at`, `kind`,
 `prevs`, `payload`/`body_enc` and **never** `authorized_by` or `authorized_via`.
 
@@ -1261,91 +1452,6 @@ twelve are, three are not. Closed when no row of `:63` both survives that mutant
 and asserts `:67`.
 
 **Pass A origin.** `DBND-502`, RU-5, mutant M3.
-
----
-
-### `DBND-020` — `OPEN`, P2 — "narrow" is a load-bearing word with three unrelated senses across two Rules, and no step body relates any two of them
-
-> **Evidential state: survived the adversarial panel.** The refuter went looking
-> for a reading of *narrow* that would give the phrase a referent, and found
-> `spec/01-identity-and-keys.md:142-168` defining it **against** the claim's
-> target. That was the strongest available attack — if the spec had supplied a
-> referent for RU-5's usage, the finding would have collapsed — and it failed
-> because the sentence the refuter found says the opposite of what RU-5's step
-> asserts. No mutant was run against it.
-
-**Scenarios `:63` and `:131`, and the Rule titles at `:61` and `:129` / RU-5 and
-RU-7. This is a merged finding — see §8.1.**
-
-**Statement.** The word carries three senses in this feature and nothing joins
-them.
-
-1. **RU-5, `:67`, "the narrow owner capability".** No capability object and no
-   session is constructed anywhere in RU-5.
-   `Bundle::owner_content_operation` (`bundle.rs:444-449`) takes `owner:
-   &OwnerKeys` — the whole private key set: `root_sign`, `content_sign`,
-   `owner_kex` (`aithos-core/src/keys.rs:28-38`). Search: `LocalSession`, scope
-   `core_owner_scenario` (`cucumber.rs:3361-3552`, read in full) — **zero hits**;
-   the type is imported at `cucumber.rs:24` and used by other units. The `Given`
-   at `:64` announces "an owner-local bundle session" and its definition
-   (`:11484-11489`) stores a string. Here *narrow* means **authority scope** —
-   owner-local, no mandate, no counter consumed.
-2. **RU-7a, `:131` and the Rule title `:129`, "its narrow opaque cryptographic
-   capability".** Here *narrow* means **API surface**: which cryptographic
-   operation a handle may perform on which typed object.
-   `CoreCapabilityObservation` (`cucumber.rs:325-334`) is about `session.rs`.
-3. **RU-7b, `:148`, "paths stay narrow".** Here *narrow* means **reach**: which
-   storage location a supplied path or key may address. The two outlines of RU-7
-   share **no** world field, **no** helper, **no** production module and **no**
-   spec section; their step-definition sets intersect in the empty set. The only
-   join is the Rule title, and the title's conjunction is itself asymmetric.
-
-**Spec reference**, `spec/01-identity-and-keys.md`, § 1.6, quoted verbatim to the
-end of each sentence, conditional clauses included — this is the sentence the
-refuter found, and it is the ground for sense 2 and against sense 1:
-
-> Private material is a local implementation concern, not an input that higher-level
-> bundle APIs may assume they can export. A protocol operation receives only the
-> narrow opaque capability it needs — signing, opening, or wrapping — together with
-> the public identity needed to verify its result. Possessing such a capability is
-> never sufficient authority: an owner capability is valid only in an owner-local
-> session, and a grantee capability still requires proof of possession plus one valid
-> mandate chain for the operation.
-
-> The current local key implementation may back these capabilities directly. Stable
-> APIs MUST NOT require a raw seed or private key when the narrow operation suffices,
-> and MUST NOT expose private material as an output. This boundary changes neither
-> signed bytes nor the persistent-root inventory above. D9's distinct audit and config
-> capabilities remain purpose-separated; their derivation topology is reserved for
-> the CB2 vectors.
-
-The other sense has its own spec sentence, in a different file —
-`spec/04-mandates.md:1861`, quoted in full under `DBND-018`: *"Owner | Local
-narrow capability; operation is authorized without a mandate, journalized, and
-consumes no mandate counter or constraint."* Two files, two senses, and the
-feature file uses one word for both.
-
-**Failure scenario.** `owner_content_operation` starts requiring, or leaking, raw
-key material beyond what the operation needs — a read arm that takes
-`root_sign`, say. Nothing in RU-5 changes: it already passes everything. And the
-Rule title of RU-7 lets each of its halves borrow the other's credibility — a
-reader who sees `:148`'s six genuine `FsStore` symlink rows concludes the Rule is
-well proven and does not notice that `:131`'s four rows rest on a grep, a
-constant and a dead column.
-
-**Closure criterion, one action.** Distinct wording in the two Rules, each bound
-to its own spec sentence, plus a `DOMAIN.md` glossary entry fixing each sense;
-and then either route the fifteen rows of `:63` through `LocalSession` and its
-typed capabilities so RU-5's word has an executed referent, or delete "narrow
-owner capability" from `:67` and let RU-7 own the narrowness claim alone.
-**Splitting RU-7 into two Rules is explicitly not the recommendation**: it
-produces two Rules each carrying the same defects, and Pass A said so from inside
-the unit. Renaming is the cheap part; `DBND-029`–`DBND-035` are what the Rule
-owes.
-
-**Pass A origin.** `DBND-503` (RU-5) merged with `DBND-714` and `DBND-715`
-(RU-7). RU-5 and RU-7 reported the two-sense problem independently and blind to
-each other; that is the third convergence recorded in `VERDICTS.md` § E.
 
 ---
 
@@ -1480,8 +1586,9 @@ instances of exactly that.
 **Closure criterion.** The `Given` builds the bundle and takes the snapshot,
 storing both in the world; the `When` performs only the act. Applied to both step
 functions, since the defect and its consequence are identical. This also removes
-the routing hazard `DBND-036` describes and is a precondition for `DBND-026`'s
-closure criterion, which needs a *pre-fixture* snapshot to exist.
+the routing hazard `DBND-036` describes. *(Round 1 also made it a precondition
+for `DBND-026`'s closure; `DBND-026` was removed by the panel in round 2, §7, so
+that dependency is gone and this finding now closes on its own.)*
 
 **Recorded hazard, not claimed as a defect.** `core_atomic_boundary` (`:11355`)
 is **not** unconditional: it branches on `w.core_revocation_failure_boundary ==
@@ -1630,86 +1737,6 @@ and the claim is carried by a scenario that induces the state. Either way,
 
 ---
 
-### `DBND-026` — `OPEN`, P2 — line 99 claims no local-mutation orphan; the snapshot it is asserted against cannot see one, and a snapshot that can exists in the same file
-
-> **Evidential state: survived the adversarial panel.** The refuter invented a
-> sixth attack the brief had not suggested — the live-handle route, i.e. whether
-> a still-open `FsStore` handle could make the leaked staging visible to the
-> assertion after all — and **killed it itself**. It corrected two errors in the
-> finding, both carried into the text below rather than silently fixed, and said
-> plainly that neither is load-bearing. No mutant was run against it.
-
-**Scenario `:91`, the six `FsStore` rows / RU-6.**
-
-**Two corrections carried from the refuter, in the published text.**
-1. Pass A wrote that the assertion compares **two maps**. It compares **three**:
-   `canonical_unchanged = before == after && before == reopened_snapshot`
-   (`cucumber.rs:1774`, `:1809`) — a pre-mutation snapshot, a post-mutation
-   snapshot, and a third taken after a drop, a reopen and a `Bundle::verify()`.
-2. Pass A wrote that the sighted helper is **1857 lines away**. The arithmetic
-   gives **1774**: `cb7_store_snapshot` is at `cucumber.rs:1375` and
-   `core_path_raw_snapshot` at `:3149` — Pass A had cited `:3232`, which is the
-   start of the fixture `match`, not the helper. 3149 − 1375 = 1774. **Verified
-   independently against the current tree by this pass.**
-
-**Statement.** `:99` — *"staging remains non-canonical and is cleaned or
-recoverably resolved with no local-mutation orphan"* — resolves to
-`core_atomic_staging_clean` (`cucumber.rs:11423`), body
-`assert!(!core_atomic_observation(w).partial_state_observed)`, i.e.
-`canonical_unchanged`, i.e. the same map comparison as `:96`.
-
-Those maps are `cb7_store_snapshot` (`:1375-1389`): `store.list("")`, then
-`store.get(path)` for each key. For `FsStore` both resolve through
-`canonical_base()` (`lib.rs:527-540`), which returns the **generation directory**
-named by the `.aithos-current` pointer. Everything the sentence is about is
-therefore outside the comparison's range: the staging generations under
-`.aithos-generations/` (`lib.rs:419-421`), the pointer `.aithos-current`
-(`:423`), the mirror marker `.aithos-mirror-current` (`:427`), the transient
-`.aithos-current.tmp-*` / `.aithos-mirror-current.tmp-*` files (`:490-524`), and
-the compatibility mirror materialized under the root (`:652-684`). **A leaked
-staging generation — the textbook local-mutation orphan — changes none of the
-bytes this assertion compares.**
-
-A helper that *would* see it is 1774 lines away in the same file:
-`core_path_raw_snapshot` (`cucumber.rs:3149-3193`) walks the raw tree, records
-directories and symlink targets, and is used by RU-7b (`:3300`, `:3324`) — the
-Rule about paths, where orphans are not the claim. The unit that claims *no
-orphan* uses the blind snapshot; the unit that does not claim it uses the sighted
-one.
-
-**Two further sentences of § 2.12 land on this same line and are unasserted.**
-Quoted verbatim under `DBND-025`: *"`FsStore` prepares in recoverable staging
-physically outside the canonical bundle directory"* and *"Any internal generation
-metadata, commit marker, or reference is outside the canonical bundle namespace,
-§2.3 layout, manifest, pins, and signed wire"*. The vector states both as
-booleans — `staging_outside_canonical_namespace: true`,
-`internal_generation_metadata_is_not_wire: true` — and their **only** consumer is
-`cb2_bundle_boundaries.rs:326-329`, `assert_eq!(transaction[…], true)`, comparing
-a JSON literal to itself. Search: `grep -rn
-"staging_outside_canonical_namespace" --include=*.rs --include=*.py .`, scope the
-whole tree → `gen-cb2-bundle-boundaries.py:620` and `cb2_bundle_boundaries.rs:326`
-only.
-
-**Closure criterion.** `:99` asserts against a raw-tree snapshot — reuse
-`core_path_raw_snapshot` (`cucumber.rs:3149`) — taken **before** the mutation and
-again after the reopen, and asserts (a) no `.aithos-generations/` entry other
-than the active one survives the reopen, and (b) no key of the raw tree absent
-from the canonical view carries any byte of the refused mutation. Note the
-ordering dependency: this needs a pre-fixture snapshot, which is `DBND-023`'s
-closure criterion, so `DBND-023` is done first.
-
-**Proposed and unrun.** Two mutants would settle it behaviourally: leak the
-staging generation instead of removing it (`FsStore::rollback_transaction`,
-`lib.rs:899-904`, reduced to `self.transaction = None`), predicted to leave the
-unit green; and the same applied **together with** the `ev-7caa8332` mutant, so
-that nothing sweeps the leak on reopen, also predicted green. **Neither has been
-run. Both are stated here as proposed and unrun**, and the second is the pair
-that would turn this finding from an argument into a measurement.
-
-**Pass A origin.** `DBND-603`, RU-6, mutants M3/M4 (never run).
-
----
-
 ### `DBND-027` — `OPEN`, P3 — nine `Then` steps across the unit assert four distinct bits, two of them against hardcoded struct fields
 
 > **Evidential state: on the record alone.** No mutant ran against it and the
@@ -1764,7 +1791,10 @@ nothing escalates; this finding stays P3.**
 distinct observation: `:97` reads `manifest.json`'s `edition.height` and
 `gamma_head` and compares them to the pre-mutation values; `:98` enumerates the
 five artifact classes it names and asserts each has no new key; `:99` is
-addressed by `DBND-026`; `:120` asserts a *count* — one visible transition,
+addressed by nothing in this note, `DBND-026` having been removed by the panel
+(§7) — so `:99` remains a `Then` reducing to the same boolean as `:96`, and that
+much of this finding still covers it; `:120` asserts a *count* — one visible
+transition,
 matching the vector's `linearization_count: 1`, which today has no behavioural
 consumer either.
 
@@ -1900,57 +1930,6 @@ mutant is a patch to a crate an attacker would already need write access to, and
 a fix exists and is named. Full reasoning in §15.
 
 **Pass A origin.** `DBND-703`, RU-7, mutant M3.
-
----
-
-### `DBND-030` — `OPEN`, P2 — `Then "<observable_result>"` compares strings, not propositions
-
-> **Evidential state: survived the adversarial panel.** The strongest attack was
-> that `operation_succeeded` — the one behavioural conjunct — already carries each
-> row's claim, making the string comparison harmless surplus. It failed, and the
-> refuter turned it around by finding evidence **the claimant had not used**: for
-> row `:143`, `operation_succeeded` is a byte-equality against a golden JSON
-> vector with **no signature verification at all**, under a sentence promising
-> *"the signature verifies against the public key"*. The refuter also established
-> that `:136`, `:137`, `:138` and `:139` — four distinct English sentences — all
-> bind to one step function asserting the same three booleans. No mutant was run
-> against this finding.
-
-**Scenario `:131`, line `:134`, all four rows / RU-7a.**
-
-**Statement.** `:134` puts the whole assertion in an `Examples` column. The step
-definition `d_capability_result` (`cucumber.rs:8450-8462`) compares that cell to
-a string literal the harness itself wrote three thousand lines earlier:
-`assert_eq!(observation.observable_result, observable)` (`:8460`), where
-`observation.observable_result` is set to a literal at `:2101`, `:3016`, `:3044`
-and `:3095`. No row's English sentence is evaluated as a claim about the system.
-
-The only behavioural conjunct is `assert!(observation.operation_succeeded)`
-(`:8461`), a single boolean whose *definition* differs per row and whose meaning
-the sentence does not constrain:
-
-| Row | Sentence in the `observable_result` cell | What `operation_succeeded` actually is |
-|---|---|---|
-| `:143` | the signature verifies against the public key | `:2091-2094` — a JCS-canonical draft.2 candidate equals a pinned vector. **No signature is verified** (refuter's finding) |
-| `:144` | the signature verifies against the public key | `:3011` — `gamma::verify_owner_entry` against the real `did.json` read out of the store |
-| `:145` | the expected plaintext is recovered **only locally** | `:3045` — `opened == "before atomic mutation"`. Tests recovery; says nothing about locality |
-| `:146` | **only** the intended recipient opens the wrapped key | `:3084-3086` — `header.open_latest` yields the DK for the intended secret. The *only* is carried by a different step's assertion |
-
-**Also established by the refuter and carried here:** `:136`–`:139` are four
-Gherkin sentences behind **one** step function, `d_capability_boundary_holds`
-(`cucumber.rs:8477-8490`), whose body is three `assert!`s (`:8487-8489`),
-identical for all four rows and identical for all four sentences. No sentence
-among them has an assertion of its own. Two of those three booleans are the
-subjects of `DBND-029` and `DBND-032`.
-
-**Closure criterion.** `:134` becomes a fixed sentence naming the property, and
-each row's positive control is computed from the operation's own output: verify
-the produced signature against the DID verifying key inside the row that claims
-it; assert non-derivability of the plaintext outside the session for the `open`
-row. Separately, `:136`–`:139` get one assertion each or are reduced to the
-number of properties actually checked.
-
-**Pass A origin.** `DBND-701`, RU-7.
 
 ---
 
@@ -2158,69 +2137,6 @@ a `Then` asserting success, sharing the same step definitions.
 
 ---
 
-### `DBND-035` — `OPEN`, P2 — `cold-load key` is a label with no distinct code path, and five of the spec's six confinement surfaces are untested
-
-> **Evidential state: survived the adversarial panel.** The refuter established
-> the spec ground independently — `spec/02-content-tree.md` enumerates exactly
-> **six** confinement surfaces, verbatim: *"before read, write, list, edition
-> load, staging publication, or recovery"* — and confirmed the outline exercises
-> one. Its steelman was that `cold_verify`'s first store contact would make the
-> `cold-load key` row genuinely distinct; that failed, because `cold_verify`'s
-> first store contact is `list`, whose confinement lives in different code from
-> `get`. **The refuter conceded one ancillary sentence, and it is carried here:**
-> the crate's own harnesses classify `cold-load key` **inside** the store-key
-> family, so the naming complaint is weaker than the coverage complaint. No
-> mutant was run against this finding.
-
-**Scenario `:148`, row `:165` and the outline's scope / RU-7b.**
-
-**Statement, in the order of its strength.**
-
-*The coverage complaint — the strong half.* The spec sentence names six surfaces
-and the outline exercises one: every row is a **read**. Search, scope
-`cucumber.rs:3117-3337`: `OwnerContentOperation::` returns three sites — `:3131`
-`Read`, `:3217` `Create` (fixture construction, not the operation under test) and
-`:3306` `Read`; the non-display branch is `bundle.store.get(invalid_input)`
-(`:3317-3321`). **Write, list, edition load, staging publication and recovery
-have no row.**
-
-*The naming complaint — the weaker half, as conceded.* The scenario name
-enumerates two input kinds; the table supplies three. `core_path_fs_scenario`
-branches on `input_kind == "display path"` (`:3302`); every other value falls
-through to `bundle.store.get(invalid_input)`, so `cold-load key` executes
-byte-for-byte what a `Store key` executes. No cold-load or edition-load API is
-invoked. Search: `grep -n 'cold_verify\|import_keyless\|export_keyless'
-cucumber.rs` → `:20` (the `use`), `:2282`, `:2783`, `:2843`, `:2845`, `:2851`,
-`:2854`, `:2883`, `:2885` — all inside the keyless/cold publication scenario
-family, **none inside `core_path_mem_scenario`, `core_path_fs_scenario` or
-`core_path_scenario` (`:3117-3359`)**. The concession stands: the crate's own
-harnesses treat `cold-load key` as a store key, so the label is imprecise rather
-than wrong.
-
-*A third gap, from the same sentence.* The spec's *"nonconforming names"* clause
-is unexercised: none of the ten `invalid_input` cells contains an uppercase byte,
-a non-ASCII byte, or a segment longer than the 64-byte bound of `name_accepted`
-(`lib.rs:41-47`). Scope of the search: `features/d-bundle.feature:156-165`, all
-ten cells read.
-
-**Spec reference**, `spec/02-content-tree.md`, the CB1 blockquote, quoted
-verbatim to the end of the sentence:
-
-> `FsStore` anchors its opened canonical root and refuses any symlink,
-> junction, reparse point, or equivalent indirection whose resolution would leave
-> that root, before read, write, list, edition load, staging publication, or
-> recovery. A signed manifest cannot legitimize an escape or out-of-layout object.
-> The invariant is observable confinement and prescribes no particular syscall.
-
-**Closure criterion.** Five rows for the five uncovered surfaces, and one row for
-a nonconforming name. Separately, and secondarily: either row `:165` calls
-`publication::cold_verify` or `import_keyless` and the scenario name is widened
-to three input kinds, or the row is relabelled `Store key`.
-
-**Pass A origin.** `DBND-709`, RU-7.
-
----
-
 ### `DBND-036` — `OPEN`, P3 — one sentence, three comparators, selected by a routing hint
 
 > **Evidential state: on the record alone.** No mutant ran against it and the
@@ -2372,28 +2288,44 @@ have never read.
 
 **Closure criterion.** Anchor the step — `#[then(expr = "the capability result is
 {string}")]` — and give `:134` the corresponding prefix. Note that this finding
-and `DBND-030` touch the same line and `DBND-030`'s closure (a fixed sentence at
-`:134`) discharges this one as a by-product; the marker stays until an
-independent review says so.
+touches the same line as the removed `DBND-030` (§7). With that finding gone,
+**nothing else in this note asks for `:134` to be rewritten**, so this closure
+criterion is now the only one standing over that step and must be executed on
+its own rather than expected as a by-product.
 
 **Pass A origin.** `DBND-713`, RU-7.
 
 ## 7. Findings removed by the adversarial panel
 
-Six of the ten P1/P2 findings without a confirmed mutant were **falsified**. A
-finding whose statement the panel falsified is not downgraded and not quietly
-rewritten: it is removed, and the fact that killed it is printed beside it. Each
-refutation below reduces to a single fact, which the orchestrator then verified
-in the source and which this pass verified again.
+**Ten of ten.** The panel examined the ten P1/P2 findings carrying no confirmed
+mutant, and **every one of them was falsified**. A finding whose statement the
+panel falsified is not downgraded and not quietly rewritten: it is removed, and
+the fact that killed it is printed beside it.
 
-| Pass A id | Unit | Sev | Killed on |
-|---|---|---|---|
-| `DBND-302` | RU-3 | P2 | the input the uncalled function needs is written by no code path in this repository |
-| `DBND-504` | RU-5 | P2 | `check_form` reads the fields the finding said nothing reads, and the worked example is rejected at write time |
-| `DBND-505` | RU-5 | P2 | the two `Then`s compare against **two different sources**, and nothing cross-checks them |
-| `DBND-705` | RU-7 | P2 | the typed method does take caller-supplied bytes, and the fixture submits them |
-| `DBND-708` | RU-7 | P2 | the sibling row tests the case, and does so for a correct reason |
-| `DBND-710` | RU-7 | P2 | the ordering is stated correctly and the conclusion is inverted |
+Six fell in round 1. The other four were published in round 1 of this note as
+**survivors**, and they were not. The warden ruled them under-panelled: the
+orchestrator's own rule is that a refutation resting on judgement rather than on
+a checkable fact gets the full panel, and that rule had not been applied to them.
+A second refuter was run on all four and all four fell, each on a fact in the
+source. **This pass re-verified all four facts in the tree before printing them**,
+and one of the four refutations is only partly right — that is said in its own
+entry rather than smoothed over.
+
+The four late removals are marked **round 2**. Each refutation reduces to a
+checkable fact.
+
+| Pass A id | Unit | Sev | Round | Killed on |
+|---|---|---|---|---|
+| `DBND-302` | RU-3 | P2 | 1 | the input the uncalled function needs is written by no code path in this repository |
+| `DBND-504` | RU-5 | P2 | 1 | `check_form` reads the fields the finding said nothing reads, and the worked example is rejected at write time |
+| `DBND-505` | RU-5 | P2 | 1 | the two `Then`s compare against **two different sources**, and nothing cross-checks them |
+| `DBND-705` | RU-7 | P2 | 1 | the typed method does take caller-supplied bytes, and the fixture submits them |
+| `DBND-708` | RU-7 | P2 | 1 | the sibling row tests the case, and does so for a correct reason |
+| `DBND-710` | RU-7 | P2 | 1 | the ordering is stated correctly and the conclusion is inverted |
+| `DBND-503` + `-714` + `-715` (was `DBND-020`) | RU-5, RU-7 | P2 | **2** | an executing test asserts the absence the finding reports, and the finding's own remedy would break it |
+| `DBND-603` (was `DBND-026`) | RU-6 | P2 | **2** | the leaked staging generation is reachable by the comparison and by two further routes on the reopen path |
+| `DBND-701` (was `DBND-030`) | RU-7 | P2 | **2** | one row's English sentence *is* evaluated, by the very step the finding attacks |
+| `DBND-709` (was `DBND-035`) | RU-7 | P2 | **2** | the repository's own confinement matrix declares the six as application points of **one** check |
 
 ### `DBND-302` — removed — *"the second keyless public read surface has no consumer"*
 
@@ -2482,9 +2414,12 @@ supplied bytes both exist and are exercised, so the second half of the statement
 is false and the finding as written cannot stand.
 
 *What survives, and why it is not re-filed.* The identical-sessions observation
-is true and is not lost: it is a premise of `DBND-030`, which the panel examined
-separately and which survived. Re-filing the true half under a new identifier
-would give the same evidence two numbers, which is what §8 exists to prevent.
+is true and is not lost. Round 1 said it "is a premise of `DBND-030`, which
+survived"; **`DBND-030` did not survive** — it is removed below, in round 2 — so
+the true half of `DBND-705` now rests in this section and nowhere else.
+Re-filing it under a new identifier would give the same evidence two numbers,
+which is what §8 exists to prevent, and would reintroduce by the back door a
+claim the panel refused.
 
 ### `DBND-708` — removed — *"row `:163` never reaches the symlink check its `filesystem_condition` names"*
 
@@ -2536,6 +2471,213 @@ published as `DBND-023`, which carries the same step function
 Removing `DBND-710` costs this note nothing. The struck limb also appeared inside
 `DBND-711`'s evidence, and is struck there too — see `DBND-036`.
 
+### `DBND-503` + `DBND-714` + `DBND-715` — removed, round 2 — *"narrow is a load-bearing word with three unrelated senses"*
+
+*Published in round 1 of this note as `DBND-020`, P2, "survived the adversarial
+panel". Identifier retired.*
+
+*Frozen statement, in three limbs.* RU-5's *narrow owner capability* has no
+executed referent — `Bundle::owner_content_operation` takes `owner: &OwnerKeys`,
+the whole private key set, and no `LocalSession` is constructed anywhere in RU-5.
+*narrow* therefore means authority scope in RU-5 and API surface in RU-7a and
+reach in RU-7b, with no step body relating any two.
+
+*The killing fact.* `rust/crates/aithos-bundle/tests/cb2_bundle_authority_flows.rs:303-308`,
+inside an executing, un-`#[ignore]`d test
+(`cb2_bundle_delegated_evidence_atomicity_and_api_inventory_preliminary`;
+`grep -c '#\[ignore\]'` over that file returns **0**):
+
+```rust
+assert!(BUNDLE_SOURCE.contains("&OwnerKeys"));
+for absent in [
+    "pub fn content_operation(",
+    "pub fn open_bundle_session(",
+    "pub fn export_keyless(",
+] {
+    assert!(!BUNDLE_SOURCE.contains(absent) && …, "{absent}");
+}
+```
+
+**The absence the finding reports is a gated, asserted design decision.** The
+repository does not merely happen to lack a session-based owner content surface;
+it asserts that it lacks one, and asserts that `&OwnerKeys` is the parameter.
+The finding's own remedy — *"route the fifteen rows through `LocalSession` and
+its typed capabilities"* — would make that test fail. A finding whose closure
+criterion breaks an executing test is not a finding about a proof gap.
+
+*Second fact, same direction.* `spec/04-mandates.md:1861` defines the Owner row
+verbatim: *"Local narrow capability; operation is authorized without a mandate,
+journalized, and consumes no mandate counter or constraint."* That **is** the
+referent the finding said RU-5's word lacked, and it is precisely what the
+Rule's three `Then` steps and the vector row assert. Both facts verified in the
+tree by this pass.
+
+*What survives, and what the removal costs.* Nothing that this note carries.
+The residual observation — that one English word covers two spec senses living
+in two different files — is a **vocabulary observation, not a defect**: each
+sense has its own normative sentence (`spec/04-mandates.md:1861` and
+`spec/01-identity-and-keys.md` § 1.6), and `INVENTORY.md` § 3.1 already recorded
+the ambiguity, deliberately un-numbered, as an observation for Pass A to test.
+Pass A tested it and it did not hold. It returns to being an I1 observation.
+
+**The removal also prices this note's own merge, and the price is published
+rather than absorbed.** §8.1 merged three findings into one on the argument that
+they were one defect with one closure action. That argument was sound, and it
+had a cost nobody stated at the time: **a merged finding dies as one.** The
+panel attacked the strongest limb, `DBND-503`, and the two weaker limbs went
+down with it without being separately examined. Had they stayed separate,
+`DBND-714` and `DBND-715` would have been P3s ruled on the record alone — and,
+on the reasoning above, ruled out anyway. The outcome is the same here; the
+general lesson is not, and §8.1 now carries it.
+
+### `DBND-603` — removed, round 2 — *"line 99 claims no local-mutation orphan and the snapshot cannot see one"*
+
+*Published in round 1 of this note as `DBND-026`, P2, "survived the adversarial
+panel". Identifier retired.*
+
+*Frozen statement.* `:99` resolves to a map comparison whose snapshots resolve
+through `FsStore::canonical_base()`, which returns the generation directory named
+by the `.aithos-current` pointer; the staging generations under
+`.aithos-generations/`, the pointer, the mirror marker and the transient
+`.tmp-*` files are therefore all outside its range, so a leaked staging
+generation — the textbook local-mutation orphan — changes none of the bytes the
+assertion compares. Predicted: the six `FsStore` rows stay green under a staging
+leak.
+
+*The killing fact, and its three routes.* `rust/crates/aithos-bundle/src/lib.rs:527-530`:
+
+```rust
+fn canonical_base(&self) -> io::Result<PathBuf> {
+    if let Some(transaction) = &self.transaction {
+        return Ok(transaction.staging.clone());
+    }
+```
+
+The **first** branch returns `transaction.staging`, and `begin_transaction`
+(`lib.rs:846-851`) sets that to `generations.join(&generation)` — a directory
+**under `.aithos-generations/`**. So staging is inside the range of the
+comparison, not categorically outside it. The refuter traced two further routes
+on the reopen path: `FsStore::recover_transaction` (`lib.rs:906-909`) calls
+`rollback_transaction`, then reads the pointer, and its `Err` propagates through
+`Bundle::open` into the scenario helper's `?`, which panics the step; and
+`reconcile_compatibility_mirror` (`lib.rs:686-692`) collects every key under the
+store root and reconciles it against the active generation **before**
+`reopened_snapshot` is taken, so a stray in the root mirror is copied into the
+canonical view and the comparison sees it.
+
+*Where this pass disagrees with the refutation, and why the finding falls
+anyway.* I verified all three sites. **Route one is weaker than it reads.**
+`canonical_base()`'s first branch fires only while `self.transaction` is `Some`,
+and all three snapshots of `core_atomic_failure_fs` are taken with no
+transaction active — under the proposed mutant as much as under correct code,
+since the mutant's whole content is `self.transaction = None`. So the first
+branch is a true statement about `canonical_base()` that does not, by itself,
+put a leaked generation inside the comparison at the moment the assertion runs.
+**Routes two and three do**, and either alone is enough: the finding's central
+claim was a prediction — *the unit stays green under a staging leak* — and two
+independent mechanisms make it red. A finding whose only content is an unrun
+prediction, against which a refuter names two concrete mechanisms of failure,
+cannot stand. **Removed.** The prediction was never measured, and this note does
+not now measure it: the mutants remain unrun and are not re-proposed.
+
+*What survives.* Nothing that this note carries. The two refuter corrections
+from round 1 — *three maps, not two*, and *1774 lines, not 1857* — are facts
+about the code and are kept in §8.4, where they can be checked, rather than
+disappearing with the finding that occasioned them.
+
+### `DBND-701` — removed, round 2 — *"`Then "<observable_result>"` compares strings, not propositions"*
+
+*Published in round 1 of this note as `DBND-030`, P2, "survived the adversarial
+panel". Identifier retired.*
+
+*Frozen statement.* `:134` puts the whole assertion in an `Examples` column and
+the step compares that cell to a harness literal, so **no row's English sentence
+is evaluated as a claim about the system**; the only behavioural conjunct is one
+boolean whose definition differs per row and whose meaning the sentence does not
+constrain.
+
+*The killing fact.* `rust/crates/aithos-bundle/tests/cucumber.rs:3011`:
+
+```rust
+let operation_succeeded = aithos_core::gamma::verify_owner_entry(&entry, &did).is_ok();
+```
+
+`did` is parsed from `did.json` read out of the store five lines above
+(`:3005-3010`). That boolean is stored as row `:144`'s `operation_succeeded`
+(`:3016` sets `observable_result: "the signature verifies against the public
+key"` in the same struct literal) and is asserted by `assert!(observation.operation_succeeded)`
+at `:8461` — the very step the finding attacks. **Row `:144`'s English sentence
+is the signature verifying against the public key, and what executes is the
+signature verifying against the public key, read from the DID document in the
+store.** The finding's stated centre is false on the plainest row in the table.
+
+*Its second worked example collapses too.* The finding says row `:146`'s *only*
+— *only the intended recipient opens the wrapped key* — "is carried by
+`mismatched_object_refused`, which is a separate step's assertion". It is
+computed three lines below `operation_succeeded`, in the same fixture function,
+for the same row: `cucumber.rs:3084-3086` opens with the intended secret,
+`:3087-3090` fails to open with `xsk(0x78)`. Same scenario, same row, adjacent
+lines. Both facts verified in the tree by this pass.
+
+*What survives, and why it is not re-filed.* The finding's **premise** is true
+and unchallenged: `assert_eq!(observation.observable_result, observable)`
+(`:8460`) does compare an `Examples` cell to a harness literal, and row `:143`'s
+`operation_succeeded` is a byte-equality against a golden vector with no
+signature verification, under a sentence promising one. **That residue is not
+re-filed under a new identifier.** Re-filing the surviving fragment of a refuted
+finding is precisely how a refuted claim returns wearing a different number, and
+this note refuses it on the same ground it refused it for `DBND-705`. It is
+recorded here, in the section for things that did not survive, for whoever
+revisits row `:143`.
+
+*One consequence inside this note.* Round 1's §7 entry for `DBND-705` said its
+true half "is a premise of `DBND-030`, which survived". `DBND-030` did not
+survive. That sentence is corrected in place.
+
+### `DBND-709` — removed, round 2 — *"`cold-load key` is a label with no distinct code path, and five of six confinement surfaces are untested"*
+
+*Published in round 1 of this note as `DBND-035`, P2, "survived the adversarial
+panel". Identifier retired.*
+
+*Frozen statement.* `spec/02-content-tree.md` enumerates six confinement
+surfaces — *"before read, write, list, edition load, staging publication, or
+recovery"* — and the outline exercises one, every row being a read; and
+`cold-load key` executes byte-for-byte what a `Store key` executes.
+
+*The killing fact.* `vectors/cb2-bundle-boundaries.json:363`, the repository's
+own confinement matrix:
+
+```json
+"check_applies_to": [
+  "read", "write", "list", "cold_load", "staging_publication", "recovery"
+]
+```
+
+The six are declared by the project as the **application points of one check**,
+not as six surfaces each owing its own scenario. The finding read a list of
+where a single invariant applies as a list of independent coverage obligations.
+
+*Second fact, and it kills the other half.* The same vector classifies a
+`cold_load_key` as a store key, and that classification is evaluated by
+`store_key_accepted` in three independent places —
+`rust/crates/aithos-bundle/tests/cb2_bundle_boundaries.rs:132` (the definition),
+`:372` (`Some("store_key" | "cold_load_key" | "recovery_key") => store_key_accepted(value)`),
+and `vectors/gen-cb2-bundle-boundaries.py:82`, `:149` (the generator). The
+confinement of a cold load therefore **is** `FsStore::get`'s `checked_join` — the
+exact call row `:165` makes. The row is not mislabelled; the finding's model of
+what a cold load is was. Both facts verified in the tree by this pass, along
+with the vector rows at `:242` and `:340` that carry `input_kind:
+"cold_load_key"`.
+
+*What survives.* Nothing that this note carries. Note that the round-1 refuter
+had already conceded the naming half was weaker than the coverage half; round 2
+removes the coverage half as well, which is the half that was carrying the
+severity. **One narrow observation is left standing and is not re-filed as a
+finding**, because no scenario names it: none of the ten `invalid_input` cells
+contains an uppercase byte, a non-ASCII byte, or a segment over the 64-byte
+bound of `name_accepted` (`lib.rs:41-47`), so the spec's *"nonconforming names"*
+clause is unexercised. It is recorded here and routed nowhere.
+
 ## 8. Reconciliation across the seven units
 
 This is the work no Pass A auditor could do: each saw one unit, and the seven
@@ -2576,7 +2718,15 @@ two spec sentences and give each Rule its own word — and three findings would
 have given a corrector three ways to half-close it. RU-5 and RU-7 reported the
 two-sense problem independently and blind to each other (`VERDICTS.md` § E,
 convergence 3).
-*Severity:* P2, from `DBND-503`, which survived the panel.
+*Severity:* P2, from `DBND-503`.
+**Outcome: the merged finding was removed by the panel in round 2 (§7).** The
+merge was structurally right — one closure action — and it had a cost this note
+did not state when it made it: **a merged finding dies as one.** The panel
+attacked `DBND-503`, the strongest limb, and `DBND-714` and `DBND-715` went down
+with it without being separately examined. Here that changes nothing, because
+the same two facts dispose of all three limbs. The general lesson is recorded
+because the next merge may not be so lucky: **merge for a shared closure action,
+and expect the merged whole to be only as survivable as its strongest limb.**
 
 **Merge 3 — `DBND-508` (RU-5) + `DBND-605` (RU-6) → `DBND-023`.**
 Two different step functions — `core_owner_zone`/`core_owner_fixture` for RU-5,
@@ -2626,6 +2776,7 @@ the record alone* in those words. The rulings that changed something:
 | **Merged** | three findings | §8.1 |
 | **Split** | one finding | §8.2 |
 | **Gained a transcript** | `DBND-028` (old `DBND-604`) | §8.5 |
+| **Two P3 folds lost their parent** | `DBND-027`, `DBND-039` | round 1 folded a limb of `DBND-027` into `DBND-025` and treated `DBND-039` as a by-product of `DBND-030`. `DBND-030` is removed (§7), so `DBND-039` stands alone; `DBND-025` survives, so `DBND-027`'s fold stands. Both are stated in the blocks themselves |
 
 **Every other P3 is carried unchanged**, and each says in its own block that it
 is on the record alone.
@@ -2642,6 +2793,14 @@ the correction.
 | *the six `MemStore` rows go red* → **four of six** | the control `ev-f0125e0b` | in the `DBND-027` block, with the stake it was attached to and the reason it did not fire |
 | *19 `pub fn` in `session.rs`* → **18** | this pass, `grep -n "pub fn" session.rs` | in the `DBND-029` block |
 | *`core_path_raw_snapshot` at `:3232-3288`* (RU-6) versus *at `:3149-3193`* (RU-7) — the two Pass A reports disagreed | this pass | `:3149` is correct; `:3232` is the start of the fixture `match`. This is the same error as the 1774 correction, and the refuter found it first |
+| *seven Pass A auditors* → **six auditors over seven units** | the warden, breach (D) | §2, §6.1 and §15. `frozen.json` says seven and is **not edited**: it is hashed and cited by that hash, and a freeze that can be corrected afterwards is not a freeze |
+| *seventeen mutants* → **nineteen distinct code edits, twenty transcripts, eighteen experiments** | the warden, breach (F), counting the ledger's own arrays | §2 and §4.2. No evidence identifier, verdict or counter moves with it |
+| *§4.2 headed "the fifteen confirming mutants"* over **fourteen** rows | the warden, breach (F) | §4.2, re-headed and the arithmetic spelled out |
+| *`verify_links` at `bundle.rs:1770`* → **`:1772`** | the warden, breach (G) | in the `DBND-018` block. The panel's own `DBND-504` note had it right, so the repository disagreed with itself |
+| *"the Pass A reports are committed in this repository"* → **they were not** | the warden, breach (A) | §1. They are now, and §1 lists the paths |
+| *"the audited bytes and the current bytes are the same bytes"* → **false for the feature file** | the warden, breach (A) | §1 worktree row, and §5.2 |
+| *round 1's feature-file line citations, published against a file 99 lines longer* | the warden, breach (B) | §1 convention block and §5.2 |
+| *four findings "survived the adversarial panel"* → **none did** | the warden, then a second refuter on all four | §7, four new entries; the evidential state itself is struck in §6 |
 
 Both `DBND-603` corrections were described by their refuter as not load-bearing,
 and they are not: the finding stands on either arithmetic. They are published
@@ -2680,6 +2839,40 @@ and that is its error about its own fixture"*, and instructs Pass B not to repea
 the six. **The instruction is honoured and the fact is now more precise than the
 instruction**: both rows are `MemStore`-backed. What they do not reach is a
 non-empty overlay, because both faults fire on the same first write.
+
+### 8.5.1 Two more of the orchestrator's own numbers, corrected in the same place
+
+The warden found both, this note publishes both, and they belong here rather
+than in a footnote because they are the same kind of thing as the paragraph
+above: a number in an authority that does not survive contact with the artifact
+it summarises.
+
+- **"Seven independent auditors" — there were six.** `frozen.json`'s `note`
+  field and ledger line 20 both say seven. `pass-a/` holds six reports and no
+  `RU-4.md`; `RU-3.md` is headed for RU-3 **and** RU-4 and reads them as one
+  sitting on `INVENTORY.md` § 1.8's own recommendation. Round 1 of this note
+  disclosed the six correctly in §2 and then wrote "seven" in §6.1 and twice in
+  §15, so the audit contradicted itself three times inside one document. Six is
+  the number. **`frozen.json` is not edited** — it is hashed, it is cited by that
+  hash, and the whole evidential value of a freeze is that it cannot be tidied
+  afterwards. The correction lives in the ledger and here.
+- **"Seventeen mutants" — there were nineteen distinct code edits.** Counting the
+  ledger's own arrays: `wave_1` has 11 items, `wave_2` has 7, one of which
+  (*RU-5 parameter reachability*) is two separate edits with two transcripts; the
+  gate lines between the freeze and the panel are 20 transcripts, of which
+  `ev-19a635cf` and `ev-bec6b91e` measure the **same** mutant by two commands.
+  That is 19 distinct edits, or 18 experiments under the ledger's grouping. The
+  number 17 comes from `wave_1`'s prose — *"ten predictions, ten confirmations"* —
+  which silently drops the `bundle.rs:1658` control from the count of the array
+  printed directly beneath it. **The control that was dropped from the count is
+  `ev-5474b889`, one of only two runs in this whole campaign that demonstrate a
+  scenario catching something.** Losing it from a total is a small arithmetic
+  slip; losing it from the argument would not have been.
+
+Neither correction changes an evidence identifier, a verdict, a counter or a
+finding. Both are published because this note's subject is claims that do not
+match what happened, and it does not get to hold its own authorities to a lower
+standard than it holds the feature.
 
 ## 9. Recorded follow-ups this feature already owes
 
@@ -2752,7 +2945,10 @@ materialise.
   `:96` **and** `:152` — RU-6 and RU-7b, `DBND-036`; `a_published_bundle`
   (`:7706`) carries `:23` **and** `:28`, within RU-1; and
   `d_capability_boundary_holds` (`:8477-8490`) carries `:136`, `:137`, `:138`
-  **and** `:139` — four sentences, one `Rule`, three assertions, `DBND-030`.
+  **and** `:139` — four sentences, one `Rule`, three assertions. That was
+  `DBND-030`'s second limb; the finding is removed (§7) and **the structural
+  fact is unrefuted and now carried by no finding**, which is recorded here
+  rather than lost.
 - **Production surfaces this feature does not traverse.** `Bundle::grant`
   (`grants.rs:739`), the whole of `publication.rs`'s draft.2 verification family,
   `Header::validate_as_owner` (`aithos-core/src/header.rs:385-401`), and
@@ -2799,19 +2995,24 @@ three scenarios a reader would otherwise count as proof.
 
 **Lot C — the shared step bodies.** `DBND-003` first, because splitting
 `edition_verifies` is a precondition for giving `:13` and `:51` their own
-assertions; then `DBND-023`, because building the fixture in the `Given` is a
-precondition for `DBND-026`'s pre-mutation raw snapshot; then `DBND-036`.
-Ordering matters here and nowhere else.
+assertions; then `DBND-023`; then `DBND-036`. Ordering matters between the first
+two and nowhere else. *(Round 1 chained `DBND-023` to `DBND-026`'s pre-mutation
+raw snapshot; `DBND-026` is removed, §7, and the chain with it.)*
 
 **Lot D — the remaining P2s.** `DBND-002`, `DBND-007`, `DBND-013`, `DBND-019`,
-`DBND-020`, `DBND-025`, `DBND-026`, `DBND-030`, `DBND-031`, `DBND-032`,
-`DBND-033`, `DBND-034`, `DBND-035`. Each carries its own closure criterion and
-eight of them carry an already-run mutant that must go red.
+`DBND-025`, `DBND-031`, `DBND-032`, `DBND-033`, `DBND-034` — **nine, not
+thirteen**: `DBND-020`, `DBND-026`, `DBND-030` and `DBND-035` were removed by
+the panel (§7). Every one of the nine carries its own closure criterion **and an
+already-run mutant that must go red**, which is now true of the whole lot rather
+than of eight of thirteen. The lot got smaller and its evidential quality went
+up.
 
-**Lot E — the twenty P3s.** They are on the record alone and none blocks a
-lot above. Three of them (`DBND-021`, `DBND-027`, `DBND-039`) are partly
-discharged as by-products of lots A–D; their markers stay until an independent
-review closes them, per the marker lifecycle `c-headers.feature` uses.
+**Lot E — the twenty P3s.** They are on the record alone and none blocks a lot
+above. Two of them (`DBND-021`, `DBND-027`) are partly discharged as by-products
+of lots A–D; their markers stay until an independent review closes them, per the
+marker lifecycle `c-headers.feature` uses. `DBND-039` was in that group in round
+1 because `DBND-030` would have discharged it; with `DBND-030` removed it is
+**no longer a by-product of anything** and must be executed on its own.
 
 **Two mutants that must be re-run and must go red before this note can move to
 `REVIEW_ACCEPTED`**: `ev-2d2ebd1b` (one row of `:148`) and `ev-794d59c3` (one row
@@ -2834,18 +3035,30 @@ Two, and neither may be taken silently by a corrector.
    § 2.11 to say the field is informational. **Owner: the protocol owner.** No
    corrector receives it from this note.
 
-`DBND-020`'s vocabulary question is *not* on this list: it has a closure criterion
-a corrector can execute without a ruling, because both senses already have spec
-sentences and the work is to stop using one word for both.
+*Round 1 listed a third item here in order to exclude it — `DBND-020`'s
+vocabulary question — on the ground that a corrector could execute it without a
+ruling. `DBND-020` was removed by the panel (§7) and the exclusion is moot: the
+two spec sentences that would have grounded the rewording are the same two facts
+that killed the finding.*
 
 ## 13. Limits of this conclusion
 
-- **Twenty of the thirty-nine findings rest on reading alone.** Every one says so
+- **Twenty of the thirty-five findings rest on reading alone.** Every one says so
   in its own block. A P3 in this note is a claim about what the source says, not
   a measurement, and it has not survived an adversary.
-- **Four findings survived a panel of one refuter each, not three.** `c-headers`
-  ran three refuters per finding; this round ran one, on ten findings. A single
-  refuter that fails to refute is weaker evidence than three that fail to.
+- **Nothing in this note survived an adversary, because nothing that met one
+  lived.** The panel examined ten findings and killed ten. The fifteen findings
+  that stand on a transcript were never attacked — the owner ruling scoped the
+  panel to findings without a confirmed mutant — and the twenty P3s were never
+  attacked either. **A reader should treat the fifteen mutant-confirmed findings
+  as the load-bearing content of this note and the twenty P3s as unaudited
+  claims about source text.**
+- **Round 1 of this note published four survivors that were not survivors.** The
+  first panel round used one refuter per finding where `c-headers` used three,
+  and did not apply the orchestrator's own escalation rule. The warden caught it;
+  the second refuter killed all four. **The general lesson is that a single
+  refuter's failure to refute is not evidence of anything**, and this note no
+  longer treats it as such anywhere.
 - **Sixteen mutants confirm what a scenario does *not* catch. None of them
   confirms that a scenario catches what it should.** The two controls that do
   that — `ev-5474b889` and `ev-f0125e0b` — cover two scenarios out of thirteen.
@@ -2890,11 +3103,12 @@ This note moves to `REVIEW_ACCEPTED` when all of the following hold.
 6. The two decisions of §12 are recorded by their owners.
 
 **What this note does not establish, stated so that a green gate is not misread.**
-Thirty-nine named defects in the *proof* of this feature are open. Closing all of
+Thirty-five named defects in the *proof* of this feature are open. Closing all of
 them would establish that the 51 scenarios prove what they say. It would not
-establish that the feature's seven Rules cover the specification: `DBND-035`
-alone records five confinement surfaces with no row, and §10 lists three
-production surfaces this feature does not traverse at all.
+establish that the feature's seven Rules cover the specification: §10 lists
+three production surfaces this feature does not traverse at all, and §7's
+`DBND-709` entry leaves one unexercised spec clause standing with no finding to
+carry it.
 
 ## 15. Disclosure-gate trace
 
@@ -2903,12 +3117,13 @@ constraining it would not be an honest audit.
 
 | Step | Date | Fact |
 |---|---|---|
-| 1 | 2026-08-04 | Pass A: **all seven** auditors assess blocking condition 9 independently and all seven raise nothing, each recording its reasoning rather than its conclusion. `frozen.json`, field `disclosure`: *"every finding is a gap between a Gherkin sentence and the assertion behind it, and the production code was read and found intact at `d9120d7`"* |
+| 1 | 2026-08-04 | Pass A: **all six** auditors assess blocking condition 9 independently, across all seven units, and all six raise nothing, each recording its reasoning rather than its conclusion. `frozen.json`, field `disclosure`: *"every finding is a gap between a Gherkin sentence and the assertion behind it, and the production code was read and found intact at `d9120d7`"*. (That same field says "seven auditors"; it is wrong on the count and is not edited — §2, §8.5.1. Round 1 of this note repeated "seven" here and at step 5, twice in one table, and the warden caught both) |
 | 2 | 2026-08-04 | RU-7 names the one candidate it can see, `DBND-703`, and pre-writes the redaction that would preserve it — identifier, severity, and the neutral title *"a secret-exposure assertion is backed by a constant"* — while recommending against retention |
 | 3 | 2026-08-04 | RU-3 names two candidates for Pass B to re-judge, `DBND-302` and `DBND-303`, and states that their neutral titles are already their section headings so the full text could be lifted out without touching the rest |
 | 4 | 2026-08-04 | The panel kills `DBND-302` (§7). Its embargo candidacy falls with it |
 | 5 | 2026-08-04 | **This pass re-assesses rather than inherits**, on the ground that a barrier only ever inherited has stopped being one. Three candidates examined in full; the reasoning is below. **None retained. Nothing embargoed. Nothing withheld from this file or from any tracked file** |
-| 6 | 2026-08-04 | **The tables were re-checked against the gate separately from the prose**, because `c-headers.md`'s leak was caught twice by the warden in places nobody thought to check — an impact table and a comparison table. The tables re-checked here are §4.1, §4.2, §5, §5.1, §6.0, §7's summary table, §8.3, §8.4, §8.5, §9 and this one. No cell of any of them carries a mechanism a prose block withholds, because no prose block withholds one |
+| 5b | 2026-08-04 | **Round 2: the barrier is re-passed over the four late removals, not inherited from round 1.** `DBND-503`/`-714`/`-715`, `DBND-603`, `DBND-701` and `DBND-709` move from §6 to §7, and a removed finding's statement is published in full beside the fact that killed it. Each was re-read against condition 9 in its new form. None describes an exploitable weakness: three are statements about assertions, and the fourth (`DBND-603`) is a prediction about a staging directory that two independent code paths make visible. **None retained.** The killing facts themselves were also checked: they cite an executing test, a `match` arm, a `let` binding and a JSON array, and none of them is a technique |
+| 6 | 2026-08-04 | **The tables were re-checked against the gate separately from the prose**, because `c-headers.md`'s leak was caught twice by the warden in places nobody thought to check — an impact table and a comparison table. The tables re-checked here are §1's two new tables, §4.1, §4.2, §5, §5.1, **§5.2**, §6.0, §7's summary table, §8.3, §8.4, §8.5, §9 and this one. No cell of any of them carries a mechanism a prose block withholds, because no prose block withholds one. The warden independently read **sixteen tables, 191 table lines and all thirteen Gherkin markers** for the same purpose in round 1 and found nothing; §5.2 is the only table added since |
 | 7 | 2026-08-04 | The owner's ruling of the same day published three previously embargoed statements in full — `chdr-028`, `spec-cons-12`, and the code edge of `spec-cons-05`. `chdr-028` binds this cycle and is **cited in §9 and not re-embargoed**. The ruling is a publication decision on three named statements and **was not read as relaxing condition 9**; the assessment below was made against the condition as written |
 
 ### The three candidates, and why none is retained
@@ -2948,7 +3163,11 @@ weakness **for which no fix exists**. Both halves must hold.
   `c-headers` learned this the hard way when retaining `CHDR-007` while
   publishing `CHDR-008`, whose statement was a strict subset. Checked here: no
   finding in this note is a strict subset of another, because §8.1 merged the
-  three pairs that were.
+  three pairs that were. Re-checked after the four round-2 removals, since
+  removing a finding can leave a subset behind: it did not, and the two residues
+  that were left standing (`DBND-701`'s row `:143` premise and `DBND-709`'s
+  nonconforming-names clause) are recorded in §7 and deliberately **not**
+  re-filed.
 - **The tables are the exposure surface.** They were re-checked separately, per
   step 6, and that step exists in this note only because `c-headers.md` §15 wrote
   down where its own barrier failed.
