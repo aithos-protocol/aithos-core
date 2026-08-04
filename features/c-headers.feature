@@ -18,24 +18,24 @@ Feature: Headers — sealed node keys
       When a third keypair tries every line
       Then it recovers nothing
 
-    @audit-partial @chdr-002 @chdr-027
-    # AUDIT CHDR-002 — PARTIAL; CHDR-027 — PARTIAL.
-    # No positive control inside the scenario: nothing establishes that the
-    # owner line opened BEFORE the corruption, so a fixture regression that
-    # made it permanently unopenable would keep this scenario green. The only
-    # positive control of the Rule lives in another scenario.
+    @audit-partial @chdr-027
+    # AUDIT CHDR-027 — PARTIAL.
+    # Three of this Rule's four scenarios are built by one fixture
+    # constructor. CHDR-027's stated closure criterion — an internal positive
+    # control in scenarios 3 and 4 — was met by lot A as a by-product, but no
+    # independent review has closed CHDR-027, so the marker stays.
     # Detail: docs/audits/features/c-headers.md
     Scenario: A corrupted line fails closed
       Given a sealed header for the owner and a grantee
       When one byte of a line's ciphertext is corrupted
       Then opening that line is rejected
 
-    @audit-partial @chdr-001 @chdr-025 @chdr-002 @chdr-027
-    # AUDIT CHDR-001 — PARTIAL; CHDR-025 — PARTIAL; CHDR-002, CHDR-027.
-    # Only the node half of the binding is exercised: both headers are built
-    # at version 1 and the open is at version 1, so key_version never varies.
-    # Outside Gherkin the version binding is defended only by byte pins
-    # against vectors, never by a behavioural differential (CHDR-025).
+    @audit-partial @chdr-027
+    # AUDIT CHDR-027 — PARTIAL.
+    # This scenario borrowed its detection power from a neighbour. CHDR-027's
+    # stated closure criterion — an internal positive control here and in
+    # scenario 3 — was met by lot A as a by-product, but no independent review
+    # has closed CHDR-027, so the marker stays.
     # Detail: docs/audits/features/c-headers.md
     Scenario: A line is bound to its node and version
       Given a sealed header for the owner on one node
@@ -44,10 +44,10 @@ Feature: Headers — sealed node keys
 
   Rule: The owner line is mandatory (I3)
 
-    @audit-partial @chdr-009 @chdr-011 @chdr-010
-    # AUDIT CHDR-009 — PARTIAL; CHDR-011, CHDR-010 — PARTIAL.
-    # Only the build-time I3 gate is exercised on its fail-closed side; the
-    # normative case declared by vectors/g2-rotation.json has no consumer.
+    @audit-partial @chdr-011 @chdr-010
+    # AUDIT CHDR-011, CHDR-010 — PARTIAL.
+    # The I3 rejection is asserted through a string match on "I3" rather than
+    # the typed variant, and the scenario's Given is empty.
     # Detail: docs/audits/features/c-headers.md
     Scenario: A header without an owner line is invalid
       Given a node key and a single grantee recipient
@@ -56,27 +56,30 @@ Feature: Headers — sealed node keys
 
   Rule: Grant is one appended line, touching nobody
 
-    @audit-partial @chdr-013 @chdr-014 @chdr-016 @chdr-015 @chdr-017 @chdr-018
-    # AUDIT CHDR-013, CHDR-014, CHDR-016 — PARTIAL; CHDR-015, CHDR-017,
+    @audit-partial @chdr-016 @chdr-015 @chdr-017 @chdr-018
+    # AUDIT CHDR-016 — OPEN, re-routed 2026-08-04 to g-revocation and d-bundle
+    # as chdr-016-grant-path (orchestrator QUEUE.yaml); CHDR-015, CHDR-017,
     # CHDR-018 — PARTIAL.
-    # "every other line" is exercised on a header holding exactly one other
-    # line; neither the line count nor the position is asserted after the
-    # append; and the production grant surface is touched by no step of this
-    # Rule.
+    # The production grant surface is still touched by no step of this Rule
+    # (CHDR-015). The closure criteria of CHDR-017 (structural assertion) and
+    # CHDR-018 (two distinct Then functions) were met by lot A as by-products,
+    # but no independent review has closed either, so both markers stay.
     # Detail: docs/audits/features/c-headers.md
     Scenario: Granting a new reader leaves every other line untouched
-      Given a sealed header for the owner
+      Given a sealed header for the owner and an existing reader
       When a line for a new grantee is appended
       Then the new grantee opens the node key
       And the owner line is byte-identical to before
 
   Rule: Rotation cuts the revoked and re-links the parent
 
-    @audit-partial @chdr-019 @chdr-024
-    # AUDIT CHDR-019 — PARTIAL; CHDR-024 — PARTIAL.
-    # "cannot open" is decided by the kid routing hint, which the spec
-    # declares non-authorizing: the seal is never reached. No assertion reads
-    # key_versions["2"].lines, and no step of this Rule calls check_rotation.
+    @audit-partial @chdr-024
+    # AUDIT CHDR-024 — PARTIAL.
+    # The Then now calls check_rotation(2), which was CHDR-024's stated
+    # closure criterion, met by lot A as a by-product; no independent review
+    # has closed CHDR-024, so the marker stays. The live gap is in the gate
+    # itself: check_rotation tests an inclusion where spec/03-headers.md:109-111
+    # requires an equality, so a rotation dropping a survivor passes.
     # Detail: docs/audits/features/c-headers.md
     Scenario: The revoked gets no line in the new version
       Given a sealed header for the owner and two grantees
@@ -85,12 +88,11 @@ Feature: Headers — sealed node keys
       And the first grantee cannot open the new version
       And the owner opens the new version too
 
-    @audit-semantic-false-positive @chdr-021 @chdr-020 @chdr-026
-    # AUDIT CHDR-021 — SEMANTIC_FALSE_POSITIVE; CHDR-020, CHDR-026 — PARTIAL.
-    # The scenario contains no derived node, no rotation and no content-tree
-    # derivation: it seals a constant under a constant and reopens it two
-    # steps later under the same constant. What is established is only
-    # wrap_open(wrap_seal(k, dk)) == dk.
+    @audit-partial @chdr-020 @chdr-026
+    # AUDIT CHDR-020, CHDR-026 — PARTIAL.
+    # No negative of the wrap by divergent AAD exists anywhere (CHDR-026); a
+    # symmetric mutation of derive_key still survives this scenario
+    # (ev-ec9412a7), caught only by the pinned vectors (ev-cbce8aa0).
     # Detail: docs/audits/features/c-headers.md
     Scenario: An up-link wrap restores derivation for the parent holder
       Given a derived node rotated to a fresh random key

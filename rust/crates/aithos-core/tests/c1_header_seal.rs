@@ -89,6 +89,23 @@ fn c1_fail_closed() {
     let n = b24(&v.owner_line.n_hex);
     let mut c = hex::decode(&v.owner_line.c_hex).unwrap();
 
+    // CHDR-025 — POSITIVE CONTROL, in this test's own body.
+    //
+    // Every assertion below is negative. Without a known-good base here, a
+    // mutation of `line_aad` that makes NOTHING open leaves all four of them
+    // satisfied — vacuously, for a reason that has nothing to do with the
+    // property each one names. This control is what turns them into
+    // differentials. It must not be moved to another test function: the
+    // vacuity is per-body, and `c1_owner_and_grantee_lines` cannot repair it.
+    assert_eq!(
+        hex::encode(
+            open_line(&sk, &epk, &c, &n, &aad)
+                .expect("positive control: the untouched tuple MUST open under the nominal AAD")
+        ),
+        v.dk_hex,
+        "positive control: the untouched tuple opens on DK"
+    );
+
     // corrupted byte
     c[5] ^= 1;
     assert!(open_line(&sk, &epk, &c, &n, &aad).is_err());

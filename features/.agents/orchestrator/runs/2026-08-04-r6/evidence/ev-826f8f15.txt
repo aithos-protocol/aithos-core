@@ -1,0 +1,57 @@
+
+running 1 test
+MI-5 verify_owner_entry => Err(InvalidGammaEntry("gamma_0000000000000000000000000N: signature does not verify"))
+MI-5 vector declares forged_beacon_must_fail = Some(String("InvalidGammaEntry"))
+test mi5_probe_forged_beacon_on_the_admission_path ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+warning: unused import: `aithos_core::error::Error`
+ --> crates/aithos-core/tests/mi5_probe.rs:6:5
+  |
+6 | use aithos_core::error::Error;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `check_anchor` and `heartbeat_ok`
+ --> crates/aithos-core/tests/mi5_probe.rs:7:26
+  |
+7 | use aithos_core::gamma::{check_anchor, heartbeat_ok, Entry};
+  |                          ^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: fields `verdicts_after_beacon1`, `verdict_after_beacon2`, `freshness`, and `anchor_verdicts` are never read
+  --> crates/aithos-core/tests/mi5_probe.rs:21:5
+   |
+15 | struct F3 {
+   |        -- fields in this struct
+...
+21 |     verdicts_after_beacon1: Value,
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+22 |     verdict_after_beacon2: Value,
+   |     ^^^^^^^^^^^^^^^^^^^^^
+23 |     freshness: String,
+   |     ^^^^^^^^^
+24 |     anchor_verdicts: Value,
+   |     ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `beacon1`, `mandate`, and `v` are never read
+  --> crates/aithos-core/tests/mi5_probe.rs:36:5
+   |
+35 | struct Fixture {
+   |        ------- fields in this struct
+36 |     beacon1: Entry,
+   |     ^^^^^^^
+37 |     beacon2: Entry,
+38 |     mandate: Mandate,
+   |     ^^^^^^^
+...
+41 |     v: F3,
+   |     ^
+
+warning: `aithos-core` (test "mi5_probe") generated 4 warnings (run `cargo fix --test "mi5_probe" -p aithos-core` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.80s
+     Running tests/mi5_probe.rs (rust/target/debug/deps/mi5_probe-a7c988f9e849a57d)

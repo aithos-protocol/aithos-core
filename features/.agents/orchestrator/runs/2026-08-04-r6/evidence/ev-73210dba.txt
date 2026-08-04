@@ -1,0 +1,41 @@
+
+running 7 tests
+test a_clean_rotation_is_accepted ... ok
+test a_smuggled_recipient_is_rejected ... ok
+test rotate_refuses_a_survivor_set_without_the_owner ... ok
+test survivor_set_is_old_minus_revoked ... ok
+test uplink_wrap_bytes_match_python ... ok
+test validate_refuses_a_key_version_without_the_owner_line ... ok
+test check_rotation_refuses_a_new_version_without_the_owner_line ... FAILED
+
+failures:
+
+---- check_rotation_refuses_a_new_version_without_the_owner_line stdout ----
+
+thread 'check_rotation_refuses_a_new_version_without_the_owner_line' (27855) panicked at crates/aithos-core/tests/g2_rotation.rs:180:5:
+expected MissingOwnerLine, got Ok(())
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: g2_rotation::check_rotation_refuses_a_new_version_without_the_owner_line
+             at ./tests/g2_rotation.rs:180:5
+   3: g2_rotation::check_rotation_refuses_a_new_version_without_the_owner_line::{{closure}}
+             at ./tests/g2_rotation.rs:156:65
+   4: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   5: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    check_rotation_refuses_a_new_version_without_the_owner_line
+
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.69s
+     Running tests/g2_rotation.rs (rust/target/debug/deps/g2_rotation-da8231095fab4918)
+error: test failed, to rerun pass `-p aithos-core --test g2_rotation`

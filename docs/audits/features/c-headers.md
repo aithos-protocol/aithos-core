@@ -18,6 +18,34 @@
 | Rapport de run | `features/.agents/c-headers/auditor/runs/2026-08-03-audit-initial.md` |
 | Étalon Pass B | branche `origin/codex/audit-c-headers` (`af32734`), audit manuel de juillet 2026 |
 
+### Mise à jour du 2026-08-04 — clôture du lot A
+
+| Champ | Valeur |
+|---|---|
+| Ronde | 2 — revue de correction, lot A (**sémantique de test**, aucun code de production touché) |
+| Date | 2026-08-04 |
+| Révision candidate revue | `5905bec` (correction `03283b0`) ; branche `codex/fix-c-headers-lot-a`, tête `10de842` au moment de cette mise à jour |
+| Run orchestré | `2026-08-04-r6` (`features/.agents/orchestrator/runs/2026-08-04-r6/ledger.jsonl`) |
+| Revue indépendante | `features/.agents/c-headers/auditor/runs/2026-08-04-review-lot-a.md` — **gelée**, isolation matérielle du Pass A, douze mutants nommés et exécutés |
+| Rapport de correction | `features/.agents/c-headers/corrector/runs/2026-08-04-correction-lot-a.md` |
+| Findings clos | `CHDR-001`, `CHDR-002`, `CHDR-009`, `CHDR-013`, `CHDR-014`, `CHDR-019`, `CHDR-021`, `CHDR-025` → **`VERIFIED`** |
+| Findings ouverts par cette revue | `CHDR-037`, `CHDR-038`, `CHDR-039`, `CHDR-040` (**P2**), `CHDR-042` — §6ter. `CHDR-041` est **réservé et non ouvert** |
+| Correction de la présente note | le mutant énoncé par le bloc `CHDR-019` de §6 était **faux sur le code**. Il est retiré et remplacé (§6, `CHDR-019`) |
+
+**Ce que cette clôture n'établit pas.** Huit verdicts propres ne sont pas une
+preuve que la feature est correcte : ce sont huit défauts nommés **dans ses
+preuves** qui sont fermés. Restent ouverts, entre autres, `CHDR-016` (re-routé
+hors de `c-headers`, ni clos ni retiré), `CHDR-028` (sous embargo), les
+findings P3 de §6 et §6bis, les cinq findings de §6ter, et les suites
+enregistrées par l'orchestrateur dans `QUEUE.yaml`. Le détail est en §3.
+
+**Ce que la revue a mesuré et qui ne va pas dans le sens du lot.** Un mutant
+sur douze — la réduction de `derive_key` à l'identité — laisse le gate de
+feature **entièrement vert** après correction (`ev-ec9412a7`) ; il est retenu
+comme résidu nommé sous `CHDR-021`. Une assertion ajoutée par le lot n'a été
+tuée par aucun des douze mutants et est étiquetée **non prouvée**, non comptée
+(§6, `CHDR-019`).
+
 ### Avertissement — collision d'identifiants avec l'étalon de juillet
 
 La branche publique `origin/codex/audit-c-headers` porte un
@@ -98,6 +126,80 @@ divulgation pendant le cycle, puis publiés en entier sur décision du
 propriétaire le 2026-08-03 (§6, préambule ; trace complète en §15). Ils restent
 `DECISION_REQUIRED` et ne sont assignés à aucun correcteur.
 
+### Mise à jour du 2026-08-04 — ce que le lot A ferme, ce qui reste ouvert
+
+Les trois constats ci-dessus décrivent `a2087f2` et sont conservés tels quels :
+c'est ce que la correction répare. Après la clôture du lot A, sur la révision
+candidate `5905bec` :
+
+1. **Le constat 1 est fermé sur les quatre exemples qu'il cite.** « le révoqué
+   n'a pas de ligne » est désormais lu dans `key_versions["2"].lines`
+   (`CHDR-019`, `ev-39f02b30`) ; « toute autre ligne intacte » s'exerce sur deux
+   destinataires préexistants avec cardinal et préfixe assertés (`CHDR-013`,
+   `CHDR-014`, `ev-a1f966ca`, `ev-1b889900`, `ev-b3ccaaf3`) ; « liée à son nœud
+   *et à sa version* » fait varier la version (`CHDR-001`, `ev-9ba93af7`) ; le
+   scénario 8 dérive, tourne et enveloppe réellement (`CHDR-021`,
+   `ev-c78772c4`, `ev-16a836a9`).
+2. **Le constat 2 tombe.** `CHDR-021`, qui portait le verdict
+   `SEMANTIC_FALSE_POSITIVE` du scénario 8, est `VERIFIED`. Le scénario 8 repasse
+   `PARTIAL` — pas `PROVEN` : `CHDR-020` et `CHDR-026` restent ouverts sur lui
+   (§5).
+3. **Le constat 3 est fermé, et sa seconde moitié l'était avant le lot.**
+   `c1_fail_closed` a désormais un contrôle positif dans son propre corps
+   (`CHDR-025`, `ev-ad4db6a1`), et `vectors/gen-c.py` — le générateur
+   indépendant manquant — existe depuis `5be3047`, base du lot B. Le crédit de
+   cette moitié appartient au lot B, pas au lot A. Le générateur n'est en
+   revanche exécuté par **aucun gate** : `CHDR-038`, §6ter.
+
+**Le paragraphe `DECISION_REQUIRED` ci-dessus est périmé et est corrigé ici.**
+Le propriétaire a tranché la sémantique le 2026-08-03
+(`features/.agents/c-headers/decisions/2026-08-03-chdr-007-012-i3-authority.md`,
+lecture A sur les deux), le lot B a été implémenté puis accepté, et `CHDR-007`
+comme `CHDR-012` sont `VERIFIED` depuis le 2026-08-04. Ils ne sont plus
+`DECISION_REQUIRED` et ne sont plus non assignés. La condition de blocage 1 est
+fermée par cette décision ; les blocs de §6 le disent déjà, la présente §3 ne
+le disait pas.
+
+**Ce qui reste ouvert après le lot A**, énuméré plutôt que résumé :
+
+- `CHDR-016` — **re-routé** hors de `c-headers` le 2026-08-04 par
+  l'orchestrateur, vers `g-revocation` et `d-bundle`, enregistré dans
+  `features/.agents/orchestrator/QUEUE.yaml` sous `chdr-016-grant-path`. **Ni
+  clos ni retiré** : son marqueur Gherkin survit et nomme son nouveau
+  propriétaire.
+- `CHDR-028` — **sous embargo**, non réputé publié (§6bis).
+- `CHDR-007` et `CHDR-012` sont clos, mais laissent huit findings résiduels
+  distincts : `CHDR-029` à `CHDR-036` (§6bis).
+- Les P3 de §6 non touchés par le lot : `CHDR-004`, `-005`, `-006`, `-010`,
+  `-011`, `-015`, `-017`, `-018`, `-020`, `-024`, `-026`, `-027`.
+- Les cinq findings ouverts par la revue du lot A : `CHDR-037`, `CHDR-038`,
+  `CHDR-039`, `CHDR-040` (P2, contre le process lui-même), `CHDR-042` (§6ter).
+- Les suites enregistrées par l'orchestrateur dans
+  `features/.agents/orchestrator/QUEUE.yaml`, qui ne sont pas des findings de
+  cette note et ne sont pas repris ici.
+
+**Quatre clôtures en sous-produit, constatées et non prises.** Le lot A remplit,
+sans que ce soit son mandat, le critère de clôture énoncé de quatre findings qui
+ne lui étaient pas assignés :
+
+| Finding | Critère énoncé | Ce que le lot A a fait |
+|---|---|---|
+| `CHDR-017` | « une assertion structurelle (préfixe intact, cardinal +1 — voir `CHDR-013`) » | faite (`cucumber.rs:12552-12570`) |
+| `CHDR-018` | « deux fonctions distinctes, ou un paramètre Gherkin lié » | `new_grantee_opens` (`:12482`) scindé de `grantee_opens` |
+| `CHDR-024` | « invoquer `check_rotation(2)` dans le `Then` existant du scénario 7 » | fait (`:12603`) |
+| `CHDR-027` | « un contrôle positif interne dans chacun des scénarios 3 et 4 » | fait (`:12506-12528`) |
+
+**Aucun des quatre n'est marqué `VERIFIED` par cette note**, et leurs marqueurs
+Gherkin restent en place. Le motif est un principe, pas une prudence : un
+critère de clôture rempli n'est pas un verdict. Ces quatre findings n'étaient
+dans le périmètre d'aucune revue indépendante, aucun mutant n'a été conçu contre
+eux, et l'auditeur qui les a écrits ne peut pas les clore lui-même
+(`PROCESS.md:307`, `features/AGENTS.md` § *Role boundaries*). Leur marqueur dit
+désormais **exactement cela** — critère rempli en sous-produit, clôture non
+prononcée — plutôt que de continuer à décrire un trou refermé, qui serait
+précisément le défaut que `CHDR-037` nomme. Ils sont remis à l'orchestrateur
+comme candidats à un lot de revue court.
+
 ### Compteurs exacts
 
 Cités par `evidence_id`, jamais recopiés d'un document.
@@ -148,6 +250,31 @@ courant à `a2087f2`, jamais sur une exécution non journalisée.
 | 8 | An up-link wrap restores derivation for the parent holder | `PROXY` | **`SEMANTIC_FALSE_POSITIVE`** | `Wrap::seal` → `wrap_seal` → `derive_key(CTX_WRAP_KEY, …)` ; `Wrap::open` | un aller-retour AEAD symétrique sous la constante même qui a servi à sceller, dans le même scénario, sans header, sans rotation et sans dérivation |
 
 Totaux réconciliés : **2 `PROVEN`, 5 `PARTIAL`, 1 `SEMANTIC_FALSE_POSITIVE`**.
+
+### Mise à jour du 2026-08-04 — la matrice après le lot A
+
+Cette matrice décrit `a2087f2` et n'est pas réécrite : elle est l'état contre
+lequel la correction se mesure. Un seul **statut** bouge, et il bouge parce que
+le finding qui le portait est clos :
+
+| # | Statut à `a2087f2` | Statut après le lot A | Motif |
+|---|---|---|---|
+| 8 | `SEMANTIC_FALSE_POSITIVE` | **`PARTIAL`** | `CHDR-021`, qui portait ce verdict (§6), est `VERIFIED` ; `CHDR-020` et `CHDR-026` restent ouverts sur ce scénario |
+| 3, 4, 5, 6, 7 | `PARTIAL` | `PARTIAL` | des findings ouverts subsistent sur chacun : `CHDR-027` ; `CHDR-027` ; `CHDR-010`, `CHDR-011` ; `CHDR-015`, `CHDR-016`, `CHDR-017`, `CHDR-018` ; `CHDR-024` |
+| 1, 2 | `PROVEN` | `PROVEN` | inchangés, non touchés par le lot |
+
+Totaux après le lot A : **2 `PROVEN`, 6 `PARTIAL`, 0
+`SEMANTIC_FALSE_POSITIVE`**. Aucun scénario ne passe à `PROVEN` : fermer le
+défaut de preuve nommé par un finding ne prouve pas les autres phrases du même
+scénario, et cette note ne requalifie pas un scénario sur la foi d'une clôture
+partielle.
+
+**Un seul mouvement de la colonne « ce que l'assertion compare réellement »
+mérite d'être cité, parce qu'il contredit la ligne 7 ci-dessus.** Le rejet du
+révoqué n'est plus produit par le filtre `kid` : le `Then` du scénario 7 lit
+maintenant `key_versions["2"].lines` et essaie le secret du révoqué contre
+chaque `kid` réellement routable en v2 (`cucumber.rs:12590-12617`). Le
+contre-exemple mesuré est `ev-39f02b30`.
 
 ### Pourquoi le scénario 8 n'est pas `PROXY`
 
@@ -469,7 +596,50 @@ sur la baseline auditée, et échoue après correction.
 
 ---
 
-### `CHDR-025` — `OPEN`, P2 — nouveau, issu de la passe d'état partagé
+### `CHDR-025` — **`VERIFIED`** le 2026-08-04, P2 — nouveau, issu de la passe d'état partagé
+
+> **Statut de clôture.** `VERIFIED` par la revue indépendante du 2026-08-04
+> (`auditor/runs/2026-08-04-review-lot-a.md` §1), sur la révision candidate
+> `5905bec`. L'énoncé ci-dessous décrit le code **audité** (`a2087f2`) et est
+> conservé tel quel : c'est ce que la correction répare.
+>
+> **Moitié 1 — le contrôle positif.** `c1_header_seal.rs:92-107` ouvre le tuple
+> non modifié sous l'AAD nominale et assère `dk_hex` **avant** les quatre
+> négatifs. Mutant : `M11`, `PURPOSE_HEADER_LINE` changé — une mutation
+> *symétrique* de l'AAD, exactement la classe que le finding nomme.
+> `c1_fail_closed` ne re-scelle rien : il déchiffre le chiffré **figé** du
+> vecteur, donc rien n'ouvre sous `M11`. Preuve — **`ev-ad4db6a1`**
+> (`-- --exact c1_fail_closed`) : RED à `c1_header_seal.rs:103`, *positive
+> control: the untouched tuple MUST open under the nominal AAD:
+> SealRejected("line does not open")*. **`ev-34e698d8`** (non porté) : 1 passé /
+> 2 échoués. Le portage `--exact` **est** la revendication et non une commodité :
+> la vacuité est par corps, donc la mesure discriminante doit exclure
+> `c1_owner_and_grantee_lines`, qui la masquerait. Sous le corps
+> pré-correction — quatre négatifs et rien d'autre — chacun est satisfait
+> vacuement sous `M11` et le test est vert.
+>
+> **Moitié 2 — la revendication de génération indépendante.** Le critère était
+> *produire ou retirer*. Elle est produite : `vectors/gen-c.py` existe, sa
+> docstring énonce la règle de seconde implémentation (blake3 + PyNaCl + HKDF
+> RFC 5869 manuel, jamais la référence Rust), et `check_c1()` (`:167-207`)
+> reconstruit la ligne owner, la ligne grantee et le wrap C2 de
+> `c1-header-seal.json` octet à octet sans réécrire le fichier gelé. **Le crédit
+> n'appartient pas au lot A** : le fichier est arrivé par `5be3047`, base du lot
+> B (revue §9). Le verdict n'en dépend pas — le critère est rempli sur le
+> candidat — mais l'attribution est rectifiée ici parce que la note l'aurait
+> sinon portée au lot A. Le générateur n'est exécuté par aucun gate :
+> **`CHDR-038`**, §6ter, non imputable au lot A.
+>
+> **Renforcement inattendu, mesuré, plus fort que le critère de clôture.**
+> **`ev-2e427d6e`** — sous `M3`, le mutant `kek` que la présente note énonçait à
+> tort sous `CHDR-019` — montre que le nouveau contrôle positif tombe **aussi**.
+> Parce qu'il déchiffre un chiffré figé et non un chiffré qu'il vient de
+> produire, ce contrôle n'est pas seulement une base différentielle pour quatre
+> négatifs : c'est un **épinglage asymétrique de tout le chemin de sceau** —
+> dérivation de KEK, construction d'AAD et AEAD ensemble. Toute mutation de
+> `kek`, de `aad` ou du chiffre le casse, symétrique ou non. C'est strictement
+> plus que ce que le critère demandait, et la revue ne l'a appris que d'un
+> mutant visé ailleurs.
 
 **La liaison `key_version` du sceau de ligne n'a aucun défenseur comportemental
 dans le dépôt.**
@@ -531,7 +701,37 @@ génération indépendante de `vectors/c1-header-seal.json`.
 
 ---
 
-### `CHDR-001` — `OPEN`, P2 — 1/3 réfutations (survit)
+### `CHDR-001` — **`VERIFIED`** le 2026-08-04, P2 — 1/3 réfutations (survit)
+
+> **Statut de clôture.** `VERIFIED` par la revue indépendante du 2026-08-04
+> (`auditor/runs/2026-08-04-review-lot-a.md` §1), sur la révision candidate
+> `5905bec`. L'énoncé ci-dessous décrit le code **audité** (`a2087f2`) et est
+> conservé tel quel.
+>
+> **Correction.** `replay_line_other_node` (`cucumber.rs:8215-8248`) enregistre
+> trois tentatives : une ouverture de contrôle sur le header d'origine ; la
+> moitié « nœud » (greffe dans un header `NODE_OTHER`, ouverte en v1) ; et la
+> moitié « version » (`:8239-8248`) — la même ligne insérée comme
+> `key_versions["2"]` du header **d'origine**, mêmes `subject_did`, `node` et
+> `kid`, ouverte en v2. Dans cette troisième tentative, `key_version` est la
+> seule entrée variable de `line_aad`.
+>
+> **Mutant.** `M1` — suppression du séparateur `0x00` et des octets de
+> `key_version` dans `aad()` (`seal.rs:28-29`). C'est le RED attendu du lot 5
+> de §11.
+>
+> **Preuve — `ev-9ba93af7`** : 7 passés / 1 échoué, scénario 4 seul, à
+> *attempt 2 after the mutation must be rejected, got Ok([119; 32])*.
+>
+> **Pourquoi cette preuve discrimine.** `0x77` est `DK` (`cucumber.rs:262`) :
+> sous `M1` le rejeu en v2 **réussit**, donc la liaison de version était bien la
+> seule chose qui l'arrêtait. L'indice de tentative est le discriminant —
+> **la tentative 1, la greffe inter-nœuds, échoue toujours** sous `M1`, le nœud
+> variant encore. Un seul transcript porte les deux bras : l'indice qui tombe
+> prouve que la nouvelle assertion mord, l'indice qui passe prouve que
+> l'ancienne ne mordait pas. La revue relève par ailleurs que rien d'autre dans
+> le scénario ne voit `M1` : la moitié « version » n'est pas ornementale
+> (revue §7, point 11).
 
 **Le scénario « A line is bound to its node and version » n'exerce que la
 liaison au nœud.**
@@ -569,7 +769,48 @@ Gherkin cesse de revendiquer deux variations.
 
 ---
 
-### `CHDR-009` — `OPEN`, P2 — 2/3 réfutations (réfuté, reformulé)
+### `CHDR-009` — **`VERIFIED`** le 2026-08-04, P2 — 2/3 réfutations (réfuté, reformulé)
+
+> **Statut de clôture.** `VERIFIED` par la revue indépendante du 2026-08-04
+> (`auditor/runs/2026-08-04-review-lot-a.md` §1), sur la révision candidate
+> `5905bec`. L'énoncé ci-dessous décrit le code **audité** (`a2087f2`) et est
+> conservé tel quel.
+>
+> **Correction.** Trois tests dans `g2_rotation.rs`, un par portail non exercé,
+> chacun assérant la **variante typée** et non une chaîne :
+> `check_rotation_refuses_a_new_version_without_the_owner_line` (`:156`, qui
+> consomme enfin le champ de vecteur et construit une v2 dont les kids sont un
+> sous-ensemble strict de v1, de sorte que la branche « smuggling » est
+> prouvablement muette) ; `rotate_refuses_a_survivor_set_without_the_owner`
+> (`:189`, plus `!header.key_versions.contains_key("2")` — aucun effet partiel) ;
+> `validate_refuses_a_key_version_without_the_owner_line` (`:224`, avec son
+> propre contrôle positif à `:237`).
+>
+> **Mutant.** `M10` — les trois portails supprimés d'un coup : `check_owner_line`
+> retiré de `rotate` (`header.rs:234`), la garde owner retirée de
+> `check_rotation` (`:357-362`), `validate` réduit à `Ok(())`.
+>
+> **Preuves. `ev-dce43f1c`** (`--test g2_rotation`) : 4 passés / 3 échoués, RED
+> sur exactement les trois nouveaux noms. **`ev-4ed2d6f3`** (gate de feature sous
+> le même mutant) : **entièrement vert, 8 scénarios / 28 pas**.
+>
+> **Ce que le couple montre.** `ev-dce43f1c` est le bras positif et sa précision
+> compte : 4 passés signifie que `survivor_set_is_old_minus_revoked`,
+> `a_smuggled_recipient_is_rejected`, `a_clean_rotation_is_accepted` et
+> `uplink_wrap_bytes_match_python` sont intacts — `M10` a atteint exactement les
+> trois portails visés et rien de plus. `ev-4ed2d6f3` est le bras de l'ancienne
+> assertion et il n'est pas contestable : les trois portails I3 supprimés, la
+> feature entière est verte. C'est le finding énoncé comme expérience et non
+> comme argument — le Gherkin n'a jamais observé ces portails échouer.
+>
+> **Ce que la clôture ne prouve pas, et qui n'est pas revendiqué.** Le nouveau
+> test de `check_rotation` appelle le portail directement sur un header
+> construit à la main. Chez ses deux appelants réels (`revoke.rs:214`,
+> `vault.rs:404`) la branche owner reste **dominée** par `check_owner_line` dans
+> `rotate`, comme cette note l'établit plus bas. Le portail est prouvé ; son
+> atteignabilité depuis la production ne l'est pas, et la revue n'a pas tracé
+> ces deux fichiers — hors des limites de pilote de cette feature. Le reste
+> appartient à `CHDR-024` et `CHDR-036`.
 
 **Trois des quatre portails I3 du code n'ont aucun versant fail-closed testé, et
 un cas spécifié par vecteur n'est pas implémenté.**
@@ -627,7 +868,67 @@ assertion typée équivalente sur `rotate` et sur `validate`.
 
 ---
 
-### `CHDR-013` — `OPEN`, P2 — 1/3 réfutations (survit)
+### `CHDR-013` — **`VERIFIED`** le 2026-08-04, P2 — 1/3 réfutations (survit)
+
+> **Statut de clôture.** `VERIFIED` par la revue indépendante du 2026-08-04
+> (`auditor/runs/2026-08-04-review-lot-a.md` §1), sur la révision candidate
+> `5905bec`. L'énoncé ci-dessous décrit le code **audité** (`a2087f2`) et est
+> conservé tel quel.
+>
+> **L'affirmation d'absence, avec sa recherche.** Le finding disait qu'aucune
+> assertion de cardinal de lignes de header n'existait dans le dépôt. La revue
+> l'a vérifiée plutôt que reprise : `grep -rn "lines\.len()" --include="*.rs" .`
+> sur **l'extrait entier**, toutes couches, non `rust/**` seul → `log.rs:143`
+> (lignes de journal d'audit), `i1_concurrency.rs:123`, `cucumber.rs:1267`
+> (manifeste `n`), `cucumber.rs:17569`, `cucumber.rs:19231`, `gamma.rs:919-922`.
+> La seule assertion de cardinal de lignes de header de l'extrait est la
+> nouvelle, `cucumber.rs:12552`. L'affirmation d'absence était vraie ; elle est
+> close par exactement un site.
+>
+> **Spec, citée jusqu'à sa fin.** `spec/03-headers.md:66-72` :
+>
+> > ```
+> > 1. Open the node's current DK (own line).
+> > 2. Seal DK to the recipient's X25519 key → one new line.
+> > 3. Append it to key_versions[current].lines. Publish the edition.
+> > ```
+> > Content untouched, other lines untouched, DK unchanged. This is the frequent, cheap
+> > operation. (If old versions still hold un-re-encrypted content the recipient should
+> > read, the issuer adds a line to those versions too — §3.5.)
+>
+> « Append » et « one new line » donnent le cardinal et la position ; « other
+> lines untouched » donne l'égalité de préfixe. La parenthèse est citée parce
+> qu'elle est la seule clause autorisant un grant à toucher une autre
+> `key_version` — et seulement en y **ajoutant**, jamais en la réécrivant : elle
+> n'affaiblit donc ni l'un ni l'autre.
+>
+> **Correction.** `owner_line_untouched` (`cucumber.rs:12540-12570`) assère
+> `lines.len() == saved.len() + 1` (*a grant appends EXACTLY one line (§03.3)*)
+> et `&lines[..saved.len()] == &saved[..]` (*every pre-existing line stays
+> byte-identical AND keeps its position*), les deux contre `w.saved_lines`, le
+> vecteur pré-append entier instantané à `:7626`.
+>
+> **Mutants.** `M4` (double `push` — le cardinal) et `M5` (`insert(0, …)` — la
+> position ; RED attendu du lot 4 de §11).
+>
+> **Preuves. `ev-a1f966ca`** — 7/1, scénario 6, *a grant appends EXACTLY one
+> line (§03.3)*. **`ev-1b889900`** — 7/1, scénario 6, *every pre-existing line
+> stays byte-identical AND keeps its position*.
+>
+> **Ce que les deux montrent.** Les deux mutants sont invisibles à l'assertion
+> pré-correction : `find(|l| l.to == "owner")` renvoie la ligne owner intacte
+> quoi qu'on pousse après elle (`M4`) et est aveugle à l'ordre (`M5`). Dans les
+> deux runs les sept autres scénarios passent, et à l'intérieur du scénario 6
+> `new_grantee_opens` passe : l'échec est isolé au cardinal et à la position,
+> pas au sceau.
+>
+> **Un nit relevé et non imputé.** `assert_eq!(header.key_versions.len(), 1, "a
+> grant creates no key version")` n'équivaut à son message que parce que ce
+> fixture part d'une seule version ; contre un header multi-versions
+> (`spec/03-headers.md:115-123`) l'assertion serait fausse là où le message
+> resterait juste. Un instantané du compte pré-append serait exact. Coût de
+> le laisser : nul — aucun scénario de cette feature ne grant sur un header
+> multi-versions.
 
 **« Grant is one appended line » n'est asserté nulle part : ni cardinal, ni
 position.**
@@ -662,7 +963,46 @@ vecteur complet — ce qui épingle aussi l'ordre. Recouvre `CHDR-014`.
 
 ---
 
-### `CHDR-014` — `OPEN`, P2 — 2/3 réfutations (réfuté, reformulé, maintenu)
+### `CHDR-014` — **`VERIFIED`** le 2026-08-04, P2 — 2/3 réfutations (réfuté, reformulé, maintenu)
+
+> **Statut de clôture.** `VERIFIED` par la revue indépendante du 2026-08-04
+> (`auditor/runs/2026-08-04-review-lot-a.md` §1), sur la révision candidate
+> `5905bec`. L'énoncé ci-dessous décrit le code **audité** (`a2087f2`) et est
+> conservé tel quel.
+>
+> **Correction.** Un nouveau `Given`, `sealed_header_owner_and_reader`
+> (`cucumber.rs:7613-7628`), scellant à `[owner_rec(), grantee_rec("g1", 0x21)]`
+> et instantaniant le vecteur `lines` entier. `append_grantee_line`
+> (`:8269-8278`) appende `g2`, distinct du `g1` que le `Given` porte, et
+> `new_grantee_opens` (`:12482-12489`) est scindé de `grantee_opens`, qui
+> servait jusque-là deux phrases. Le `Then` assère en outre `saved.len() >= 2` —
+> *'every other line' needs at least two pre-existing recipients to have a
+> non-degenerate referent* — de sorte qu'une régression du fixture vers un seul
+> destinataire se détecte elle-même. La phrase Gherkin de
+> `c-headers.feature:68` a été rebindée en conséquence : c'est **la seule ligne
+> du fichier de contrat** que le lot A touche.
+>
+> **Mutant.** `M6` — bascule d'un caractère hex de `c` sur chaque ligne
+> préexistante dont `to != OWNER_LABEL`, choisi précisément parce qu'il est un
+> **no-op sur l'ancien fixture** : l'ancien header à un seul destinataire n'en
+> avait aucune. C'est le mutant que le `Given` dégénéré était structurellement
+> incapable de voir, ce qui est exactement la revendication du finding.
+>
+> **Preuve — `ev-b3ccaaf3`** : 7/1, scénario 6, à *every pre-existing line stays
+> byte-identical AND keeps its position*.
+>
+> **Ce que la preuve montre.** Le RED tombe sur l'**égalité de préfixe du
+> vecteur entier**, pas sur le contrôle de la ligne owner — la distinction que
+> `CHDR-014` nomme, et la raison pour laquelle `M6` exclut délibérément la ligne
+> owner. Même l'assertion pré-correction `find(|l| l.to == "owner")` aurait été
+> satisfaite sous `M6` ; sous le *fixture* pré-correction, le mutant n'édite
+> rien du tout. L'ancien scénario était vert par construction, pas par chance.
+>
+> **Une limite que le correcteur a déclarée et que la revue n'a pas levée.**
+> Aucun mutant ne prouve la thèse de dégénérescence elle-même — qu'un `Given` à
+> un destinataire ne *peut pas* exprimer « toute autre ligne ». Cette thèse
+> porte sur le fixture, et sa preuve est la garde `saved.len() >= 2`, qui est
+> une assertion sur la précondition du test et non un différentiel.
 
 **« Toute autre ligne intacte » est exercé sur un header dont « toute autre
 ligne » a le cardinal 1.**
@@ -773,7 +1113,83 @@ appartient au cycle `g-revocation`/`d-bundle`.
 
 ---
 
-### `CHDR-019` — `OPEN`, P2 — 1/3 réfutations (survit)
+### `CHDR-019` — **`VERIFIED`** le 2026-08-04, P2 — 1/3 réfutations (survit)
+
+> **Statut de clôture.** `VERIFIED` par la revue indépendante du 2026-08-04
+> (`auditor/runs/2026-08-04-review-lot-a.md` §1 et §2), sur la révision
+> candidate `5905bec`, **sur le défaut tel qu'énoncé**. Le *mutant* que ce bloc
+> énonçait était faux ; voir l'erratum ci-dessous, qui est la partie la plus
+> importante de cette mise à jour.
+>
+> **Spec, citée jusqu'à sa fin, et une phrase que la version initiale de cette
+> note ne citait pas.** `spec/03-headers.md:33-35` :
+>
+> > `to` is a stable label (the grantee's multibase Ed25519 pubkey, or `"owner"`); it is
+> > a routing hint only — the seal is what grants. Recipients try lines addressed to
+> > their `kid`. No verifier decides anything from `to`.
+>
+> et `spec/03-headers.md:56-59`, qui décide la **forme** du correctif :
+>
+> > `kid` orders the attempts and nothing else: a reader that finds no matching line MAY try the remaining
+> > lines, and a successful unseal — never a label — is what proves the line was its own.
+> > No network, no per-read state.
+>
+> Ce `MAY` est la raison pour laquelle le filtre `kid` de `Header::open` n'est
+> pas lui-même un défaut — la spec permet de s'arrêter à l'indice de routage —
+> et la raison pour laquelle la boucle du `Then` corrigé sur `v2.lines` est la
+> bonne forme : elle fait ce qu'un lecteur *peut* faire, et atteint donc le
+> sceau.
+>
+> **Correction.** `revoked_cannot_open` (`cucumber.rs:12590-12617`) remplace une
+> assertion par trois : structurelle
+> (`v2.lines.iter().all(|l| l.kid != "g1")`) ; mécanique
+> (`header.check_rotation(2, &owner_kid_c())`) ; de capacité
+> (`header.open(DID_C, 2, &line.kid, &xsk(0x21))` pour chaque ligne routable en
+> v2). Le message de la deuxième dit *survivors ⊆ previous, owner kept*, ce que
+> `check_rotation` implémente réellement (`header.rs:347-356`, un test
+> d'inclusion de `BTreeSet`) — et **non** ce que `spec/03-headers.md:109-111`
+> exige (« the new version's lines MUST equal the previous lines minus the
+> revoked »). Le correcteur n'a pas sur-revendiqué ; l'écart inclusion-vs-égalité
+> reste la note hors verdict de `CHDR-024` et reste ouvert.
+>
+> **Mutant.** `M2` — `rotate` recopie les lignes de la version précédente en v2.
+> C'est le RED attendu du **lot 3 de §11**, et c'est celui qui est juste sur le
+> code.
+>
+> **Preuve — `ev-39f02b30`** : 7/1, scénario 7 seul, à *the revoked gets NO line
+> in the new version: ["z6LStLK2kx…", "g1", "g2", "z6LStLK2kx…", "g2"]*.
+>
+> **Ce que la preuve montre.** La liste de kids imprimée compte cinq entrées —
+> owner v1, `g1`, `g2`, puis owner v2 et `g2` — ce qui confirme que `M2` a été
+> appliqué tel que nommé, ni plus lourdement. `survivor_opens` et
+> `owner_opens_new` passent : `Header::open` essaie chaque ligne de `kid`
+> correspondant et rend la première qui ouvre, donc la copie v1 périmée est
+> ignorée. Le scénario 8, qui tourne lui aussi, passe. Et l'ancienne assertion
+> est verte sous `M2` par construction : la ligne `g1` recopiée est liée à
+> `line_aad(did, node, 1)` et est ouverte en version 2, donc
+> `Header::open(…, 2, "g1", …)` rend toujours `Err`. Ancien vert, nouveau rouge,
+> un seul scénario, une seule assertion.
+>
+> **Deux choses que le transcript enseigne et qui sont portées au dossier.**
+>
+> 1. `check_rotation(2)` ne **rattrape pas** `M2` : `g1` est présent dans la
+>    version précédente, donc l'inclusion tient. C'est l'assertion structurelle,
+>    et non la mécanique, qui porte ici. L'appel à `check_rotation` gagne
+>    néanmoins sa ligne : il remplit, en sous-produit, le critère de clôture de
+>    `CHDR-024`. La revue avait prédit le contraire et le transcript l'a
+>    corrigée (revue §7, point 5).
+> 2. **La boucle de capacité n'a rien tué dans aucun des douze runs.** La revue
+>    n'a pas pu construire de mutant de production qu'elle tue et que rien
+>    d'autre ne tue, et le dit plutôt que de la créditer. Le mutant qu'elle vise
+>    manifestement — une ligne v2 portant le `kid` d'un survivant mais scellée à
+>    la clé du révoqué — **n'est pas exprimable comme une édition de code de
+>    production dans ce dépôt** : une `Line` ne stocke que `to`, `kid`, `epk`,
+>    `n`, `c` (`header.rs:43-50`), donc `rotate` n'a aucun accès à la clé
+>    publique du révoqué. La boucle reste une assurance bon marché contre un
+>    état que la couche *bundle* peut produire (`CHDR-032`, `kid` dupliqué dans
+>    une `key_version`, imposé nulle part) et elle est conservée. Mais elle est
+>    **non prouvée**, et une assertion non prouvée doit être étiquetée, pas
+>    comptée : elle n'est pas l'une des assertions qui closent ce finding.
 
 **« Le premier grantee ne peut pas ouvrir la nouvelle version » est décidé par
 l'indice de routage, jamais par le sceau.**
@@ -797,12 +1213,118 @@ n'est jamais exercé. Le scénario ne prouve ni l'un ni l'autre.
 Le dépôt dispose de l'idiome fort à quatre règles de là : `stranger_tries`
 (`cucumber.rs:8097-8102`) essaie tous les kids avec la même clé.
 
-Régression survivante construite par un réfuteur, retenue : muter `kek`
-(`seal.rs:83-89`) pour que l'IKM HKDF n'intègre plus le secret DH laisse le
-nommage intact, `survivor_opens` et `owner_opens_new` verts, et rend la ligne
-`g2` ouvrable par quiconque connaît la clé publique de g2. Autre mutant
-survivant : une `rotate` recopiant les lignes v1 en v2 — la ligne `g1`
-existerait mais échouerait sur l'AAD v2.
+#### Erratum du 2026-08-04 — le mutant que ce bloc énonçait était faux
+
+**Cette section remplace le mutant énoncé par la version du 2026-08-03. Le
+texte retiré était :**
+
+> ~~Régression survivante construite par un réfuteur, retenue : muter `kek`
+> (`seal.rs:83-89`) pour que l'IKM HKDF n'intègre plus le secret DH laisse le
+> nommage intact, `survivor_opens` et `owner_opens_new` verts, et rend la ligne
+> `g2` ouvrable par quiconque connaît la clé publique de g2.~~
+
+C'est **une erreur de cette note**, pas une subtilité, pas une imprécision de
+formulation. Elle a été construite par un réfuteur, **retenue par la
+réconciliation**, publiée dans ce document, et lue par le correcteur du lot A à
+qui son mandat imposait de lire §6. Le correcteur l'a proposée comme mutant, l'a
+vue revenir verte (`ev-a87b91f1` sans le correctif, `ev-41261f7c` avec, les deux
+8/8), en a diagnostiqué la cause dans le code et l'a signalée
+(`corrector/runs/2026-08-04-correction-lot-a.md`). La revue indépendante l'a
+ensuite transcrite **littéralement** et l'a fait exécuter, et le transcript
+tranche sans argument.
+
+**Ce que le parcours de cette erreur dit du dispositif.** Trois réfuteurs
+adverses ont instruit `CHDR-019` sans la relever — l'un d'eux l'a écrite. La
+réconciliation Pass B l'a retenue. Elle a été publiée. Ce qui l'a arrêtée n'est
+aucune relecture : c'est la première **exécution** d'un mutant nommé. §13 de
+cette note énonçait que le cycle qui l'a écrite n'avait conduit aucune
+expérience de mutation ; c'est exactement le coût de cette limite, payé, et
+chiffrable — une revendication de sécurité fausse, publiée pendant un jour dans
+un dépôt public.
+
+**Mesure. `ev-c16f1a9a`** — le gate de feature sous `M3`, c'est-à-dire
+`Hkdf::<Sha256>::new(None, shared)` → `…new(None, &[0u8; 32])` à `seal.rs:84`,
+le mutant de cette note transcrit littéralement : **entièrement vert, 8
+scénarios / 28 pas**. Pas un scénario ne bascule, ni avant ni après la
+correction.
+
+**La raison structurelle, dans `seal.rs`.** `kek` utilise ses trois arguments
+(`seal.rs:83-89`) :
+
+```rust
+fn kek(shared: &[u8; 32], epk: &XPublicKey, recipient: &XPublicKey) -> [u8; 32] {
+    let hk = Hkdf::<Sha256>::new(None, shared);
+    let info = [KEK_INFO, &[0u8], epk.as_bytes(), recipient.as_bytes()].concat();
+```
+
+Le mutant retire `shared` de l'IKM et **laisse `recipient.as_bytes()` dans
+l'`info`** (`:85`). Or `open_line` ne *reçoit* jamais de clé publique de
+destinataire : il la **dérive du secret qu'on lui remet** (`seal.rs:117-120`) :
+
+```rust
+    let epk = XPublicKey::from(*epk);
+    let recipient_pub = XPublicKey::from(recipient_secret);
+    let shared = recipient_secret.diffie_hellman(&epk).to_bytes();
+    let cipher = XChaCha20Poly1305::new((&kek(&shared, &epk, &recipient_pub)).into());
+```
+
+Après la mutation, la KEK reste donc une fonction de la paire de clés de celui
+qui ouvre. Une ligne scellée à `g2` l'a été sous `info(epk, g2_pub)` ; un
+appelant fournissant `xsk(0x21)` calcule `info(epk, g1_pub)` et dérive une KEK
+différente. À travers `open_line` — la seule porte dont `Header::open` dispose
+(`header.rs:271`) — la ligne reste ouvrable par exactement une partie, `g2`,
+précisément comme avant la mutation.
+
+**La réfutation empirique, plus propre que la structurelle.** Si la phrase de
+cette note était vraie — *ouvrable par quiconque connaît la clé publique de
+g2* — alors le scénario 2, « A non-recipient opens nothing », serait passé au
+rouge sous `M3` : `stranger_tries` (`cucumber.rs:8191-8197`) essaie `xsk(0x99)`
+contre chaque kid du header. `ev-c16f1a9a` le montre vert. Un étranger dérive
+sa propre clé publique dans l'`info` et échoue quand même. **La revendication de
+sécurité de cette note est falsifiée par une assertion antérieure au lot.**
+
+**Ce qui est vrai, et ce que cette note y a confondu.** Au niveau de l'AEAD brut
+la faiblesse est réelle : avec un IKM constant et une `info` publique, n'importe
+qui peut calculer la KEK à partir de `epk` et de la clé publique du destinataire,
+puis déchiffrer directement. C'est une observation cryptographique saine. Elle
+n'est pas *testable* ici, parce que rien dans ce dépôt n'atteint le chiffré
+autrement que par `open_line`, et que `open_line` n'est pas un oracle de
+déchiffrement prenant une KEK : il prend un secret et en redérive la clé
+publique. Cette note énonce une propriété **hors API** dans la grammaire d'une
+propriété **dans l'API** — et c'est la forme « dans l'API » qu'un correcteur
+aurait eu à faire attraper par une assertion. Elle n'existe pas.
+
+**Le mutant qui, lui, réalise la capacité visée, et pourquoi il ne discrimine
+rien.** Il faudrait retirer **à la fois** le secret DH de l'IKM **et**
+`recipient.as_bytes()` de l'`info`. Celui-là ouvre bien chaque ligne à chaque
+détenteur — et il est tué par `stranger_recovers_nothing`, une assertion
+**préexistante** du scénario 2. Même réparé, le mutant de cette note ne
+distingue donc pas la nouvelle boucle de capacité de ce que la feature avait
+déjà.
+
+**Le mutant correct est celui que §11 lot 3 énonçait déjà, et §6 se contredisait
+avec §11.** Le lot 3 du plan d'implémentation dit *« injecter une ligne `g1` en
+v2 → doit tomber »* — c'est-à-dire `M2`, une `rotate` recopiant les lignes de la
+version précédente. §6 disait autre chose. **La contradiction est tranchée en
+faveur de §11 : c'est §11 qui est juste sur le code**, et `ev-39f02b30` est la
+mesure de son RED, sur le scénario 7 seul. La seconde phrase du texte retiré —
+« Autre mutant survivant : une `rotate` recopiant les lignes v1 en v2 » — était
+juste et est promue au rang de mutant principal dans le statut de clôture
+ci-dessus.
+
+**Où cette note situait la détection, et où elle est réellement.** La note
+plaçait la détection de `M3` dans le scénario 7. **Elle ne peut pas y être** :
+`ev-c16f1a9a` montre le gate entier vert. Elle existe ailleurs, et le lot A l'a
+doublée sans le viser. **`ev-2e427d6e`** — `c1_header_seal` sous `M3` — donne
+**1 passé / 2 échoués** : `c1_owner_and_grantee_lines`, l'épinglage d'octets
+attendu, **et `c1_fail_closed`**. Ce second échec est dû au contrôle positif que
+le lot A a ajouté pour `CHDR-025` : il déchiffre un chiffré **figé** du vecteur
+sous l'AAD nominale, et `M3` change la KEK. Il épingle donc tout le chemin de
+sceau, pas seulement quatre négatifs. Le mutant de cette note *est* rattrapé par
+le dépôt — à la couche des vecteurs de conformance, et désormais **deux** fois
+plutôt qu'une. C'est le seul endroit où le lot A dépasse son mandat, et il vaut
+d'être dit en clair : ce n'est pas dans le scénario 7 que cette note l'avait mis,
+c'est dans `c1_fail_closed`.
 
 **Réconciliation.** Maintenu à P2. Le réfuteur dissident soutient que le titre du
 scénario reprend `spec/03-headers.md:87` (« The revoked … gets no line in the new
@@ -827,7 +1349,77 @@ appel à `header.check_rotation(2)` au même endroit (voir `CHDR-024`).
 
 ---
 
-### `CHDR-021` — `OPEN`, P2 — 1/3 réfutations (survit) — porte le verdict du scénario 8
+### `CHDR-021` — **`VERIFIED`** le 2026-08-04, P2 — 1/3 réfutations (survit) — portait le verdict du scénario 8
+
+> **Statut de clôture.** `VERIFIED` par la revue indépendante du 2026-08-04
+> (`auditor/runs/2026-08-04-review-lot-a.md` §1), sur la révision candidate
+> `5905bec`, **avec un résidu nommé conservé sous ce finding** — voir plus bas,
+> le paragraphe des mutants survivants, qui est conservé et non supprimé. Ce
+> finding portant le verdict `SEMANTIC_FALSE_POSITIVE` du scénario 8, ce verdict
+> tombe avec lui : le scénario 8 repasse `PARTIAL` (§5).
+>
+> **Spec, citée jusqu'à sa fin.** `spec/03-headers.md:87-95`, étape 2bis :
+>
+> > Derivation up-link. If the rotated node N is derived from a parent node P that
+> > the rotator holds, it also publishes an up-link wrap: seal(DK'_N) openable via
+> > K_P — same primitive as a tag wrap (AAD purpose `tagwrap`, §00.3), bound to
+> > subject_did ‖ N ‖ new key_version. The wrap restores the parent→child derivation
+> > path broken by the fresh random DK', so holders of P (or of any ancestor of P)
+> > keep reading N by derivation without needing a line of their own. If the rotator
+> > holds exactly N but not P, it instead seals DK'_N individually to the current
+> > holders of P (public keys read from P's header); the first manager of P that
+> > later acts posts the definitive wrap.
+>
+> La conditionnelle finale est citée parce que le scénario corrigé prend la
+> **première** branche — le rotateur détient P. C'est une lecture légitime du
+> titre du scénario ; la seconde branche n'est exercée par aucun scénario de
+> cette feature et n'est pas imputée à ce lot.
+>
+> **Correction.** `derived_node_rotated` (`cucumber.rs:7660-7693`) construit un
+> dossier parent et une section enfant comme de vrais `NodePath`, dérive la clé
+> enfant par `node_key(&zone_dk, &child)` depuis la clé de zone B2, bâtit le
+> header de l'enfant en v1 **sous cette clé dérivée**, puis exécute une vraie
+> `Header::rotate` vers `DK2` en laissant tomber `g1`. `post_uplink_wrap`
+> (`:8297-8321`) prend la clé « via » de `node_key(&zone_dk, &parent)` — dérivée,
+> non littérale — et lit le nœud enveloppé et la version **sur le header
+> tourné** plutôt que de les recevoir comme littéraux que le `Then` lui rendra.
+> `parent_recovers_via_wrap` (`:12638-12695`) assère : (a) la clé enfant était à
+> une dérivation du parent et la v1 scellait *cette* clé ; (b) la rotation a
+> déplacé l'enfant hors d'elle, la nouvelle clé étant obtenue **en ouvrant le
+> header**, indépendamment du wrap ; (c) `wrap.node == header.node`,
+> `wrap.key_version == header.latest_version()`, `wrap.via == parent` ; (d) le
+> wrap rend la valeur de (b) sous une clé que le détenteur a dérivée.
+> (d) comparé à la valeur obtenue indépendamment en (b) est ce qui empêche
+> l'assertion d'être un aller-retour sur elle-même : deux routes calculées
+> séparément, puis comparées.
+>
+> **Mutants.** `M7` — `Wrap::seal` scelle et stocke sous un nœud constant
+> (`header.rs:417`, `let node: &str = "/e/self";` shadowant le paramètre), choisi
+> délibérément **symétrique** pour que le wrap continue de faire son aller-retour
+> et que l'ancienne assertion reste verte. Plus `M8` — `node_key` ignorant
+> `Leaf::Section(sid)` — pour la moitié dérivation.
+>
+> **Preuves. `ev-c78772c4`** (`M7`) — 7/1, scénario 8, *wrap posted under the
+> wrong node*. **`ev-16a836a9`** (`M8`) — 7/1, scénario 8, *the child key was
+> reachable from the parent by one derivation*.
+>
+> **Ce que les preuves montrent.** Sous `M7` le wrap s'ouvre toujours et rend
+> toujours la clé qu'il a scellée — c'est ce que « symétrique » veut dire — donc
+> le `Then` pré-correction (`wrap.open(…) == DK2`) était vert. Seule la nouvelle
+> assertion de liaison le voit : exactement l'écart que le finding nomme.
+> `ev-16a836a9` prouve que la moitié dérivation porte au lieu d'être décorative
+> — l'ancien scénario ne calculait aucun `node_key` et était vert sous `M8`.
+>
+> **Deux tautologies relevées et non imputées.**
+> `assert_eq!(child.to_string(), header.node)` (`:12684`) compare deux valeurs
+> que le `Given` a posées depuis le même `NodePath`. Et `wrap.via` n'entre pas
+> dans `wrap_aad` (`seal.rs:41-43`) : il est stocké et lu par aucun chemin de
+> production. Les deux ne coûtent rien et documentent l'intention.
+>
+> **Ce que le lot n'a pas couvert, déclaré par le correcteur et non levé par la
+> revue.** Trois des quatre assertions ne sont prouvées par aucun mutant : la
+> liaison de nœud l'est (`M7`), mais la liaison `via`, et la paire « coupée puis
+> rétablie » (a)/(b), ne le sont pas.
 
 **Le `Then` du wrap est un aller-retour sur lui-même et ne discrimine aucune
 route.**
@@ -856,6 +1448,48 @@ symétriques sont rattrapées par les épinglages d'octets `g3_move.rs:157-159`
 (`wrap_aad_hex`) et `g2_rotation.rs:112-114` (`wrap.c == cipher_hex`) — ce qui
 confirme que le scénario n'y contribue rien.
 
+**Ce paragraphe est conservé mot pour mot à la clôture de ce finding.** Il
+énonce une classe de mutants que la correction ne ferme pas, et c'est la
+condition que la revue indépendante attache à son verdict `VERIFIED` : si le
+paragraphe disparaît, le résidu perd son domicile et la revue retire son
+arbitrage en faveur d'un identifiant propre (`CHDR-041`, réservé, §6ter).
+
+**Mesuré le 2026-08-04, et pour la première fois de ce train : `ev-ec9412a7` et
+`ev-cbce8aa0`, une paire.** §13 de cette note dit qu'aucune expérience de
+mutation n'avait été conduite par le cycle qui l'a écrite ; ce qui précède était
+donc un raisonnement sur du code lu. Ce ne l'est plus. Le mutant est `M12`,
+`derive_key` (`derive.rs:17`) réduit à `return *key_material` — la
+« dérivation réduite à l'identité » nommée ci-dessus.
+
+- **`ev-ec9412a7`** — le gate de feature sous `M12` : **entièrement vert, 8
+  scénarios / 28 pas**, après correction. La classe survit au scénario 8
+  reconstruit exactement comme elle survivait à l'ancien.
+- **`ev-cbce8aa0`** — les trois binaires de vecteurs sous le même `M12`, avec
+  `--no-fail-fast` : `c1_header_seal` 2 passés / 1 échoué
+  (`c2_wrap_roundtrip_and_cross_check`) ; `g2_rotation` 6 / 1
+  (`uplink_wrap_bytes_match_python`) ; `g3_move` 1 / 2
+  (`derivation_below_moved_node_is_stable` et
+  `new_path_bindings_and_parent_wrap`). Quatre échecs — un de plus que les trois
+  épinglages nommés ci-dessus, la moitié `g3_move` tombant en deux tests.
+
+Les deux ne signifient quelque chose qu'**ensemble**, et c'est la forme exacte
+du résidu : **vert là où regardent les scénarios de cette feature, rouge là où
+regardent les vecteurs.** La classe est donc contenue — par les vecteurs
+épinglés, et par rien dans le Gherkin. La condition de bascule que la revue
+s'était fixée — *un run vert de ce côté-là promeut ceci en finding propre* — ne
+s'est pas déclenchée.
+
+**Un quasi-accident, consigné parce qu'il a failli être une erreur de la revue.**
+Le premier run de cette commande — **`ev-debade53`**, écrite telle que la revue
+l'avait nommée, sans `--no-fail-fast` — rapportait **un seul** échec, dans
+`c1_header_seal`. Lu au premier degré, ce transcript dit que `g2_rotation` et
+`g3_move` étaient verts sous `M12`, ce qui aurait fait basculer l'arbitrage et
+ouvert un finding fantôme. Ils n'étaient pas verts : `cargo test` s'arrête au
+premier binaire rouge, **entre binaires**, et ni l'un ni l'autre n'a jamais été
+exécuté. Leur absence du transcript n'est pas un résultat. Le rayon d'explosion
+était sous-rapporté d'un facteur quatre. Le même drapeau manque à la commande de
+régression que `DOMAIN.md` met devant chaque correcteur : **`CHDR-042`**, §6ter.
+
 **Réconciliation.** Maintenu à P2, et **c'est ce finding qui porte le verdict
 `SEMANTIC_FALSE_POSITIVE` du scénario 8** (§5). Le réfuteur dissident montre que
 les cas négatifs du wrap et la restauration effective de la dérivation sont
@@ -877,7 +1511,52 @@ la clé enfant dérivée pré-rotation n'ouvre plus la nouvelle version — la p
 
 ---
 
-### `CHDR-002` — `OPEN`, P3 — 3/3 réfutations (réfuté, reformulé, déclassé)
+### `CHDR-002` — **`VERIFIED`** le 2026-08-04, P3 — 3/3 réfutations (réfuté, reformulé, déclassé)
+
+> **Statut de clôture.** `VERIFIED` par la revue indépendante du 2026-08-04
+> (`auditor/runs/2026-08-04-review-lot-a.md` §1), sur la révision candidate
+> `5905bec`, **dans sa formulation post-réconciliation** — la moitié « contrôle
+> positif », la seule maintenue. La moitié « attribution de cause » avait été
+> retirée par le panel et n'est pas rouverte.
+>
+> **Correction.** `corrupt_line` (`cucumber.rs:8199-8213`) ouvre une fois avant
+> de basculer le caractère hex et une fois après. `replay_line_other_node`
+> (`:8224`) enregistre une ouverture de contrôle de la ligne même qu'il
+> s'apprête à voler, sur son propre header, avant la greffe. `opening_rejected`
+> (`:12506-12528`) assère `opened.len() >= 2`, puis `opened.first() == Some(DK)`
+> sous le message *positive control: the targeted line must open on its own
+> header BEFORE the mutation*, puis `is_err()` sur chaque tentative ultérieure.
+> C'est le critère de clôture mot pour mot.
+>
+> **Mutant.** `M9` — l'hypothèse même de cette note rendue exécutable : la ligne
+> owner scellée à une clé étrangère (`header.rs:110`, la ligne **owner** scellée
+> à `XPublicKey::from([0x77u8; 32])`, lignes grantee intactes).
+> `check_owner_line` compare des clés publiques de `Recipient` et tourne avant
+> `build_lines` (`header.rs:164`, `:169`), donc I3 passe encore et le header se
+> construit encore ; seul le sceau de la ligne owner est mort.
+>
+> **Preuve — `ev-11dee753`** : 5 échoués / 3 passés. Scénarios 3 et 4 rouges au
+> contrôle positif. **Scénario 5 vert.**
+>
+> **Ce que la preuve montre.** Le scénario 5 restant vert est le témoin que la
+> revue avait spécifié *à l'avance* : il prouve que `M9` n'a pas accidentellement
+> désarmé le portail I3, et que les deux RED sont imputables au **sceau**, pas à
+> la construction. Les scénarios 1, 7 et 8 tombent aussi — dommage collatéral
+> attendu d'une ligne owner inouvrable, et précisément le motif pour lequel cette
+> note avait déclassé ce finding en P3 : aucun mutant de production ne survit à
+> la `Rule` entière, `owner_opens` tombant. Le finding porte sur la force de
+> preuve **par scénario**, et la preuve par scénario est que sous `M9` les
+> *anciens* scénarios 3 et 4 étaient verts — leur dernière tentative restait
+> `Err`, puisque sous `M9` rien n'ouvre — là où les nouveaux échouent sur un
+> message qui nomme le contrôle.
+>
+> **Un effet de bord, mesuré, en faveur de la correction.** La revue a vérifié
+> plutôt que supposé qu'aucun état ne fuit entre scénarios : le scénario 2 pousse
+> deux `Err` dans `opened` et précède le scénario 3, dont le `Then` exige
+> désormais `opened.first() == Some(DK)`. Si `opened` traversait la frontière, le
+> scénario 3 serait rouge. Il est vert (`ev-1335c8f1`). L'assertion ajoutée ici
+> est, incidemment, un détecteur vivant de la fuite que la passe d'état partagé
+> cherchait (§10).
 
 **Les deux scénarios de rejet n'ont aucun contrôle positif interne.**
 **Scénarios 3 et 4 (`Then` partagé).**
@@ -1554,6 +2233,371 @@ le code, consigné pour que la prochaine décision le voie.
 au vérificateur d'édition, en cohérence avec §9.4 ; soit les chemins de lecture
 listés appellent `validate`.
 
+## 6ter. Findings issus de la revue de correction du lot A (2026-08-04)
+
+Cinq findings nouveaux, relevés par la revue indépendante du lot A sur la
+révision candidate `5905bec`
+(`auditor/runs/2026-08-04-review-lot-a.md` §5 et §6). **Aucun n'empêche la
+clôture** des huit findings du lot : quatre visent le train — le process, les
+gates déclarés, le cycle de vie des marqueurs — et le cinquième vise un
+artefact hérité du lot B. Aucun n'est assigné à un correcteur par cette revue.
+
+Les identifiants reprennent à `CHDR-037`, `CHDR-036` étant le plus haut de §6bis.
+**`CHDR-041` est réservé et n'est pas ouvert** — le motif est donné dans son
+bloc, et il est enregistré ici pour que l'identifiant ne soit jamais réutilisé.
+
+### `CHDR-037` — `OPEN`, P3 — le cycle de vie des marqueurs n'a pas d'état `IMPLEMENTED`
+
+`PROCESS.md:232-234` admet `IMPLEMENTED` parmi les statuts justifiant un
+marqueur Gherkin ; `:236-238` ne retire le marqueur qu'à `VERIFIED`. Entre les
+deux, la prose du marqueur est **tenue de rester** et est **garantie** de
+décrire un état que le candidat n'a plus. Le cas s'est produit sur cette feature
+et il est mesuré, pas supposé : à la révision candidate,
+`c-headers.feature:33-39` disait encore *« both headers are built at version 1
+and the open is at version 1, so key_version never varies »* et *« Outside
+Gherkin the version binding is defended only by byte pins against vectors, never
+by a behavioural differential »*, tous deux falsifiés par `ev-9ba93af7` et
+`ev-ad4db6a1` ; et `:47-51` disait *« Only the build-time I3 gate is exercised on
+its fail-closed side; the normative case declared by vectors/g2-rotation.json has
+no consumer »*, falsifié par `ev-dce43f1c`. Un lecteur arrivant en cours de cycle
+ne peut pas distinguer un trou vivant d'un trou fermé, alors que
+`PROCESS.md:229-231` exige que les marqueurs *« describe current, actionable
+gaps »*.
+
+**Ce n'est pas imputable au lot A.** `PROCESS.md:307` assigne le retrait des
+marqueurs au **reviewer**, pas au correcteur : que le lot A ait laissé ces blocs
+intacts est le process appliqué correctement.
+
+**Critère de clôture.** Soit le marqueur porte le statut en ligne
+(`# AUDIT CHDR-009 — IMPLEMENTED, awaiting review`), soit `PROCESS.md`
+§ *Gherkin audit-marker lifecycle* énonce qu'un correcteur met à jour la prose
+des marqueurs qu'il adresse. Coût : nul, alpha.
+
+### `CHDR-038` — `OPEN`, P3 — la revendication de génération indépendante restaurée n'est imposée par aucun gate
+
+**Fichier.** `vectors/gen-c.py`. **Symbole.** `check_c1()` (`:167-207`), appelé
+sans condition par `main()` (`:283-299`) ; le script accepte en outre `--check`,
+qui vérifie de surcroît `c3-owner-line.json` octet à octet au lieu de le
+réécrire.
+
+`check_c1` est l'artefact qui règle la moitié 2 de `CHDR-025` : il reconstruit la
+ligne owner, la ligne grantee et le wrap C2 de `c1-header-seal.json` depuis une
+seconde implémentation (blake3 + PyNaCl + HKDF RFC 5869 manuel) et les assère
+contre le fichier committé sans l'écrire. **Rien ne l'exécute.**
+
+**L'affirmation d'absence, avec sa recherche, sa portée et sa couche.** Dépôt
+entier, toutes couches, vérifié par le présent rôle et non repris de la revue :
+`grep -rn "gen-c\.py\|gen_c\.py"` sur l'arbre suivi → `vectors/gen-c.py:20` (sa
+propre docstring d'usage), `vectors/ownership.json:270` (une entrée de manifeste
+de propriété, qui épingle le fichier et ne l'exécute pas), et des journaux
+d'orchestrateur et rapports de run sous `features/.agents/`. Aucun site
+d'exécution. `.github/workflows/ci.yml` compte cinq `run:` —
+`verify-feature-tags.sh` (`:22`), `cargo fmt --check` (`:33`), `cargo clippy`
+(`:35`), `cargo test --workspace` (`:37`), `cargo check -p aithos-wasm` (`:59`)
+— dont aucun n'est Python. `grep -rn "\-\-check" .github/workflows scripts` →
+`cargo fmt … --check` seul. `vectors/ownership.json` épingle le sha256 du
+vecteur et `vectors_ownership.rs` impose l'épinglage, ce qui attrape une dérive
+du **fichier** mais pas une divergence entre le générateur et l'implémentation
+Rust — exactement ce que `check_c1` existe pour détecter. La revendication de
+`c1_header_seal.rs:2-3` est donc reproductible à la demande et vérifiée par
+aucun gate.
+
+**Cela se généralise** : `vectors/` contient **29** générateurs `gen-*.py`
+(`ls vectors/gen-*.py | wc -l`) et aucun gate n'en exécute un seul.
+
+**Non imputable au lot A.** `gen-c.py` est arrivé par `5be3047`, base du lot B.
+Le lot A en a hérité. Le finding tient sur ses propres pieds.
+
+**Critère de clôture.** Une étape CI, ou un `#[test]` derrière un drapeau de
+feature, exécutant `python3 gen-c.py --check` depuis `vectors/` ; et le même
+traitement généralisé aux autres générateurs, ou une décision enregistrée
+énonçant explicitement que les générateurs de vecteurs ne sont exécutés qu'à la
+main au moment de l'écriture.
+
+### `CHDR-039` — `OPEN`, P3 — les gates finaux déclarés omettent le gate clippy que la CI impose
+
+`features/.agents/c-headers/DOMAIN.md` § *Final global gates* (`:290-296`) liste
+`cargo test … --test cucumber`, `cargo test … --workspace --no-fail-fast` et
+`cargo fmt … --check`. `.github/workflows/ci.yml:35` exécute en outre
+`cargo clippy --workspace --all-targets --manifest-path rust/Cargo.toml -- -D warnings`.
+Le lot A ajoute plusieurs centaines de lignes que `--all-targets` compile. Un
+correcteur exécutant les gates déclarés peut donc passer la main sur un candidat
+que la CI refuse.
+
+**Ce que cette note ne peut pas dire.** Que le candidat est clippy-propre. La
+revue n'a pas exécuté clippy — c'est un gate global, et `PROCESS.md:86` le lui
+interdit. Le correcteur, lui, l'a exécuté et déclare `ev-d6ce5ee9`, exit 0 ; ce
+fait est une revendication du correcteur, non une vérification indépendante, et
+il est cité comme tel.
+
+**Critère de clôture.** Ajouter l'invocation clippy à `DOMAIN.md`
+§ *Final global gates* — et aux `DOMAIN.md` des autres features, l'omission ne
+leur étant pas spécifique.
+
+### `CHDR-040` — `OPEN`, **P2** — les clauses de process que ce train applique ne sont pas dans `PROCESS.md`
+
+**Ce finding vise le train, pas `c-headers`.** Il est consigné dans l'audit
+public de cette feature parce que c'est le seul endroit tracé où la revue du lot
+A pouvait le porter, et il est **remis au propriétaire** : la présente note ne
+modifie pas `PROCESS.md`, qui ne lui appartient pas.
+
+**La revendication.** Trois des dispositifs normatifs de ce cycle sont cités
+comme des sections de `PROCESS.md` et n'y sont pas :
+
+1. § *Material isolation of Pass A* — la règle qui a produit l'extrait remis au
+   reviewer ;
+2. la **liste numérotée des conditions de blocage**, 1 à 10 ;
+3. la **barrière de divulgation**, condition de blocage 9 — la règle qui décide
+   ce qu'un dépôt public n'apprend pas.
+
+**Qui les cite comme liantes.** Numérotation du dépôt à `10de842`, vérifiée par
+le présent rôle ; la revue citait la numérotation de l'extrait de `5905bec`, que
+deux commits d'orchestrateur ont depuis décalée.
+
+| Site de citation | Texte |
+|---|---|
+| `features/.agents/c-headers/STATE.md:29` | « …withheld from the reviewer until its behavioural verdict was frozen (`../PROCESS.md`, § *Material isolation of Pass A*) » |
+| `features/.agents/c-headers/STATE.md:93` | « …**without the corrector's run report** until its behavioural verdict is frozen (`PROCESS.md`, § *Material isolation of Pass A*) » |
+| `features/.agents/c-headers/STATE.md:77` | « **All four blocking conditions are now closed.** Conditions 9, 6 and 7 by the disclosure and budget ruling of 2026-08-03 ; condition 1 by … » |
+| `features/.agents/c-headers/auditor/runs/2026-08-03-audit-initial.md:71` | « Matérielle, conformément à AM (`PROCESS.md` § *Material isolation of Pass A*). » |
+| `features/.agents/c-headers/corrector/runs/2026-08-04-correction-i3-authority.md:156` | « …i.e. blocking condition 8 of `PROCESS.md` » |
+| `features/.agents/c-headers/corrector/runs/2026-08-04-correction-lot-a.md:330` | « …the same shape that worked on lot B (`PROCESS.md`, § *Material isolation of Pass A*) » |
+| `features/.agents/c-headers/corrector/runs/2026-08-04-correction-lot-a.md:248` | « Correcting it from this branch would have been blocking condition 8, scope. » |
+| les briefs remis aux rôles **de ce cycle-ci**, y compris à celui qui écrit cette mise à jour | « This is `features/.agents/PROCESS.md`, § *Material isolation of Pass A* » et « This is blocking condition 9 » |
+
+Huit sites, dont les instructions données aux rôles du cycle en cours.
+
+**La recherche, sa portée et sa couche.** Dépôt suivi entier à `10de842`, toutes
+couches, ni `features/**` ni `rust/**` seuls, exécutée par le présent rôle :
+
+```text
+grep -rn "Material isolation\|blocking condition" --include=*.md .
+```
+
+Occurrences, en entier, hors le présent document et hors le rapport de revue qui
+énonce le finding :
+`docs/PROPOSITION-PROCESS-AMENDE-AM-1-5-2026-08-03.md:108`, `:233` (le titre de
+section), `:261`, `:392`, `:475` ;
+`docs/RECONNAISSANCE-ORCHESTRATEUR-2026-08-03.md:125` (une ligne de tableau qui
+le *propose*) ; `features/.agents/orchestrator/LEDGER.md:48` ;
+`features/.agents/orchestrator/BLOCKED.md:214` ;
+`features/.agents/c-headers/auditor/runs/2026-08-03-audit-initial.md:71` et
+`:295` ; `features/.agents/c-headers/corrector/runs/2026-08-04-correction-i3-authority.md:156` ;
+`features/.agents/c-headers/corrector/runs/2026-08-04-correction-lot-a.md:248` et
+`:330` ; `features/.agents/c-headers/STATE.md:29`, `:77`, `:93` ; et
+`docs/audits/features/README.md:79`.
+
+**`features/.agents/PROCESS.md` fait 371 lignes et apparaît zéro fois dans cette
+sortie.** Sa table § *Artifacts* (`:215-222`) ne liste pas la proposition. Sa
+§ *Review-unit isolation and impartiality* (`:188-211`) — la section que la
+proposition amende — s'achève sur *« A later orchestrator may spawn fresh agents
+for the review units without changing the evidence model »* et ne contient
+aucune règle d'isolation matérielle.
+
+**Trois écarts avec la recherche de la revue, déclarés plutôt que lissés.** La
+revue comptait 372 lignes et six sites de citation ; le présent rôle en compte
+371 et huit. Les trois écarts s'expliquent et aucun ne déplace le finding :
+(i) la revue tournait sur un extrait `git archive` de `5905bec`, dont `STATE.md`
+a été réécrit depuis par `c1f8380` et `10de842` — d'où les numéros de ligne
+différents ; (ii) le rapport de correction du lot A était **soustrait** au
+reviewer par l'isolation matérielle elle-même, d'où ses deux sites manquants —
+la règle non écrite a caché deux des citations de la règle non écrite ;
+(iii) `audit-initial.md:295` et `PROPOSITION…:108` citent « blocking condition »
+sans citer une section absente et n'appuient pas la revendication ; ils sont
+listés pour que la recherche soit reproductible, pas pour la gonfler.
+
+**Le texte manquant, cité.** De
+`docs/PROPOSITION-PROCESS-AMENDE-AM-1-5-2026-08-03.md:233-261` :
+
+> ### Material isolation of Pass A
+>
+> In orchestrated mode, Pass A isolation is material, not declarative. Each Pass A
+> review unit runs against an extract of the immutable revision produced by
+> `git archive`, with no `.git` directory. The agent does not refrain from reading
+> history; it cannot, because no history is present.
+>
+> The correction review uses the same device. The reviewer receives an extract of
+> the candidate revision, without `.git` and without the corrector's run report,
+> until its behavioral verdict is frozen. The diff and the corrector's conclusion
+> are delivered only for Pass B.
+>
+> An instruction not to read history is not sufficient for an unattended agent and
+> must not be relied upon as the sole barrier.
+
+Du même fichier, `:460-470`, les conditions numérotées, dont `PROCESS.md` ne
+porte aucune trace — ni la liste, ni la numérotation :
+
+> 2. A third rejection of the same finding.
+> 3. A red gate not attributable to the current scope.
+> 4. Pass A contamination, declared or detected.
+> 5. A refutation panel majority against the auditor.
+> 6. Two warden invalidations of the same feature.
+> 7. An exhausted budget — time, tokens, or disk.
+> 8. A diff outside the assigned scope.
+> 9. A finding caught by the disclosure gate.
+> 10. A `FULL_AUDIT` classification by the impact review.
+
+Et `:475-479`, la barrière elle-même :
+
+> `aithos-core` is public, and orchestrated branches are pushed to it. A finding
+> whose written statement would describe an exploitable weakness before a fix
+> exists must not be written to any tracked file. The agent records the finding
+> identifier and a neutral title, and raises blocking condition 9. The human owner
+> decides what is published, and when.
+
+La note de clôture de la proposition (`:487-495`) énonce que le propriétaire l'a
+révisée *« before this proposal was ever applied to `PROCESS.md` »*. Ce n'est
+donc pas un brouillon en attente de revue : c'est un document que le
+propriétaire a déjà amendé **en place**, pendant qu'il siège hors du fichier
+normatif.
+
+**Pourquoi c'est plus qu'un renvoi cassé.** `PROCESS.md:110-121` établit une
+hiérarchie de preuve où *« Git history is context, not proof »* et où la trace
+écrite d'un gate passé *« is history »*. La même discipline appliquée aux règles
+elles-mêmes donne au problème sa forme : un rôle à qui l'on dit d'obéir à
+`PROCESS.md` § *Material isolation of Pass A*, qui ouvre `PROCESS.md` et l'y
+cherche, ne trouve rien — et n'a aucun moyen de distinguer « la règle a été
+renommée » de « la règle n'existe pas » de « on me demande quelque chose que
+personne n'a écrit ». `PROCESS.md:141-146` énumère même ce qu'un Pass A peut
+lire, et la proposition n'y figure pas : un lecteur strict du fichier normatif
+refuserait donc de lire le document qui contient la règle qui le lie.
+
+La barrière de divulgation est le bout tranchant. C'est la seule règle dont la
+défaillance est **irréversible** : un finding écrit dans un fichier suivi d'un
+dépôt public ne peut pas être dé-écrit. Elle n'est aujourd'hui définie nulle part
+dans le jeu d'artefacts que `PROCESS.md` § *Artifacts* énumère. La revue du lot A
+l'a appliquée — elle a cherché un finding embargeable, a trouvé `CHDR-032`, et a
+refusé d'embargoter un énoncé déjà publié — et elle l'a appliquée depuis un
+document de proposition, sur l'instruction d'un brief, non depuis le process.
+
+**Texte normatif minimal**, tel que la revue le propose. Deux formes ; le choix
+appartient au propriétaire.
+
+**Forme A, préférée — appliquer les trois blocs.** Insérer § *Material isolation
+of Pass A* verbatim après `PROCESS.md:211` (fin de § *Review-unit isolation and
+impartiality*, qu'elle amende) ; insérer les conditions de blocage numérotées et
+le bloc § *Disclosure gate* verbatim avant § *Evidence statuses* ; ajouter la
+proposition à la table § *Artifacts* comme source supersédée.
+
+**Forme B, si l'application n'est pas encore souhaitée.** Un paragraphe dans
+`PROCESS.md`, placé immédiatement après la table § *Artifacts* :
+
+> **Orchestrated-mode amendments.** In orchestrated mode this process is extended
+> by `docs/PROPOSITION-PROCESS-AMENDE-AM-1-5-2026-08-03.md`, which is normative
+> for material isolation of Pass A, the adversarial refutation panel, the numbered
+> blocking conditions 1-10, and the disclosure gate. Where the two disagree, the
+> amendment wins for orchestrated runs. A role that cannot locate a cited section
+> in this file looks there before proceeding, and treats its absence from both as
+> a blocking condition rather than as permission.
+
+La forme B fait trois phrases et rend résoluble chacune des six citations.
+Aucune des deux ne coûte quoi que ce soit : rien n'est déployé, aucune édition
+n'est publiée, et le travail passé d'aucun rôle n'est invalidé par le fait
+d'écrire ce qu'il faisait déjà (`features/AGENTS.md` § *Project stage*).
+
+**Ce qui n'est explicitement pas revendiqué.** Qu'un rôle ait mal appliqué ces
+règles. L'isolation matérielle a bien été appliquée au reviewer — l'extrait
+était sans `.git`, et le dépôt complet n'a pas été ouvert. La barrière a
+visiblement joué (§15). Les règles sont suivies. Elles ne sont simplement pas
+écrites là où elles sont citées, et un système de règles qui ne tient que parce
+que tout le monde les connaît déjà est à un changement de personnel de ne plus
+tenir.
+
+**Critère de clôture.** Un lecteur de `features/.agents/PROCESS.md` qui y
+cherche « Material isolation », « blocking condition » ou « disclosure gate » y
+trouve soit la règle, soit un renvoi non ambigu vers elle.
+
+### `CHDR-041` — **réservé, non ouvert**
+
+Tenu par l'orchestrateur pour la contingence énoncée dans `CHDR-021` : si le
+paragraphe des mutants survivants de ce bloc était supprimé à la clôture, le
+résidu `M12` perdrait son domicile et `CHDR-041` s'ouvrirait pour l'accueillir.
+**La condition ne s'est pas déclenchée** : le paragraphe est conservé mot pour
+mot, avec `ev-ec9412a7` et `ev-cbce8aa0` en paire.
+
+L'identifiant est consigné ici pour qu'il ne soit **jamais réutilisé**. Cet audit
+porte déjà une collision d'identifiants (§1) et n'en a pas besoin d'une seconde.
+
+### `CHDR-042` — `OPEN`, P3 — la commande de régression déclarée masque les échecs après le premier binaire rouge
+
+**Fichier.** `features/.agents/c-headers/DOMAIN.md`, § *Relevant regressions*
+(`:275-280`) :
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p aithos-core --test c1_header_seal --test g2_rotation --test g3_move --test b2_derivation
+cargo test --manifest-path rust/Cargo.toml -p aithos-bundle --test cb10_structure_vault --test vectors_ownership
+```
+
+Ni l'une ni l'autre ne porte `--no-fail-fast`. `cargo test` s'arrête au premier
+échec **entre binaires de test** : le premier binaire rouge avorte le run et les
+binaires suivants ne s'exécutent jamais. Leur absence du transcript se lit
+exactement comme un succès et n'en est pas un.
+
+**Mesuré, sur cette revue, deux fois.** Même mutant (`M12`), mêmes binaires, un
+drapeau d'écart :
+
+| Run | Commande | Rapporté |
+|---|---|---|
+| `ev-debade53` | telle que `DOMAIN.md` l'écrit | **1** échec, dans `c1_header_seal` ; `g2_rotation` et `g3_move` silencieux |
+| `ev-cbce8aa0` | `--no-fail-fast` ajouté | **4** échecs répartis sur les trois binaires |
+
+Le rayon d'explosion était sous-rapporté d'un facteur quatre, et les deux
+binaires disparus étaient ceux qui portaient la réponse. Ce n'est pas
+hypothétique : cela a failli coûter un verdict faux à la revue du lot A
+(`CHDR-021`, note de quasi-accident).
+
+**Sévérité, argumentée à la baisse plutôt qu'à la hausse.** La commande ne peut
+pas produire un faux vert — le code de sortie reste non nul et un correcteur ne
+peut pas prendre le run pour un succès. Le dommage est plus étroit : une image
+incomplète de l'échec, dans un train dont §14 *Définition de terminé* exige du
+correcteur qu'il « documente les deux résultats » et dont
+`features/.agents/orchestrator/LEDGER.md:44-51` rend les compteurs imprimés
+aussi liants que le code de sortie. Un correcteur rapportant « une régression,
+dans `c1_header_seal` » rapporterait la vérité de son transcript et pas celle de
+son changement. P3.
+
+**L'incohérence est interne au même document.** `DOMAIN.md` § *Final global
+gates* (`:294`) porte bien `--no-fail-fast` sur le gate workspace. Le drapeau est
+compris ; il manque simplement à l'étage où une invocation multi-binaires le rend
+nécessaire.
+
+**Critère de clôture.** Ajouter `--no-fail-fast` aux deux commandes de
+`DOMAIN.md` § *Relevant regressions*, et à la section équivalente des `DOMAIN.md`
+des autres features, le motif étant recopié.
+
+### Barrière de divulgation — vérifiée pour le lot A, rien à retenir
+
+La revue du lot A a exécuté le contrôle plutôt que de supposer qu'il ne
+s'appliquait pas, et le présent rôle a vérifié ce jugement plutôt que d'en
+hériter.
+
+**Un candidat a été trouvé** : `spec/03-headers.md:39-40` — *« Two lines of one
+key version MUST NOT carry the same `kid` »* — que rien dans le dépôt n'impose,
+et dont la conséquence est une seconde ligne déclarant l'`owner_kex` du sujet
+tout en scellant ailleurs. Recherches de la revue :
+`grep -rniE "duplicate|uniq|dedup"` sur `header.rs` et `aithos-bundle/src/` →
+`state.rs:83`, `merge.rs:356`, `log.rs:856`, `bundle.rs:135`, aucune portant sur
+les lignes de header ; `grep -rniE "same .?kid|kid.*uniq"` sur
+`*.rs *.md *.py *.json`, dépôt entier → la phrase de spec, deux documents de
+proposition, un commentaire sans rapport.
+
+**Il est déjà publié en entier**, comme `CHDR-032` de §6bis — chemin d'émission
+inclus (`aithos header-seal --recipient <label>:<owner_kid>:<clé étrangère>`) et
+mention que le palier porteur résisterait mais n'est appelé nulle part
+(`CHDR-030`). Vérifié dans le présent document, pas repris sur parole. La
+barrière protège les énoncés qui ne sont **pas encore** publics ; embargoter la
+reformulation d'un finding publié serait du théâtre et ferait passer un finding
+publié pour un finding retenu.
+
+**Rien à retenir au titre de la condition de blocage 9 pour ce lot.** Les cinq
+findings ci-dessus visent le process, les gates déclarés et le câblage d'un
+générateur de vecteurs : aucun ne décrit un chemin d'exploitation. L'erratum
+`CHDR-019` décrit la construction d'un **mutant** — du code délibérément
+modifié — et non le code du dépôt, qui lie bien le secret DH ; ce n'est pas une
+faiblesse exploitable de `aithos-core`. `CHDR-028` reste sous embargo et n'est
+pas touché. Consigné avec ses recherches, parce que « aucun finding embargoté »
+est une revendication comme une autre.
+
 ## 7. Findings retirés ou requalifiés
 
 | Id | Panel | Décision de réconciliation | Motif, sur preuve de code courant |
@@ -1839,6 +2883,21 @@ feature.
 | transverse | `vectors/c1-header-seal.json` revendique une génération indépendante sans générateur dans le dépôt — obligation `TARGETED` déjà enregistrée | `CHDR-025` |
 | transverse | le motif « kid du révoqué passé à `open_latest` » se retrouve en `cucumber.rs:5013` et `cb10_structure_vault.rs:548-553` | `CHDR-019` |
 
+**Mise à jour du 2026-08-04.** Deux lignes de ce tableau ont bougé.
+
+- La ligne `CHDR-016` est **exécutée en tant que routage** : l'orchestrateur a
+  sorti `CHDR-016` du lot A le 2026-08-04 — son énoncé porte sur le comportement
+  de grant de production dans `aithos-bundle`, pas sur une assertion Gherkin, et
+  le corriger depuis une branche de sémantique de test aurait engagé la condition
+  de blocage 8 — et l'a enregistré dans
+  `features/.agents/orchestrator/QUEUE.yaml` sous `chdr-016-grant-path`, dû
+  conjointement par `g-revocation` et `d-bundle`. **Ni clos ni retiré.** Son
+  marqueur Gherkin reste vivant et nomme désormais son nouveau propriétaire.
+- La ligne « générateur absent » de `CHDR-025` est **caduque** : `vectors/gen-c.py`
+  existe depuis `5be3047`. Elle est remplacée par un impact plus étroit et
+  vérifié — aucun gate n'exécute ce générateur, ni aucun des 29 de `vectors/`
+  (`CHDR-038`, §6ter).
+
 ## 10. Passe d'état partagé — résultats négatifs
 
 Consignés parce qu'un résultat négatif vérifié vaut mieux qu'une absence de
@@ -1911,7 +2970,46 @@ assignable avant décision.
 Les lots 1 et 2 sont ceux qui portent la sécurité et doivent atterrir en
 premier.
 
+### Mise à jour du 2026-08-04 — état des lots
+
+| Lot | État | Détail |
+|---|---|---|
+| 0 | **fait** | décision du propriétaire du 2026-08-03, puis lot B ; `CHDR-007` et `CHDR-012` `VERIFIED` le 2026-08-04 |
+| 1 | **fait pour `CHDR-025`** | contrôle positif dans `c1_fail_closed` ; la moitié « provenance du vecteur » l'était déjà par `5be3047`. `CHDR-026` reste ouvert |
+| 2 | **fait pour `CHDR-021`** | scénario 8 reconstruit sur une dérivation réelle. `CHDR-020` reste ouvert |
+| 3 | **fait pour `CHDR-019`** | assertion structurelle et appel à `check_rotation(2)`. `CHDR-024` n'est pas clos par cette note : sa clôture en sous-produit est **proposée** et appartient au propriétaire |
+| 4 | **fait pour `CHDR-013` et `CHDR-014`** | fixture à deux destinataires, cardinal et préfixe. `CHDR-017` reste ouvert |
+| 5 | **fait** | `CHDR-001` |
+| 6 | **fait pour `CHDR-002`** | contrôles positifs internes. `CHDR-027` reste ouvert |
+| 7 | **fait** | `CHDR-009` |
+| 8 | **re-routé** | `CHDR-016` sorti du lot A vers `g-revocation`/`d-bundle` (§9). `CHDR-015` reste ouvert |
+| 9 | non commencé | `CHDR-004`, `-005`, `-006`, `-010`, `-011`, `-018` |
+
+**La colonne « RED attendu » de ce tableau vaut mieux que la prose de §6, et
+c'est consigné plutôt que tu.** Sur `CHDR-019`, le lot 3 énonçait le bon mutant —
+*« injecter une ligne `g1` en v2 → doit tomber »* — pendant que §6 en énonçait un
+faux. Les deux sections de cette même note se contredisaient. La contradiction
+est tranchée dans l'erratum du bloc `CHDR-019` de §6, **en faveur de ce
+tableau** : `ev-39f02b30` mesure ce RED, 7/1, scénario 7 seul.
+
 ## 12. Décisions requises
+
+> **Périmé depuis le 2026-08-03, corrigé le 2026-08-04.** Les deux décisions
+> demandées par cette section **ont été prises**, le 2026-08-03, par le
+> propriétaire du protocole, en lecture A sur les deux
+> (`features/.agents/c-headers/decisions/2026-08-03-chdr-007-012-i3-authority.md`).
+> `CHDR-007` et `CHDR-012` ont ensuite été assignés au lot B, corrigés, et
+> déclarés `VERIFIED` le 2026-08-04. Ils ne sont plus `DECISION_REQUIRED` et ne
+> sont plus non assignés. La condition de blocage 1 est fermée.
+>
+> La section est conservée parce qu'elle énonce la question telle qu'elle se
+> posait, et parce que la décision se lit mieux contre elle. **Une seule
+> question ouverte demeure dans cette section : la collision d'identifiants
+> `CHDR-*` de §1, qui n'est toujours pas tranchée.** À quoi cette mise à jour
+> ajoute une décision de propriétaire, d'une autre nature — `CHDR-040` (§6ter),
+> qui demande où sont écrites les règles que ce train applique. Elle n'est pas
+> `DECISION_REQUIRED` au sens du process : c'est un finding, avec un critère de
+> clôture et deux formes de texte normatif au choix.
 
 Deux findings sont `DECISION_REQUIRED`. Aucun correcteur ne peut choisir
 implicitement, et **ni l'un ni l'autre n'est assigné à un correcteur**.
@@ -1968,6 +3066,40 @@ en §1 : la collision d'identifiants `CHDR-*` entre cette note et l'étalon publ
 - **Les identifiants `CHDR-*` sont ambigus** tant que la collision de §1 n'est
   pas tranchée.
 
+### Mise à jour du 2026-08-04 — trois de ces limites ont bougé
+
+- **« Aucune expérience de mutation n'a été conduite par ce cycle »** reste vrai
+  du cycle qui a écrit cette note, et **n'est plus vrai du dossier**. La revue du
+  lot A a nommé douze mutants et les a tous fait exécuter par l'orchestrateur
+  (`2026-08-04-r6`). Trois d'entre eux — `M3`, `M12`, et le bras « gate de
+  feature » de `M10` — étaient conçus pour montrer le lot **inerte**, non pour le
+  confirmer ; deux sont revenus verts et sont rapportés comme tels. C'est cette
+  campagne qui a permis de découvrir que le mutant énoncé par le bloc `CHDR-019`
+  était faux.
+- **« Aucun statut `VERIFIED` n'est posé »** n'est plus vrai : dix findings le
+  sont — `CHDR-007` et `CHDR-012` le 2026-08-04 par la revue du lot B, et les
+  huit du lot A par la revue du 2026-08-04. Aucun n'a été posé par l'auditeur qui
+  les avait écrits : dans les deux cas un reviewer indépendant, matériellement
+  isolé, a tranché sur transcript.
+- **« Toute affirmation de comportement est une lecture de code courant »** ne
+  vaut plus pour les blocs de clôture : chacun cite un `evidence_id` du ledger de
+  `2026-08-04-r6`. Le rôle qui écrit cette mise à jour, lui, **n'a exécuté aucune
+  commande** — ni gate, ni test, ni `cargo`. Les faits établis par lecture de
+  l'arbre (`grep`, `ls`, `git log`) sont signalés comme tels aux endroits où ils
+  servent.
+
+**Deux limites nouvelles, propres à cette mise à jour.**
+
+- **Le plafond de la campagne de mutation est structurel.** Les douze mutants ont
+  été conçus par le reviewer contre des énoncés de défaut qu'il avait aussi lus.
+  Un auteur de mutants n'ayant pas lu les critères de clôture pourrait trouver un
+  trou qu'il n'a pas trouvé. Aucun transcript ne lève cette limite, et elle est le
+  plafond honnête des huit verdicts.
+- **Une assertion ajoutée par le lot n'est prouvée par rien.** La boucle de
+  capacité de `revoked_cannot_open` n'a été tuée par aucun des douze mutants ;
+  elle est étiquetée non prouvée dans le bloc `CHDR-019` et n'est pas comptée
+  parmi les assertions qui closent le finding.
+
 ## 14. Définition de terminé
 
 - Chaque finding `OPEN` ci-dessus est soit `VERIFIED` par une revue indépendante,
@@ -1990,6 +3122,27 @@ en §1 : la collision d'identifiants `CHDR-*` entre cette note et l'étalon publ
   gate workspace avant passation.
 - Les marqueurs Gherkin sont retirés pour chaque finding accepté `VERIFIED`.
 
+### Mise à jour du 2026-08-04 — ce qui est fait, ce qui ne l'est pas
+
+- **Fait.** Les dix findings `VERIFIED` (deux du lot B, huit du lot A) portent
+  chacun leur preuve différentielle et leurs `evidence_id`. Les marqueurs Gherkin
+  des dix sont retirés — **par réécriture, non par suppression** : chaque bloc
+  mêlait des identifiants clos et des identifiants ouverts, et le verdict de
+  scénario du scénario 8 change avec `CHDR-021` au lieu de disparaître.
+  `@chdr-016` survit et nomme son re-routage.
+- **Fait.** Le correcteur a exécuté les régressions nommées par `DOMAIN.md`, puis
+  un gate Cucumber global et un gate workspace, et documente les deux résultats
+  (`ev-c2945d9b`, `ev-a1fa00fc`, `ev-3013c663`, `ev-e3b0c442`, `ev-d6ce5ee9`).
+  Une réserve : ces commandes de régression n'emportent pas `--no-fail-fast` et
+  peuvent donc sous-rapporter un échec — `CHDR-042`, §6ter.
+- **Pas fait.** La collision d'identifiants de §1 n'est pas tranchée.
+- **Pas fait.** Les findings restés `OPEN` de §6, §6bis et §6ter ne sont ni
+  `VERIFIED` ni reportés avec un motif enregistré. `CHDR-016` est le seul dont le
+  report porte un motif enregistré : le re-routage du 2026-08-04.
+- **Une règle à ajouter, tirée de ce cycle.** Une clôture doit dire ce que le
+  mutant a mesuré **et** ce qu'aucun mutant n'a mesuré. Deux assertions de ce lot
+  ne sont prouvées par rien (§13), et elles sont étiquetées plutôt que comptées.
+
 ## 15. Trace de la barrière de divulgation
 
 La barrière a réellement joué pendant ce cycle. Elle est consignée ici parce
@@ -2004,6 +3157,8 @@ honnête.
 | 4 | 2026-08-03 | Correction : la ligne fautive et quatre autres occurrences du même genre sont rédigées. Le gardien invalide **une seconde fois** ; la condition de blocage 6 — deux invalidations de la même feature — s'ouvre et arrête le run |
 | 5 | 2026-08-03 | Le propriétaire humain tranche la publication : « Publier les deux en entier. `CHDR-007` est déjà public en substance sur `codex/audit-c-headers` ; `CHDR-012` est publié malgré l'absence de correctif, au motif que le correcteur doit pouvoir citer ce qu'il répare. » — Mathieu Colla. Condition 9 **résolue** ; condition 6 tombe avec elle, la fuite reprochée n'en étant plus une |
 | 6 | 2026-08-03 | Run de reprise `2026-08-03-r2` : `CHDR-007` et `CHDR-012` sont restitués en entier dans cette note, avec le même niveau de citation que les findings jamais retenus |
+| 7 | 2026-08-04 | Revue du lot A : la barrière est **repassée**, pas héritée. Un candidat trouvé (`spec/03-headers.md:39-40`, unicité des `kid`), constaté déjà publié en entier comme `CHDR-032`, donc non retenu. Aucun des cinq findings de §6ter ne décrit un chemin d'exploitation. `CHDR-028` reste sous embargo et n'est pas touché. Recherches consignées en §6ter |
+| 8 | 2026-08-04 | Le rôle qui écrit la présente mise à jour **re-vérifie** ce jugement au lieu d'en hériter, en relisant le bloc `CHDR-032` de §6bis dans le document publié. Confirmé : le chemin d'émission y figure déjà en clair. Un embargo sur la reformulation d'un énoncé publié ferait passer un finding publié pour un finding retenu |
 
 Ce que l'épisode établit, et qui vaut au-delà de cette feature :
 
@@ -2022,3 +3177,11 @@ Ce que l'épisode établit, et qui vaut au-delà de cette feature :
 - **La décision de publier n'est pas la décision de trancher.** `CHDR-007` et
   `CHDR-012` sont désormais lisibles en entier et restent `DECISION_REQUIRED` :
   la condition de blocage 1 est ouverte, et aucun correcteur ne les reçoit.
+  *(Périmé depuis le 2026-08-03 : la décision de sémantique a été prise, les deux
+  findings ont été corrigés et sont `VERIFIED`. Conservé parce que c'est ce que
+  l'épisode a établi le jour où il s'est produit ; corrigé en §3.)*
+- **La règle qui a produit tout ce tableau n'est écrite nulle part.** Ajouté le
+  2026-08-04. La barrière de divulgation — condition de blocage 9 — est citée
+  par huit sites et ne figure pas dans `features/.agents/PROCESS.md`. Elle vit
+  dans un document de proposition non appliqué. C'est `CHDR-040` (§6ter), et
+  c'est la seule règle de ce train dont la défaillance est irréversible.

@@ -1,0 +1,39 @@
+
+running 1 test
+test c1_fail_closed ... FAILED
+
+failures:
+
+---- c1_fail_closed stdout ----
+
+thread 'c1_fail_closed' (27389) panicked at crates/aithos-core/tests/c1_header_seal.rs:103:18:
+positive control: the untouched tuple MUST open under the nominal AAD: SealRejected("line does not open")
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::result::unwrap_failed
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/result.rs:1867:5
+   3: core::result::Result<T,E>::expect
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/result.rs:1185:23
+   4: c1_header_seal::c1_fail_closed
+             at ./tests/c1_header_seal.rs:103:18
+   5: c1_header_seal::c1_fail_closed::{{closure}}
+             at ./tests/c1_header_seal.rs:84:20
+   6: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   7: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    c1_fail_closed
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.11s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.40s
+     Running tests/c1_header_seal.rs (rust/target/debug/deps/c1_header_seal-dd2dc2d766bb0340)
+error: test failed, to rerun pass `-p aithos-core --test c1_header_seal`

@@ -1,0 +1,1151 @@
+Feature: The gamma log
+Rule: The log is a write-once, hash-chained record
+    Scenario: Entries chain and the manifest pins the head
+     ✔  Given an initialised bundle
+     ✔  When the owner appends a section addition and a heartbeat
+     ✔  Then the log verifies offline
+     ✔  And the manifest pins the log head
+    Scenario: The chain crosses monthly segments transparently
+     ✔  Given a bundle with entries logged in two different months
+     ✔  Then the log lives in two pinned segment files
+     ✔  And the whole chain verifies across the boundary
+    Scenario: A tampered past entry breaks the chain
+     ✔  Given a bundle with a three-entry log
+     ✔  When one byte of the middle entry is altered
+     ✔  Then log verification is rejected
+    Scenario: An entry claiming a wrong predecessor is rejected
+     ✔  Given a bundle with a three-entry log
+     ✔  When an entry is appended whose prev is not the current head
+     ✔  Then log verification is rejected
+Rule: Every entry names its authority — owner key or mandate chain
+    Scenario: An owner entry is signed by the content key alone
+     ✔  Given an initialised bundle
+     ✔  When the owner appends a section addition
+     ✔  Then the entry verifies with no mandate attached
+    Scenario: A delegated action carries its full mandate chain
+     ✔  Given an agent granted action rights on connector "x.gmail"
+     ✔  When the agent appends an action entry
+     ✔  Then the entry verifies against the chain at its own timestamp
+    Scenario: An action timestamped outside its mandate window is rejected
+     ✔  Given an agent granted action rights for 7 days
+     ✔  When the agent appends an action entry timestamped at day 8
+     ✔  Then log verification is rejected
+Rule: The log is the agentic meter — budgets are tallies over files
+    Scenario: The action after the budget is rejected
+     ✔  Given an agent granted action rights with max_actions 3
+     ✔  When the agent appends three action entries
+     ✔  Then a fourth action entry is rejected
+    Scenario: A delegate's actions drain every ancestor's budget
+     ✔  Given an agent granted action rights with max_actions 3 and issue depth 1
+     ✔  And the agent delegates its perimeter to a helper
+     ✔  When the agent appends one action and the helper appends two
+     ✔  Then a further action by either key is rejected
+    Scenario: Minting a child is itself a counted, logged act
+     ✔  Given an agent granted issue rights with max_children 2
+     ✔  When the agent delegates twice, each grant logged
+     ✔  Then a third delegation is rejected
+    Scenario: The windowed rate limit counts inside its window only
+     ✔  Given an agent granted action rights with max_actions_per 2 per 24 hours
+     ✔  When the agent appends two actions on day 1
+     ✔  Then a third action on day 1 is rejected
+     ✔  But an action on day 2 verifies
+    Scenario: A per-action-kind budget counts only its kind
+     ✔  Given an agent granted gmail actions with rate_limit 2 "reply" per 72 hours
+     ✔  When the agent appends two "reply" actions on day 1
+     ✔  Then a third "reply" on day 2 is rejected
+     ✔  But a "label" action on day 2 verifies
+    Scenario: An unlogged grant is a silent action — its chain is dead
+     ✔  Given an agent that minted a sub-mandate without logging the grant
+     ✔  When the helper presents an action under that chain
+     ✔  Then the action is rejected
+Rule: Heartbeat bounds autonomy to owner presence
+    Scenario: A fresh beacon keeps the head mandate alive
+     ✔  Given a head mandate with heartbeat every 30 days grace 72 hours
+     ✔  And an owner beacon at day 0
+     ✔  Then an action at day 20 verifies
+    Scenario: Owner silence beyond every plus grace suspends the mandate
+     ✔  Given a head mandate with heartbeat every 30 days grace 72 hours
+     ✔  And an owner beacon at day 0
+     ✔  Then an action at day 34 is rejected
+    Scenario: The owner's return resumes a suspended mandate
+     ✔  Given a head mandate suspended by owner silence
+     ✔  When the owner beacons again
+     ✔  Then the next action verifies
+    Scenario: An agent can never beacon for itself
+     ✔  Given a head mandate with heartbeat every 30 days grace 72 hours
+     ✔  When the head agent forges a heartbeat with its own key
+     ✘  Then the beacon is rejected
+        Step failed:
+        Defined: root/work/aithos-core/features/f-gamma.feature:103:7
+        Matched: crates/aithos-bundle/tests/cucumber.rs:13673:1
+        Step panicked. Captured output: a forged beacon must fail log verification
+Rule: Off-log artifacts anchor to a recent head — backdating is bounded
+    Scenario: A request anchored to the current head verifies
+     ✔  Given an agent under a mandate with freshness 24 hours
+     ✔  When the agent presents a request anchored to the current log head
+     ✔  Then the request verifies
+    Scenario: A stale anchor is rejected
+     ✔  Given an agent under a mandate with freshness 24 hours
+     ✔  When the agent presents a request anchored to a head 48 hours old
+     ✔  Then the request is rejected
+Rule: The log reveals the act, never the content — reading is owner-first
+    Scenario: A mutation body is sealed under the target's own key
+     ✔  Given a published bundle with a circle section
+     ✔  When the owner logs a modification of that section
+     ✔  Then a reader of that section opens the entry body
+     ✔  But the entry alone reveals only kind, time and author — not the target
+    Scenario: A stranger holding the files sees the counting skeleton only
+     ✔  Given a bundle whose log records mutations and actions
+     ✔  When someone with no key reads the log files
+     ✔  Then the chain and the budgets still verify
+     ✔  But no target, tag or content is revealed
+    Scenario: A subtree grant opens exactly its entries and nothing more
+     ✔  Given logged mutations on sections under "projets" and under "sante"
+     ✔  When the owner grants the agent read on circle folder "projets"
+     ✔  Then the agent opens the bodies of the "projets" entries by their hints
+     ✔  But the "sante" entry bodies stay sealed to it
+    Scenario: Appending never requires reading
+     ✔  Given an agent granted action rights and no read grant
+     ✔  When the agent appends an action entry knowing only the pinned log head
+     ✔  Then the entry chains and verifies
+Rule: Auditing and searching gamma — the owner by default, others by mandate
+    Scenario: The owner searches its log by filter
+     ✔  Given a bundle whose log records mutations and actions over two months
+     ✔  When the owner queries actions of kind "action" on "x.gmail" from day 10 to day 40
+     ✔  Then exactly the matching entries come back
+     ✔  And the owner opens every sealed body among them
+    Scenario: An audit mandate opens the whole log
+     ✔  Given logged mutations by the owner and by an agent under "projets"
+     ✔  When the owner grants an auditor read.gamma with the zone keys
+     ✔  Then the auditor opens every entry body, including acts it never made
+    Scenario: A scoped audit mandate is honored dimension by dimension
+     ✔  Given an auditor granted read.gamma on action "reply" from day 1 to day 30
+     ✔  When the auditor queries replies of day 20
+     ✔  Then the matching entries come back
+     ✔  But a query for day 40 is refused
+     ✔  And a query for action "send" is refused
+Rule: Gamma replays every protocol consumption semantically
+    Scenario Outline: Each canonical operation is authorized before its entry joins history
+     ✔  Given a candidate Gamma entry for "Ethos create" by "owner"
+     ✔  When Core replays it against the exact historical prefix
+     ✔  Then form, time, signer, actor authority and operation coverage are verified
+     ✔  And applicable revocation, constraints, receipts and counters are consumed
+     ✔  And only then does the entry join replay state
+    Scenario Outline: Each canonical operation is authorized before its entry joins history
+     ✔  Given a candidate Gamma entry for "Ethos edit" by "grantee"
+     ✔  When Core replays it against the exact historical prefix
+     ✔  Then form, time, signer, actor authority and operation coverage are verified
+     ✔  And applicable revocation, constraints, receipts and counters are consumed
+     ✔  And only then does the entry join replay state
+    Scenario Outline: Each canonical operation is authorized before its entry joins history
+     ✔  Given a candidate Gamma entry for "Ethos delete" by "grantee"
+     ✔  When Core replays it against the exact historical prefix
+     ✔  Then form, time, signer, actor authority and operation coverage are verified
+     ✔  And applicable revocation, constraints, receipts and counters are consumed
+     ✔  And only then does the entry join replay state
+    Scenario Outline: Each canonical operation is authorized before its entry joins history
+     ✔  Given a candidate Gamma entry for "connector action" by "grantee"
+     ✔  When Core replays it against the exact historical prefix
+     ✔  Then form, time, signer, actor authority and operation coverage are verified
+     ✔  And applicable revocation, constraints, receipts and counters are consumed
+     ✔  And only then does the entry join replay state
+    Scenario Outline: Each canonical operation is authorized before its entry joins history
+     ✔  Given a candidate Gamma entry for "metered inference" by "grantee"
+     ✔  When Core replays it against the exact historical prefix
+     ✔  Then form, time, signer, actor authority and operation coverage are verified
+     ✔  And applicable revocation, constraints, receipts and counters are consumed
+     ✔  And only then does the entry join replay state
+    Scenario Outline: Each canonical operation is authorized before its entry joins history
+     ✔  Given a candidate Gamma entry for "journalized read" by "grantee"
+     ✔  When Core replays it against the exact historical prefix
+     ✔  Then form, time, signer, actor authority and operation coverage are verified
+     ✔  And applicable revocation, constraints, receipts and counters are consumed
+     ✔  And only then does the entry join replay state
+    Scenario Outline: Each canonical operation is authorized before its entry joins history
+     ✔  Given a candidate Gamma entry for "sub-grant" by "grantee"
+     ✔  When Core replays it against the exact historical prefix
+     ✔  Then form, time, signer, actor authority and operation coverage are verified
+     ✔  And applicable revocation, constraints, receipts and counters are consumed
+     ✔  And only then does the entry join replay state
+    Scenario Outline: Each canonical operation is authorized before its entry joins history
+     ✔  Given a candidate Gamma entry for "scoped revocation" by "grantee"
+     ✔  When Core replays it against the exact historical prefix
+     ✔  Then form, time, signer, actor authority and operation coverage are verified
+     ✔  And applicable revocation, constraints, receipts and counters are consumed
+     ✔  And only then does the entry join replay state
+    Scenario Outline: Each canonical operation is authorized before its entry joins history
+     ✔  Given a candidate Gamma entry for "disjoint merge kind:merge" by "grantee"
+     ✔  When Core replays it against the exact historical prefix
+     ✔  Then form, time, signer, actor authority and operation coverage are verified
+     ✔  And applicable revocation, constraints, receipts and counters are consumed
+     ✔  And only then does the entry join replay state
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+     ✔  Given a hash-linked and correctly encoded candidate Gamma history
+     ✔  When replay encounters "historical action N plus 1 beyond its limit"
+     ✔  Then semantic replay is refused at that entry
+     ✔  And no later entry or counter is accepted
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+     ✔  Given a hash-linked and correctly encoded candidate Gamma history
+     ✔  When replay encounters "receipt replayed under another consumption"
+     ✔  Then semantic replay is refused at that entry
+     ✔  And no later entry or counter is accepted
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+     ✔  Given a hash-linked and correctly encoded candidate Gamma history
+     ✔  When replay encounters "stale heartbeat or freshness state"
+     ✔  Then semantic replay is refused at that entry
+     ✔  And no later entry or counter is accepted
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+     ✔  Given a hash-linked and correctly encoded candidate Gamma history
+     ✔  When replay encounters "consumption at or after effective revocation"
+     ✔  Then semantic replay is refused at that entry
+     ✔  And no later entry or counter is accepted
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+     ✔  Given a hash-linked and correctly encoded candidate Gamma history
+     ✔  When replay encounters "sub-grant absent from Gamma"
+     ✔  Then semantic replay is refused at that entry
+     ✔  And no later entry or counter is accepted
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+     ✔  Given a hash-linked and correctly encoded candidate Gamma history
+     ✔  When replay encounters "direct-child grant beyond max_children"
+     ✔  Then semantic replay is refused at that entry
+     ✔  And no later entry or counter is accepted
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+     ✔  Given a hash-linked and correctly encoded candidate Gamma history
+     ✔  When replay encounters "mutation outside the authorized opaque SID"
+     ✔  Then semantic replay is refused at that entry
+     ✔  And no later entry or counter is accepted
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+     ✔  Given a hash-linked and correctly encoded candidate Gamma history
+     ✔  When replay encounters "valid signature presented under the wrong chain"
+     ✔  Then semantic replay is refused at that entry
+     ✔  And no later entry or counter is accepted
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+     ✔  Given a hash-linked and correctly encoded candidate Gamma history
+     ✔  When replay encounters "owner entry signed by a different owner key"
+     ✔  Then semantic replay is refused at that entry
+     ✔  And no later entry or counter is accepted
+    Scenario Outline: A structurally valid entry with invalid semantics is refused
+     ✔  Given a hash-linked and correctly encoded candidate Gamma history
+     ✔  When replay encounters "delegated entry signed without leaf possession"
+     ✔  Then semantic replay is refused at that entry
+     ✔  And no later entry or counter is accepted
+    Scenario: A log link and signature never substitute for semantic verification
+     ✔  Given a Gamma chain whose hashes, order and signatures all verify
+     ✔  But one delegated mutation is outside its mandate perimeter
+     ✔  When the bundle performs cold verification
+     ✔  Then the edition is rejected as semantically invalid
+     ✔  And no structural-only helper reports the history authorized
+Rule: One typed operation occurrence has one cross-view commitment
+    Scenario Outline: K1-B selects one closed operation-facts family
+     ✔  Given a W1 projection for operation kind "read"
+     ✔  When its operation member is encoded
+     ✔  Then operation has exactly kind and facts_ref
+     ✔  And facts_ref has exactly aithos-operation-facts-core and digest
+     ✔  And the facts profile is "1.0.0-draft.1"
+     ✔  And its selected closed facts family is "Ethos read, signed Gamma presentation or vault-config read"
+    Scenario Outline: K1-B selects one closed operation-facts family
+     ✔  Given a W1 projection for operation kind "mutation"
+     ✔  When its operation member is encoded
+     ✔  Then operation has exactly kind and facts_ref
+     ✔  And facts_ref has exactly aithos-operation-facts-core and digest
+     ✔  And the facts profile is "1.0.0-draft.1"
+     ✔  And its selected closed facts family is "Ethos, structure or vault-config mutation"
+    Scenario Outline: K1-B selects one closed operation-facts family
+     ✔  Given a W1 projection for operation kind "action"
+     ✔  When its operation member is encoded
+     ✔  Then operation has exactly kind and facts_ref
+     ✔  And facts_ref has exactly aithos-operation-facts-core and digest
+     ✔  And the facts profile is "1.0.0-draft.1"
+     ✔  And its selected closed facts family is "pre-effect connector action"
+    Scenario Outline: K1-B selects one closed operation-facts family
+     ✔  Given a W1 projection for operation kind "inference"
+     ✔  When its operation member is encoded
+     ✔  Then operation has exactly kind and facts_ref
+     ✔  And facts_ref has exactly aithos-operation-facts-core and digest
+     ✔  And the facts profile is "1.0.0-draft.1"
+     ✔  And its selected closed facts family is "pre-effect connector inference"
+    Scenario Outline: K1-B selects one closed operation-facts family
+     ✔  Given a W1 projection for operation kind "grant"
+     ✔  When its operation member is encoded
+     ✔  Then operation has exactly kind and facts_ref
+     ✔  And facts_ref has exactly aithos-operation-facts-core and digest
+     ✔  And the facts profile is "1.0.0-draft.1"
+     ✔  And its selected closed facts family is "mandate grant"
+    Scenario Outline: K1-B selects one closed operation-facts family
+     ✔  Given a W1 projection for operation kind "revoke"
+     ✔  When its operation member is encoded
+     ✔  Then operation has exactly kind and facts_ref
+     ✔  And facts_ref has exactly aithos-operation-facts-core and digest
+     ✔  And the facts profile is "1.0.0-draft.1"
+     ✔  And its selected closed facts family is "mandate revocation"
+    Scenario Outline: K1-B selects one closed operation-facts family
+     ✔  Given a W1 projection for operation kind "rotate"
+     ✔  When its operation member is encoded
+     ✔  Then operation has exactly kind and facts_ref
+     ✔  And facts_ref has exactly aithos-operation-facts-core and digest
+     ✔  And the facts profile is "1.0.0-draft.1"
+     ✔  And its selected closed facts family is "key or protected-state rotation"
+    Scenario Outline: K1-B selects one closed operation-facts family
+     ✔  Given a W1 projection for operation kind "publication"
+     ✔  When its operation member is encoded
+     ✔  Then operation has exactly kind and facts_ref
+     ✔  And facts_ref has exactly aithos-operation-facts-core and digest
+     ✔  And the facts profile is "1.0.0-draft.1"
+     ✔  And its selected closed facts family is "normal, merge or resolution publication"
+    Scenario Outline: The K1-B operation wrapper is fail-closed
+     ✔  Given a candidate W1 operation wrapper with "missing kind"
+     ✔  When Core validates its closed form before commitment comparison
+     ✔  Then the wrapper is refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: The K1-B operation wrapper is fail-closed
+     ✔  Given a candidate W1 operation wrapper with "unknown kind"
+     ✔  When Core validates its closed form before commitment comparison
+     ✔  Then the wrapper is refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: The K1-B operation wrapper is fail-closed
+     ✔  Given a candidate W1 operation wrapper with "missing facts_ref"
+     ✔  When Core validates its closed form before commitment comparison
+     ✔  Then the wrapper is refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: The K1-B operation wrapper is fail-closed
+     ✔  Given a candidate W1 operation wrapper with "null facts_ref"
+     ✔  When Core validates its closed form before commitment comparison
+     ✔  Then the wrapper is refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: The K1-B operation wrapper is fail-closed
+     ✔  Given a candidate W1 operation wrapper with "extra operation member"
+     ✔  When Core validates its closed form before commitment comparison
+     ✔  Then the wrapper is refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: The K1-B operation wrapper is fail-closed
+     ✔  Given a candidate W1 operation wrapper with "extra facts_ref member"
+     ✔  When Core validates its closed form before commitment comparison
+     ✔  Then the wrapper is refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: The K1-B operation wrapper is fail-closed
+     ✔  Given a candidate W1 operation wrapper with "unknown operation-facts profile"
+     ✔  When Core validates its closed form before commitment comparison
+     ✔  Then the wrapper is refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: The K1-B operation wrapper is fail-closed
+     ✔  Given a candidate W1 operation wrapper with "malformed or non-lowercase facts digest"
+     ✔  When Core validates its closed form before commitment comparison
+     ✔  Then the wrapper is refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: The K1-B operation wrapper is fail-closed
+     ✔  Given a candidate W1 operation wrapper with "facts family different from operation kind"
+     ✔  When Core validates its closed form before commitment comparison
+     ✔  Then the wrapper is refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario: K1.1-B fixes the operation-facts envelope and digest preimage
+     ✔  Given a complete operation-facts document F for one registered kind
+     ✔  When Core derives its facts reference
+     ✔  Then F has exactly aithos-operation-facts-core, kind and facts
+     ✔  And its profile equals facts_ref and its kind equals operation.kind
+     ✔  And facts_ref.digest is lowercase SHA-256 of "aithos-core/v1/operation-facts", NUL and RFC8785-JCS of F
+     ✔  And null, an extra member or a different selected family is refused
+    Scenario Outline: K1.1-B state presence has one exact closed shape
+     ✔  Given a logical operation state is "absent"
+     ✔  When its K1.1-B state fact is projected
+     ✔  Then its exact top-level members are "state"
+     ✔  And state_ref is "forbidden"
+     ✔  And null or any extra member is refused
+    Scenario Outline: K1.1-B state presence has one exact closed shape
+     ✔  Given a logical operation state is "present"
+     ✔  When its K1.1-B state fact is projected
+     ✔  Then its exact top-level members are "state,state_ref"
+     ✔  And state_ref is "exact profile and lowercase SHA-256 digest"
+     ✔  And null or any extra member is refused
+    Scenario: K1.1-B commits the exact protected current object set
+     ✔  Given one present logical state with affected canonical store objects
+     ✔  When its state-fact document S is encoded
+     ✔  Then S has exactly aithos-state-fact-core and a non-empty objects array
+     ✔  And every object has exactly key_commitment and byte_commitment
+     ✔  And the commitments use the state-key and state-bytes domains over the exact UTF-8 key and stored bytes
+     ✔  And objects are sorted by lowercase key_commitment with no duplicate key
+     ✔  And state_ref.digest is lowercase SHA-256 of "aithos-core/v1/state-fact", NUL and RFC8785-JCS of S
+    Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate state-fact document with "unknown state-fact profile"
+     ✔  When Core validates it before operation commitment comparison
+     ✔  Then the state fact is refused
+     ✔  And no operation commitment or operation_ref is emitted
+     ✔  And no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact
+    Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate state-fact document with "empty objects array"
+     ✔  When Core validates it before operation commitment comparison
+     ✔  Then the state fact is refused
+     ✔  And no operation commitment or operation_ref is emitted
+     ✔  And no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact
+    Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate state-fact document with "unsorted objects array"
+     ✔  When Core validates it before operation commitment comparison
+     ✔  Then the state fact is refused
+     ✔  And no operation commitment or operation_ref is emitted
+     ✔  And no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact
+    Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate state-fact document with "duplicate key commitment"
+     ✔  When Core validates it before operation commitment comparison
+     ✔  Then the state fact is refused
+     ✔  And no operation commitment or operation_ref is emitted
+     ✔  And no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact
+    Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate state-fact document with "malformed or non-lowercase commitment"
+     ✔  When Core validates it before operation commitment comparison
+     ✔  Then the state fact is refused
+     ✔  And no operation commitment or operation_ref is emitted
+     ✔  And no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact
+    Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate state-fact document with "missing affected object"
+     ✔  When Core validates it before operation commitment comparison
+     ✔  Then the state fact is refused
+     ✔  And no operation commitment or operation_ref is emitted
+     ✔  And no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact
+    Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate state-fact document with "unrelated extra object"
+     ✔  When Core validates it before operation commitment comparison
+     ✔  Then the state fact is refused
+     ✔  And no operation commitment or operation_ref is emitted
+     ✔  And no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact
+    Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate state-fact document with "extra object member"
+     ✔  When Core validates it before operation commitment comparison
+     ✔  Then the state fact is refused
+     ✔  And no operation commitment or operation_ref is emitted
+     ✔  And no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact
+    Scenario Outline: K1.1-B state facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate state-fact document with "state digest mismatch"
+     ✔  When Core validates it before operation commitment comparison
+     ✔  Then the state fact is refused
+     ✔  And no operation commitment or operation_ref is emitted
+     ✔  And no clear store key, path, SID, vault record name, target or protected content is accepted in the state fact
+    Scenario Outline: K1.2-R-B selects one exact closed read variant
+     ✔  Given a read facts object in domain "ethos"
+     ✔  When Core validates its selected member table
+     ✔  Then its exact members are "domain,zone,sid,source_edition"
+     ✔  And null, a missing member or an extra member is refused
+    Scenario Outline: K1.2-R-B selects one exact closed read variant
+     ✔  Given a read facts object in domain "gamma"
+     ✔  When Core validates its selected member table
+     ✔  Then its exact members are "domain,source_head,request_digest"
+     ✔  And null, a missing member or an extra member is refused
+    Scenario Outline: K1.2-R-B selects one exact closed read variant
+     ✔  Given a read facts object in domain "vault-config"
+     ✔  When Core validates its selected member table
+     ✔  Then its exact members are "domain,connector,record_key,source_edition"
+     ✔  And null, a missing member or an extra member is refused
+    Scenario: K1.2-R-B binds an exact source without a circular carrier digest
+     ✔  Given one signed source manifest and one canonical read.gamma query string Q
+     ✔  When their read facts are committed
+     ✔  Then source_edition is sha256-prefixed existing manifest chain hash
+     ✔  And source_head is the exact non-empty Gamma head being presented
+     ✔  And request_digest is domain-separated SHA-256 of the exact UTF-8 bytes of Q
+     ✔  And Q uses canonical selector order dir,id,tag,kind,action,since,until
+     ✔  And no signature, operation_ref or presentation carrier digest enters request_digest
+    Scenario Outline: K1.2-R-B creates an occurrence only for opposable read evidence
+     ✔  Given an authorized "Ethos read" with no signed read evidence
+     ✔  When the local read completes
+     ✔  Then no operation-facts document or persisted operation_ref is produced
+     ✔  But journalized or explicitly presented read evidence uses one read occurrence
+     ✔  And every native view carries that same operation_ref
+    Scenario Outline: K1.2-R-B creates an occurrence only for opposable read evidence
+     ✔  Given an authorized "Gamma query" with no signed read evidence
+     ✔  When the local read completes
+     ✔  Then no operation-facts document or persisted operation_ref is produced
+     ✔  But journalized or explicitly presented read evidence uses one read occurrence
+     ✔  And every native view carries that same operation_ref
+    Scenario Outline: K1.2-R-B creates an occurrence only for opposable read evidence
+     ✔  Given an authorized "vault-config read" with no signed read evidence
+     ✔  When the local read completes
+     ✔  Then no operation-facts document or persisted operation_ref is produced
+     ✔  But journalized or explicitly presented read evidence uses one read occurrence
+     ✔  And every native view carries that same operation_ref
+    Scenario Outline: K1.2-R-B read facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate read facts object with "unknown read domain"
+     ✔  When Core validates it before operation commitment
+     ✔  Then the read facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-R-B read facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate read facts object with "unknown zone or non-canonical SID"
+     ✔  When Core validates it before operation commitment
+     ✔  Then the read facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-R-B read facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate read facts object with "malformed or mismatched source edition"
+     ✔  When Core validates it before operation commitment
+     ✔  Then the read facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-R-B read facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate read facts object with "empty or malformed source head"
+     ✔  When Core validates it before operation commitment
+     ✔  Then the read facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-R-B read facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate read facts object with "non-canonical Gamma query encoding"
+     ✔  When Core validates it before operation commitment
+     ✔  Then the read facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-R-B read facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate read facts object with "mismatched Gamma request digest"
+     ✔  When Core validates it before operation commitment
+     ✔  Then the read facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-R-B read facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate read facts object with "mismatched vault record-key commitment"
+     ✔  When Core validates it before operation commitment
+     ✔  Then the read facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-R-B read facts fail closed without disclosing protected coordinates
+     ✔  Given a candidate read facts object with "clear display path or vault record name"
+     ✔  When Core validates it before operation commitment
+     ✔  Then the read facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-M-B selects one exact closed mutation variant
+     ✔  Given a mutation facts object in domain "ethos" with verb "any registered"
+     ✔  When Core validates its selected member table
+     ✔  Then its exact members are "domain,verb,zone,sid,dir,before,after"
+     ✔  And null, a missing member or an extra member is refused
+    Scenario Outline: K1.2-M-B selects one exact closed mutation variant
+     ✔  Given a mutation facts object in domain "structure" with verb "create"
+     ✔  When Core validates its selected member table
+     ✔  Then its exact members are "domain,verb,zone,node_kind,sid,destination,before,after"
+     ✔  And null, a missing member or an extra member is refused
+    Scenario Outline: K1.2-M-B selects one exact closed mutation variant
+     ✔  Given a mutation facts object in domain "structure" with verb "rename/delete"
+     ✔  When Core validates its selected member table
+     ✔  Then its exact members are "domain,verb,zone,node_kind,sid,source,before,after"
+     ✔  And null, a missing member or an extra member is refused
+    Scenario Outline: K1.2-M-B selects one exact closed mutation variant
+     ✔  Given a mutation facts object in domain "structure" with verb "move"
+     ✔  When Core validates its selected member table
+     ✔  Then its exact members are "domain,verb,zone,node_kind,sid,source,destination,before,after"
+     ✔  And null, a missing member or an extra member is refused
+    Scenario Outline: K1.2-M-B selects one exact closed mutation variant
+     ✔  Given a mutation facts object in domain "vault-config" with verb "any registered"
+     ✔  When Core validates its selected member table
+     ✔  Then its exact members are "domain,verb,connector,record_key,before,after"
+     ✔  And null, a missing member or an extra member is refused
+    Scenario Outline: K1.2-M-B fixes every mutation state transition
+     ✔  Given a closed mutation facts object for "every create"
+     ✔  When Core validates its before and after states
+     ✔  Then before is "absent"
+     ✔  And after is "present"
+     ✔  And a present-to-present transition has different state reference digests
+    Scenario Outline: K1.2-M-B fixes every mutation state transition
+     ✔  Given a closed mutation facts object for "every delete"
+     ✔  When Core validates its before and after states
+     ✔  Then before is "present"
+     ✔  And after is "absent"
+     ✔  And a present-to-present transition has different state reference digests
+    Scenario Outline: K1.2-M-B fixes every mutation state transition
+     ✔  Given a closed mutation facts object for "ethos edit or redact"
+     ✔  When Core validates its before and after states
+     ✔  Then before is "present"
+     ✔  And after is "present"
+     ✔  And a present-to-present transition has different state reference digests
+    Scenario Outline: K1.2-M-B fixes every mutation state transition
+     ✔  Given a closed mutation facts object for "structure rename or move"
+     ✔  When Core validates its before and after states
+     ✔  Then before is "present"
+     ✔  And after is "present"
+     ✔  And a present-to-present transition has different state reference digests
+    Scenario Outline: K1.2-M-B fixes every mutation state transition
+     ✔  Given a closed mutation facts object for "vault-config edit"
+     ✔  When Core validates its before and after states
+     ✔  Then before is "present"
+     ✔  And after is "present"
+     ✔  And a present-to-present transition has different state reference digests
+    Scenario: K1.2-M-B structural coordinates are exact and non-null
+     ✔  Given a structural mutation with canonical target SID and parent SID arrays
+     ✔  When its source and destination applicability is checked
+     ✔  Then create carries destination only
+     ✔  And rename and delete carry source only
+     ✔  And move carries source and destination
+     ✔  And each array is root-to-leaf, duplicate-free and excludes the target SID
+     ✔  And cross-zone, descendant destination and unknown node-kind candidates are refused
+    Scenario: K1.2-M-B vault and self facts disclose no protected coordinate
+     ✔  Given one vault-config mutation and one self mutation
+     ✔  When their public W1 projections and protected facts are separated
+     ✔  Then the vault facts carry the exact state-key record commitment and no record name
+     ✔  And the self public projection carries only facts_ref
+     ✔  And self dir, source, destination and tag claims grant no write authority
+     ✔  And an opaque proof binds every claimed target and state transition
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+     ✔  Given a candidate mutation facts object with "unknown domain"
+     ✔  When Core validates its closed family
+     ✔  Then the mutation facts are refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+     ✔  Given a candidate mutation facts object with "unknown verb for the selected domain"
+     ✔  When Core validates its closed family
+     ✔  Then the mutation facts are refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+     ✔  Given a candidate mutation facts object with "unknown zone or node kind"
+     ✔  When Core validates its closed family
+     ✔  Then the mutation facts are refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+     ✔  Given a candidate mutation facts object with "null source or destination"
+     ✔  When Core validates its closed family
+     ✔  Then the mutation facts are refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+     ✔  Given a candidate mutation facts object with "source or destination on the wrong variant"
+     ✔  When Core validates its closed family
+     ✔  Then the mutation facts are refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+     ✔  Given a candidate mutation facts object with "duplicate or non-canonical SID coordinate"
+     ✔  When Core validates its closed family
+     ✔  Then the mutation facts are refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+     ✔  Given a candidate mutation facts object with "invalid before and after transition"
+     ✔  When Core validates its closed family
+     ✔  Then the mutation facts are refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+     ✔  Given a candidate mutation facts object with "equal state digests for a mutation"
+     ✔  When Core validates its closed family
+     ✔  Then the mutation facts are refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+     ✔  Given a candidate mutation facts object with "mismatched vault record-key commitment"
+     ✔  When Core validates its closed family
+     ✔  Then the mutation facts are refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-M-B mutation facts fail closed before commitment
+     ✔  Given a candidate mutation facts object with "clear display path or vault record name"
+     ✔  When Core validates its closed family
+     ✔  Then the mutation facts are refused
+     ✔  And no operation commitment or operation_ref is emitted
+    Scenario Outline: K1.2-AI-B selects one exact closed pre-effect family
+     ✔  Given a "action" facts object
+     ✔  When Core validates its selected member table
+     ✔  Then its exact members are "connector,action,catalog_ref,args_hash,budget,purpose"
+     ✔  And null, a missing member or an extra member is refused
+    Scenario Outline: K1.2-AI-B selects one exact closed pre-effect family
+     ✔  Given a "inference" facts object
+     ✔  When Core validates its selected member table
+     ✔  Then its exact members are "provider,model,request_digest,budget,purpose"
+     ✔  And null, a missing member or an extra member is refused
+    Scenario: K1.2-AI-B binds action arguments and one approved catalog reference
+     ✔  Given exact connector action arguments and one approved catalog reference
+     ✔  When the action facts are committed before effect
+     ✔  Then args_hash is the historical SHA-256 of RFC8785-JCS arguments
+     ✔  And catalog_ref has exactly catalog_version, catalog_digest and approval_digest
+     ✔  And the exact action and catalog digest bind the derived class without duplicating it
+     ✔  And neither a catalog signature nor owner approval is accepted as the other proof
+    Scenario: K1.2-AI-B binds exact private inference request bytes without args_hash
+     ✔  Given exact private provider request-body bytes fixed before an inference
+     ✔  When the inference facts are committed
+     ✔  Then request_digest is domain-separated SHA-256 of those exact bytes
+     ✔  And provider and model are independently bound as exact non-empty identifiers
+     ✔  And transport credentials, request plaintext and args_hash are absent
+    Scenario Outline: K1.2-AI-B makes budget and purpose applicability explicit
+     ✔  Given effective mandates where "budget" is "absent"
+     ✔  When action or inference facts are projected
+     ✔  Then the selected variant is "state=not-applicable"
+     ✔  And omission, null and a volunteered citation are refused
+    Scenario Outline: K1.2-AI-B makes budget and purpose applicability explicit
+     ✔  Given effective mandates where "budget" is "present"
+     ✔  When action or inference facts are projected
+     ✔  Then the selected variant is "state=cited plus exact budget_ref"
+     ✔  And omission, null and a volunteered citation are refused
+    Scenario Outline: K1.2-AI-B makes budget and purpose applicability explicit
+     ✔  Given effective mandates where "purpose" is "absent"
+     ✔  When action or inference facts are projected
+     ✔  Then the selected variant is "state=not-applicable"
+     ✔  And omission, null and a volunteered citation are refused
+    Scenario Outline: K1.2-AI-B makes budget and purpose applicability explicit
+     ✔  Given effective mandates where "purpose" is "present"
+     ✔  When action or inference facts are projected
+     ✔  Then the selected variant is "state=cited plus exact purpose_ref"
+     ✔  And omission, null and a volunteered citation are refused
+    Scenario Outline: K1.2-AI-B facts fail closed before any external effect
+     ✔  Given candidate action or inference facts with "malformed or mismatched catalog reference"
+     ✔  When Core validates them before operation commitment
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, operation_ref or external effect is emitted
+    Scenario Outline: K1.2-AI-B facts fail closed before any external effect
+     ✔  Given candidate action or inference facts with "mismatched action arguments"
+     ✔  When Core validates them before operation commitment
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, operation_ref or external effect is emitted
+    Scenario Outline: K1.2-AI-B facts fail closed before any external effect
+     ✔  Given candidate action or inference facts with "mismatched inference request bytes"
+     ✔  When Core validates them before operation commitment
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, operation_ref or external effect is emitted
+    Scenario Outline: K1.2-AI-B facts fail closed before any external effect
+     ✔  Given candidate action or inference facts with "action carrying request_digest"
+     ✔  When Core validates them before operation commitment
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, operation_ref or external effect is emitted
+    Scenario Outline: K1.2-AI-B facts fail closed before any external effect
+     ✔  Given candidate action or inference facts with "inference carrying args_hash"
+     ✔  When Core validates them before operation commitment
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, operation_ref or external effect is emitted
+    Scenario Outline: K1.2-AI-B facts fail closed before any external effect
+     ✔  Given candidate action or inference facts with "wrong budget applicability variant"
+     ✔  When Core validates them before operation commitment
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, operation_ref or external effect is emitted
+    Scenario Outline: K1.2-AI-B facts fail closed before any external effect
+     ✔  Given candidate action or inference facts with "wrong purpose applicability variant"
+     ✔  When Core validates them before operation commitment
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, operation_ref or external effect is emitted
+    Scenario Outline: K1.2-AI-B facts fail closed before any external effect
+     ✔  Given candidate action or inference facts with "tokens or a usage receipt before effect"
+     ✔  When Core validates them before operation commitment
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, operation_ref or external effect is emitted
+    Scenario Outline: K1.2-GRRP-B selects exact grant and revoke facts
+     ✔  Given a "grant" operation targeting one complete signed mandate
+     ✔  When Core validates its facts before commitment
+     ✔  Then its exact members are "mandate_id,certificate_digest"
+     ✔  And the certificate digest includes the complete canonical signature value
+    Scenario Outline: K1.2-GRRP-B selects exact grant and revoke facts
+     ✔  Given a "revoke" operation targeting one complete signed mandate
+     ✔  When Core validates its facts before commitment
+     ✔  Then its exact members are "mandate_id,certificate_digest,reason"
+     ✔  And the certificate digest includes the complete canonical signature value
+    Scenario Outline: K1.2-GRRP-B represents a revocation reason without optional wire
+     ✔  Given the native revoke entry carries "absent"
+     ✔  When its closed reason fact is projected
+     ✔  Then the variant is "state=absent"
+     ✔  And null, empty text or a cross-view mismatch is refused
+    Scenario Outline: K1.2-GRRP-B represents a revocation reason without optional wire
+     ✔  Given the native revoke entry carries "device_lost"
+     ✔  When its closed reason fact is projected
+     ✔  Then the variant is "state=present,text exact"
+     ✔  And null, empty text or a cross-view mismatch is refused
+    Scenario Outline: K1.2-GRRP-B selects one standalone rotation domain
+     ✔  Given a standalone rotation in "ethos-zone"
+     ✔  When Core validates its closed target and state transition
+     ✔  Then its exact target members are "domain,zone,mode,before,after"
+     ✔  And before and after are present with different state digests
+    Scenario Outline: K1.2-GRRP-B selects one standalone rotation domain
+     ✔  Given a standalone rotation in "ethos-node"
+     ✔  When Core validates its closed target and state transition
+     ✔  Then its exact target members are "domain,zone,sid,mode,before,after"
+     ✔  And before and after are present with different state digests
+    Scenario Outline: K1.2-GRRP-B selects one standalone rotation domain
+     ✔  Given a standalone rotation in "vault"
+     ✔  When Core validates its closed target and state transition
+     ✔  Then its exact target members are "domain,connector,mode,before,after"
+     ✔  And before and after are present with different state digests
+    Scenario Outline: K1.2-GRRP-B selects one standalone rotation domain
+     ✔  Given a standalone rotation in "identity"
+     ✔  When Core validates its closed target and state transition
+     ✔  Then its exact target members are "domain,previous_did,next_did,transition_digest,before,after"
+     ✔  And before and after are present with different state digests
+    Scenario Outline: A derived rotation never creates a second occurrence
+     ✔  Given a rotation is a deterministic consequence of "revoke"
+     ✔  When the parent state and changeset are committed
+     ✔  Then the rotation is covered by that same operation occurrence
+     ✔  And no rotate operation_ref, Gamma consumption or counter unit is added
+    Scenario Outline: A derived rotation never creates a second occurrence
+     ✔  Given a rotation is a deterministic consequence of "structural move"
+     ✔  When the parent state and changeset are committed
+     ✔  Then the rotation is covered by that same operation occurrence
+     ✔  And no rotate operation_ref, Gamma consumption or counter unit is added
+    Scenario Outline: A derived rotation never creates a second occurrence
+     ✔  Given a rotation is a deterministic consequence of "vault mutation"
+     ✔  When the parent state and changeset are committed
+     ✔  Then the rotation is covered by that same operation occurrence
+     ✔  And no rotate operation_ref, Gamma consumption or counter unit is added
+    Scenario Outline: K1.2-GRRP-B selects one exact publication table
+     ✔  Given a publication in mode "normal"
+     ✔  When Core validates its facts
+     ✔  Then predecessors have "zero at genesis otherwise one"
+     ✔  And exact members are "mode,height,predecessors,changeset_ref,contained_operations"
+    Scenario Outline: K1.2-GRRP-B selects one exact publication table
+     ✔  Given a publication in mode "merge"
+     ✔  When Core validates its facts
+     ✔  Then predecessors have "exactly two sorted distinct"
+     ✔  And exact members are "mode,height,predecessors,changeset_ref,contained_operations"
+    Scenario Outline: K1.2-GRRP-B selects one exact publication table
+     ✔  Given a publication in mode "resolution"
+     ✔  When Core validates its facts
+     ✔  Then predecessors have "exactly two sorted distinct"
+     ✔  And exact members are "mode,height,predecessors,winner,changeset_ref,contained_operations"
+    Scenario: Publication facts are acyclic and derived
+     ✔  Given a derived changeset with contained operation references in causal order
+     ✔  When the publication operation is committed
+     ✔  Then changeset_ref uses the closed changeset profile and domain
+     ✔  And contained_operations equals the derived causal order without duplicates
+     ✔  But neither the publication operation_ref nor candidate manifest hash is included
+    Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
+     ✔  Given candidate grant, revoke, rotate or publication facts with "mandate id and certificate mismatch"
+     ✔  When Core validates the selected family
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, counter or canonical effect is emitted
+    Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
+     ✔  Given candidate grant, revoke, rotate or publication facts with "revoke reason mismatch"
+     ✔  When Core validates the selected family
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, counter or canonical effect is emitted
+    Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
+     ✔  Given candidate grant, revoke, rotate or publication facts with "unknown rotation domain or mode"
+     ✔  When Core validates the selected family
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, counter or canonical effect is emitted
+    Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
+     ✔  Given candidate grant, revoke, rotate or publication facts with "equal rotation state digests"
+     ✔  When Core validates the selected family
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, counter or canonical effect is emitted
+    Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
+     ✔  Given candidate grant, revoke, rotate or publication facts with "derived rotation represented twice"
+     ✔  When Core validates the selected family
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, counter or canonical effect is emitted
+    Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
+     ✔  Given candidate grant, revoke, rotate or publication facts with "wrong predecessor cardinality or order"
+     ✔  When Core validates the selected family
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, counter or canonical effect is emitted
+    Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
+     ✔  Given candidate grant, revoke, rotate or publication facts with "resolution winner outside predecessors"
+     ✔  When Core validates the selected family
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, counter or canonical effect is emitted
+    Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
+     ✔  Given candidate grant, revoke, rotate or publication facts with "omitted or duplicate contained operation"
+     ✔  When Core validates the selected family
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, counter or canonical effect is emitted
+    Scenario Outline: K1.2-GRRP-B structural facts fail closed before effect
+     ✔  Given candidate grant, revoke, rotate or publication facts with "publication self-reference"
+     ✔  When Core validates the selected family
+     ✔  Then the facts are refused as InvalidOperationFacts
+     ✔  And no operation commitment, counter or canonical effect is emitted
+    Scenario: Append-time and public evidence identify the same operation occurrence
+     ✔  Given one fresh typed operation occurrence
+     ✔  When its append-time, Gamma, authorship and edition views are projected
+     ✔  Then every applicable view yields the same operation commitment
+     ✔  And changing any applicable authority fact changes that commitment
+     ✔  And no private operation argument appears in public commitment material
+    Scenario: Identical effects remain distinct occurrences
+     ✔  Given two typed operation occurrences with identical effects and distinct occurrence anchors
+     ✔  When their operation commitments are derived
+     ✔  Then the commitments differ
+    Scenario: Cross-view evidence does not create another logical occurrence
+     ✔  Given the applicable Gamma, authorship and edition views of one typed operation occurrence
+     ✔  When semantic replay correlates their operation commitments
+     ✔  Then all evidence refers to exactly one logical occurrence
+     ✔  And no additional occurrence is inferred from the number of evidence views
+    Scenario: Historical evidence is never retrofitted with an operation commitment
+     ✔  Given historical protocol evidence predating operation commitments
+     ✔  When it is verified under its declared historical protocol version
+     ✔  Then its bytes and hashes remain unchanged
+     ✔  And no operation commitment is synthesized
+     ✔  And no existing args_hash, Gamma identifier or edition hash is reinterpreted as that commitment
+     ✔  And commitment material is refused under a historical or unknown protocol version, or without a version
+    Scenario: Invalid operation projection and correlation have one typed refusal
+     ✔  Given canonical-operation material with an invalid projection, authority, reference or cross-view correlation
+     ✔  When Core validates it before effect or during semantic replay
+     ✔  Then it is refused as InvalidOperation
+     ✔  And an invalid selected facts document keeps its specific facts error
+     ✔  And no accepted operation_ref is emitted
+Rule: A session-bound occurrence proves both keys without gaining authority
+    Scenario: SC1 has one closed certificate and digest preimage
+     ✔  Given a session-bound leaf mandate and one short-lived ephemeral key
+     ✔  When the leaf certifies that session under SC1
+     ✔  Then the certificate has exactly profile, subject, mandate_id, key, not_before, not_after and signature
+     ✔  And its signature covers JCS with only signature.value emptied
+     ✔  And authority.session pins the complete signed certificate digest
+     ✔  And the interval is non-empty, inside the leaf mandate and contains operation.at
+    Scenario: The session proof signs the exact operation reference
+     ✔  Given one valid SC1 certificate and canonical operation_ref
+     ✔  When the leaf native signature and session proof are validated
+     ✔  Then the session proof has exactly aithos-session-proof-core, operation_ref, key and sig
+     ✔  And sig covers JCS with the sig member omitted
+     ✔  And both independent proofs bind the same exact operation_ref
+     ✔  And the SC1 certificate signature substitutes for neither possession proof
+    Scenario Outline: SC1 fails closed without creating session authority
+     ✔  Given session-bound material with "certificate signed by another key"
+     ✔  When Core validates the operation before effect or during cold replay
+     ✔  Then it is refused as InvalidSession
+     ✔  And no perimeter or authority is derived from SC1
+    Scenario Outline: SC1 fails closed without creating session authority
+     ✔  Given session-bound material with "subject or leaf mandate mismatch"
+     ✔  When Core validates the operation before effect or during cold replay
+     ✔  Then it is refused as InvalidSession
+     ✔  And no perimeter or authority is derived from SC1
+    Scenario Outline: SC1 fails closed without creating session authority
+     ✔  Given session-bound material with "session key different from session_bind"
+     ✔  When Core validates the operation before effect or during cold replay
+     ✔  Then it is refused as InvalidSession
+     ✔  And no perimeter or authority is derived from SC1
+    Scenario Outline: SC1 fails closed without creating session authority
+     ✔  Given session-bound material with "interval outside the leaf mandate"
+     ✔  When Core validates the operation before effect or during cold replay
+     ✔  Then it is refused as InvalidSession
+     ✔  And no perimeter or authority is derived from SC1
+    Scenario Outline: SC1 fails closed without creating session authority
+     ✔  Given session-bound material with "operation outside the session interval"
+     ✔  When Core validates the operation before effect or during cold replay
+     ✔  Then it is refused as InvalidSession
+     ✔  And no perimeter or authority is derived from SC1
+    Scenario Outline: SC1 fails closed without creating session authority
+     ✔  Given session-bound material with "missing leaf possession proof"
+     ✔  When Core validates the operation before effect or during cold replay
+     ✔  Then it is refused as InvalidSession
+     ✔  And no perimeter or authority is derived from SC1
+    Scenario Outline: SC1 fails closed without creating session authority
+     ✔  Given session-bound material with "missing session proof"
+     ✔  When Core validates the operation before effect or during cold replay
+     ✔  Then it is refused as InvalidSession
+     ✔  And no perimeter or authority is derived from SC1
+    Scenario Outline: SC1 fails closed without creating session authority
+     ✔  Given session-bound material with "session proof for another operation_ref"
+     ✔  When Core validates the operation before effect or during cold replay
+     ✔  Then it is refused as InvalidSession
+     ✔  And no perimeter or authority is derived from SC1
+    Scenario Outline: SC1 fails closed without creating session authority
+     ✔  Given session-bound material with "certificate digest mismatch"
+     ✔  When Core validates the operation before effect or during cold replay
+     ✔  Then it is refused as InvalidSession
+     ✔  And no perimeter or authority is derived from SC1
+Rule: Gamma v2 is a monotone operation-evidence profile
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "section.add"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "section.modify"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "section.delete"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "section.redact"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "ethos.read"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "action"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "inference"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "grant"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "revoke"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "rotate"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "merge"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "required"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Gamma v2 reference presence is fixed by the closed kind registry
+     ✔  Given a manifest with aithos-core "1.0.0-draft.2"
+     ✔  And a structurally valid Gamma v2 entry of kind "heartbeat"
+     ✔  When Core checks its top-level operation reference
+     ✔  Then operation_ref is "forbidden"
+     ✔  And when required it is the exact closed reference of the underlying occurrence
+     ✔  And the opposite presence is refused
+    Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
+     ✔  Given a parent manifest "draft.1" whose Gamma predecessor is "v1"
+     ✔  When a child manifest "draft.1" introduces a Gamma "v1" entry
+     ✔  Then the profile transition is "accepted"
+    Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
+     ✔  Given a parent manifest "draft.1" whose Gamma predecessor is "v1"
+     ✔  When a child manifest "draft.2" introduces a Gamma "v2" entry
+     ✔  Then the profile transition is "accepted"
+    Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
+     ✔  Given a parent manifest "draft.2" whose Gamma predecessor is "v2"
+     ✔  When a child manifest "draft.2" introduces a Gamma "v2" entry
+     ✔  Then the profile transition is "accepted"
+    Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
+     ✔  Given a parent manifest "draft.2" whose Gamma predecessor is "v2"
+     ✔  When a child manifest "draft.1" introduces a Gamma "v1" entry
+     ✔  Then the profile transition is "refused"
+    Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
+     ✔  Given a parent manifest "draft.1" whose Gamma predecessor is "v1"
+     ✔  When a child manifest "draft.1" introduces a Gamma "v2" entry
+     ✔  Then the profile transition is "refused"
+    Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
+     ✔  Given a parent manifest "draft.2" whose Gamma predecessor is "v2"
+     ✔  When a child manifest "draft.2" introduces a Gamma "v1" entry
+     ✔  Then the profile transition is "refused"
+    Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
+     ✔  Given a parent manifest "unknown" whose Gamma predecessor is "v1"
+     ✔  When a child manifest "draft.2" introduces a Gamma "v2" entry
+     ✔  Then the profile transition is "refused"
+    Scenario Outline: Manifest and Gamma versions are monotone on every causal edge
+     ✔  Given a parent manifest "draft.1" whose Gamma predecessor is "unknown"
+     ✔  When a child manifest "draft.2" introduces a Gamma "v2" entry
+     ✔  Then the profile transition is "refused"
+    Scenario: A mixed-profile fork migrates at its draft2 merge
+     ✔  Given disjoint competing branches under draft.1 with Gamma v1 and draft.2 with Gamma v2
+     ✔  When the branches are joined by their deterministic merge
+     ✔  Then the merge manifest declares draft.2
+     ✔  And the new kind:merge entry is Gamma v2 with its operation_ref
+     ✔  And monotonicity is checked against both manifest parents and both Gamma predecessors
+     ✔  And every retained v1 and v2 parent byte remains unchanged
+     ✔  And physical segment order never reinterprets a causal edge
+     ✔  And no publication or resolution Gamma kind is introduced
+    Scenario: Gamma append is evidence rather than another operation
+     ✔  Given one typed operation occurrence with an allocated operation_ref
+     ✔  When its required Gamma evidence is appended
+     ✔  Then the entry carries that exact operation_ref
+     ✔  And the append allocates no additional operation occurrence
+     ✔  And the Gamma id is never reinterpreted as the occurrence
+    Scenario: A local read.gamma query leaves no protocol artifact
+     ✔  Given an auditor authorized to query Gamma under read.gamma
+     ✔  When the auditor performs a local query without producing a signed presentation
+     ✔  Then the perimeter is checked at operation time
+     ✔  But no Gamma entry or persisted operation_ref is produced
+     ✔  And the query is neither cold-replayable nor countable
+     ✔  And log_reads does not reinterpret the query as ethos.read
+    Scenario: A signed read.gamma presentation is evidence without a new Gamma kind
+     ✔  Given an authorized Gamma query whose result is made opposable
+     ✔  When signed presentation evidence is produced
+     ✔  Then it represents one canonical read or presentation occurrence
+     ✔  And the signed evidence carries that occurrence's operation_ref
+     ✔  But no gamma.read entry or automatic Gamma append is created
+    Scenario Outline: Gamma occurrence reuse distinguishes replay from a new operation
+     ✔  Given an accepted operation-bearing Gamma v2 entry with occurrence "O" and commitment "C"
+     ✔  When a second Gamma candidate has "O" and "C" for "same effect"
+     ✔  Then the candidate is "refused as replay before tally"
+     ✔  And the same verdict applies when the candidate is first compared while joining branches
+    Scenario Outline: Gamma occurrence reuse distinguishes replay from a new operation
+     ✔  Given an accepted operation-bearing Gamma v2 entry with occurrence "O" and commitment "C"
+     ✔  When a second Gamma candidate has "O" and "different" for "any effect"
+     ✔  Then the candidate is "refused as equivocation before tally"
+     ✔  And the same verdict applies when the candidate is first compared while joining branches
+    Scenario Outline: Gamma occurrence reuse distinguishes replay from a new operation
+     ✔  Given an accepted operation-bearing Gamma v2 entry with occurrence "O" and commitment "C"
+     ✔  When a second Gamma candidate has "different" and "different" for "same effect"
+     ✔  Then the candidate is "accepted as a distinct occurrence"
+     ✔  And the same verdict applies when the candidate is first compared while joining branches
+    Scenario: H2 roots tally raw Gamma lines and never deduplicate operation references
+     ✔  Given a verified history with a Gamma v1 prefix, valid operation-bearing v2 entries and a v2 heartbeat
+     ✔  And non-Gamma evidence shares an operation_ref with one accepted Gamma entry
+     ✔  When segment roots and the counts trie are recomputed
+     ✔  Then every exact Gamma line contributes once to its segment root and n
+     ✔  And the existing kind and mandate fields alone feed the existing counters
+     ✔  And the non-Gamma evidence contributes no H2 line or count
+     ✔  And two distinct occurrences with identical effects remain two raw entries
+     ✔  And replay or equivocation invalidates the edition instead of being deduplicated
+     ✔  And no mutation or total-consumption counter is inferred
+Rule: Append-time and cold-time share one replay front door
+    Scenario Outline: The same candidate and prefix produce the same typed verdict
+     ✔  Given identical public facts for "valid owner mutation"
+     ✔  When the candidate is checked before append and after export to a fresh store
+     ✔  Then the verdict, accepted prefix and counters are identical
+    Scenario Outline: The same candidate and prefix produce the same typed verdict
+     ✔  Given identical public facts for "valid delegated mutation"
+     ✔  When the candidate is checked before append and after export to a fresh store
+     ✔  Then the verdict, accepted prefix and counters are identical
+    Scenario Outline: The same candidate and prefix produce the same typed verdict
+     ✔  Given identical public facts for "valid connector action"
+     ✔  When the candidate is checked before append and after export to a fresh store
+     ✔  Then the verdict, accepted prefix and counters are identical
+    Scenario Outline: The same candidate and prefix produce the same typed verdict
+     ✔  Given identical public facts for "revoked delegated mutation"
+     ✔  When the candidate is checked before append and after export to a fresh store
+     ✔  Then the verdict, accepted prefix and counters are identical
+    Scenario Outline: The same candidate and prefix produce the same typed verdict
+     ✔  Given identical public facts for "exhausted action counter"
+     ✔  When the candidate is checked before append and after export to a fresh store
+     ✔  Then the verdict, accepted prefix and counters are identical
+    Scenario Outline: The same candidate and prefix produce the same typed verdict
+     ✔  Given identical public facts for "missing public obligation receipt"
+     ✔  When the candidate is checked before append and after export to a fresh store
+     ✔  Then the verdict, accepted prefix and counters are identical
+    Scenario: Active revocations are derived only from verified historical entries
+     ✔  Given a hash-linked Gamma file containing a forged revocation entry
+     ✔  When cold replay reconstructs active revocations
+     ✔  Then the forged entry is rejected before it can revoke or authorize anything
+[Summary]
+1 feature
+12 rules
+204 scenarios (203 passed, 1 failed)
+891 steps (890 passed, 1 failed)
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 31.61s
+     Running tests/cucumber.rs (rust/target/debug/deps/cucumber-be4ecf3a035cbebd)
+
+thread 'main' (26710) panicked at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cucumber-0.21.1/src/cucumber.rs:1287:13:
+1 step failed
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::panicking::panic_display
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:259:5
+   3: cucumber::cucumber::Cucumber<W,P,I,R,Wr,Cli>::filter_run_and_exit::{{closure}}
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cucumber-0.21.1/src/cucumber.rs:1287:13
+   4: futures_executor::local_pool::block_on::{{closure}}
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:316:34
+   5: futures_executor::local_pool::run_executor::{{closure}}
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:90:37
+   6: std::thread::local::LocalKey<T>::try_with
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/thread/local.rs:513:12
+   7: std::thread::local::LocalKey<T>::with
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/thread/local.rs:477:20
+   8: futures_executor::local_pool::run_executor
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:86:27
+   9: futures_executor::local_pool::block_on
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:316:5
+  10: cucumber::main
+             at ./tests/cucumber.rs:20027:5
+  11: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+error: test failed, to rerun pass `-p aithos-bundle --test cucumber`

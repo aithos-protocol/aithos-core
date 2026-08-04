@@ -40,7 +40,7 @@ use aithos_core::gamma_replay::GammaReplayState;
 use aithos_core::gamma_v2::{
     verify_gamma_profile_transition, verify_gamma_v2_entry, GammaOccurrenceRegistry,
 };
-use aithos_core::header::{Header, Line, Recipient, Wrap};
+use aithos_core::header::{Header, KeyVersion, Line, Recipient, Wrap};
 use aithos_core::ids::Sid;
 use aithos_core::keys::ed2x;
 use aithos_core::keys::{succession_from_entropy, MasterSeed, OwnerKeys};
@@ -259,10 +259,11 @@ fn b2_shares_window(child: &[u8; 32], parent: &[u8; 32], window: usize) -> bool 
 const DID_C: &str = "did:aithos:test-header";
 const NODE_A: &str = "/e/circle";
 const NODE_OTHER: &str = "/e/self";
-const CHILD_NODE: &str = "/e/circle/d/00000000000000000000000001";
 const DK: [u8; 32] = [0x77; 32];
 const DK2: [u8; 32] = [0x66; 32];
-const PARENT_KEY: [u8; 32] = [0x55; 32];
+// CHDR-021: `CHILD_NODE` and `PARENT_KEY` are gone. The up-link scenario no
+// longer names a node it never derives, nor seals under a literal parent key:
+// both now come from a real derivation off the B2 zone key.
 
 fn xsk(b: u8) -> StaticSecret {
     StaticSecret::from([b; 32])
@@ -493,8 +494,19 @@ pub struct ProtocolWorld {
     // --- step C: headers ---
     header: Option<Header>,
     saved_line: Option<Line>,
+    /// CHDR-013/CHDR-014: the WHOLE line vector before an append, so the
+    /// `Then` can assert cardinal and prefix, not merely "the owner line is
+    /// findable". A `find(|l| l.to == "owner")` survives any number of
+    /// surnumerary or reordered lines.
+    saved_lines: Vec<Line>,
     opened: Vec<Result<[u8; 32], String>>,
     wrap_obj: Option<Wrap>,
+    /// CHDR-021: the real derivation state scenario 8 must own — the parent's
+    /// node path, the child's node path, and the child key reachable by pure
+    /// derivation BEFORE the rotation.
+    uplink_parent: Option<NodePath>,
+    uplink_child: Option<NodePath>,
+    uplink_child_key_before: Option<[u8; 32]>,
     // --- step D: bundle ---
     bundle: Option<Bundle<MemStore>>,
     ent: SeqEntropy,
@@ -7574,7 +7586,6 @@ fn sealed_header_owner_grantee(w: &mut ProtocolWorld) {
 }
 
 #[given("a sealed header for the owner on one node")]
-#[given("a sealed header for the owner")]
 fn sealed_header_owner_only(w: &mut ProtocolWorld) {
     let header = Header::build(
         DID_C,
@@ -7587,6 +7598,32 @@ fn sealed_header_owner_only(w: &mut ProtocolWorld) {
     )
     .unwrap();
     w.saved_line = Some(header.key_versions["1"].lines[0].clone());
+    w.header = Some(header);
+}
+
+/// CHDR-014: the grant scenario's `Given` must carry at least TWO pre-existing
+/// recipients. On a single-recipient header "every other line untouched"
+/// degenerates to "the only other line is untouched": there is no rest to
+/// perturb and no order to permute, so an append that re-seals or reorders the
+/// survivors is indistinguishable from the O(1) push §03.3 mandates. The
+/// Gherkin phrase moved with the fixture: a `Given` announcing one recipient
+/// while sealing two lies about the state it establishes, which is the very
+/// defect class this audit tracks.
+#[given("a sealed header for the owner and an existing reader")]
+fn sealed_header_owner_and_reader(w: &mut ProtocolWorld) {
+    let header = Header::build(
+        DID_C,
+        NODE_A,
+        &DK,
+        &owner_pub_c(),
+        &[owner_rec(), grantee_rec("g1", 0x21)],
+        &[eph(1), eph(2)],
+        &[non(1), non(2)],
+    )
+    .unwrap();
+    let lines = header.key_versions["1"].lines.clone();
+    w.saved_line = Some(lines[0].clone());
+    w.saved_lines = lines;
     w.header = Some(header);
 }
 
@@ -7613,9 +7650,47 @@ fn sealed_header_three(w: &mut ProtocolWorld) {
     );
 }
 
+/// CHDR-021: build the state the scenario's title claims. A parent folder and
+/// a child section under it, both reached by real derivation from the B2 zone
+/// key; the child's header sealed at v1 under the DERIVED child key, then a
+/// real rotation to a fresh key that derivation cannot reach. Before this, the
+/// scenario sealed a constant under a constant and reopened it two steps later
+/// under the same constant: no derived node, no rotation, no content tree.
 #[given("a derived node rotated to a fresh random key")]
-fn derived_node_rotated(_w: &mut ProtocolWorld) {
-    // Fixtures: parent key PARENT_KEY, child CHILD_NODE rotated to DK2 v2.
+fn derived_node_rotated(w: &mut ProtocolWorld) {
+    let zone_dk = B2Vector::load().zone_dk();
+    let parent = NodePath::folder(Zone::Circle, vec![sid(1)]);
+    let child = NodePath::section(Zone::Circle, vec![sid(1)], sid(2));
+    let child_key_before = node_key(&zone_dk, &child);
+
+    let mut header = Header::build(
+        DID_C,
+        &child.to_string(),
+        &child_key_before,
+        &owner_pub_c(),
+        &[owner_rec(), grantee_rec("g1", 0x21)],
+        &[eph(1), eph(2)],
+        &[non(1), non(2)],
+    )
+    .unwrap();
+    // The rotation is real: a fresh key, the revoked reader dropped.
+    header
+        .rotate(
+            DID_C,
+            2,
+            &DK2,
+            &owner_pub_c(),
+            &[owner_rec()],
+            &[eph(6)],
+            &[non(6)],
+        )
+        .unwrap();
+
+    w.zone_dk = Some(zone_dk);
+    w.uplink_parent = Some(parent);
+    w.uplink_child = Some(child);
+    w.uplink_child_key_before = Some(child_key_before);
+    w.header = Some(header);
 }
 
 #[given("a fresh identity")]
@@ -8122,6 +8197,12 @@ fn stranger_tries(w: &mut ProtocolWorld) {
 
 #[when("one byte of a line's ciphertext is corrupted")]
 fn corrupt_line(w: &mut ProtocolWorld) {
+    // CHDR-002: positive control INSIDE the scenario. Without it, a fixture
+    // regression that made the owner line permanently unopenable keeps this
+    // scenario green — the rejection would be satisfied for a reason that has
+    // nothing to do with the corruption.
+    w.open_into(1, &owner_kid_c(), 0x0A);
+
     let header = w.header.as_mut().unwrap();
     let kv = header.key_versions.get_mut("1").unwrap();
     let c = &mut kv.lines[0].c;
@@ -8132,7 +8213,14 @@ fn corrupt_line(w: &mut ProtocolWorld) {
 
 #[when("its owner line is replayed on a different node's header")]
 fn replay_line_other_node(w: &mut ProtocolWorld) {
-    let stolen = w.header.as_ref().unwrap().key_versions["1"].lines[0].clone();
+    let origin = w.header.as_ref().unwrap().clone();
+    let stolen = origin.key_versions["1"].lines[0].clone();
+
+    // CHDR-002: control open of the very line about to be stolen, on its own
+    // header, before any graft.
+    w.open_into(1, &owner_kid_c(), 0x0A);
+
+    // The node half of the binding: same version, different node.
     let mut other = Header::build(
         DID_C,
         NODE_OTHER,
@@ -8143,9 +8231,22 @@ fn replay_line_other_node(w: &mut ProtocolWorld) {
         &[non(4)],
     )
     .unwrap();
-    other.key_versions.get_mut("1").unwrap().lines[0] = stolen;
+    other.key_versions.get_mut("1").unwrap().lines[0] = stolen.clone();
     w.header = Some(other);
     w.open_into(1, &owner_kid_c(), 0x0A);
+
+    // CHDR-001: the VERSION half, which the scenario's phrase claims and no
+    // step exercised. Same node, same subject, same kid — only `key_version`
+    // varies, so `line_aad`'s version component is the sole discriminator.
+    let mut same_node_v2 = origin;
+    same_node_v2.key_versions.insert(
+        "2".to_owned(),
+        KeyVersion {
+            lines: vec![stolen],
+        },
+    );
+    w.header = Some(same_node_v2);
+    w.open_into(2, &owner_kid_c(), 0x0A);
 }
 
 #[when("a header is built without the owner line")]
@@ -8166,10 +8267,12 @@ fn build_without_owner(w: &mut ProtocolWorld) {
 
 #[when("a line for a new grantee is appended")]
 fn append_grantee_line(w: &mut ProtocolWorld) {
+    // CHDR-014: the appended recipient is DIFFERENT from the one the `Given`
+    // already carries, so "every OTHER line" has a non-degenerate referent.
     w.header
         .as_mut()
         .unwrap()
-        .append_line(DID_C, 1, &DK, &grantee_rec("g1", 0x21), eph(5), non(5))
+        .append_line(DID_C, 1, &DK, &grantee_rec("g2", 0x22), eph(5), non(5))
         .unwrap();
 }
 
@@ -8192,12 +8295,25 @@ fn rotate_without_g1(w: &mut ProtocolWorld) {
 
 #[when("the rotator posts the up-link wrap under the parent key")]
 fn post_uplink_wrap(w: &mut ProtocolWorld) {
+    // CHDR-021: the via key is the parent's DERIVED key, and the wrapped node
+    // and version are read off the rotated header — not three literals that
+    // the `Then` will hand straight back.
+    let zone_dk = w.zone_dk.expect("the derived zone key");
+    let parent = w
+        .uplink_parent
+        .as_ref()
+        .expect("the parent node path")
+        .clone();
+    let header = w.header.as_ref().expect("the rotated child header");
+    let child_node = header.node.clone();
+    let version = header.latest_version();
+    let parent_key = node_key(&zone_dk, &parent);
     w.wrap_obj = Some(Wrap::seal(
         DID_C,
-        NODE_A,
-        &PARENT_KEY,
-        CHILD_NODE,
-        2,
+        &parent.to_string(),
+        &parent_key,
+        &child_node,
+        version,
         &DK2,
         non(9),
     ));
@@ -12350,7 +12466,6 @@ fn owner_opens(w: &mut ProtocolWorld) {
 }
 
 #[then("the grantee opens the header and recovers the node key")]
-#[then("the new grantee opens the node key")]
 fn grantee_opens(w: &mut ProtocolWorld) {
     let dk = w
         .header
@@ -12361,16 +12476,53 @@ fn grantee_opens(w: &mut ProtocolWorld) {
     assert_eq!(dk, DK);
 }
 
+/// CHDR-014: split from `grantee_opens` — the grant scenario's new reader is
+/// `g2`, distinct from the `g1` its `Given` already carries.
+#[then("the new grantee opens the node key")]
+fn new_grantee_opens(w: &mut ProtocolWorld) {
+    let dk = w
+        .header
+        .as_ref()
+        .unwrap()
+        .open(DID_C, 1, "g2", &xsk(0x22))
+        .unwrap();
+    assert_eq!(dk, DK);
+}
+
 #[then("it recovers nothing")]
 fn stranger_recovers_nothing(w: &mut ProtocolWorld) {
     assert!(!w.opened.is_empty());
     assert!(w.opened.iter().all(Result::is_err));
 }
 
+/// CHDR-002: a differential `Then`. The first recorded attempt is the positive
+/// control — the targeted line MUST have opened on a known-good base before the
+/// mutation — and every attempt after it MUST fail. A bare `is_err()` on the
+/// last attempt proves "an error occurred", not "the mutation caused it".
+/// CHDR-001: the cardinal is read too, so a `When` that silently stops
+/// recording one of its attempts cannot pass unnoticed.
 #[then("opening that line is rejected")]
 #[then("opening it there is rejected")]
 fn opening_rejected(w: &mut ProtocolWorld) {
-    assert!(w.opened.last().unwrap().is_err());
+    assert!(
+        w.opened.len() >= 2,
+        "this Then is differential: it needs a control open and at least one \
+         post-mutation attempt, got {}",
+        w.opened.len()
+    );
+    assert_eq!(
+        w.opened.first().unwrap().as_ref().ok().copied(),
+        Some(DK),
+        "positive control: the targeted line must open on its own header \
+         BEFORE the mutation — {:?}",
+        w.opened.first().unwrap()
+    );
+    for (i, attempt) in w.opened.iter().enumerate().skip(1) {
+        assert!(
+            attempt.is_err(),
+            "attempt {i} after the mutation must be rejected, got {attempt:?}"
+        );
+    }
 }
 
 #[then("the header is rejected as invalid")]
@@ -12379,14 +12531,40 @@ fn header_invalid(w: &mut ProtocolWorld) {
     assert!(msg.contains("I3"), "rejection must name I3: {msg}");
 }
 
+/// CHDR-013: the grant's cardinal and position, which no assertion in the
+/// repository read. A `find(|l| l.to == "owner")` against a single saved line
+/// is blind to a surnumerary line, to a duplicate, and to a reordering.
+/// CHDR-014: the prefix equality is asserted against the WHOLE pre-append
+/// vector, so re-sealing the survivors at append time is caught too.
 #[then("the owner line is byte-identical to before")]
 fn owner_line_untouched(w: &mut ProtocolWorld) {
     let header = w.header.as_ref().unwrap();
-    let owner_line = header.key_versions["1"]
-        .lines
-        .iter()
-        .find(|l| l.to == "owner")
-        .unwrap();
+    let lines = &header.key_versions["1"].lines;
+    let saved = &w.saved_lines;
+
+    assert!(
+        saved.len() >= 2,
+        "CHDR-014: 'every other line' needs at least two pre-existing \
+         recipients to have a non-degenerate referent, got {}",
+        saved.len()
+    );
+    assert_eq!(
+        lines.len(),
+        saved.len() + 1,
+        "a grant appends EXACTLY one line (§03.3)"
+    );
+    assert_eq!(
+        &lines[..saved.len()],
+        &saved[..],
+        "every pre-existing line stays byte-identical AND keeps its position"
+    );
+    assert_eq!(
+        header.key_versions.len(),
+        1,
+        "a grant creates no key version"
+    );
+
+    let owner_line = lines.iter().find(|l| l.to == "owner").unwrap();
     assert_eq!(owner_line, w.saved_line.as_ref().unwrap());
 }
 
@@ -12401,14 +12579,40 @@ fn survivor_opens(w: &mut ProtocolWorld) {
     assert_eq!(dk, DK2);
 }
 
+/// CHDR-019: the old assertion was decided by the `kid` routing hint alone —
+/// `Header::open` filters on `kid`, the loop was empty, `open_line` was never
+/// reached and the revoked's secret was never used. §03.1 declares `to`/`kid`
+/// non-authorizing, so that proved neither the structural claim nor the
+/// capability claim. Three assertions replace it: the structural fact, the
+/// mechanical rotation rule, and a capability test that actually reaches the
+/// seal by trying the revoked's SECRET against every surviving kid.
 #[then("the first grantee cannot open the new version")]
 fn revoked_cannot_open(w: &mut ProtocolWorld) {
-    assert!(w
-        .header
-        .as_ref()
-        .unwrap()
-        .open(DID_C, 2, "g1", &xsk(0x21))
-        .is_err());
+    let header = w.header.as_ref().unwrap();
+    let v2 = header
+        .key_versions
+        .get("2")
+        .expect("the rotation created version 2");
+
+    assert!(
+        v2.lines.iter().all(|l| l.kid != "g1"),
+        "the revoked gets NO line in the new version: {:?}",
+        v2.lines.iter().map(|l| &l.kid).collect::<Vec<_>>()
+    );
+    header
+        .check_rotation(2, &owner_kid_c())
+        .expect("the rotation must satisfy §03.4: survivors ⊆ previous, owner kept");
+
+    // Capability, not routing: the revoked's key against every line that IS
+    // routable in v2. This reaches `open_line` for each one.
+    for line in &v2.lines {
+        assert!(
+            header.open(DID_C, 2, &line.kid, &xsk(0x21)).is_err(),
+            "the revoked's key must not open line {} of v2",
+            line.kid
+        );
+    }
+    assert!(header.open(DID_C, 2, "g1", &xsk(0x21)).is_err());
 }
 
 #[then("the owner opens the new version too")]
@@ -12422,15 +12626,72 @@ fn owner_opens_new(w: &mut ProtocolWorld) {
     assert_eq!(dk, DK2);
 }
 
+/// CHDR-021: the old `Then` reopened the same in-memory object with the same
+/// literal it had just been sealed under, which establishes only
+/// `wrap_open(wrap_seal(k, dk)) == dk`. It could not detect a wrap posted under
+/// the wrong node or the wrong version, because `Wrap::open` recomputes its AAD
+/// from its OWN fields. This one recovers the parent key by derivation from an
+/// ancestor first, checks the wrap is bound to the node and version it claims,
+/// and asserts the pair the scenario's name promises: derivation cut by the
+/// rotation, then restored by the wrap.
 #[then("a parent holder recovers the new node key through the wrap")]
 fn parent_recovers_via_wrap(w: &mut ProtocolWorld) {
-    let dk = w
-        .wrap_obj
-        .as_ref()
-        .unwrap()
-        .open(DID_C, &PARENT_KEY)
-        .unwrap();
-    assert_eq!(dk, DK2);
+    let zone_dk = w.zone_dk.expect("the derived zone key");
+    let parent = w.uplink_parent.as_ref().expect("the parent node path");
+    let child = w.uplink_child.as_ref().expect("the child node path");
+    let child_key_before = w
+        .uplink_child_key_before
+        .expect("the pre-rotation derived child key");
+    let header = w.header.as_ref().expect("the rotated child header");
+    let wrap = w.wrap_obj.as_ref().expect("the posted wrap");
+
+    // (a) before the rotation, a parent holder reached the child by pure
+    //     derivation — that is what the rotation is about to cut.
+    let parent_key = node_key(&zone_dk, parent);
+    assert_eq!(
+        derive_key(&section_label(&sid(2)), &parent_key),
+        child_key_before,
+        "the child key was reachable from the parent by one derivation"
+    );
+    assert_eq!(
+        header
+            .open(DID_C, 1, &owner_kid_c(), &xsk(0x0A))
+            .expect("v1 opens"),
+        child_key_before,
+        "v1 of the child header sealed the DERIVED key, not a constant"
+    );
+
+    // (b) the rotation cut it: derivation no longer yields the current key.
+    let new_dk = header
+        .open(DID_C, header.latest_version(), &owner_kid_c(), &xsk(0x0A))
+        .expect("the rotated version opens for the owner");
+    assert_ne!(
+        new_dk, child_key_before,
+        "the rotation must move the child off its derived key"
+    );
+
+    // (c) the wrap is bound to the node and version it claims to restore.
+    assert_eq!(wrap.node, header.node, "wrap posted under the wrong node");
+    assert_eq!(
+        wrap.key_version,
+        header.latest_version(),
+        "wrap posted under the wrong key version"
+    );
+    assert_eq!(
+        wrap.via,
+        parent.to_string(),
+        "wrap posted via the wrong node"
+    );
+    assert_eq!(child.to_string(), header.node);
+
+    // (d) and the wrap restores it, under a key the holder DERIVED.
+    let recovered = wrap
+        .open(DID_C, &parent_key)
+        .expect("the parent holder opens the up-link wrap");
+    assert_eq!(
+        recovered, new_dk,
+        "the wrap must yield the very key the rotated header seals"
+    );
 }
 
 #[then("edition 1 verifies offline")]

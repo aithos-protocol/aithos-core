@@ -1,27 +1,83 @@
 ---
 feature: c-headers
-status: IMPACT_REVIEW_REQUESTED
-mode: correction
-round: 1
-base_main: a2087f2392389fb17e0bc0ba9e20a164d53766d8
+status: INTEGRATION
+mode: integration
+round: 2
+base_main: 2f2d55d
 audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8
-candidate_revision: 9dc58895b5c822d13ea5daf8c25302ccd657b668
-branch: codex/audit-c-headers-r2
-assigned_findings: []
+candidate_revision: f335f4919950b6b462882876878460dcf2102a6a
+branch: codex/fix-c-headers-lot-a
+assigned_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-019, CHDR-021, CHDR-025]
 open_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025, CHDR-028, CHDR-029, CHDR-030]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-04T05:45:00+00:00
+last_transition: 2026-08-04T11:30:00+00:00
 ---
 
 # Domain state — `c-headers`
+
+> **Read this section first. Everything below it is round 1 and is kept for the
+> record, not for instruction.** Where the two disagree, this section wins.
+
+## Round 2, lot A — `REVIEW_ACCEPTED`, 2026-08-04
+
+| Field | Value |
+|---|---|
+| Status | `REVIEW_ACCEPTED`. All **eight** assigned findings are **`VERIFIED`** by the independent reviewer — `CHDR-001`, `-002`, `-009`, `-013`, `-014`, `-019`, `-021`, `-025`. No `NOT_VERIFIED`, no `REGRESSION`, rejection counter at 0/3 |
+| Review report | `auditor/runs/2026-08-04-review-lot-a.md`. Pass A on an out-of-tree extract of `c1f8380` with no `.git`, without the corrector's run report and without the run journal; Pass B opened only once every requested transcript was delivered, and **moved no verdict** |
+| Candidate revision | `5905bec` on `codex/fix-c-headers-lot-a`. Two commits: `03283b0` the corrector's, `5905bec` the orchestrator's state and journal |
+| Corrector run report | `corrector/runs/2026-08-04-correction-lot-a.md` — withheld from the reviewer until its behavioural verdict was frozen (`../PROCESS.md`, § *Material isolation of Pass A*) |
+| Reviewer's mutants | thirteen more, all run by the orchestrator: `M1` `ev-9ba93af7` · `M2` `ev-39f02b30` · `M3` `ev-c16f1a9a` + `ev-2e427d6e` · `M4` `ev-a1f966ca` · `M5` `ev-1b889900` · `M6` `ev-b3ccaaf3` · `M7` `ev-c78772c4` · `M8` `ev-16a836a9` · `M9` `ev-11dee753` · `M10` `ev-dce43f1c` + `ev-4ed2d6f3` · `M11` `ev-ad4db6a1` + `ev-34e698d8` · `M12` `ev-ec9412a7` + `ev-debade53` + `ev-cbce8aa0`. Baselines `ev-14592971`, `ev-1335c8f1`, `ev-1a19fdf4` |
+| New findings raised by the review | `CHDR-037`, `-038`, `-039`, **`-040` (P2, against this train's own process)**, `-042`. `CHDR-041` is **reserved and not opened**. Nothing embargoed |
+| Three acceptance conditions, now the orchestrator's to carry | (1) the `CHDR-021` surviving-mutant paragraph survives closure **verbatim**, with `ev-ec9412a7` and `ev-cbce8aa0` appended as a pair — green where this feature's scenarios look, red where the vectors look; (2) the audit's §6 mutant for `CHDR-019` is corrected before republication and sited at `c1_fail_closed`, not at scenario 7; (3) the markers are **rewritten, not stripped** |
+| `CHDR-016` | out of lot A. Re-routed, not closed and not withdrawn — see below |
+| Method | the lot is test-semantics: no production behaviour was wrong, what was missing was proof. So no assertion is RED against unmutated production code, and each is instead proved by a **named mutant** under which the old assertion is green and the new one red |
+| Mutants run | sixteen, across two waves, all by the orchestrator, all journalled in `../orchestrator/runs/2026-08-04-r6/ledger.jsonl` with both halves where the base fixture can express the mutation |
+| Wider gates | feature `ev-6d38842c` 1/4/8/28 · full cucumber `ev-a1fa00fc` 18/114/836/3577 · workspace `ev-3013c663` · `cargo fmt --check` `ev-e3b0c442` · `clippy --workspace --all-targets -D warnings` `ev-d6ce5ee9`. All green |
+| One Gherkin edit | `features/c-headers.feature:68`, `a sealed header for the owner` → `a sealed header for the owner and an existing reader`. A `Given` announcing one recipient while sealing two lies about the state it establishes; that is the defect class this audit tracks, so the phrase moved with the fixture. Counts unchanged at 1/4/8/28 |
+| Debt named for the reviewer | the corrector reports that the mutant **stated in the public audit for `CHDR-019`** is wrong on the code. It did not edit `docs/audits/`, correctly — the audit belongs to the auditor and the owner. The reviewer inherits this |
+| Debt from round 1 — **closed, and the premise was wrong** | I carried forward, twice, a claim that `features/c-headers.feature:47-55` still read `DECISION_REQUIRED … neither is assigned to a corrector`. It did not. Lot B's reviewer removed those markers in `c547ccd` and this file went on asserting otherwise for two rounds. The auditor checked the file instead of trusting the brief and found the sentence that *was* false — `Only the build-time I3 gate is exercised…`, falsified by `ev-dce43f1c` — and fixed that one. Recorded as my error: a state file that describes the tree from memory rather than from the tree is exactly the defect this audit tracks, one layer up |
+| Blocked | no |
+
+### The two orchestrator decisions of this round, recorded as the orchestrator's
+
+**`CHDR-016` left lot A.** Its statement is about the production grant path in
+`aithos-bundle`, not about a Gherkin assertion. Correcting it from a branch
+whose scope is this feature's test semantics would have been blocking
+condition 8. It is removed from `assigned_findings`, recorded in
+`../orchestrator/QUEUE.yaml` as `chdr-016-grant-path`, and owed jointly by
+`g-revocation` and `d-bundle`. Neither closed nor withdrawn: re-routed, and the
+feature that inherits it owes it a lot.
+
+**`CHDR-009` was expanded from one mutant to four.** The corrector's patch adds
+three tests against three distinct gates — `check_owner_line` behind both
+`build_at` and `rotate`, the trailing gate in `check_rotation`, and `validate`
+— and a test whose necessity is unproven is the defect this lot exists to
+remove. Each got its own mutant, and each flips exactly one test. The corrector
+then pointed out that the first was not gate-exclusive, so a fourth was run
+deleting only `rotate`'s call: `ev-96710817` green without, `ev-65b6a137` red
+with, and `ev-1a649a8f` green on the whole feature under the same mutant, which
+is what separates the two gates by evidence rather than by assertion.
+
+### What the reviewer receives, and what it does not
+
+It receives a `git archive` of `5905bec` with no `.git`, with
+`corrector/runs/2026-08-04-correction-lot-a.md` and the whole of
+`../orchestrator/runs/2026-08-04-r6/` removed — the run report and the mutation
+journal both. It reaches its own behavioural verdict on the eight findings
+before either is delivered. It runs no gate: it names the command and the
+orchestrator runs it.
+
+---
+
+## Round 1 — kept for the record
 
 | Field | Value |
 |---|---|
 | Status | `CORRECTION_REQUESTED` — the initial audit completed on runs `2026-08-03-r1` and `-r2`. **All four blocking conditions are now closed.** Conditions 9, 6 and 7 by the disclosure and budget ruling of 2026-08-03; condition 1 by `decisions/2026-08-03-chdr-007-012-i3-authority.md`, which rules reading A on both findings: I3 binds the recipient key, not the label, and it binds the edition verifier |
 | Expected mode | `review` — lot B is implemented and awaits an independent reviewer. `CHDR-007` and `CHDR-012` are `IMPLEMENTED`, never `VERIFIED`: only the reviewer may raise them |
 | Round | 1 |
-| Base of round 1 | not frozen (`base_main: a2087f2392389fb17e0bc0ba9e20a164d53766d8`) — the role that opens the round records the exact local `main` revision here and in its run report |
+| Base of round 1 | not frozen (`base_main: 2f2d55d`) — the role that opens the round records the exact local `main` revision here and in its run report |
 | Audit revision | not frozen (`audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8`) |
 | Candidate revision | `9dc5889` on `codex/fix-c-headers-i3-authority` — lot B, `CHDR-007` and `CHDR-012` at `IMPLEMENTED`. This is the revision the independent reviewer extracts, without `.git` and without the corrector's run report, until its behavioural verdict is frozen |
 | Canonical branch | `codex/audit-c-headers-r2` |
@@ -34,7 +90,7 @@ last_transition: 2026-08-04T05:45:00+00:00
 | Public audit | `docs/audits/features/c-headers.md` — written by run `2026-08-03-r1`, completed by `-r2` after the owner lifted the embargo. Every finding is stated in full |
 | Gherkin markers | 6 scenarios carry markers for unresolved findings; gate re-run after each marker edit is green and unchanged at 1/4/8/28 (`ev-c30fa81e`, then `ev-91717a6d`) |
 | Recorded follow-up owed | `TARGETED` from the accepted b-derivation round-2 impact review (`../orchestrator/QUEUE.yaml:61-62`, `../orchestrator/runs/2026-08-03-b-derivation-impact-review-02.md:494`): the independent-generation claim of `vectors/c1-header-seal.json` and `rust/crates/aithos-core/tests/c1_header_seal.rs:2-3`. Evidence class, not behaviour |
-| Next role — superseded | the **independent reviewer**, via `auditor/audit-c-headers/SKILL.md` in review mode. It receives an extract of the candidate without `.git` and **without the corrector's run report** until its behavioural verdict is frozen (`PROCESS.md`, § *Material isolation of Pass A*). Two debts are named for it: the markers at `features/c-headers.feature:47-55` still read `DECISION_REQUIRED … neither is assigned to a corrector`, which the decision of 2026-08-03 made false; and the marker block also carries lot A identifiers, so the edit is not a simple deletion |
+| Next role — superseded | the **independent reviewer**, via `auditor/audit-c-headers/SKILL.md` in review mode. It receives an extract of the candidate without `.git` and **without the corrector's run report** until its behavioural verdict is frozen (`PROCESS.md`, § *Material isolation of Pass A*). Two debts were named for it, and the first of the two was **false when written** — see the round 2 section above |
 | Blocked | no. All four conditions raised by runs `-r1` and `-r2` are resolved in `../orchestrator/BLOCKED.md`. The gap noted on 2026-08-03 stands and is recorded for the train's own backlog: `train-status.py` rejects a `blocked` entry on any status other than `BLOCKED`, so a feature that proceeds while some of its findings await a human ruling has no representation in the frontmatter |
 
 ## Inputs
@@ -85,7 +141,7 @@ integrated `main`, which is the `b-derivation` pattern. That is workable, but it
 means an audit cannot hand a corrector two independent lots without a human
 integration between them. Recorded rather than worked around.
 
-## Round 2 — prepared, waiting only on the integration
+## Round 2 — OPENED 2026-08-04. What follows is the plan it was opened on.
 
 Written here rather than held in a session, per the chantier's rule that the
 orchestrator has no memory: a cold session resumes from this file alone.
@@ -114,6 +170,17 @@ performs the merge; no agent role does.
 **Why lot A comes second and not first.** The fixtures it edits migrated to the
 new signature during lot B. Doing it first would have opened `cucumber.rs`
 twice.
+
+**`CHDR-016` left lot A, by orchestrator decision, 2026-08-04.** It is removed
+from `assigned_findings` above; the count is eight, not nine. Its statement —
+*the grant path actually taken in production implements neither step 1 nor
+step 3 of §3.3* — is a production-behaviour finding about the grant surface of
+the bundle layer, not a Gherkin-assertion finding. Correcting it inside lot A
+would have meant editing production code in `g-revocation` and `d-bundle`
+territory from a branch whose scope is this feature's test semantics: blocking
+condition 8, *scope*. It is recorded in `../orchestrator/QUEUE.yaml` as a
+follow-up owned by those two features. It is **not** closed and **not**
+withdrawn: it is re-routed, and the feature that inherits it owes it a lot.
 
 **One thing the corrector must be told, and it is new.** `features/AGENTS.md`
 now carries the § *Project stage* section: nothing is deployed, no edition has
