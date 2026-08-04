@@ -84,3 +84,39 @@ lots has no representation: the second lot must become a round 2 opened from an
 integrated `main`, which is the `b-derivation` pattern. That is workable, but it
 means an audit cannot hand a corrector two independent lots without a human
 integration between them. Recorded rather than worked around.
+
+## Round 2 — prepared, waiting only on the integration
+
+Written here rather than held in a session, per the chantier's rule that the
+orchestrator has no memory: a cold session resumes from this file alone.
+
+**Trigger.** `origin/main` moves off `a2087f2`. Nothing else. The owner
+performs the merge; no agent role does.
+
+**Then, in order.**
+
+1. Open round 2: `round: 2`, `mode: correction`, `status: CORRECTION_REQUESTED`,
+   `base_main` = the new `main`, `branch: codex/fix-c-headers-lot-a`.
+2. `assigned_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014,
+   CHDR-016, CHDR-019, CHDR-021, CHDR-025]` — **lot A**, the nine
+   test-semantics findings. They touch assertions in
+   `rust/crates/aithos-bundle/tests/cucumber.rs` and the C-family tests; no
+   production code is in scope.
+3. `CHDR-007` and `CHDR-012` are `VERIFIED` and do not return.
+   `CHDR-028`, `CHDR-029`, `CHDR-030` are **not** assigned: `CHDR-028` is held
+   by the disclosure gate, and the other two were classed by the impact review
+   as belonging to `g-revocation`, `n-structural-mutations` and
+   `o-connector-classes-vault`, not here.
+4. Corrector, then the gates run by the orchestrator, then an independent
+   reviewer on a candidate extract without `.git` and without the corrector's
+   report — the same shape that worked on lot B.
+
+**Why lot A comes second and not first.** The fixtures it edits migrated to the
+new signature during lot B. Doing it first would have opened `cucumber.rs`
+twice.
+
+**One thing the corrector must be told, and it is new.** `features/AGENTS.md`
+now carries the § *Project stage* section: nothing is deployed, no edition has
+been published, so backward compatibility is not a cost and must not be weighed.
+Lot A is where that first bites — several of its findings ask for stronger
+assertions that would have been softened to spare a past that has no content.
