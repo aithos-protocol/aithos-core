@@ -7,23 +7,48 @@ Feature: Bundle and editions
 
   Rule: Editions chain and verify offline
 
+    @audit-partial @dbnd-003 @dbnd-005
+    # AUDIT DBND-003, DBND-005 — PARTIAL.
+    # Then edition 1 verifies offline is a bare verify().expect() sharing one
+    # step body with the public zone's integrity Then (DBND-003): neither the
+    # ordinal nor offline is asserted. And the manifest pins the DID document is
+    # subsumed by the step before it (DBND-005).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario: Initialising a bundle publishes a verifiable first edition
       Given a fresh identity
       When I initialise its bundle
       Then edition 1 verifies offline
       And the manifest pins the DID document
 
+    @audit-partial @dbnd-006
+    # AUDIT DBND-006 — PARTIAL.
+    # The strongest scenario in the feature: ev-5474b889 kills it. But Every is
+    # demonstrated on one publication and linearity on zero forks (DBND-006).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario: Every publication extends the chain
       Given an initialised bundle
       When I create circle folder "projets/perso" with a section "note1" tagged "toto"
       And I publish the edition
       Then edition 2 verifies and pins edition 1 as its predecessor
 
+    @audit-partial @dbnd-002 @dbnd-004
+    # AUDIT DBND-002, DBND-004 — PARTIAL.
+    # The tampered object is re-derived twice, so deleting the whole flat-pin loop
+    # leaves this green (DBND-002, ev-de2706a8); the sealed-blob rollback the pins
+    # uniquely cover is never tampered. No positive control (DBND-004).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario: A tampered file fails the edition
       Given a published bundle
       When one byte of a pinned file is altered
       Then edition verification is rejected
 
+    @audit-partial @dbnd-001 @dbnd-004
+    # AUDIT DBND-001, DBND-004 — SEMANTIC_FALSE_POSITIVE.
+    # The rejection is produced by an unpinned-stray check, not by the chain link:
+    # green with the predecessor-hash comparison deleted (DBND-001, ev-d1fc33b5).
+    # fails closed is not distinguished from any other rejection. No positive
+    # control (DBND-004).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario: A broken chain fails closed
       Given a bundle with two editions
       When the newest manifest claims a wrong predecessor hash
@@ -31,11 +56,24 @@ Feature: Bundle and editions
 
   Rule: Content round-trips through the sealed store
 
+    @audit-partial @dbnd-007 @dbnd-009 @dbnd-011
+    # AUDIT DBND-007, DBND-009, DBND-011 — PARTIAL.
+    # The Rule's word sealed is asserted by neither scenario: green against a
+    # cleartext store (DBND-007, ev-23aeba39). The publication in the Given is
+    # observed by no assertion (DBND-009). No negative control (DBND-011).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario: The owner reads back what was written
       Given a published bundle with section "note1" in circle "projets/perso"
       When the owner reads "projets/perso/note1" from circle
       Then the section body comes back intact
 
+    @audit-partial @dbnd-008 @dbnd-007 @dbnd-009 @dbnd-010 @dbnd-011
+    # AUDIT DBND-008, DBND-007, DBND-009, DBND-010, DBND-011 — SEMANTIC_FALSE_POSITIVE.
+    # A rename that renames nothing passes: green with the old name surviving as an
+    # alias (DBND-008, ev-f7261aa9). No sid and no blob_sha is ever compared. Also
+    # DBND-007 (sealed), DBND-009 (republication unobserved), DBND-010 (the step's
+    # parent is hard-coded), DBND-011 (no negative control).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario: Display paths resolve through names, keys through sids
       Given a published bundle with section "note1" in circle "projets/perso"
       When the folder "perso" is renamed to "intime"
@@ -44,6 +82,14 @@ Feature: Bundle and editions
 
   Rule: The public zone reads without any key
 
+    @audit-partial @dbnd-003 @dbnd-012
+    # AUDIT DBND-003, DBND-012 — PARTIAL.
+    # Keylessness is proved at the type level and is the one claim here proved
+    # better than a Then could prove it. But its integrity checks against the
+    # signed edition is a whole-bundle verify() that never touches the value read
+    # (DBND-003, ev-c7f65638). The owner content signature spec 02.11 promises is
+    # verified by nothing in the tree (DBND-012, routed).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario: A stranger reads public content with no key at all
       Given a published bundle with a public section "bio" in folder "profil"
       When a stranger with no key reads "profil/bio" from public
@@ -52,6 +98,14 @@ Feature: Bundle and editions
 
   Rule: The self zone leaks no structure
 
+    @audit-partial @dbnd-014 @dbnd-013 @dbnd-015 @dbnd-016 @dbnd-017
+    # AUDIT DBND-014, DBND-013, DBND-015, DBND-016, DBND-017 — SEMANTIC_FALSE_POSITIVE.
+    # The scenario passes having inspected nothing: green with the e/self prefix
+    # hidden from listing (DBND-014, ev-0b4e1076). anywhere searches one of four
+    # normative layers and misses the signed Gamma log (DBND-013, ev-f1718be8).
+    # Also DBND-015 (needles hard-coded), DBND-016 (flat sea reaches no
+    # assertion), DBND-017 (no self body is read anywhere in this feature).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario: Self is a flat sea of opaque blobs
       Given a bundle with a self folder "enfance/cicatrices" containing section "blessure"
       When I inspect every file of the self zone as a stranger
@@ -60,6 +114,16 @@ Feature: Bundle and editions
 
   Rule: Owner operations have durable parity across all three zones
 
+    @audit-partial @dbnd-018 @dbnd-019 @dbnd-020 @dbnd-021 @dbnd-022 @dbnd-023 @dbnd-024
+    # AUDIT DBND-018, DBND-019, DBND-020, DBND-021, DBND-022, DBND-023, DBND-024 — PARTIAL.
+    # P1 DBND-018: without consuming mandate counters is assert_eq!(0, 0) and all
+    # fifteen rows stay green when every owner entry declares a mandate chain
+    # (ev-19a635cf). Three rows satisfy the capability clause on keyless paths
+    # (DBND-019, ev-b6a36f72). Also DBND-020 (narrow has three senses), DBND-021
+    # (vector fields with no consumer), DBND-022 (no resulting edition on six
+    # rows), DBND-023 (the Givens construct nothing), DBND-024 (parity is never
+    # checked comparatively).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: The local owner performs every content operation without a mandate
       Given an owner-local bundle session for zone "<zone>"
       And a published existing folder and section in that zone
@@ -88,6 +152,15 @@ Feature: Bundle and editions
 
   Rule: A local mutation commits state and Gamma as one transaction
 
+    @audit-partial @dbnd-026 @dbnd-023 @dbnd-027 @dbnd-028 @dbnd-036
+    # AUDIT DBND-026, DBND-023, DBND-027, DBND-028, DBND-036 — PARTIAL.
+    # The best-proved block in the feature: real fault injection, a three-way byte
+    # comparison, and a control that kills four rows (ev-f0125e0b). What it cannot
+    # see is the staging orphan its own line 99 names, because the snapshot stops
+    # at canonical_base() (DBND-026). Also DBND-023 (the Given constructs
+    # nothing), DBND-027 (four Thens, one boolean), DBND-028 (six boundary names,
+    # at most four injection points), DBND-036 (one sentence, three comparators).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
       Given a published "<store>" bundle snapshotted byte for byte
       And an injected failure at "<boundary>"
@@ -113,6 +186,12 @@ Feature: Bundle and editions
         | FsStore  | Gamma validation  |
         | FsStore  | before commit marker or reference |
 
+    @audit-partial @dbnd-025 @dbnd-023 @dbnd-027
+    # AUDIT DBND-025, DBND-023, DBND-027 — PARTIAL.
+    # Line 121 asserts crash recovery and nothing induces a crash: green with the
+    # whole FsStore recovery path gutted (DBND-025, ev-7caa8332). Line 119 is a
+    # real positive control and is credited. Also DBND-023, DBND-027.
+    # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: A successful local transaction publishes content and Gamma together
       Given a published "<store>" bundle snapshotted byte for byte
       When the owner commits a valid circle edit
@@ -128,6 +207,16 @@ Feature: Bundle and editions
 
   Rule: Local capabilities and paths stay narrow
 
+    @audit-partial @dbnd-029 @dbnd-030 @dbnd-031 @dbnd-032 @dbnd-020 @dbnd-039
+    # AUDIT DBND-029, DBND-030, DBND-031, DBND-032, DBND-020, DBND-039 — PARTIAL.
+    # P1 DBND-029: no seed or private key is accepted or returned is assert!(!false)
+    # and a public manifest_private_key() accessor leaves the gate green
+    # (ev-ed18d7ef). The observable_result column is compared as a string, not
+    # evaluated (DBND-030); the mismatched_object column reaches no code
+    # (DBND-031, ev-3fa9d172 with control ev-1eefbb66); lines 137 and 138 are
+    # decided by a grep of session.rs that sign_any defeats (DBND-032,
+    # ev-794d59c3). Also DBND-020, DBND-039.
+    # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: A bundle operation uses only its narrow opaque cryptographic capability
       Given one Ethos-and-actor session backed by a purpose-bound opaque "<capability>" capability
       When Bundle submits the typed "<protocol_object>" that needs "<capability>"
@@ -145,6 +234,16 @@ Feature: Bundle and editions
         | open       | node-and-version-bound sealed body      | body from a sibling node or version      | the expected plaintext is recovered only locally |
         | wrap       | node-version-and-recipient header line  | line for another node or recipient       | only the intended recipient opens the wrapped key |
 
+    @audit-partial @dbnd-033 @dbnd-034 @dbnd-035 @dbnd-020 @dbnd-023 @dbnd-036 @dbnd-037 @dbnd-038
+    # AUDIT DBND-033, DBND-034, DBND-035, DBND-020, DBND-023, DBND-036, DBND-037, DBND-038 — PARTIAL.
+    # The six FsStore rows are genuinely discriminating against a real per-segment
+    # symlink walk and are credited. The four MemStore rows are not: all ten stay
+    # green with validate_display_path reduced to Ok(()) (DBND-033, DBND-034,
+    # ev-2d2ebd1b), and no row supplies a valid input. The spec names six
+    # confinement surfaces and this outline exercises one (DBND-035). Also
+    # DBND-020, DBND-023, DBND-036, DBND-037 (row 162 is out-of-layout, not
+    # out-of-root), DBND-038 (row 161's escape detector cannot fire).
+    # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: An untrusted path or Store key can never escape its selected root
       Given a published "<store>" bundle snapshotted byte for byte
       When a caller supplies "<invalid_input>" as a "<input_kind>" under "<filesystem_condition>"
