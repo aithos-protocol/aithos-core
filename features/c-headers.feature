@@ -65,7 +65,7 @@ Feature: Headers — sealed node keys
     # Rule.
     # Detail: docs/audits/features/c-headers.md
     Scenario: Granting a new reader leaves every other line untouched
-      Given a sealed header for the owner
+      Given a sealed header for the owner and an existing reader
       When a line for a new grantee is appended
       Then the new grantee opens the node key
       And the owner line is byte-identical to before

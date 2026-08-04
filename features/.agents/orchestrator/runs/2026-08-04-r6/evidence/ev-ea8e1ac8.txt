@@ -1,0 +1,15 @@
+
+running 7 tests
+test a_clean_rotation_is_accepted ... ok
+test a_smuggled_recipient_is_rejected ... ok
+test check_rotation_refuses_a_new_version_without_the_owner_line ... ok
+test survivor_set_is_old_minus_revoked ... ok
+test uplink_wrap_bytes_match_python ... ok
+test rotate_refuses_a_survivor_set_without_the_owner ... ok
+test validate_refuses_a_key_version_without_the_owner_line ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.78s
+     Running tests/g2_rotation.rs (/root/work/target-shared/debug/deps/g2_rotation-da8231095fab4918)

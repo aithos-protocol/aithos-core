@@ -1,0 +1,11 @@
+
+running 3 tests
+test c1_owner_and_grantee_lines ... ok
+test c2_wrap_roundtrip_and_cross_check ... ok
+test c1_fail_closed ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.25s
+     Running tests/c1_header_seal.rs (/root/work/target-shared/debug/deps/c1_header_seal-dd2dc2d766bb0340)

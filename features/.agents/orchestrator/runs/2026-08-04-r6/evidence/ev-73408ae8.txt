@@ -1,0 +1,75 @@
+
+running 1 test
+test c1_fail_closed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+   Compiling version_check v0.9.5
+   Compiling proc-macro2 v1.0.106
+   Compiling generic-array v0.14.7
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.46
+   Compiling typenum v1.20.1
+   Compiling syn v2.0.118
+   Compiling crypto-common v0.1.7
+   Compiling subtle v2.6.1
+   Compiling block-buffer v0.10.4
+   Compiling cpufeatures v0.2.17
+   Compiling cfg-if v1.0.4
+   Compiling digest v0.10.7
+   Compiling semver v1.0.28
+   Compiling rustc_version v0.4.1
+   Compiling serde_core v1.0.228
+   Compiling curve25519-dalek v4.1.3
+   Compiling find-msvc-tools v0.1.9
+   Compiling shlex v2.0.1
+   Compiling zmij v1.0.21
+   Compiling cc v1.2.66
+   Compiling zeroize_derive v1.5.0
+   Compiling zeroize v1.9.0
+   Compiling curve25519-dalek-derive v0.1.1
+   Compiling inout v0.1.4
+   Compiling serde_json v1.0.150
+   Compiling serde v1.0.228
+   Compiling cipher v0.4.4
+   Compiling serde_derive v1.0.228
+   Compiling blake3 v1.8.5
+   Compiling universal-hash v0.5.1
+   Compiling opaque-debug v0.3.1
+   Compiling thiserror v1.0.69
+   Compiling itoa v1.0.18
+   Compiling signature v2.2.0
+   Compiling memchr v2.8.3
+   Compiling ed25519 v2.2.3
+   Compiling poly1305 v0.8.0
+   Compiling chacha20 v0.9.1
+   Compiling thiserror-impl v1.0.69
+   Compiling hmac v0.12.1
+   Compiling sha2 v0.10.9
+   Compiling aead v0.5.2
+   Compiling cpufeatures v0.3.0
+   Compiling constant_time_eq v0.4.2
+   Compiling ryu-js v0.2.2
+   Compiling arrayvec v0.7.8
+   Compiling rand_core v0.6.4
+   Compiling arrayref v0.3.9
+   Compiling x25519-dalek v2.0.1
+   Compiling serde_jcs v0.1.0
+   Compiling chacha20poly1305 v0.10.1
+   Compiling ed25519-dalek v2.2.0
+   Compiling hkdf v0.12.4
+   Compiling bs58 v0.5.1
+   Compiling ulid v1.2.1
+   Compiling hex v0.4.3
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+warning: constant `PURPOSE_HEADER_LINE` is never used
+  --> crates/aithos-core/src/seal.rs:15:7
+   |
+15 | const PURPOSE_HEADER_LINE: &[u8] = b"aithos-core/v1/header-line";
+   |       ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `aithos-core` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 25.29s
+     Running tests/c1_header_seal.rs (rust/target/debug/deps/c1_header_seal-dd2dc2d766bb0340)

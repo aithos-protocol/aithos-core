@@ -1,0 +1,102 @@
+Feature: Headers — sealed node keys
+Rule: A line seals the node key to exactly one recipient
+    Scenario: Owner and grantee each open their line
+     ✔  Given a node key and two recipients, the owner and a grantee
+     ✔  When the node key is sealed into a header
+     ✘  Then the owner opens the header and recovers the node key
+        Step failed:
+        Defined: root/work/aithos-core/features/c-headers.feature:13:7
+        Matched: crates/aithos-bundle/tests/cucumber.rs:12457:1
+        Step panicked. Captured output: called `Result::unwrap()` on an `Err` value: SealRejected("no line opens for kid z6LSjTpDtYVruXBgsjv2XLoqxeHDA2xP5Jgop6wQutH5xTd1 on /e/circle v1")
+    Scenario: A non-recipient opens nothing
+     ✔  Given a sealed header for the owner and a grantee
+     ✔  When a third keypair tries every line
+     ✔  Then it recovers nothing
+    Scenario: A corrupted line fails closed
+     ✔  Given a sealed header for the owner and a grantee
+     ✔  When one byte of a line's ciphertext is corrupted
+     ✘  Then opening that line is rejected
+        Step failed:
+        Defined: root/work/aithos-core/features/c-headers.feature:31:7
+        Matched: crates/aithos-bundle/tests/cucumber.rs:12504:1
+        Step panicked. Captured output: assertion `left == right` failed: positive control: the targeted line must open on its own header BEFORE the mutation — Err("seal rejected: no line opens for kid z6LSjTpDtYVruXBgsjv2XLoqxeHDA2xP5Jgop6wQutH5xTd1 on /e/circle v1")
+          left: None
+         right: Some([119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119])
+    Scenario: A line is bound to its node and version
+     ✔  Given a sealed header for the owner on one node
+     ✔  When its owner line is replayed on a different node's header
+     ✘  Then opening it there is rejected
+        Step failed:
+        Defined: root/work/aithos-core/features/c-headers.feature:43:7
+        Matched: crates/aithos-bundle/tests/cucumber.rs:12505:1
+        Step panicked. Captured output: assertion `left == right` failed: positive control: the targeted line must open on its own header BEFORE the mutation — Err("seal rejected: no line opens for kid z6LSjTpDtYVruXBgsjv2XLoqxeHDA2xP5Jgop6wQutH5xTd1 on /e/circle v1")
+          left: None
+         right: Some([119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119, 119])
+Rule: The owner line is mandatory (I3)
+    Scenario: A header without an owner line is invalid
+     ✔  Given a node key and a single grantee recipient
+     ✔  When a header is built without the owner line
+     ✔  Then the header is rejected as invalid
+Rule: Grant is one appended line, touching nobody
+    Scenario: Granting a new reader leaves every other line untouched
+     ✔  Given a sealed header for the owner and an existing reader
+     ✔  When a line for a new grantee is appended
+     ✔  Then the new grantee opens the node key
+     ✔  And the owner line is byte-identical to before
+Rule: Rotation cuts the revoked and re-links the parent
+    Scenario: The revoked gets no line in the new version
+     ✔  Given a sealed header for the owner and two grantees
+     ✔  When the node is rotated without the first grantee
+     ✔  Then the surviving grantee opens the new node key
+     ✔  And the first grantee cannot open the new version
+     ✘  And the owner opens the new version too
+        Step failed:
+        Defined: root/work/aithos-core/features/c-headers.feature:86:7
+        Matched: crates/aithos-bundle/tests/cucumber.rs:12618:1
+        Step panicked. Captured output: called `Result::unwrap()` on an `Err` value: SealRejected("no line opens for kid z6LSjTpDtYVruXBgsjv2XLoqxeHDA2xP5Jgop6wQutH5xTd1 on /e/circle v2")
+    Scenario: An up-link wrap restores derivation for the parent holder
+     ✔  Given a derived node rotated to a fresh random key
+     ✔  When the rotator posts the up-link wrap under the parent key
+     ✘  Then a parent holder recovers the new node key through the wrap
+        Step failed:
+        Defined: root/work/aithos-core/features/c-headers.feature:98:7
+        Matched: crates/aithos-bundle/tests/cucumber.rs:12637:1
+        Step panicked. Captured output: v1 opens: SealRejected("no line opens for kid z6LSjTpDtYVruXBgsjv2XLoqxeHDA2xP5Jgop6wQutH5xTd1 on /e/circle/d/00000000000000000000000001/s/00000000000000000000000002 v1")
+[Summary]
+1 feature
+4 rules
+8 scenarios (3 passed, 5 failed)
+27 steps (22 passed, 5 failed)
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 43.09s
+     Running tests/cucumber.rs (rust/target/debug/deps/cucumber-be4ecf3a035cbebd)
+
+thread 'main' (32469) panicked at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cucumber-0.21.1/src/cucumber.rs:1287:13:
+5 steps failed
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::panicking::panic_display
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:259:5
+   3: cucumber::cucumber::Cucumber<W,P,I,R,Wr,Cli>::filter_run_and_exit::{{closure}}
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cucumber-0.21.1/src/cucumber.rs:1287:13
+   4: futures_executor::local_pool::block_on::{{closure}}
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:316:34
+   5: futures_executor::local_pool::run_executor::{{closure}}
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:90:37
+   6: std::thread::local::LocalKey<T>::try_with
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/thread/local.rs:513:12
+   7: std::thread::local::LocalKey<T>::with
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/thread/local.rs:477:20
+   8: futures_executor::local_pool::run_executor
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:86:27
+   9: futures_executor::local_pool::block_on
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:316:5
+  10: cucumber::main
+             at ./tests/cucumber.rs:20027:5
+  11: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+error: test failed, to rerun pass `-p aithos-bundle --test cucumber`
