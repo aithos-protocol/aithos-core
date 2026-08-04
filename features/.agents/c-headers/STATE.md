@@ -1,17 +1,17 @@
 ---
 feature: c-headers
-status: IMPACT_REVIEW_REQUESTED
-mode: impact-review
+status: INTEGRATION
+mode: integration
 round: 2
 base_main: 2f2d55d
 audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8
-candidate_revision: dae12abe95eaa722f4789fcc6a76e972435b77fa
+candidate_revision: f335f4919950b6b462882876878460dcf2102a6a
 branch: codex/fix-c-headers-lot-a
 assigned_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-019, CHDR-021, CHDR-025]
 open_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025, CHDR-028, CHDR-029, CHDR-030]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-04T10:40:00+00:00
+last_transition: 2026-08-04T11:30:00+00:00
 ---
 
 # Domain state — `c-headers`
