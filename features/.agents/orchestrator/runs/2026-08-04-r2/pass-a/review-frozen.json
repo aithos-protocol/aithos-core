@@ -1,0 +1,17 @@
+{
+ "stage": "review-passA",
+ "candidate": "9dc58895b5c822d13ea5daf8c25302ccd657b668",
+ "baseline": "5be3047",
+ "evidence_cited": ["ev-dc461083"],
+ "findings": [
+  {"id": "CHDR-007", "closure_criterion_met": true, "gaps": 5},
+  {"id": "CHDR-012", "closure_criterion_met": true, "gaps": 5}
+ ],
+ "new_findings": {"P2": 2, "P3": 7},
+ "P2_headline": [
+  "third public edition verifier (verify_public_only / verify_for_cas, consumed by sdk.rs PublicationUploadPlan::verified) accepts an edition cold_verify rejects",
+  "four write paths still resolve a survivor's X25519 key from line.to while copying line.kid verbatim"
+ ],
+ "contamination": "none",
+ "note": "Frozen before any Pass B input was delivered. The reviewer had no .git, no diff, and not the corrector's run report."
+}

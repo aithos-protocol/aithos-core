@@ -1,17 +1,17 @@
 ---
 feature: c-headers
-status: REVIEW_REQUESTED
+status: REVIEW_ACCEPTED
 mode: correction
 round: 1
 base_main: a2087f2392389fb17e0bc0ba9e20a164d53766d8
 audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8
 candidate_revision: 9dc58895b5c822d13ea5daf8c25302ccd657b668
 branch: codex/audit-c-headers-r2
-assigned_findings: [CHDR-007, CHDR-012]
-open_findings: [CHDR-001, CHDR-002, CHDR-007, CHDR-009, CHDR-012, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025]
+assigned_findings: []
+open_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025, CHDR-028, CHDR-029, CHDR-030]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-04T05:20:00+00:00
+last_transition: 2026-08-04T05:45:00+00:00
 ---
 
 # Domain state — `c-headers`

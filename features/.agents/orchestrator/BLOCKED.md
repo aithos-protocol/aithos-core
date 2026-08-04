@@ -9,7 +9,45 @@ conditions". Anything absent from that list is not a reason to stop.
 
 ## Open
 
-*(none)*
+### 2026-08-04-r2 · c-headers · condition 9 — disclosure gate on `CHDR-028`
+
+- **Raised:** 2026-08-04T05:45:00Z
+- **Stage:** `REVIEW_ACCEPTED` — it holds up nothing already verified
+- **Evidence:** `pass-a/review-frozen.json` (sha256 `50f080fb…`, frozen before
+  any Pass B input); ledger `2026-08-04-r2`
+
+**Question.** The independent review of lot B found a new P2 the corrector was
+never assigned, and raised the disclosure barrier on it. Publish `CHDR-028` in
+full now, or hold it at identifier and neutral title until it is fixed?
+
+`CHDR-028` — P2 — *Uneven I3 coverage across `aithos-bundle`'s edition
+verification surfaces.* Its full statement, evidence and closure criterion were
+handed to the owner **outside the repository**; no tracked file carries them.
+
+The reasoning that made it embargoed is the one that settled `CHDR-012`: the
+producer of an edition is not necessarily the subject
+(`spec/05-delegation.md:85-91`), so the path is not self-sabotage.
+
+`CHDR-029`, also P2, is **published in full** in the audit: its precondition
+cannot be produced by any production writer in this repository.
+
+**Options.**
+
+1. **Publish in full now.** Consistent with the 2026-08-03 ruling. Cost: nil in
+   agents; a producer-side acceptance path becomes public before a fix exists.
+2. **Hold at identifier and neutral title until fixed.** The audit stays
+   incomplete on one finding; a future corrector cannot cite what it repairs
+   without the out-of-repository text.
+3. **Publish, and assign it immediately** to a lot C so the window between
+   disclosure and fix is short. Cost: one correction cycle, and it reopens the
+   §9.4 reading — whether "every manifest profile" reaches a producer-side
+   candidate verifier — which is a protocol question, not an implementation one.
+
+**What the train did not do.** It did not publish the statement, did not assign
+`CHDR-028` to any corrector, and did not rule on the §9.4 reading. Both findings
+under review are `VERIFIED` and their Gherkin markers are removed; this entry
+holds nothing that is already done.
+
 
 ## Template
 

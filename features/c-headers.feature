@@ -44,14 +44,10 @@ Feature: Headers — sealed node keys
 
   Rule: The owner line is mandatory (I3)
 
-    @audit-partial @chdr-009 @chdr-011 @chdr-010 @chdr-007 @chdr-012
+    @audit-partial @chdr-009 @chdr-011 @chdr-010
     # AUDIT CHDR-009 — PARTIAL; CHDR-011, CHDR-010 — PARTIAL.
     # Only the build-time I3 gate is exercised on its fail-closed side; the
     # normative case declared by vectors/g2-rotation.json has no consumer.
-    # CHDR-007 and CHDR-012 — DECISION_REQUIRED. Both concern I3 on surfaces
-    # this scenario never crosses: the edition verifiers, and the field on
-    # which the owner line is identified. A human owner decides the protocol
-    # reading before any correction; neither is assigned to a corrector.
     # Detail: docs/audits/features/c-headers.md
     Scenario: A header without an owner line is invalid
       Given a node key and a single grantee recipient

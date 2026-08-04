@@ -213,7 +213,21 @@ correcteur** (§11 lot 0, §12, §15).
 
 ---
 
-### `CHDR-007` — `DECISION_REQUIRED`, P1 — 1/3 réfutations (survit)
+### `CHDR-007` — **`VERIFIED`** le 2026-08-04, P1 — 1/3 réfutations (survit)
+
+> **Statut de clôture.** `VERIFIED` par la revue indépendante du 2026-08-04
+> (`auditor/runs/2026-08-04-review-i3-authority.md`), sur la révision candidate
+> `9dc5889`. L'énoncé ci-dessous décrit le code **audité** (`a2087f2`) et est
+> conservé tel quel : c'est ce que la correction répare. Preuve différentielle —
+> RED `ev-47ec8aac` (baseline `5be3047` : `Bundle::verify` renvoie `Ok(())` sur
+> une édition dont le header épinglé a perdu sa ligne owner, et sur une autre
+> dont la ligne étiquetée `"owner"` déclare la clé d'un étranger) → GREEN
+> `ev-b925a0cf` (candidat, 3/3). Gate de feature `ev-2b8ccdc0` (1/4/8/28), gate
+> workspace `ev-8bfeccca` (836 scénarios / 3577 pas). La lecture retenue est
+> celle de la décision du 2026-08-03 : `Header::validate` est appelé sur chaque
+> header épinglé par l'édition, dans `Bundle::verify` **et** dans
+> `publication::cold_verify`. Trois findings résiduels distincts en sont issus :
+> `CHDR-028`, `CHDR-034`, `CHDR-036`.
 
 **La moitié « édition » de I3 n'est imposée par aucun vérificateur d'édition.**
 **Scénario 5 / RU-2 — finding de surface publique.**
@@ -302,7 +316,26 @@ la raison nommée.
 
 ---
 
-### `CHDR-012` — `DECISION_REQUIRED`, P2 — **0/3 réfutations**
+### `CHDR-012` — **`VERIFIED`** le 2026-08-04, P2 — **0/3 réfutations**
+
+> **Statut de clôture.** `VERIFIED` par la revue indépendante du 2026-08-04
+> (`auditor/runs/2026-08-04-review-i3-authority.md`), sur la révision candidate
+> `9dc5889`. L'énoncé ci-dessous décrit le code **audité** (`a2087f2`) et est
+> conservé tel quel. Preuve différentielle — RED `ev-15f8f483` (baseline
+> `5be3047` : `Recipient::owner` produit `kid: "owner-kex"` là où §03.1 exige
+> `z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS` ; `validate()` **accepte**
+> `owner_label_foreign_key` et **rejette** `unlabelled_owner_line`, soit l'écart
+> reproduit dans les deux directions) → GREEN `ev-9f82e070` (candidat, 6/6),
+> `ev-b925a0cf` (3/3), `ev-f4579eab` (g2_rotation 4/4), `ev-b19b0db3`
+> (c1_header_seal 3/3, inchangé), `ev-6608a56c` (pins de vecteurs).
+> `check_owner_line` compare désormais `r.pubkey` à `owner_kex` **et** le `kid`
+> dérivé ; `validate` et `check_rotation` reçoivent le kid owner attendu ;
+> aucun contrôle I3 de production ne lit plus `to`. Fait établi par exécution
+> (`ev-15f8f483`) : la ligne construite et la ligne attendue ne diffèrent que
+> par `kid` — `epk`, `n` et `c` identiques —, donc la variante A ne redérive
+> aucun chiffré et n'invalide aucun vecteur épinglé à l'octet. Cinq findings
+> résiduels distincts en sont issus : `CHDR-029`, `CHDR-030`, `CHDR-031`,
+> `CHDR-032`, `CHDR-035`.
 
 **I3 est vérifié sur un champ que la spécification déclare non autorisant, et
 non sur celui qu'elle déclare définitoire.**
@@ -1226,6 +1259,300 @@ le point 5 de `PROCESS.md` § *Review-unit isolation* demande d'instruire.
 
 **Critère de clôture.** Un contrôle positif interne dans chacun des scénarios 3
 et 4 (voir `CHDR-002`), ce qui rompt la dépendance.
+
+---
+
+## 6bis. Findings issus de la revue de correction du 2026-08-04
+
+Neuf findings nouveaux, relevés par la revue indépendante de la correction
+`CHDR-007` / `CHDR-012` sur la révision candidate `9dc5889`
+(`auditor/runs/2026-08-04-review-i3-authority.md`). **Aucun n'empêche la
+clôture** des deux findings assignés : chacun a été arbitré explicitement comme
+*distinct* et non comme un défaut de la correction — le motif est donné dans
+chaque bloc. Aucun n'est assigné à un correcteur par cette revue.
+
+Les identifiants reprennent à `CHDR-028` : `CHDR-026` et `CHDR-027` étaient déjà
+attribués par la passe d'état partagé du cycle précédent.
+
+### `CHDR-028` — `OPEN`, P2 — **`disclosure: embargo`**
+
+**Titre neutre : couverture inégale de I3 entre les surfaces de vérification
+d'édition de `aithos-bundle`.**
+
+Énoncé, preuves et critère de clôture **retenus**, conformément à
+`PROCESS.md` § *Disclosure barrier* : le texte complet décrirait un chemin
+actuellement non corrigé par lequel une édition non conforme à I3 obtient un
+verdict d'acceptation sur une API publique. `aithos-core` est public et cette
+branche y sera poussée. La levée appartient au propriétaire du protocole, comme
+pour `CHDR-007` et `CHDR-012` le 2026-08-03.
+
+Le texte intégral est transmis hors dépôt à l'orchestrateur, qui porte la
+condition de blocage. **Ce finding n'est pas réputé publié.**
+
+**Pourquoi il n'empêche pas `CHDR-007` d'être `VERIFIED`.** Le critère de
+clôture de `CHDR-007` nomme deux fonctions — `Bundle::verify` et
+`publication::cold_verify` — et la décision du 2026-08-03 n'en nomme qu'une. Les
+deux sont faites, prouvées par `ev-47ec8aac` → `ev-b925a0cf`. La surface visée
+ici a une reachability, un contrat et un moment de vie distincts ; elle mérite
+son propre critère de clôture, pas une réouverture. L'arbitrage est
+**discutable** et il est explicitement remis au propriétaire : `spec/09-cli-and-conformance.md`
+§9.4 dit « on every `aithos-core` manifest profile », ce qui peut se lire comme
+englobant cette surface.
+
+### `CHDR-029` — `OPEN`, P2
+
+**La clé publique d'un destinataire survivant est reconstruite depuis `to`,
+l'étiquette de routage, et non depuis `kid`, le champ qui nomme sa clé.**
+
+`spec/03-headers.md:34-38` est explicite dans les deux sens : « `to` […] is a
+routing hint only — the seal is what grants. […] **No verifier decides anything
+from `to`** » et « **`kid` names the line's recipient key** ».
+
+Quatre sites de production violent cette répartition. Dans la même boucle qui
+reconnaît correctement la ligne owner par son `kid`, la branche `else` fait :
+
+```rust
+// revoke.rs:188
+let ed = wire::multibase_to_ed25519_pub(&line.to)?;
+...
+survivors.push(Recipient { to: line.to.clone(), kid: line.kid.clone(), pubkey: ed2x(&vk) });
+```
+
+- `rust/crates/aithos-bundle/src/revoke.rs:188` (`rotate_folder`)
+- `rust/crates/aithos-bundle/src/revoke.rs:396` (`move_folder`)
+- `rust/crates/aithos-bundle/src/structure.rs:266` (`structural_recipients`)
+- `rust/crates/aithos-bundle/src/vault.rs:381` (`rotate_vault_connector`)
+
+**Conséquence.** Sur un header portant une ligne où `to != kid`, la rotation
+scelle DK' sous la clé désignée par `to` tout en recopiant `kid` verbatim : la
+nouvelle ligne **ment sur son destinataire**. Le détenteur du `kid` déclaré perd
+l'accès, celui de l'étiquette l'acquiert, et `Header::check_rotation`
+(`header.rs:347-356`) ne peut rien voir puisqu'il ne compare que des ensembles
+de `kid`. Le graphe d'accès que `spec/03-headers.md` §3.6 promet de ne jamais
+sur-déclarer devient faux.
+
+**Précondition, et ce qui la borne.** Aucun écrivain de production ne produit
+`to != kid` : `grants.rs:161-166` et `log.rs:441-445` posent `to = kid =
+multibase Ed25519`, `Recipient::owner` pose `to = "owner"`, traité par la
+branche `kid == owner_kid`. La divergence n'entre que par un `header.json`
+édité à la main, un bundle importé, ou `aithos header-seal`
+(`header_seal.rs:53-57`, format libre `label:kid:pubkey`). Et rien ne la rejette
+au passage : ni `Header::validate`, ni `check_rotation`, ni
+`bundle::verify_pinned_headers` ne contrôlent `to == kid`.
+
+**Antériorité.** Ces quatre lignes sont **inchangées** par la correction
+`9dc5889` (`git diff 5be3047..9dc5889` ne les touche pas ; seules les branches
+`line.to == "owner"` voisines ont été retirées). Le finding préexiste donc à la
+correction et n'en est pas une régression.
+
+**Pourquoi il n'empêche pas `CHDR-012` d'être `VERIFIED`.** Le critère de
+clôture de `CHDR-012` nomme trois points de contrôle — `check_owner_line`,
+`validate`, `check_rotation` — et les trois ont migré. Ces quatre sites ne sont
+pas des *contrôles* I3 : ce sont des résolutions de clé de grantee, sur un
+champ que la même spec déclare non autorisant. C'est la même faute de catégorie,
+sur un autre objet, et elle a son propre critère de clôture.
+
+**Référence de spec.** `spec/03-headers.md:34-38`, `:93-96` ; §3.6.
+
+**Critère de clôture.** Les quatre sites résolvent la clé du survivant depuis
+`line.kid` (décodage `multibase_to_ed25519_pub` du `kid`, avec repli fail-closed
+si le `kid` ne décode pas), **ou** un contrôle `to == kid` pour toute ligne non
+owner est ajouté à `Header::validate` et donc au vérificateur d'édition. Dans
+les deux cas : un test RED construisant un header portant `{ to: A, kid: B }`,
+le faisant tourner, et constatant que la nouvelle version scelle sous B — test
+qui passe sur `9dc5889` et échoue après correction.
+
+### `CHDR-030` — `OPEN`, P3
+
+**Le palier `owner_kex`-porteur de I3, rendu obligatoire par la spec amendée,
+est implémenté mais n'a aucun appelant de production.**
+
+`spec/03-headers.md:40-42` impose **deux** paliers : « Every verifier MUST
+check, without any key, that some line of every key version declares
+`owner_kex` as its `kid` ; **a verifier holding `owner_kex` MUST additionally
+check that that line opens under it, and MUST reject the header when it does
+not.** »
+
+`Header::validate_as_owner` (`rust/crates/aithos-core/src/header.rs:385-401`)
+implémente exactement le second palier, et il est **ajouté par la correction**
+(absent de `5be3047`). Son seul appelant du dépôt est
+`rust/crates/aithos-core/tests/c3_owner_line.rs:171`. Recherche exhaustive sur
+`crates/*/src/` : zéro.
+
+Les quatre surfaces de production qui détiennent pourtant `owner_kex`
+n'appellent que le palier keyless : `bundle.rs:667`
+(`zone_dk_with_owner_kex`), `bundle.rs:674` (`vault_dk`), `log.rs:427`
+(`audit_key_owner_with_kex`), `session.rs:363` (`append_header_recipient`).
+L'`open_owner` qui suit chacune fait bien échouer le chemin si la ligne ne
+s'ouvre pas — mais **pour la seule version ouverte**, alors que §3.1 exige le
+contrôle sur toutes. Un header multi-versions dont une version ancienne porte
+une ligne déclarant `owner_kex` sans s'ouvrir sous elle passe.
+`vault.rs:334` (`read_vault_config_owner`) n'appelle même pas `validate`, à
+rebours de son homologue `log.rs:427`.
+
+Le cas est celui que le vecteur nomme `owner_label_foreign_seal` et que le
+vecteur lui-même qualifie de « documented boundary of spec 03.1 » : aucun
+vérificateur keyless ne l'attrape, et c'est précisément pourquoi la spec ajoute
+le second palier.
+
+**Référence de spec.** `spec/03-headers.md:40-42` ; `vectors/c3-owner-line.json`,
+cas `owner_label_foreign_seal`, `tier: "owner_kex"`.
+
+**Critère de clôture.** Les surfaces détenant `owner_kex` appellent
+`validate_as_owner` au lieu de `validate`, ou une raison écrite est consignée
+pour chacune qui ne le fait pas. Un test RED : un header à deux versions dont la
+version 1 porte une ligne déclarant `owner_kex` mais scellée ailleurs, accepté
+aujourd'hui par `zone_dk_with_owner_kex`, rejeté après.
+
+### `CHDR-031` — `OPEN`, P3
+
+**Effet partiel : `Bundle::move_folder` écrit l'index avant la garde I3, sur une
+API publique non transactionnelle.**
+
+`rust/crates/aithos-bundle/src/revoke.rs:324` (`pub fn move_folder`) n'est
+enveloppé dans aucune `self.transaction(...)`. Il écrit
+`e/circle/index.json` en `:422`, **puis** appelle `Header::build_at` en `:431`,
+dont la première instruction est la garde `check_owner_line`
+(`header.rs:164`). Si le header source ne porte pas de ligne dont le `kid` vaut
+`owner_kid`, `survivors` ne contient pas la ligne owner (`:393-394` jamais
+atteint), `build_at` renvoie `MissingOwnerLine`, et le store reste avec le
+dossier reparenté, sans header au nouveau chemin et sans wrap up-link.
+
+Le même ordonnancement existe en `structure.rs:777` → `:781`, mais y est
+**couvert** : `structural_operation` (`structure.rs:1102-1109`) enveloppe tout
+dans `self.transaction`, qui rollback sur `Err` (`bundle.rs:421-437`).
+`revoke.rs::rotate_folder` (`:142`) est indemne : `check_owner_line` (`:203`) et
+`check_rotation` (`:214`) précèdent la première écriture (`:215`).
+
+**Critère de clôture.** Soit `move_folder` est enveloppé dans une transaction
+comme `structural_operation`, soit la garde I3 est évaluée avant la première
+écriture. Un test RED : `move_folder` sur un header sans ligne owner, puis
+constat que `e/circle/index.json` a changé alors que l'appel a échoué.
+
+### `CHDR-032` — `OPEN`, P3
+
+**L'unicité des `kid` dans une `key_version` n'est imposée nulle part.**
+
+`spec/03-headers.md:38` : « Two lines of one key version **MUST NOT** carry the
+same `kid`. » Aucun contrôle du dépôt ne l'applique :
+`Header::validate` (`header.rs:371-378`) cherche une occurrence et s'arrête,
+`check_rotation` (`:334-364`) raisonne sur un `BTreeSet` qui absorbe les
+doublons, `append_line` (`:190-219`) et `build_lines` (`:96-120`) n'inspectent
+rien, et `bundle::verify_pinned_headers` (`bundle.rs:302-320`) hérite de
+`validate`.
+
+**Conséquence.** Une seconde ligne déclarant `owner_kex` mais scellée à un tiers
+est acceptée par tout vérificateur keyless, y compris le vérificateur d'édition
+que `CHDR-007` vient d'installer. `aithos header-seal` peut l'émettre
+directement : `--recipient <label>:<owner_kid>:<clé étrangère>`
+(`header_seal.rs:53-57`), le `--owner-kex-hex` obligatoire ne contraignant que
+la ligne owner que la commande construit elle-même. Le palier porteur y
+résisterait — `Header::open` (`:266`) essaie **toutes** les lignes du `kid` —,
+mais `CHDR-030` établit qu'il n'est appelé nulle part.
+
+**Critère de clôture.** `Header::validate` rejette toute `key_version` portant
+deux lignes de même `kid`, et le cas rejoint la famille C3 du §9.2 avec son
+vecteur. Test RED : un header à deux lignes `owner_kex`, accepté par
+`Bundle::verify` sur `9dc5889`, rejeté après.
+
+### `CHDR-033` — `OPEN`, P3
+
+**Le bump majeur de version du crate exigé par la décision n'a pas eu lieu.**
+
+La décision du 2026-08-03 écrit : « Cinq signatures publiques changent — **bump
+majeur de version du crate**. » Les cinq ont bien changé (`build`, `build_at`,
+`rotate`, `validate`, `check_rotation` — confirmé par
+`git diff 5be3047..9dc5889 -- rust/crates/aithos-core/src/header.rs` et par le
+rapport du correcteur). La version, elle, n'a pas bougé : `rust/Cargo.toml:12`
+porte toujours `version = "0.1.0-alpha.1"`, et la section `[Unreleased]` de
+`CHANGELOG.md:10-13` ne mentionne pas la rupture d'API de `aithos-core::header`.
+
+S'y ajoute une rupture de **format au repos** que le correcteur signale
+lui-même : un header écrit par un binaire antérieur porte `kid: "owner-kex"` et
+échoue désormais `Bundle::verify`. Aucun artefact de ce type n'existe dans
+l'arbre, mais l'obligation est rétroactive et arbitrée comme telle ; elle
+appartient au journal de version autant qu'à la revue d'impact.
+
+**Critère de clôture.** Version du workspace incrémentée selon la politique
+SemVer du dépôt, et une entrée `CHANGELOG.md` nommant les cinq signatures et la
+non-lisibilité des headers antérieurs.
+
+### `CHDR-034` — `OPEN`, P3
+
+**L'émetteur signe des éditions que son propre vérificateur refuse.**
+
+`Bundle::publish` (`rust/crates/aithos-bundle/src/bundle.rs:1678`) ne comporte
+aucune garde I3. Le test `c3_owner_line_edition.rs:239-246` en fait la
+démonstration : il écrit un header mutilé via `bundle.store.put` — le champ
+`store` est `pub` (`bundle.rs:284`), ce qui court-circuite `validate_store_key`
+et toute autre invariante —, appelle `publish`, **qui réussit**, et n'obtient
+l'erreur qu'à `verify`.
+
+C'est un choix de conception assumé par le correcteur, et argumenté : placer le
+contrôle dans `state_tree()` aurait rendu `publish` fail-closed et le RED
+`ev-47ec8aac` inatteignable. Le constat n'en est pas moins que
+`spec/09-cli-and-conformance.md:102-104` définit le **Core issuer** comme « the
+above (reader) + … », donc comme portant aussi l'obligation du lecteur.
+
+**Critère de clôture.** Soit `publish` refuse d'épingler un header violant I3 —
+en laissant au test un chemin d'injection post-signature —, soit
+`spec/09-cli-and-conformance.md` §9.4 dit explicitement que l'obligation I3 ne
+lie que la vérification et jamais l'émission.
+
+### `CHDR-035` — `OPEN`, P3
+
+**Les deux seules surfaces CLI de §03 ne sont invoquées par aucun test.**
+
+`aithos header-seal` et `aithos header-open` sont les surfaces sur lesquelles la
+décision du 2026-08-03 impose une contrainte nominative — « elle ne doit pas
+pouvoir produire silencieusement un header que `verify` rejetterait ».
+`rust/crates/aithos-cli/tests/cli_surface.rs` ne les invoque jamais ; le constat
+était déjà consigné par `docs/research/topology-2026-07-28-unverified/lot-A-00-01-03-10.md:239`.
+
+La correction a bien durci les deux commandes — `--owner-kex-hex` obligatoire et
+ligne owner construite par le programme (`header_seal.rs:19-20`, `:42-44`),
+`--owner-kid` obligatoire et `validate` avant toute ouverture
+(`header_open.rs:17`, `:35`). **Rien ne le prouve par exécution.**
+
+Écart résiduel à la lettre de la décision, à consigner ici : celle-ci offrait
+deux branches — lire le document DID, **ou** exiger un drapeau explicite pour le
+cas non lié. La correction a pris une troisième voie, supprimer le cas non
+gouverné. Elle ferme la production d'un header *sans* ligne owner ; elle ne
+ferme pas la production d'un header dont l'`owner_kex` n'est pas celui du sujet,
+et aucun nommage ne le signale. Le propriétaire s'était réservé ce point comme
+« le seul point de cette décision que le propriétaire pourrait vouloir
+reprendre » : il lui revient.
+
+**Critère de clôture.** `cli_surface.rs` exerce `header-seal` et `header-open`,
+dont au moins un cas négatif : un header produit avec un `--owner-kex-hex`
+étranger, épinglé dans une édition, rejeté par `Bundle::verify`.
+
+### `CHDR-036` — `OPEN`, P3
+
+**La couverture de `Header::validate` sur les chemins de lecture reste inégale —
+résidu de `CHDR-008`, absorbé par `CHDR-007` mais non traité par la lecture
+retenue.**
+
+`spec/03-headers.md:40` dit « **Every** verifier MUST check, without any key,
+that some line of every key version declares `owner_kex` as its `kid` ».
+`spec/09-cli-and-conformance.md` §9.4 rattache l'obligation à la vérification
+d'édition, qui est faite. Entre les deux textes subsiste un écart de portée que
+la décision n'a pas tranché : elle a explicitement écarté la troisième lecture
+— « la validation sur les chemins de lecture » —, et le correcteur le consigne
+dans ses limites.
+
+`validate` est appelé en `bundle.rs:318`, `:667`, `:674` ; `log.rs:427` ;
+`session.rs:363` ; `cli/header_open.rs:35`. Il ne l'est pas en `grants.rs:834`,
+`:1044`, `:1204` ; `structure.rs:192`, `:279`, `:752` ; `revoke.rs:155`, `:303`,
+`:383`, `:526` ; `vault.rs:334` ; `log.rs:399`.
+
+**Ce n'est pas un défaut de la correction** : la lecture retenue par le
+propriétaire n'exigeait pas ces sites. C'est un écart entre la spec amendée et
+le code, consigné pour que la prochaine décision le voie.
+
+**Critère de clôture.** Soit `spec/03-headers.md:40` restreint « every verifier »
+au vérificateur d'édition, en cohérence avec §9.4 ; soit les chemins de lecture
+listés appellent `validate`.
 
 ## 7. Findings retirés ou requalifiés
 
