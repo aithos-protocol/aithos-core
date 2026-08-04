@@ -1,14 +1,9 @@
 {
   "manifest": "vectors-ownership",
   "version": 1,
-  "updated": "2026-08-02 (ronde 2 b-derivation — re-pin de b2-derivation.json après réécriture de sa description ; aucune valeur du vecteur ne change)",
+  "updated": "2026-08-03",
   "rule": "Every entry has exactly one owner. owner=core stays in aithos-core (CC BY 4.0); owner=service entries left with the aithos-service repo at lot SPL-8 (their frozen digests are pinned in that repo's vectors/ownership.json). shared=true marks core-owned vectors consumed by service-side crates: they stay here and are exposed to the service repo read-only at a pinned version, never duplicated. Enforced by rust/crates/aithos-bundle/tests/vectors_ownership.rs.",
   "entries": [
-    {
-      "name": "README.md",
-      "kind": "doc",
-      "owner": "core"
-    },
     {
       "name": "a1-genesis.json",
       "kind": "vector",
@@ -36,6 +31,12 @@
       "kind": "vector",
       "owner": "core",
       "sha256": "af0f63bd874123b825601beecb09be3f15575fec7411f37cf4548aa9dae3650d"
+    },
+    {
+      "name": "c3-owner-line.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "2686d3ab286cd0ff57fb9f6541f05454a5a8e4a5f650193c5ea050345f0d9d77"
     },
     {
       "name": "cb14-delegated-session-chain.json",
@@ -237,6 +238,40 @@
       "sha256": "32bc86a117bf56a93f13a693aead2976354c68594863f6c685ba15f68611ad98"
     },
     {
+      "name": "gplus-obligations.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "f74f6c2b4611e798c0c00bd35ccdfb056e26de2d558efc0e2c3ad04ae57a7285"
+    },
+    {
+      "name": "h1-merkle.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "590efdd79e03859a17ba677e3f23cf9c3b2c83b473b255154c4376ba117274bd"
+    },
+    {
+      "name": "h2-gamma-roots.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "c497b9b2bced8fbf449ab249ea193cda956d2438a003f7bd06f6173c3486ef50"
+    },
+    {
+      "name": "i1-concurrency.json",
+      "kind": "vector",
+      "owner": "core",
+      "sha256": "556de81a4e842e04ada7b0521c89845000e3174d66ddd7c1736cdfb24b3e7864"
+    },
+    {
+      "name": "README.md",
+      "kind": "doc",
+      "owner": "core"
+    },
+    {
+      "name": "gen-c.py",
+      "kind": "tooling",
+      "owner": "core"
+    },
+    {
       "name": "gen-cb14-delegated-session-chain.py",
       "kind": "tooling",
       "owner": "core"
@@ -375,30 +410,6 @@
       "name": "gen-i.py",
       "kind": "tooling",
       "owner": "core"
-    },
-    {
-      "name": "gplus-obligations.json",
-      "kind": "vector",
-      "owner": "core",
-      "sha256": "f74f6c2b4611e798c0c00bd35ccdfb056e26de2d558efc0e2c3ad04ae57a7285"
-    },
-    {
-      "name": "h1-merkle.json",
-      "kind": "vector",
-      "owner": "core",
-      "sha256": "590efdd79e03859a17ba677e3f23cf9c3b2c83b473b255154c4376ba117274bd"
-    },
-    {
-      "name": "h2-gamma-roots.json",
-      "kind": "vector",
-      "owner": "core",
-      "sha256": "c497b9b2bced8fbf449ab249ea193cda956d2438a003f7bd06f6173c3486ef50"
-    },
-    {
-      "name": "i1-concurrency.json",
-      "kind": "vector",
-      "owner": "core",
-      "sha256": "556de81a4e842e04ada7b0521c89845000e3174d66ddd7c1736cdfb24b3e7864"
     }
   ]
 }

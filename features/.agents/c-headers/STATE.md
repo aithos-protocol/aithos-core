@@ -11,7 +11,7 @@ assigned_findings: [CHDR-007, CHDR-012]
 open_findings: [CHDR-001, CHDR-002, CHDR-007, CHDR-009, CHDR-012, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-03T14:10:00+00:00
+last_transition: 2026-08-03T14:55:00+00:00
 ---
 
 # Domain state — `c-headers`
@@ -34,7 +34,7 @@ last_transition: 2026-08-03T14:10:00+00:00
 | Public audit | `docs/audits/features/c-headers.md` — written by run `2026-08-03-r1`, completed by `-r2` after the owner lifted the embargo. Every finding is stated in full |
 | Gherkin markers | 6 scenarios carry markers for unresolved findings; gate re-run after each marker edit is green and unchanged at 1/4/8/28 (`ev-c30fa81e`, then `ev-91717a6d`) |
 | Recorded follow-up owed | `TARGETED` from the accepted b-derivation round-2 impact review (`../orchestrator/QUEUE.yaml:61-62`, `../orchestrator/runs/2026-08-03-b-derivation-impact-review-02.md:494`): the independent-generation claim of `vectors/c1-header-seal.json` and `rust/crates/aithos-core/tests/c1_header_seal.rs:2-3`. Evidence class, not behaviour |
-| Next role | **the human owner first**: the specification lot required by the decision (`spec/03-headers.md` §3.1 and §3.4, `spec/00-overview.md` §0.2, `spec/09-cli-and-conformance.md` §9.2 and its vector) must land before any code. A corrector must not code against a text that still has to be written. Then the corrector, via `corrector/correct-c-headers/SKILL.md`, on `assigned_findings` only |
+| Next role | the corrector, via `corrector/correct-c-headers/SKILL.md`, on `assigned_findings` only. **The specification lot it depends on is applied** (`SI3-1`..`SI3-10`, variant A, retroactive obligation; `docs/PROPOSITION-SPEC-I3-AUTHORITY-2026-08-03.md` §9), and the C3 conformance vector exists with its generator. What remains before the corrector is the owner's read-through of the specification diff — the amendments are transcribed from a document the owner arbitrated but did not review line by line |
 | Blocked | no. All four conditions raised by runs `-r1` and `-r2` are resolved in `../orchestrator/BLOCKED.md`. The gap noted on 2026-08-03 stands and is recorded for the train's own backlog: `train-status.py` rejects a `blocked` entry on any status other than `BLOCKED`, so a feature that proceeds while some of its findings await a human ruling has no representation in the frontmatter |
 
 ## Inputs

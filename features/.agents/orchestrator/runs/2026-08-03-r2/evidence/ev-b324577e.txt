@@ -1,0 +1,12 @@
+
+running 5 tests
+test manifest_is_a_partition_of_the_vectors_directory ... ok
+test service_side_consumes_only_its_own_and_declared_shared_vectors ... ok
+test core_side_never_references_service_entries ... ok
+test vectors_match_their_pinned_digests ... ok
+test vector_bytes_are_never_duplicated_outside_vectors_dir ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.19s
+     Running tests/vectors_ownership.rs (/root/work/target-shared/debug/deps/vectors_ownership-9b44bc31dc8a492c)

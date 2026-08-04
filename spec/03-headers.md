@@ -17,7 +17,7 @@ never individually granted has no header (derivation is its only route):
   "key_versions": {
     "3": {                                   // current DK generation
       "lines": [
-        { "to": "owner",            "kid": "owner-kex",     "n": "…", "c": "…" },
+        { "to": "owner",            "kid": "z6LSOwnerKex…", "n": "…", "c": "…" },
         { "to": "z6MkGrantee…",     "kid": "z6MkGrantee…",  "n": "…", "c": "…" },
         { "to": "z6MkAssistant…",   "kid": "z6MkAssistant…","n": "…", "c": "…" }
       ]
@@ -32,16 +32,31 @@ never individually granted has no header (derivation is its only route):
   AAD purpose `header-line`, bound to `subject_did ‖ node ‖ key_version`.
 - `to` is a stable label (the grantee's multibase Ed25519 pubkey, or `"owner"`); it is
   a routing hint only — the seal is what grants. Recipients try lines addressed to
-  their `kid`.
-- **I3:** every `key_versions[*].lines` MUST include the owner line. An edition whose
-  any header violates this is invalid.
+  their `kid`. No verifier decides anything from `to`.
+- `kid` names the line's recipient **key**: the grantee's multibase Ed25519 pubkey,
+  whose X25519 counterpart is obtained by the normative map of §01.2, or — for the
+  owner line — the subject's `owner_kex` in multibase (`z6LS…`), byte-identical to
+  `keys.kex` of the subject's DID document (§01.4). Two lines of one key version
+  MUST NOT carry the same `kid`.
+- The **owner line** of a key version is the line whose recipient key is the
+  subject's `owner_kex`. The seal identifies it, not the label: a line labelled
+  `"owner"` and sealed to any other key is **not** the owner line, and a line
+  labelled otherwise but sealed to `owner_kex` **is**.
+- **I3:** every `key_versions[*].lines` MUST include the owner line. A header
+  violating this is invalid. An edition verifier MUST reject an edition that pins
+  such a header (§0.2, §9.4). Every verifier MUST check, without any key, that some
+  line of every key version declares `owner_kex` as its `kid`; a verifier holding
+  `owner_kex` MUST additionally check that that line opens under it, and MUST reject
+  the header when it does not.
 
 ## 3.2 Reading
 
 To open node N: pick the `key_version` matching the target blob's index entry, find a
-line whose `kid` is mine (or `owner`), unseal → DK → derive down (§02.5) → decrypt.
-The owner always resolves via `owner-kex`; a grantee via its keypair. No network, no
-per-read state.
+line whose `kid` is mine, unseal → DK → derive down (§02.5) → decrypt. The owner
+resolves the line whose `kid` is its `owner_kex`; a grantee its own. `kid` orders the
+attempts and nothing else: a reader that finds no matching line MAY try the remaining
+lines, and a successful unseal — never a label — is what proves the line was its own.
+No network, no per-read state.
 
 ## 3.3 Grant = append a line (O(1), touches nobody)
 
@@ -92,8 +107,10 @@ every ancestor node — a holder of the zone who read N by pure derivation (§02
 would silently lose N without having any header line to fall back on. The wrap
 re-establishes that path in one entry and touches no other line. Verification is
 mechanical: the new version's lines MUST equal the previous lines minus the revoked
-(plus, in the exactly-N case, recipients ⊆ P's header), and an up-link wrap whose
-author does not hold P is rejected.
+(plus, in the exactly-N case, recipients ⊆ P's header), the new version MUST carry the
+owner line as defined in §3.1 — the revoker re-seals DK' to the subject's `owner_kex`
+read from the DID document, never to whatever key the previous owner line used — and an
+up-link wrap whose author does not hold P is rejected.
 
 ## 3.5 Retention of old versions
 

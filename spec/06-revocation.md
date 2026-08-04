@@ -30,7 +30,8 @@ revoke(mandate M, mode) — by the owner or an authorized ancestor, in ONE editi
   2. if mode ≥ rotate:
        for each node N in M's perimeter that the revoker has authority over:
          DK' ← random; version++
-         header[N].new = { lines: reseal DK' to all survivors + owner }   # not M
+         header[N].new = { lines: reseal DK' to all survivors
+                                  + the owner line, sealed to owner_kex (§03.1) }  # not M
          post the derivation up-link wrap for N (§03.4 step 2bis)
          if mode ≥ reencrypt: rewrite N's blobs under keys derived from DK'
   3. Cascade: mark M's descendants revoked (their chains break anyway).

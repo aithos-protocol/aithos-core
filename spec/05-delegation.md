@@ -86,6 +86,10 @@ root). Consequences:
   owner's other grants on the same node: it rotates the node key and republishes the
   header **omitting the revoked child's line but keeping every other line** — including
   lines it did not create (those it re-seals under the new DK using its own access).
+  The owner line is re-sealed to the subject's `owner_kex` read from the DID document
+  (§03.1), never to the recipient key the previous owner line happened to carry: a
+  rotation that reproduces a wrong owner line propagates it, and I3 makes the whole
+  edition invalid.
 - Re-sealing the survivors' lines under the rotated DK is done by the revoker itself
   (owner or ancestor), which holds the node — attenuation guarantees it. The operation
   is mechanical (re-wrapping the same DK' to the same public keys, learning nothing

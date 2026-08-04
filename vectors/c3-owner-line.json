@@ -1,0 +1,148 @@
+{
+  "vector": "C3",
+  "description": "I3 owner line (spec 03.1): the owner line is identified by its recipient key — the subject's owner_kex published in the DID document — never by the `to` label. Five headers: two positives, one per direction, and three negatives, each stating the verifier tier it binds (keyless / owner_kex-bearing). The positive owner line reuses C1's ephemeral, nonce, DK, node and key version, so its seal is byte-identical to c1-header-seal.json's owner_line. Generated independently (Python blake3 + PyNaCl + manual RFC5869 HKDF + base58).",
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "subject_did": "did:aithos:z6MkopvL9x5EQew3DyVAqyGNfQpsY116sA7CjRstz8NtvZHr",
+  "node": "/e/circle",
+  "key_version": 1,
+  "dk_hex": "c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7",
+  "owner_kex_sk_hex": "7d0871c180200133885f02800c7b57a1cb99ca8e16cab7e34913ffd65de68373",
+  "owner_kex_pub_hex": "2a87b432ae9c60cfb72e98be4987a2f820d1663a763048079f2cd447f5834165",
+  "owner_kex_pub_multibase": "z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS",
+  "stranger_sk_hex": "2121212121212121212121212121212121212121212121212121212121212121",
+  "stranger_pub_hex": "7d34a4815fa6b982535e60af3bd9b49556816080f1641ff81d2b7c8ae8268a44",
+  "stranger_multibase": "z6LSk6vgfFKtAcZ4WAHKW52Yft8nykf52HURUcVQsvJWQntT",
+  "line_aad_hex": "616974686f732d636f72652f76312f6865616465722d6c696e65006469643a616974686f733a7a364d6b6f70764c3978354551657733447956417179474e6651707359313136734137436a5273747a384e74765a4872002f652f636972636c650031",
+  "cases": [
+    {
+      "name": "owner_line_present",
+      "verdict": "valid",
+      "tier": "keyless",
+      "proves": "a key version carrying a line whose kid is owner_kex satisfies I3; the edition verifies",
+      "header": {
+        "object": "header",
+        "v": 1,
+        "node": "/e/circle",
+        "key_versions": {
+          "1": {
+            "lines": [
+              {
+                "to": "owner",
+                "kid": "z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS",
+                "epk": "7ea13ddfcbacd8a13542dece890886486fb8024d0d3cc7f95ed8bb4efad66b73",
+                "n": "000102030405060708090a0b0c0d0e0f1011121314151617",
+                "c": "5d87dc5a4ca26c2c27db027d6808046fd1cabc2a946e1ed24e0104eedacd479cfb0c4c0998fd0e6a639dde27fc4a2c7e"
+              },
+              {
+                "to": "z6LSk6vgfFKtAcZ4WAHKW52Yft8nykf52HURUcVQsvJWQntT",
+                "kid": "z6LSk6vgfFKtAcZ4WAHKW52Yft8nykf52HURUcVQsvJWQntT",
+                "epk": "0c72f81c6889393c84d560f14ffc5478dc74cc4067fb11c72624323217c05873",
+                "n": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+                "c": "832a7d928d9bb15bed56880034fed9b270bc19ed709446383d9708e8a864aaab1ebfb980a77513377d3cb5f8bfe20c02"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "no_owner_line_at_all",
+      "verdict": "invalid",
+      "must_fail": "MissingOwnerLine",
+      "tier": "keyless",
+      "proves": "a key version with no owner line makes the header invalid AND the edition pinning it invalid — the half of I3 no verifier enforced",
+      "header": {
+        "object": "header",
+        "v": 1,
+        "node": "/e/circle",
+        "key_versions": {
+          "1": {
+            "lines": [
+              {
+                "to": "z6LSk6vgfFKtAcZ4WAHKW52Yft8nykf52HURUcVQsvJWQntT",
+                "kid": "z6LSk6vgfFKtAcZ4WAHKW52Yft8nykf52HURUcVQsvJWQntT",
+                "epk": "0c72f81c6889393c84d560f14ffc5478dc74cc4067fb11c72624323217c05873",
+                "n": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+                "c": "832a7d928d9bb15bed56880034fed9b270bc19ed709446383d9708e8a864aaab1ebfb980a77513377d3cb5f8bfe20c02"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "owner_label_foreign_key",
+      "verdict": "invalid",
+      "must_fail": "MissingOwnerLine",
+      "tier": "keyless",
+      "proves": "a line labelled to=\"owner\" whose declared recipient key is not owner_kex is not the owner line; the label grants nothing",
+      "header": {
+        "object": "header",
+        "v": 1,
+        "node": "/e/circle",
+        "key_versions": {
+          "1": {
+            "lines": [
+              {
+                "to": "owner",
+                "kid": "z6LSk6vgfFKtAcZ4WAHKW52Yft8nykf52HURUcVQsvJWQntT",
+                "epk": "eade12879dc4549652e6ffe6cdc058103613ffc87361483c82bc9ae930a32046",
+                "n": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+                "c": "4b1cc7a04dc9466aab41f955ee5a2a06a982af01fc2e06ed9ade8ae2b8ba3368c8cddb50b3be40b6c3e528d6378022e6"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "owner_label_foreign_seal",
+      "verdict": "invalid",
+      "must_fail": "MissingOwnerLine",
+      "tier": "owner_kex",
+      "proves": "a line that DECLARES owner_kex as its kid but is sealed to another key is rejected by a verifier holding owner_kex; a keyless verifier accepts it, and that residual gap is the documented boundary of spec 03.1",
+      "header": {
+        "object": "header",
+        "v": 1,
+        "node": "/e/circle",
+        "key_versions": {
+          "1": {
+            "lines": [
+              {
+                "to": "owner",
+                "kid": "z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS",
+                "epk": "7c8a6119d2ddc1a9f013eb489344085d43011a4936247481f80c7c2ceee14e35",
+                "n": "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2",
+                "c": "ecf81af6b4a46a4c608fa9884d28a5b7811ce9a7df9675a8d3e274e507d32d49cbbc8af08f03cc8ee9b3cb4a9f68b7c4"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "unlabelled_owner_line",
+      "verdict": "valid",
+      "tier": "keyless",
+      "proves": "a line sealed to owner_kex satisfies I3 even when `to` names something else — the label decides nothing in either direction",
+      "header": {
+        "object": "header",
+        "v": 1,
+        "node": "/e/circle",
+        "key_versions": {
+          "1": {
+            "lines": [
+              {
+                "to": "z6LSk6vgfFKtAcZ4WAHKW52Yft8nykf52HURUcVQsvJWQntT",
+                "kid": "z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS",
+                "epk": "6b0b616d718e53691236d3be3ce6d44f9d28836426d81305d131f488206f8d2b",
+                "n": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+                "c": "546ebbb363172ea1a71c9c43969410a1c8869810dd0fc5031e19f920720762e64fbc86d0824c71221aa6856d0058d2f2"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

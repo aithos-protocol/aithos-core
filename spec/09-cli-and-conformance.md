@@ -44,7 +44,14 @@ chain of depth 2 with attenuation;
 a revocation rotation (old line absent, survivor line opens new DK); a gamma entry
 sign/verify and a `max_actions` count; an edition prev_hash and a fork resolution.
 Both success and every fail-closed case (unauthorized revocation, over-wide
-sub-mandate, N+1 action, expired heartbeat) get a vector. Session-2 additions MUST
+sub-mandate, N+1 action, expired heartbeat) get a vector. I3 gets its own family
+(§03.1): a header whose every key version carries the owner line → valid; a header
+one of whose key versions carries no owner line at all → the edition is rejected; a
+header whose line labelled `"owner"` is sealed to a key that is not the subject's
+`owner_kex` → rejected; a header whose owner line is not labelled `"owner"` but is
+sealed to `owner_kex` → valid, proving the label decides nothing in either
+direction. Each case states which verifier tier it binds: keyless (edition
+verification) or `owner_kex`-bearing. Session-2 additions MUST
 also be covered: an up-link wrap open after rotation (and rejection of a wrap by a
 non-holder of the parent); a disjoint-edition merge and a nearest-common-manager fork
 resolution (and rejection of an out-of-authority resolver); a watchdog cert-only
@@ -90,7 +97,9 @@ Measured on a laptop, bundle on local disk:
 ## 9.4 Conformance levels
 
 - **Core reader**: resolves DID, opens headers it has lines for, derives, decrypts,
-  verifies editions + gamma. MUST implement the fork rule (§02.6) fail-closed.
+  verifies editions + gamma. MUST implement the fork rule (§02.6) fail-closed, and
+  MUST reject an edition pinning a header that violates I3 (§03.1) — without holding
+  any key, and on every `aithos-core` manifest profile.
 - **Core issuer**: the above + mint/delegate/revoke + header rotation with the
   authority checks of §05.5. MUST refuse to sign an over-wide sub-mandate (pre-flight
   §05.3) and an unauthorized header rotation.

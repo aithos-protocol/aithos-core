@@ -1,0 +1,39 @@
+
+running 5 tests
+test core_side_never_references_service_entries ... ok
+test service_side_consumes_only_its_own_and_declared_shared_vectors ... ok
+test manifest_is_a_partition_of_the_vectors_directory ... FAILED
+test vector_bytes_are_never_duplicated_outside_vectors_dir ... ok
+test vectors_match_their_pinned_digests ... ok
+
+failures:
+
+---- manifest_is_a_partition_of_the_vectors_directory stdout ----
+
+thread 'manifest_is_a_partition_of_the_vectors_directory' (17787) panicked at crates/aithos-bundle/tests/vectors_ownership.rs:172:5:
+ownership partition broken — unclassified on disk: ["c3-owner-line.json", "gen-c.py"]; in manifest but not on disk: []
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: vectors_ownership::manifest_is_a_partition_of_the_vectors_directory
+             at ./tests/vectors_ownership.rs:172:5
+   3: vectors_ownership::manifest_is_a_partition_of_the_vectors_directory::{{closure}}
+             at ./tests/vectors_ownership.rs:117:54
+   4: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   5: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    manifest_is_a_partition_of_the_vectors_directory
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 27.61s
+     Running tests/vectors_ownership.rs (/root/work/target-shared/debug/deps/vectors_ownership-9b44bc31dc8a492c)
+error: test failed, to rerun pass `-p aithos-bundle --test vectors_ownership`

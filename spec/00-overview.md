@@ -1,6 +1,8 @@
 # 0 — Overview
 
-> **Status: DRAFT.** Aithos Core, wire version `aithos-core: "1.0.0-draft.1"`.
+> **Status: DRAFT.** Aithos Core, specification revision `2026-08-03-i3-authority`.
+> Manifest publication profiles: `aithos-core: "1.0.0-draft.1"` (historical
+> verification) and `"1.0.0-draft.2"` (current issuance) — §0.4.
 > Rationale in `../DESIGN.md`. Everything in this series is enforceable from files
 > alone; a server is never a trust party.
 
@@ -30,8 +32,12 @@
    metadata, headers, certificates, and the log. No plaintext secret, no unsealed key.
 2. **I2 — Credentials are immutable.** A grantee's keypair and mandate are never
    modified after issuance. All change happens in storage (headers, ciphertext).
-3. **I3 — Owner line.** Every header MUST contain a line for the owner. A header
-   without one is invalid, and so is the edition carrying it.
+3. **I3 — Owner line.** Every `key_versions[*].lines` of every header MUST contain
+   the owner line: the line whose recipient key is the subject's `owner_kex`, as
+   published in the DID document (§01.1, §01.4, §03.1). A header without one is
+   invalid. An edition verifier MUST parse every header the edition pins and MUST
+   reject the edition if any key version of any of them has no owner line. The
+   routing label `to` never establishes the owner line and never satisfies I3.
 4. **I4 — Authority follows issuance.** Only the issuer of a mandate (or an ancestor
    in its chain, transitively up to the owner) may revoke it or remove its lines.
    Verifiable from certificates alone. A `revoke` perimeter entry (§04.2, §06.7)
@@ -75,6 +81,15 @@ Version order is causal, never inferred from physical JSONL order: draft1/v1 may
 lead to draft1/v1 or draft2/v2, while draft2/v2 never leads back. Missing, mixed on
 one introducing edge, or unknown profiles fail closed. Historical manifests and
 entries are never rewritten or assigned synthetic references.
+
+A profile gates the introduction of signed constructs; it never gates a verification
+rule. The I3 obligation of §0.2 introduces no signed construct and changes no signed
+byte: it binds every `aithos-core` profile, historical ones included. A rule that
+bound only the newest profile would be escaped by publishing under an older one, and
+would bind nothing. Editions published before specification revision
+`2026-08-03-i3-authority` are therefore re-verified under it; this is the one
+retroactive tightening of this series, and it is stated here rather than hidden in a
+profile.
 
 The mandate plane separately supports two currently issuable semantic profiles:
 

@@ -2,7 +2,7 @@
 
 | Champ | Valeur |
 |---|---|
-| Statut | **Proposé — non appliqué.** Aucun fichier de `spec/` n'est modifié par ce document |
+| Statut | **Arbitré et appliqué le 2026-08-03** (§9). `SI3-1` à `SI3-10` sont posés dans `spec/`, en **variante A**. Le corps §1 à §8 est conservé tel qu'il a été soumis, comme registre de l'arbitrage ; §9 dit ce qui a été appliqué et ce qui ne l'a pas été |
 | Date | 2026-08-03 |
 | Autorité | `features/.agents/c-headers/decisions/2026-08-03-chdr-007-012-i3-authority.md` (lecture A sur `CHDR-007` et `CHDR-012`) |
 | Portée | `spec/00-overview.md`, `spec/03-headers.md`, `spec/05-delegation.md`, `spec/06-revocation.md`, `spec/09-cli-and-conformance.md`, `spec/10-threat-model.md` ; un vecteur et son générateur |
@@ -98,7 +98,9 @@ propriétaire doit trancher autre chose que de la rédaction :
   Coût : changement de wire sur toute ligne owner ; `vectors/g2-rotation.json`
   porte `old_kids: ["owner-kex", …]` et est gelé — la règle 3 de
   `vectors/README.md` impose alors un nouvel id de vecteur et une redline
-  explicite.
+  explicite. **Correction du 2026-08-03 (§9) : ce coût ne touche que `g2`.
+  `vectors/c1-header-seal.json` ne porte aucun `kid` et `kid` n'entre pas dans
+  l'AAD ; la variante A n'y re-dérive aucun chiffré et ne l'invalide pas.**
 - **Variante B (repli, sans changement de wire)** — `{to: "owner", kid: "owner-kex"}`
   reste le couple réservé, mais devient *réservé* au sens fort : il MUST être
   porté par la ligne dont le destinataire est `owner_kex`, et par aucune autre.
@@ -1195,3 +1197,156 @@ implémenteur.
    « one MUST be labelled "owner" » : une surface publique qui enseigne le critère
    que la décision écarte. Relève du lot B, signalé ici parce que c'est du texte
    destiné à un utilisateur.
+
+---
+
+## 9. Décisions du propriétaire et application
+
+| Champ | Valeur |
+|---|---|
+| Arbitre | Mathieu Colla, propriétaire du protocole |
+| Date de l'arbitrage | 2026-08-03 |
+| Révision de départ | `de8d912`, branche `codex/audit-c-headers-r2` |
+| Portée appliquée | `spec/` et `vectors/gen-c.py` uniquement. Ni `rust/`, ni `features/`, ni `docs/audits/`, ni `docs/CONFORMANCE.md` |
+| Preuves | aucune. Ni `cargo`, ni test, ni build ; `vectors/gen-c.py` n'a **pas** été exécuté par le rédacteur |
+
+### 9.1 Arbitrage 1 — `SI3-2` : variante A
+
+**Décision.** Variante A, partout où §2 offrait un choix. La ligne owner nomme sa
+clé sur le fil : son `kid` porte l'`owner_kex` en multibase (`z6LS…`), exactement
+comme un grantee porte sa pubkey. I3 devient une comparaison de clés qu'un tiers
+constate **sans détenir aucune clé**, ce qui est la condition d'applicabilité
+posée en §1.3.
+
+**La variante B est retirée du texte appliqué.** Elle a servi à décider ; elle ne
+vit dans aucun fichier de `spec/`. Les mentions « *Variante B :* » de §2 sont
+conservées ici, et **ici seulement**, comme registre de l'arbitrage : elles ne
+sont pas des instructions d'application et ne doivent pas être reprises.
+
+### 9.2 Arbitrage 2 — versionnage : pas de profil `draft.3`
+
+**Décision.** Aucun profil manifeste `"1.0.0-draft.3"` n'est ouvert. L'obligation
+I3 est **rétroactive** et lie **tous** les profils `aithos-core`, historiques
+compris.
+
+**Motif retenu.** Un durcissement gaté sur le profil le plus récent se
+contournerait en publiant sous `draft.2` — c'est la branche déléguée de
+`Bundle::verify` (`rust/crates/aithos-bundle/src/bundle.rs:1664`). Une règle de
+sécurité qui ne lie que `draft.3` ne lie rien.
+
+**Véhicule de l'incrément.** Le bandeau de la série DRAFT, qui passe à
+`specification revision 2026-08-03-i3-authority`, et la règle de rétroactivité
+écrite en clair en §0.4 — exactement ce que `SI3-10` proposait.
+
+### 9.3 Ce qui a été appliqué
+
+Les dix amendements, dans la forme de la variante A, chacun sur le passage cité
+et rien au-delà :
+
+| Amendement | Fichier | État |
+|---|---|---|
+| `SI3-1` | `spec/00-overview.md` §0.2, invariant I3 | appliqué |
+| `SI3-2` | `spec/03-headers.md` §3.1 (exemple JSONC + définition de la ligne) | appliqué, variante A |
+| `SI3-3` | `spec/03-headers.md` §3.2 Reading | appliqué, variante A |
+| `SI3-4` | `spec/03-headers.md` §3.4, vérification mécanique | appliqué (additif, ancre `CHDR-024` reprise verbatim) |
+| `SI3-5` | `spec/05-delegation.md` §5.5 | appliqué |
+| `SI3-6` | `spec/06-revocation.md` §6.2, pseudo-code | appliqué |
+| `SI3-7` | `spec/10-threat-model.md` §10.1, « Owner un-lockable-out » | appliqué |
+| `SI3-8` | `spec/09-cli-and-conformance.md` §9.2 | appliqué |
+| `SI3-9` | `spec/09-cli-and-conformance.md` §9.4, *Core reader* | appliqué |
+| `SI3-10` | `spec/00-overview.md` bandeau + §0.4 | appliqué |
+
+Les quatre contradictions résiduelles de §8 qui tombaient mécaniquement sont
+closes du même geste : le bandeau périmé (`spec/00-overview.md:3`, désormais
+cohérent avec `:70` et `spec/02-content-tree.md:226`), l'identification du
+lecteur par le littéral `"owner"` (`spec/03-headers.md` §3.2), le
+« reseal DK' to all survivors + owner » de `spec/06-revocation.md` §6.2, et
+l'absence de règle de rétroactivité en §0.4. Après application, le seul
+`owner-kex` restant dans `spec/` est la **chaîne de contexte de dérivation**
+`spec/01-identity-and-keys.md:13` — qui est correcte et n'est pas un
+identifiant de ligne.
+
+**Le générateur.** `vectors/gen-c.py` est écrit en entier, à la règle de seconde
+implémentation (`blake3` + `PyNaCl` + `hmac`/`hashlib` pour un RFC 5869 écrit à
+la main + `base58`, jamais la référence Rust), sur le modèle de structure de
+`gen-g.py` et avec le mode `--check` des `gen-cb2-*.py`. Il fait trois choses :
+il recoupe A1/A2 avant d'émettre quoi que ce soit ; il **reconstruit et asserte**
+`c1-header-seal.json` sans jamais le réécrire ; il produit `c3-owner-line.json`
+avec les cinq cas de §3.3, sous la forme filaire de la variante A.
+
+### 9.4 Ce qui n'a pas été appliqué, et pourquoi
+
+- **`vectors/c3-owner-line.json` n'est pas écrit.** Aucune valeur d'octets n'a
+  été inventée : le fichier est la sortie de `gen-c.py`, que le propriétaire
+  exécute. `vectors/gen-c.py` n'a pas été lancé par le rédacteur.
+- **`vectors/g2-rotation.json` n'est pas régénéré.** Il fige le littéral
+  `"owner-kex"` dans `old_kids` et `expected_survivor_kids`. Ce sont des listes
+  d'étiquettes, sans octets ; la variante A les touche, mais leur régénération —
+  et donc un nouvel id de vecteur au titre de la règle 3 de `vectors/README.md` —
+  appartient au lot de correction, pas au lot de spécification.
+- **`vectors/ownership.json` n'est pas modifié.** Ni l'entrée `gen-c.py`
+  (`kind: "tooling"`, `owner: "core"`, sans `sha256`) ni l'entrée
+  `c3-owner-line.json` (`kind: "vector"`, `owner: "core"`, avec `sha256`) ne
+  peuvent être posées avant que le fichier existe et que son digest soit connu.
+- **`docs/CONFORMANCE.md` est laissé de côté.** C'est `HD-1` de §7 : hors
+  décision. La phrase « All vectors are generated by an independent Python
+  implementation » y redevient vraie dès que `gen-c.py` tourne au vert, mais le
+  constat appartient au propriétaire.
+- **`HD-2` et `HD-3` de §7 ne sont pas traités**, pour le même motif : §7 est
+  détachable et hors décision.
+- **`CHDR-024` n'est pas traité** (§6). `SI3-4` reprend son ancre
+  — « the new version's lines MUST equal the previous lines minus the revoked » —
+  **verbatim**, sans un caractère de changement, et n'ajoute qu'en apposition.
+- **Aucun fichier de `rust/` n'est touché.** Le changement de signature et le
+  bump majeur du crate sont le lot B de la décision.
+
+### 9.5 Correction : le coût réel de la variante A
+
+La proposition laissait entendre que la variante A mettait en cause les vecteurs
+gelés de la famille C. **C'est faux pour `c1`, vrai pour `g2`**, et le propriétaire
+l'a vérifié lui-même :
+
+- `vectors/c1-header-seal.json` **ne contient aucun champ `kid`**. Son
+  `owner_line` est `{esk_hex, epk_hex, n_hex, c_hex}` : il épingle des **octets de
+  sceau**, pas un header filaire. Et `kid` n'entre pas dans l'AAD —
+  `rust/crates/aithos-core/src/seal.rs:21-31` : `aad = purpose ‖ did ‖ node ‖
+  key_version`. La variante A **ne change donc aucun chiffré et n'invalide pas
+  `c1`**. C'est pourquoi `gen-c.py` doit reconstruire `c1` et **réussir** son
+  contrôle contre le fichier actuel : un échec de `check_c1()` est un vrai défaut,
+  pas un effet attendu de l'amendement.
+- `vectors/g2-rotation.json` fige en revanche le littéral `"owner-kex"` dans
+  `old_kids` et `expected_survivor_kids`. Ce sont des **listes d'étiquettes**,
+  sans octets. La variante A les touche.
+
+**Conséquence à retenir : la variante A est un changement de *métadonnée*
+filaire, pas de cryptographie.** Aucun chiffré n'est re-dérivé, aucune AAD ne
+bouge, aucun octet signé ne change. Elle est moins coûteuse que §1.3 et §5 ne le
+laissaient croire : son coût se réduit au format de la ligne owner côté
+`aithos-core`, et à deux listes d'étiquettes dans `g2`.
+
+Une correction mineure de transcription, signalée pour qu'elle ne surprenne
+personne : la `description` proposée en §3.3 annonçait « Four headers … two
+negatives » alors que les cinq cas énumérés juste en dessous comptent **deux
+positifs et trois négatifs**. `gen-c.py` porte le décompte exact.
+
+### 9.6 Ce dont le lot de correction hérite
+
+1. **Régénérer `vectors/g2-rotation.json`** sous la variante A — `old_kids` et
+   `expected_survivor_kids` portent l'`owner_kex` multibase, non plus le littéral
+   `"owner-kex"` — avec le **nouvel id de vecteur** et la redline explicite que la
+   règle 3 de `vectors/README.md` impose, puis **ré-épingler son `sha256`** dans
+   `vectors/ownership.json`.
+2. **Changer le format filaire côté `aithos-core`** : `Recipient::owner`
+   (`rust/crates/aithos-core/src/header.rs:22-28`) ne pose plus le littéral
+   `"owner-kex"` comme `kid` mais l'`owner_kex` multibase lue du document DID ;
+   les quatre points de contrôle I3 (`header.rs:71-77`, `:298-303`, `:310`)
+   comparent une clé et non une chaîne. C'est le lot B de la décision, avec ses
+   cinq signatures publiques et son bump majeur.
+3. **Ajouter `c3-owner-line.json` à `vectors/ownership.json`** (`kind: "vector"`,
+   `owner: "core"`, `sha256`), et l'entrée `gen-c.py` (`kind: "tooling"`,
+   `owner: "core"`, sans `sha256`), sans quoi
+   `rust/crates/aithos-bundle/tests/vectors_ownership.rs` passe au rouge.
+4. **Écrire les consommateurs Rust de C3**, dont le **cas d'édition** :
+   `no_owner_line_at_all` doit être consommé deux fois — par un test de header et
+   par un test d'édition faisant échouer `Bundle::verify`. Sans le second, C3
+   regate ce qui l'était déjà (`header.rs:308-315`) et laisse `CHDR-007` ouvert.

@@ -16,7 +16,7 @@
 | Forward cut | rotation: fresh random DK the revoked cannot derive |
 | Past cut | re-encryption + supersession (bounded by exfiltration) |
 | No silent action | I5 — every action is a signed gamma entry; counts are the meter |
-| Owner un-lockable-out | owner line mandatory in every header (I3); owner holds root of all authority |
+| Owner un-lockable-out | owner line mandatory in every header, identified by its recipient key and enforced by the edition verifier (I3, §03.1, §09.4); owner holds root of all authority |
 | Tamper evidence | edition chain + gamma hash-chain, authority-anchored fork resolution |
 | Verifiable partial reads | per-zone Merkle state roots (§02.10): O(log n) inclusion proofs from any mirror; membership cannot be forged |
 | Serverless enforcement | every check reads files; a server is a mirror, never a trust party |
