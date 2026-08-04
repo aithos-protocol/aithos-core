@@ -1,0 +1,17 @@
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+error[E0425]: cannot find value `n` in this scope
+   --> crates/aithos-core/src/gamma.rs:725:71
+    |
+725 |         if count_children(existing, &minting_mandate.id) as u64 + 1 > n {
+    |                                                                       ^ not found in this scope
+
+error[E0425]: cannot find value `n` in this scope
+   --> crates/aithos-core/src/gamma.rs:727:36
+    |
+727 |                 "{}: max_children {n} spent",
+    |                                    ^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `aithos-core` (lib) due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `aithos-core` (lib test) due to 2 previous errors

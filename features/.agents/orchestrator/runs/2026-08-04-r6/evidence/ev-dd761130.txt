@@ -1,0 +1,329 @@
+Feature: Connector classes and isolated vault capabilities
+Rule: An approved catalog is the sole source of action class
+    Scenario: CAT1 closes the signed catalog table and content address
+     ✔  Given a connector catalog with exact profile, connector, version, actions and signature
+     ✔  When the catalog signer signs RFC8785-JCS with signature.value empty
+     ✔  Then every action row has exactly name and one read, act or binding class
+     ✔  And rows are non-empty, unique and sorted by action name
+     ✔  And catalog_digest addresses the complete signed catalog
+     ✔  But malformed, duplicate, unsorted, unclassed or multiply classed actions are InvalidCatalog
+    Scenario: CAT1 keeps catalog attestation and owner approval distinct
+     ✔  Given one complete signed connector catalog
+     ✔  When the owner content key approves its exact connector, version and digest
+     ✔  Then the approval has exact profile, subject, connector, catalog_version, catalog_digest, approved_at and signature
+     ✔  And approval_digest addresses the complete signed approval
+     ✔  But the catalog signer, owner root, grantee or a different subject cannot supply owner approval
+     ✔  And neither complete signed document can substitute for the other
+    Scenario: Draft3 catalog_pins is one exact non-droppable constraint
+     ✔  Given a homogeneous draft3 mandate carrying connector business actions
+     ✔  When its signed constraints are validated
+     ✔  Then catalog_pins has one sorted exact connector, catalog_version, catalog_digest and approval_digest row per business connector
+     ✔  And every descendant copies the complete pin array byte-for-byte
+     ✔  But draft1, draft2, a sidecar, a changed pin, an unrelated pin or a pin for only .config is InvalidMandate
+    Scenario Outline: Catalog authority begins only with a homogeneous draft3 chain
+     ✔  Given a connector mandate chain under "draft.1"
+     ✔  When it presents "a later catalog sidecar" for a new W1 action occurrence
+     ✔  Then catalog authority is "refused"
+     ✔  And historical mandate bytes are never reinterpreted
+    Scenario Outline: Catalog authority begins only with a homogeneous draft3 chain
+     ✔  Given a connector mandate chain under "draft.2"
+     ✔  When it presents "a later owner approval" for a new W1 action occurrence
+     ✔  Then catalog authority is "refused"
+     ✔  And historical mandate bytes are never reinterpreted
+    Scenario Outline: Catalog authority begins only with a homogeneous draft3 chain
+     ✔  Given a connector mandate chain under "draft.3"
+     ✔  When it presents "the exact catalog and approval pinned at issuance" for a new W1 action occurrence
+     ✔  Then catalog authority is "accepted"
+     ✔  And historical mandate bytes are never reinterpreted
+    Scenario Outline: Catalog authority begins only with a homogeneous draft3 chain
+     ✔  Given a connector mandate chain under "draft.3"
+     ✔  When it presents "a different digest with the same catalog version" for a new W1 action occurrence
+     ✔  Then catalog authority is "refused"
+     ✔  And historical mandate bytes are never reinterpreted
+    Scenario Outline: Catalog authority begins only with a homogeneous draft3 chain
+     ✔  Given a connector mandate chain under "draft.3"
+     ✔  When it presents "the right pin under a mixed-version chain" for a new W1 action occurrence
+     ✔  Then catalog authority is "refused"
+     ✔  And historical mandate bytes are never reinterpreted
+    Scenario: Draft3 catalog migration reissues the complete chain
+     ✔  Given an existing homogeneous draft2 chain with connector authority
+     ✔  When the authorities migrate it to catalog-bound draft3
+     ✔  Then every certificate receives a fresh mandate id and draft3 signature
+     ✔  And each grant is recorded by its normal Gamma v2 occurrence
+     ✔  And no draft2 certificate, signature or historical action byte changes
+    Scenario: Catalog attenuation never widens through a child or later sidecar
+     ✔  Given a draft3 parent pins one approved connector catalog
+     ✔  When a child or runtime presents a changed digest, version, class or action set
+     ✔  Then the existing chain is refused for that catalog
+     ✔  And only fresh homogeneous draft3 authority may approve the change
+    Scenario: Catalog signer and owner approval are distinct proofs
+     ✔  Given a signed, versioned and content-addressed connector catalog
+     ✔  When the owner approves its exact digest and version
+     ✔  Then a mandate and edition pin both catalog and approval evidence
+     ✔  And a keyless verifier never treats catalog signature alone as owner approval
+    Scenario Outline: Every catalog action has exactly one canonical class
+     ✔  Given a signed connector catalog whose action has "exactly one read class"
+     ✔  When the owner and a keyless verifier validate its form
+     ✔  Then the catalog is "accepted"
+    Scenario Outline: Every catalog action has exactly one canonical class
+     ✔  Given a signed connector catalog whose action has "exactly one act class"
+     ✔  When the owner and a keyless verifier validate its form
+     ✔  Then the catalog is "accepted"
+    Scenario Outline: Every catalog action has exactly one canonical class
+     ✔  Given a signed connector catalog whose action has "exactly one binding class"
+     ✔  When the owner and a keyless verifier validate its form
+     ✔  Then the catalog is "accepted"
+    Scenario Outline: Every catalog action has exactly one canonical class
+     ✔  Given a signed connector catalog whose action has "no class"
+     ✔  When the owner and a keyless verifier validate its form
+     ✔  Then the catalog is "refused"
+    Scenario Outline: Every catalog action has exactly one canonical class
+     ✔  Given a signed connector catalog whose action has "two classes"
+     ✔  When the owner and a keyless verifier validate its form
+     ✔  Then the catalog is "refused"
+    Scenario Outline: Every catalog action has exactly one canonical class
+     ✔  Given a signed connector catalog whose action has "one class outside registry"
+     ✔  When the owner and a keyless verifier validate its form
+     ✔  Then the catalog is "refused"
+    Scenario Outline: Every catalog action has exactly one canonical class
+     ✔  Given a signed connector catalog whose action has "duplicate identical class"
+     ✔  When the owner and a keyless verifier validate its form
+     ✔  Then the catalog is "refused"
+    Scenario Outline: Wildcard and exact action rights follow the pinned class
+     ✔  Given an approved catalog classes action "list" as "read"
+     ✔  And a mandate carries "act.x.mail.*"
+     ✔  And the request carries "none required"
+     ✔  When the grantee attempts that exact action
+     ✔  Then the verdict is "accepted"
+     ✔  And no runtime component may reclassify it
+    Scenario Outline: Wildcard and exact action rights follow the pinned class
+     ✔  Given an approved catalog classes action "send" as "act"
+     ✔  And a mandate carries "act.x.mail.*"
+     ✔  And the request carries "none required"
+     ✔  When the grantee attempts that exact action
+     ✔  Then the verdict is "accepted"
+     ✔  And no runtime component may reclassify it
+    Scenario Outline: Wildcard and exact action rights follow the pinned class
+     ✔  Given an approved catalog classes action "purchase" as "binding"
+     ✔  And a mandate carries "act.x.mail.*"
+     ✔  And the request carries "valid owner co_sign"
+     ✔  When the grantee attempts that exact action
+     ✔  Then the verdict is "refused"
+     ✔  And no runtime component may reclassify it
+    Scenario Outline: Wildcard and exact action rights follow the pinned class
+     ✔  Given an approved catalog classes action "purchase" as "binding"
+     ✔  And a mandate carries "act.x.mail.purchase"
+     ✔  And the request carries "no owner co_sign"
+     ✔  When the grantee attempts that exact action
+     ✔  Then the verdict is "refused"
+     ✔  And no runtime component may reclassify it
+    Scenario Outline: Wildcard and exact action rights follow the pinned class
+     ✔  Given an approved catalog classes action "purchase" as "binding"
+     ✔  And a mandate carries "act.x.mail.purchase"
+     ✔  And the request carries "valid owner co_sign"
+     ✔  When the grantee attempts that exact action
+     ✔  Then the verdict is "accepted"
+     ✔  And no runtime component may reclassify it
+    Scenario Outline: Catalog drift never widens an existing mandate
+     ✔  Given a mandate pins one approved connector catalog
+     ✔  When runtime presents "an action added after issuance"
+     ✔  Then the action is refused until new owner-approved authority is issued
+    Scenario Outline: Catalog drift never widens an existing mandate
+     ✔  Given a mandate pins one approved connector catalog
+     ✔  When runtime presents "an act action reclassified as binding"
+     ✔  Then the action is refused until new owner-approved authority is issued
+    Scenario Outline: Catalog drift never widens an existing mandate
+     ✔  Given a mandate pins one approved connector catalog
+     ✔  When runtime presents "another manifest with the same version"
+     ✔  Then the action is refused until new owner-approved authority is issued
+    Scenario Outline: Catalog drift never widens an existing mandate
+     ✔  Given a mandate pins one approved connector catalog
+     ✔  When runtime presents "an unapproved newer version"
+     ✔  Then the action is refused until new owner-approved authority is issued
+    Scenario: Legacy migration never grants binding authority
+     ✔  Given an explicitly versioned legacy connector migration
+     ✔  When legacy read and write rights are projected
+     ✔  Then read may map to read and write may map only to act
+     ✔  And no legacy right proves a binding action
+     ✔  And canonical rights require re-enrolment
+    Scenario Outline: Delegation and execution use the same pinned catalog class
+     ✔  Given a parent mandate carries "act.x.mail.*" under one approved catalog
+     ✔  When it delegates "act.x.mail.list" under "identical pinned one"
+     ✔  Then the child chain is "accepted"
+    Scenario Outline: Delegation and execution use the same pinned catalog class
+     ✔  Given a parent mandate carries "act.x.mail.*" under one approved catalog
+     ✔  When it delegates "act.x.mail.send" under "identical pinned one"
+     ✔  Then the child chain is "accepted"
+    Scenario Outline: Delegation and execution use the same pinned catalog class
+     ✔  Given a parent mandate carries "act.x.mail.*" under one approved catalog
+     ✔  When it delegates "act.x.mail.purchase" under "identical pinned one"
+     ✔  Then the child chain is "refused"
+    Scenario Outline: Delegation and execution use the same pinned catalog class
+     ✔  Given a parent mandate carries "act.x.mail.purchase" under one approved catalog
+     ✔  When it delegates "act.x.mail.purchase" under "identical pinned one"
+     ✔  Then the child chain is "accepted with inherited co_sign"
+    Scenario Outline: Delegation and execution use the same pinned catalog class
+     ✔  Given a parent mandate carries "act.x.mail.*" under one approved catalog
+     ✔  When it delegates "act.x.mail.list" under "different catalog"
+     ✔  Then the child chain is "refused"
+Rule: External usage completes the staged occurrence before local publication
+    Scenario: One W1 occurrence moves from authorized overlay to accepted history
+     ✔  Given a connector operation, gating receipts and Gamma v2 candidate in an overlay
+     ✔  When Core authorizes the complete pre-effect facts
+     ✔  And the external effect succeeds
+     ✔  And the applicable post-effect usage receipt is obtained
+     ✔  Then Core accepts the completed evidence for that same operation_ref
+     ✔  And Gamma, evidence, roots and manifest publish at one local linearization point
+     ✔  And no pending artifact or second occurrence is created
+    Scenario Outline: Failure before local publication changes no canonical byte
+     ✔  Given a published bundle and a staged W1 connector occurrence
+     ✔  When "pre-effect Core authorization refuses" happens before the local linearization point
+     ✔  Then the overlay is discarded
+     ✔  And the canonical bundle, manifest and Gamma head remain byte-identical
+    Scenario Outline: Failure before local publication changes no canonical byte
+     ✔  Given a published bundle and a staged W1 connector occurrence
+     ✔  When "the external effect reports failure" happens before the local linearization point
+     ✔  Then the overlay is discarded
+     ✔  And the canonical bundle, manifest and Gamma head remain byte-identical
+    Scenario Outline: Failure before local publication changes no canonical byte
+     ✔  Given a published bundle and a staged W1 connector occurrence
+     ✔  When "required usage evidence is invalid" happens before the local linearization point
+     ✔  Then the overlay is discarded
+     ✔  And the canonical bundle, manifest and Gamma head remain byte-identical
+    Scenario: A crash after the external effect forbids blind retry
+     ✔  Given Core authorized one staged occurrence and its external effect may have happened
+     ✔  But the process crashed before publishing completed evidence
+     ✔  When the runtime recovers without accepted history for that occurrence
+     ✔  Then absence of evidence is not treated as proof that no effect occurred
+     ✔  And the runtime reconciles the original external occurrence before retry
+     ✔  And Core invents no pending wire, Gamma kind or replacement occurrence
+Rule: Config is a reserved exact capability outside business classes
+    Scenario: Config inherits no silent binding classification or co_sign
+     ✔  Given the validated G-A classification
+     ✔  When a mandate carries exact act.x.mail.config
+     ✔  Then config remains outside the read, act and binding business catalog
+     ✔  And all applicable constraints and obligations explicitly present in the whole presented chain apply
+     ✔  And no wildcard or inferred binding co_sign covers it
+    Scenario Outline: Exact config authority covers CRUD for one connector only
+     ✔  Given a grantee has exact act.x.mail.config and the exact /x/mail line
+     ✔  When it performs config "read" for mail
+     ✔  Then the vault operation is authorized under its applicable constraints
+     ✔  And Gamma, roots and publication commit any mutation atomically
+     ✔  And config authority grants no external mail action
+     ✔  And this protocol version exposes no narrower config read or write authority
+     ✔  And a finer split requires a later version and never reinterprets this mandate
+    Scenario Outline: Exact config authority covers CRUD for one connector only
+     ✔  Given a grantee has exact act.x.mail.config and the exact /x/mail line
+     ✔  When it performs config "create" for mail
+     ✔  Then the vault operation is authorized under its applicable constraints
+     ✔  And Gamma, roots and publication commit any mutation atomically
+     ✔  And config authority grants no external mail action
+     ✔  And this protocol version exposes no narrower config read or write authority
+     ✔  And a finer split requires a later version and never reinterprets this mandate
+    Scenario Outline: Exact config authority covers CRUD for one connector only
+     ✔  Given a grantee has exact act.x.mail.config and the exact /x/mail line
+     ✔  When it performs config "edit" for mail
+     ✔  Then the vault operation is authorized under its applicable constraints
+     ✔  And Gamma, roots and publication commit any mutation atomically
+     ✔  And config authority grants no external mail action
+     ✔  And this protocol version exposes no narrower config read or write authority
+     ✔  And a finer split requires a later version and never reinterprets this mandate
+    Scenario Outline: Exact config authority covers CRUD for one connector only
+     ✔  Given a grantee has exact act.x.mail.config and the exact /x/mail line
+     ✔  When it performs config "delete" for mail
+     ✔  Then the vault operation is authorized under its applicable constraints
+     ✔  And Gamma, roots and publication commit any mutation atomically
+     ✔  And config authority grants no external mail action
+     ✔  And this protocol version exposes no narrower config read or write authority
+     ✔  And a finer split requires a later version and never reinterprets this mandate
+Rule: Every connector has an independent vault node
+    Scenario Outline: Vault access requires exact authority and exact line together
+     ✔  Given a grantee presents "act.x.mail.config" and holds "exact /x/mail line"
+     ✔  When it attempts to open mail config at /x/mail
+     ✔  Then the result is "authorized and readable"
+    Scenario Outline: Vault access requires exact authority and exact line together
+     ✔  Given a grantee presents "act.x.mail.config" and holds "no vault line"
+     ✔  When it attempts to open mail config at /x/mail
+     ✔  Then the result is "authorized but unreadable"
+    Scenario Outline: Vault access requires exact authority and exact line together
+     ✔  Given a grantee presents "act.x.mail.config" and holds "generic /x root line"
+     ✔  When it attempts to open mail config at /x/mail
+     ✔  Then the result is "unreadable"
+    Scenario Outline: Vault access requires exact authority and exact line together
+     ✔  Given a grantee presents "act.x.mail.config" and holds "/x/calendar line"
+     ✔  When it attempts to open mail config at /x/mail
+     ✔  Then the result is "unreadable"
+    Scenario Outline: Vault access requires exact authority and exact line together
+     ✔  Given a grantee presents "no config authority" and holds "exact /x/mail line"
+     ✔  When it attempts to open mail config at /x/mail
+     ✔  Then the result is "refused as unauthorized"
+    Scenario Outline: Vault access requires exact authority and exact line together
+     ✔  Given a grantee presents "act.x.mail.*" and holds "exact /x/mail line"
+     ✔  When it attempts to open mail config at /x/mail
+     ✔  Then the result is "refused as unauthorized"
+    Scenario Outline: Vault access requires exact authority and exact line together
+     ✔  Given a grantee presents "act.x.calendar.config" and holds "/x/calendar line"
+     ✔  When it attempts to open mail config at /x/mail
+     ✔  Then the result is "cannot open /x/mail"
+    Scenario: An ordinary action never receives a credential
+     ✔  Given an agent may perform act.x.mail.send through a tool host
+     ✔  And the tool host opens /x/mail only owner-locally or with its own exact config authority and line
+     ✔  When Core authorizes and Gamma commits the action
+     ✔  Then the tool host resolves the credential at the last moment
+     ✔  And the agent receives no config plaintext, DK or vault line
+    Scenario: An external secret manager is custody, never authority
+     ✔  Given /x/mail material is held by an external secret manager
+     ✔  When a caller has no owner-local context and lacks exact config authority or line
+     ✔  Then the secret manager result cannot authorize or open the vault
+     ✔  And Core remains the source of the protocol verdict
+    Scenario: Audit and config capabilities are cryptographically distinct
+     ✔  Given one holder may audit sealed action arguments
+     ✔  And another holder may open /x/mail config
+     ✔  When each capability is exercised
+     ✔  Then neither capability opens the other's sealed material
+    Scenario Outline: Rotation and config mutation are atomic and connector-local
+     ✔  Given mail and calendar have independent vault nodes
+     ✔  When "valid config edit" is attempted for mail
+     ✔  Then only /x/mail recipients, versions and roots may change
+     ✔  And Gamma, config evidence and publication commit atomically
+     ✔  And fresh-store keyless verification receives no credential
+    Scenario Outline: Rotation and config mutation are atomic and connector-local
+     ✔  Given mail and calendar have independent vault nodes
+     ✔  When "recipient revocation and rotation" is attempted for mail
+     ✔  Then only /x/mail recipients, versions and roots may change
+     ✔  And Gamma, config evidence and publication commit atomically
+     ✔  And fresh-store keyless verification receives no credential
+    Scenario Outline: Rotation and config mutation are atomic and connector-local
+     ✔  Given mail and calendar have independent vault nodes
+     ✔  When "local vault update after an out-of-protocol upstream secret replacement" is attempted for mail
+     ✔  Then only /x/mail recipients, versions and roots may change
+     ✔  And Gamma, config evidence and publication commit atomically
+     ✔  And fresh-store keyless verification receives no credential
+    Scenario: Failed vault mutation leaves no partial credential state
+     ✔  Given a published bundle snapshotted before a mail config mutation
+     ✔  And an injected failure before local commit
+     ✔  When the authorized mutation is attempted
+     ✔  Then the canonical bundle remains byte-for-byte identical
+     ✔  And no Gamma entry, header generation or config blob from the attempt is reachable
+    Scenario: Public vault evidence and refusals reveal no secret
+     ✔  Given a published mail config mutation and one refused vault attempt
+     ✔  When a keyless verifier inspects manifests, proofs, Gamma clear fields, logs and errors
+     ✔  Then it finds no credential, config plaintext, private key or DK
+     ✔  And encrypted normative header lines remain opaque and non-authorizing
+[Summary]
+1 feature
+4 rules
+58 scenarios (58 passed)
+249 steps (249 passed)
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+warning: unused import: `PerimeterEntry`
+  --> crates/aithos-bundle/src/vault.rs:18:37
+   |
+18 | use aithos_core::mandate::{Mandate, PerimeterEntry};
+   |                                     ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `aithos-bundle` (lib) generated 1 warning (run `cargo fix --lib -p aithos-bundle` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 42.72s
+     Running tests/cucumber.rs (rust/target/debug/deps/cucumber-be4ecf3a035cbebd)

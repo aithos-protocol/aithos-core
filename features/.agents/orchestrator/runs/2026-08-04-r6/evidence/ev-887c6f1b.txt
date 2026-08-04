@@ -1,0 +1,61 @@
+
+running 3 tests
+test cb6_mixed_profile_chain_fails_at_the_candidate_prefix ... FAILED
+test cb6_append_and_cold_replay_share_one_prefix_sensitive_front_door ... ok
+test cb6_rejection_does_not_advance_prefix_or_counters ... FAILED
+
+failures:
+
+---- cb6_mixed_profile_chain_fails_at_the_candidate_prefix stdout ----
+
+thread 'cb6_mixed_profile_chain_fails_at_the_candidate_prefix' (26024) panicked at crates/aithos-core/tests/cb6_semantic_replay.rs:142:9:
+"mixed_draft1_to_draft2" was not rejected
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: cb6_semantic_replay::cb6_mixed_profile_chain_fails_at_the_candidate_prefix
+             at ./tests/cb6_semantic_replay.rs:142:9
+   3: cb6_semantic_replay::cb6_mixed_profile_chain_fails_at_the_candidate_prefix::{{closure}}
+             at ./tests/cb6_semantic_replay.rs:117:59
+   4: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   5: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+---- cb6_rejection_does_not_advance_prefix_or_counters stdout ----
+
+thread 'cb6_rejection_does_not_advance_prefix_or_counters' (26025) panicked at crates/aithos-core/tests/cb6_semantic_replay.rs:107:5:
+assertion failed: matches!(state.admit(&candidate), Err(Error::InvalidGammaEntry(_)))
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::panicking::panic
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:150:5
+   3: cb6_semantic_replay::cb6_rejection_does_not_advance_prefix_or_counters
+             at ./tests/cb6_semantic_replay.rs:107:5
+   4: cb6_semantic_replay::cb6_rejection_does_not_advance_prefix_or_counters::{{closure}}
+             at ./tests/cb6_semantic_replay.rs:84:55
+   5: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   6: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    cb6_mixed_profile_chain_fails_at_the_candidate_prefix
+    cb6_rejection_does_not_advance_prefix_or_counters
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.83s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.51s
+     Running tests/cb6_semantic_replay.rs (rust/target/debug/deps/cb6_semantic_replay-745629e61890dc23)
+error: test failed, to rerun pass `-p aithos-core --test cb6_semantic_replay`
+error: 1 target failed:
+    `-p aithos-core --test cb6_semantic_replay`
