@@ -35,7 +35,7 @@
 **Ce que cette clôture n'établit pas.** Huit verdicts propres ne sont pas une
 preuve que la feature est correcte : ce sont huit défauts nommés **dans ses
 preuves** qui sont fermés. Restent ouverts, entre autres, `CHDR-016` (re-routé
-hors de `c-headers`, ni clos ni retiré), `CHDR-028` (sous embargo), les
+hors de `c-headers`, ni clos ni retiré), `CHDR-028` (embargo levé le 2026-08-04), les
 findings P3 de §6 et §6bis, les cinq findings de §6ter, et les suites
 enregistrées par l'orchestrateur dans `QUEUE.yaml`. Le détail est en §3.
 
@@ -167,7 +167,7 @@ le disait pas.
   `features/.agents/orchestrator/QUEUE.yaml` sous `chdr-016-grant-path`. **Ni
   clos ni retiré** : son marqueur Gherkin survit et nomme son nouveau
   propriétaire.
-- `CHDR-028` — **sous embargo**, non réputé publié (§6bis).
+- `CHDR-028` — **publié en entier le 2026-08-04** sur décision du propriétaire ; l'embargo est levé (§6bis).
 - `CHDR-007` et `CHDR-012` sont clos, mais laissent huit findings résiduels
   distincts : `CHDR-029` à `CHDR-036` (§6bis).
 - Les P3 de §6 non touchés par le lot : `CHDR-004`, `-005`, `-006`, `-010`,
@@ -1953,20 +1953,68 @@ chaque bloc. Aucun n'est assigné à un correcteur par cette revue.
 Les identifiants reprennent à `CHDR-028` : `CHDR-026` et `CHDR-027` étaient déjà
 attribués par la passe d'état partagé du cycle précédent.
 
-### `CHDR-028` — `OPEN`, P2 — **`disclosure: embargo`**
+### `CHDR-028` — `OPEN`, P2 — **publié en entier le 2026-08-04 sur décision du propriétaire**
 
-**Titre neutre : couverture inégale de I3 entre les surfaces de vérification
-d'édition de `aithos-bundle`.**
+**Titre : couverture inégale de I3 entre les surfaces de vérification d'édition
+de `aithos-bundle`.**
 
-Énoncé, preuves et critère de clôture **retenus**, conformément à
-`PROCESS.md` § *Disclosure barrier* : le texte complet décrirait un chemin
-actuellement non corrigé par lequel une édition non conforme à I3 obtient un
-verdict d'acceptation sur une API publique. `aithos-core` est public et cette
-branche y sera poussée. La levée appartient au propriétaire du protocole, comme
-pour `CHDR-007` et `CHDR-012` le 2026-08-03.
+> **Levée de l'embargo.** Ce finding a été retenu à l'identifiant et au titre
+> neutre du 2026-08-04T05:45Z au 2026-08-04T13:00Z, sous la condition de
+> blocage 9. Le propriétaire a tranché : publication intégrale. L'énoncé
+> ci-dessous est celui qui lui avait été transmis hors dépôt, restitué sans
+> retrait. Le fichier hors dépôt n'existe plus.
 
-Le texte intégral est transmis hors dépôt à l'orchestrateur, qui porte la
-condition de blocage. **Ce finding n'est pas réputé publié.**
+**Énoncé.** Le lot B a doté deux vérificateurs d'édition du contrôle I3 :
+`Bundle::verify` (`rust/crates/aithos-bundle/src/bundle.rs:1759`) et
+`publication::cold_verify` (`rust/crates/aithos-bundle/src/publication.rs:897`),
+tous deux via `verify_pinned_headers` (`bundle.rs:302-320`).
+
+Un **troisième** vérificateur public reste muet :
+`KeylessPublicationPackage::verify_public_only`
+(`rust/crates/aithos-bundle/src/publication.rs:586-591`) et son enveloppe
+`verify_for_cas` (`:643-650`), qui délèguent à `verify_draft2_candidate`
+(`:469`). Cette fonction contrôle la forme du manifeste, la signature d'acteur,
+la topologie, l'égalité `manifest.files == expected_files` et les porteurs
+K1-C — et **rien sur I3**.
+
+Le paquet contient pourtant les octets nécessaires :
+`objects = context.candidate_store.clone()` (`:660`) est le store complet
+post-mutation, donc les `e/…/hdr/*.json` et `did.json`, et `manifest.files` les
+épingle (`:204`). C'est exactement ce que `import_keyless` (`:729`) puis
+`cold_verify` relisent pour, eux, rejeter. `export_keyless` (`:651-694`)
+s'auto-valide par le même appel muet (`:691`).
+
+Cette surface est consommée **comme un verdict d'acceptation** :
+`rust/crates/aithos-bundle/src/sdk.rs:36`, `PublicationUploadPlan::verified`,
+documenté « Verify the complete package locally and derive the provider
+operation order ». Un paquet épinglant un header qui viole I3 obtient donc un
+plan d'upload « vérifié localement », part chez le fournisseur, et n'est refusé
+qu'ensuite par un tiers qui aurait la bonne idée d'appeler `cold_verify`.
+
+`spec/09-cli-and-conformance.md:99-101` (§9.4) exige le rejet « without holding
+any key, and **on every `aithos-core` manifest profile** ».
+`verify_public_only` est précisément le vérificateur du profil draft.2 côté
+producteur.
+
+**Pourquoi l'embargo avait été levé sur cette base.** Le producteur d'une
+édition n'est pas nécessairement le sujet : `spec/05-delegation.md:85-91`
+autorise un délégué ou un ancêtre à re-sceller les lignes, ligne owner comprise.
+C'est le raisonnement même qui avait écarté la défense « auto-sabotage » pour
+`CHDR-012`. L'énoncé décrit donc un chemin non corrigé par lequel une édition
+non conforme obtient un verdict d'acceptation sur une API publique — ce qui est
+exactement ce que la barrière retient par défaut, et exactement ce que le
+propriétaire a choisi de publier pour que le finding devienne assignable.
+
+**Critère de clôture.** `verify_draft2_candidate` appelle
+`verify_pinned_headers` sur `context.candidate_store` et `did.json`, et un test
+RED démontre qu'un paquet dont un header viole I3 est refusé par
+`verify_public_only`, `verify_for_cas` et `PublicationUploadPlan::verified`, là
+où il est aujourd'hui accepté.
+
+**Assignation.** Aucune. `c-headers` est `COMPLETE` et n'est jamais rouverte :
+la surface visée appartient à `aithos-bundle`. Le finding est porté par
+`QUEUE.yaml` sous `chdr-028`, à charge du premier cycle de `d-bundle` ou de
+`k-integration` qui l'ouvre.
 
 **Pourquoi il n'empêche pas `CHDR-007` d'être `VERIFIED`.** Le critère de
 clôture de `CHDR-007` nomme deux fonctions — `Bundle::verify` et
@@ -2594,8 +2642,9 @@ findings ci-dessus visent le process, les gates déclarés et le câblage d'un
 générateur de vecteurs : aucun ne décrit un chemin d'exploitation. L'erratum
 `CHDR-019` décrit la construction d'un **mutant** — du code délibérément
 modifié — et non le code du dépôt, qui lie bien le secret DH ; ce n'est pas une
-faiblesse exploitable de `aithos-core`. `CHDR-028` reste sous embargo et n'est
-pas touché. Consigné avec ses recherches, parce que « aucun finding embargoté »
+faiblesse exploitable de `aithos-core`. `CHDR-028` était encore sous embargo au
+moment de cette passe et n'a pas été touché ; l'embargo a été levé le même jour
+par le propriétaire, voir la ligne 9 du journal de divulgation. Consigné avec ses recherches, parce que « aucun finding embargoté »
 est une revendication comme une autre.
 
 ## 7. Findings retirés ou requalifiés
@@ -3157,8 +3206,10 @@ honnête.
 | 4 | 2026-08-03 | Correction : la ligne fautive et quatre autres occurrences du même genre sont rédigées. Le gardien invalide **une seconde fois** ; la condition de blocage 6 — deux invalidations de la même feature — s'ouvre et arrête le run |
 | 5 | 2026-08-03 | Le propriétaire humain tranche la publication : « Publier les deux en entier. `CHDR-007` est déjà public en substance sur `codex/audit-c-headers` ; `CHDR-012` est publié malgré l'absence de correctif, au motif que le correcteur doit pouvoir citer ce qu'il répare. » — Mathieu Colla. Condition 9 **résolue** ; condition 6 tombe avec elle, la fuite reprochée n'en étant plus une |
 | 6 | 2026-08-03 | Run de reprise `2026-08-03-r2` : `CHDR-007` et `CHDR-012` sont restitués en entier dans cette note, avec le même niveau de citation que les findings jamais retenus |
-| 7 | 2026-08-04 | Revue du lot A : la barrière est **repassée**, pas héritée. Un candidat trouvé (`spec/03-headers.md:39-40`, unicité des `kid`), constaté déjà publié en entier comme `CHDR-032`, donc non retenu. Aucun des cinq findings de §6ter ne décrit un chemin d'exploitation. `CHDR-028` reste sous embargo et n'est pas touché. Recherches consignées en §6ter |
+| 7 | 2026-08-04 | Revue du lot A : la barrière est **repassée**, pas héritée. Un candidat trouvé (`spec/03-headers.md:39-40`, unicité des `kid`), constaté déjà publié en entier comme `CHDR-032`, donc non retenu. Aucun des cinq findings de §6ter ne décrit un chemin d'exploitation. `CHDR-028` était encore sous embargo à ce moment et n'a pas été touché. Recherches consignées en §6ter |
 | 8 | 2026-08-04 | Le rôle qui écrit la présente mise à jour **re-vérifie** ce jugement au lieu d'en hériter, en relisant le bloc `CHDR-032` de §6bis dans le document publié. Confirmé : le chemin d'émission y figure déjà en clair. Un embargo sur la reformulation d'un énoncé publié ferait passer un finding publié pour un finding retenu |
+| 9 | 2026-08-04 | **Le propriétaire lève l'embargo sur `CHDR-028`** : publication intégrale. L'énoncé, ses preuves et son critère de clôture sont restitués en §6bis au même niveau de citation que les findings jamais retenus. Condition 9 **résolue** pour ce finding. Il n'est assigné à personne ici : `c-headers` est `COMPLETE` et la surface visée appartient à `aithos-bundle` ; il est porté par `QUEUE.yaml` sous `chdr-028` |
+| 10 | 2026-08-04 | **Ce que la levée a coûté à faillir.** Le fichier hors dépôt qui portait l'énoncé, `/root/work/EMBARGO-CHDR-028.md`, avait été détruit entre-temps par le même effacement du clone local qui a ramené l'arbre de travail à `a2087f2`. Le texte n'a survécu que parce que l'orchestrateur l'avait relu en début de session et le portait donc dans son contexte. Un embargo hors dépôt est une rétention **sans durabilité** : le dépôt est sauvegardé, poussé et répliqué, le fichier hors dépôt ne l'est pas. Deux énoncés voisins retenus par la même barrière, `SC-12` et le bord code de `SC-05`, n'ont **pas** eu cette chance et doivent être re-dérivés depuis le code. Consigné comme un défaut de la barrière elle-même, pas comme un incident |
 
 Ce que l'épisode établit, et qui vaut au-delà de cette feature :
 

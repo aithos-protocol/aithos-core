@@ -9,6 +9,75 @@ conditions". Anything absent from that list is not a reason to stop.
 
 ## Open
 
+*Aucune. Les deux entrées de la barrière de divulgation ont été tranchées par le
+propriétaire le 2026-08-04 et sont passées en « Résolues ».*
+
+## Template
+
+```markdown
+### <run-id> · <feature> · condition <n> — <short title>
+
+- **Raised:** <RFC 3339>
+- **Stage:** <status the cycle stopped in>
+- **Evidence:** <ledger ids — gate transcripts, agent outputs>
+
+**Question.** One sentence, answerable.
+
+**Options.**
+
+1. <option> — consequence, cost.
+2. <option> — consequence, cost.
+
+**What the train did not do.** The work left untouched, so the cost of each
+option is legible.
+```
+
+## Resolved
+---
+
+### RÉSOLU 2026-08-04 · les deux entrées de divulgation ci-dessus
+
+- **Tranché :** 2026-08-04T13:00Z, par Mathieu Colla, propriétaire du protocole.
+- **Décision :** **publier les trois en entier, maintenant.** `CHDR-028`,
+  `SC-12`, et le bord code de `SC-05`.
+- **Portée :** condition de blocage 9 fermée sur les trois. Ils deviennent
+  assignables par n'importe quel rôle qui lit le dépôt, ce qui était le coût
+  principal de la rétention.
+- **Motif retenu, tel que la même décision l'avait déjà formulé le 2026-08-03 :**
+  le correcteur doit pouvoir citer ce qu'il répare. Rien n'est déployé, aucune
+  édition n'a été publiée, aucun détenteur n'existe ; une divulgation ne coûte
+  donc rien à personne, tandis qu'une rétention coûte une correction.
+
+**Ce que l'application de cette décision a révélé, et qui vaut mieux que la
+décision elle-même.** Les trois énoncés vivaient hors dépôt, dans
+`/root/work/EMBARGO-*.md`. Deux d'entre eux — `SC-12` et le bord code de
+`SC-05` — **n'existaient plus** au moment de la levée : le même effacement
+silencieux du clone local qui a ramené l'arbre de travail à `a2087f2` les a
+emportés. Seul `CHDR-028` a survécu, et seulement parce que l'orchestrateur
+l'avait relu en début de session et le portait dans son contexte.
+
+Un embargo hors dépôt est une rétention **sans durabilité**. Le dépôt est
+sauvegardé, poussé, répliqué ; le fichier hors dépôt ne l'est pas. La barrière
+protège correctement contre la publication prématurée et ne protège pas du tout
+contre la perte — c'est-à-dire qu'elle peut transformer une rétention
+temporaire en suppression définitive, ce qui est exactement le contraire de ce
+qu'elle promet.
+
+`SC-12` et le bord code de `SC-05` sont donc **re-dérivés depuis le code**
+plutôt que restitués. Une re-dérivation est vérifiable ; une restitution de
+mémoire ne l'est pas, et le fil ne publie pas ce qu'il ne peut pas montrer.
+
+**Conséquence portée au dos du process, pas à celui d'une feature.** La
+barrière a besoin d'un support durable : un dépôt privé, ou un chiffrement dans
+le dépôt public dont la clé est chez le propriétaire. Consigné dans `QUEUE.yaml`
+sous `disclosure-barrier-durability`. Ce n'est pas une remarque de confort : la
+barrière a déjà détruit deux énoncés sur trois à sa première levée.
+
+
+<details>
+<summary>Texte des deux entrées, tel qu'il était posé</summary>
+
+
 ### 2026-08-04-r5 · spec · condition 9 — disclosure gate on `SC-12`, and a split on `SC-05`
 
 - **Raised:** 2026-08-04T07:40:00Z
@@ -95,28 +164,8 @@ cannot be produced by any production writer in this repository.
 under review are `VERIFIED` and their Gherkin markers are removed; this entry
 holds nothing that is already done.
 
+</details>
 
-## Template
-
-```markdown
-### <run-id> · <feature> · condition <n> — <short title>
-
-- **Raised:** <RFC 3339>
-- **Stage:** <status the cycle stopped in>
-- **Evidence:** <ledger ids — gate transcripts, agent outputs>
-
-**Question.** One sentence, answerable.
-
-**Options.**
-
-1. <option> — consequence, cost.
-2. <option> — consequence, cost.
-
-**What the train did not do.** The work left untouched, so the cost of each
-option is legible.
-```
-
-## Resolved
 
 ### Standing ruling — 2026-08-04, Mathieu Colla (owner) — the train may push `main`
 

@@ -1,0 +1,214 @@
+Feature: Browser and CLI ceremonies use the same Core primitives
+  Scenario: The WASM API exposes the closed delegated-session surface
+   ✘  Given caller-supplied entropy and an unlocked local signer
+      Step failed:
+      Defined: root/work/aithos-core/features/g4-client-surfaces.feature:7:5
+      Step doesn't match any function
+  Scenario: Browser custody is pubkey-first
+   ✘  Given an encrypted person keystore in browser-local custody
+      Step failed:
+      Defined: root/work/aithos-core/features/g4-client-surfaces.feature:13:5
+      Step doesn't match any function
+  Scenario: CLI ceremony reads custody outside argv
+   ✘  Given a local signer supplied through stdin a file descriptor or custody interface
+      Step failed:
+      Defined: root/work/aithos-core/features/g4-client-surfaces.feature:19:5
+      Step doesn't match any function
+  Scenario: Production session commands reject DEV seed arguments
+   ✘  Given a production delegated-session command
+      Step failed:
+      Defined: root/work/aithos-core/features/g4-client-surfaces.feature:25:5
+      Step doesn't match any function
+[Summary]
+1 feature
+4 scenarios (4 failed)
+4 steps (4 failed)
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.46
+   Compiling version_check v0.9.5
+   Compiling memchr v2.8.3
+   Compiling syn v2.0.118
+   Compiling generic-array v0.14.7
+   Compiling typenum v1.20.1
+   Compiling crypto-common v0.1.7
+   Compiling regex-syntax v0.8.11
+   Compiling zmij v1.0.21
+   Compiling cfg-if v1.0.4
+   Compiling serde_derive v1.0.228
+   Compiling subtle v2.6.1
+   Compiling itoa v1.0.18
+   Compiling serde_core v1.0.228
+   Compiling zeroize_derive v1.5.0
+   Compiling block-buffer v0.10.4
+   Compiling aho-corasick v1.1.4
+   Compiling heck v0.4.1
+   Compiling cpufeatures v0.2.17
+   Compiling regex-automata v0.4.14
+   Compiling digest v0.10.7
+   Compiling zeroize v1.9.0
+   Compiling serde v1.0.228
+   Compiling minimal-lexical v0.2.1
+   Compiling either v1.16.0
+   Compiling semver v1.0.28
+   Compiling rustc_version v0.4.1
+   Compiling crossbeam-utils v0.8.22
+   Compiling serde_json v1.0.150
+   Compiling bitflags v2.13.0
+   Compiling rustix v1.1.4
+   Compiling curve25519-dalek v4.1.3
+   Compiling thiserror v1.0.69
+   Compiling libc v0.2.186
+   Compiling shlex v2.0.1
+   Compiling crossbeam-epoch v0.9.20
+   Compiling find-msvc-tools v0.1.9
+   Compiling utf8parse v0.2.2
+   Compiling bytecount v0.6.9
+   Compiling zerocopy v0.8.54
+   Compiling linux-raw-sys v0.12.1
+   Compiling anstyle-parse v1.0.0
+   Compiling cc v1.2.66
+   Compiling regex v1.12.4
+   Compiling sealed v0.5.0
+   Compiling curve25519-dalek-derive v0.1.1
+   Compiling thiserror-impl v1.0.69
+   Compiling zerocopy-derive v0.8.54
+   Compiling inout v0.1.4
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle-query v1.1.5
+   Compiling same-file v1.0.6
+   Compiling crossbeam-deque v0.8.7
+   Compiling anstyle v1.0.14
+   Compiling colorchoice v1.0.5
+   Compiling futures-sink v0.3.32
+   Compiling futures-core v0.3.32
+   Compiling futures-channel v0.3.32
+   Compiling anstream v1.0.0
+   Compiling walkdir v2.5.0
+   Compiling cipher v0.4.4
+   Compiling synthez-core v0.3.1
+   Compiling blake3 v1.8.5
+   Compiling terminal_size v0.4.4
+   Compiling nom v7.1.3
+   Compiling universal-hash v0.5.1
+   Compiling futures-macro v0.3.32
+   Compiling derive_more v0.99.20
+   Compiling bstr v1.12.3
+   Compiling unicode-width v0.2.2
+   Compiling autocfg v1.5.1
+   Compiling futures-io v0.3.32
+   Compiling futures-task v0.3.32
+   Compiling strsim v0.11.1
+   Compiling heck v0.5.0
+   Compiling slab v0.4.12
+   Compiling log v0.4.33
+   Compiling once_cell v1.21.4
+   Compiling peg-runtime v0.6.3
+   Compiling opaque-debug v0.3.1
+   Compiling clap_lex v1.1.0
+   Compiling signature v2.2.0
+   Compiling regex-syntax v0.7.5
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-util v0.3.32
+   Compiling ed25519 v2.2.3
+   Compiling peg-macros v0.6.3
+   Compiling clap_builder v4.6.0
+   Compiling poly1305 v0.8.0
+   Compiling globset v0.4.18
+   Compiling clap_derive v4.6.1
+   Compiling num-traits v0.2.19
+   Compiling nom_locate v4.2.0
+   Compiling gherkin v0.14.0
+   Compiling half v2.7.1
+   Compiling synthez-codegen v0.3.1
+   Compiling chacha20 v0.9.1
+   Compiling sha2 v0.10.9
+   Compiling hmac v0.12.1
+   Compiling typed-builder-macro v0.15.2
+   Compiling aead v0.5.2
+   Compiling arrayref v0.3.9
+   Compiling arrayvec v0.7.8
+   Compiling cpufeatures v0.3.0
+   Compiling ciborium-io v0.2.2
+   Compiling constant_time_eq v0.4.2
+   Compiling anyhow v1.0.103
+   Compiling rand_core v0.6.4
+   Compiling unicode-linebreak v0.1.5
+   Compiling smawk v0.3.3
+   Compiling ryu-js v0.2.2
+   Compiling textwrap v0.16.2
+   Compiling serde_jcs v0.1.0
+   Compiling x25519-dalek v2.0.1
+   Compiling ciborium-ll v0.2.2
+   Compiling chacha20poly1305 v0.10.1
+   Compiling typed-builder v0.15.2
+   Compiling hkdf v0.12.4
+   Compiling ed25519-dalek v2.2.0
+   Compiling synthez v0.3.1
+   Compiling ignore v0.4.27
+   Compiling cucumber-expressions v0.3.0
+   Compiling clap v4.6.1
+   Compiling peg v0.6.3
+   Compiling futures-executor v0.3.32
+   Compiling lazy-regex-proc_macros v3.6.0
+   Compiling itertools v0.10.5
+   Compiling itertools v0.13.0
+   Compiling pin-project-internal v1.1.13
+   Compiling ulid v1.2.1
+   Compiling hex v0.4.3
+   Compiling inflections v1.1.1
+   Compiling cast v0.3.0
+   Compiling bs58 v0.5.1
+   Compiling criterion-plot v0.5.0
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+   Compiling cucumber-codegen v0.21.1
+   Compiling pin-project v1.1.13
+   Compiling lazy-regex v3.6.0
+   Compiling futures v0.3.32
+   Compiling globwalk v0.9.1
+   Compiling ciborium v0.2.2
+   Compiling console v0.15.11
+   Compiling is-terminal v0.4.17
+   Compiling tinytemplate v1.2.1
+   Compiling smart-default v0.7.1
+   Compiling anes v0.1.6
+   Compiling oorandom v11.1.5
+   Compiling inventory v0.3.24
+   Compiling humantime v2.4.0
+   Compiling linked-hash-map v0.5.6
+   Compiling drain_filter_polyfill v0.1.3
+   Compiling cucumber v0.21.1
+   Compiling criterion v0.5.1
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 00s
+     Running tests/cucumber.rs (rust/target/debug/deps/cucumber-be4ecf3a035cbebd)
+
+thread 'main' (1713) panicked at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cucumber-0.21.1/src/cucumber.rs:1287:13:
+4 steps failed
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::panicking::panic_display
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:259:5
+   3: cucumber::cucumber::Cucumber<W,P,I,R,Wr,Cli>::filter_run_and_exit::{{closure}}
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cucumber-0.21.1/src/cucumber.rs:1287:13
+   4: futures_executor::local_pool::block_on::{{closure}}
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:316:34
+   5: futures_executor::local_pool::run_executor::{{closure}}
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:90:37
+   6: std::thread::local::LocalKey<T>::try_with
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/thread/local.rs:513:12
+   7: std::thread::local::LocalKey<T>::with
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/thread/local.rs:477:20
+   8: futures_executor::local_pool::run_executor
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:86:27
+   9: futures_executor::local_pool::block_on
+             at /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:316:5
+  10: cucumber::main
+             at ./tests/cucumber.rs:20027:5
+  11: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+error: test failed, to rerun pass `-p aithos-bundle --test cucumber`

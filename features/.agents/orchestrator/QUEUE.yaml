@@ -74,7 +74,6 @@ models:
 # absent from this list and not COMPLETE is a state error.
 order:
   - c-headers
-  - g4-client-surfaces
   - d-bundle
   - h-merkle
   - e-mandates
@@ -90,6 +89,17 @@ order:
   - f-plus-constraints
   - f-gamma
   - k-integration
+  # Moved from position 2 to last on 2026-08-04 by the owner. g4-client-surfaces
+  # is the only @wip feature in the repository and the only one absent from the
+  # global Cucumber selection: 19 .feature files on disk, 18 features in the
+  # suite. Its first feature gate, ev-1449bd50, is red on all four scenarios at
+  # their first Given with "Step doesn't match any function" — there are no step
+  # definitions at all. Auditing a feature with no steps yields one finding and
+  # the correction is not a correction: it is writing the WASM and CLI client
+  # surfaces from a 28-line contract, which is development under an audit
+  # mandate. It returns to its place when those surfaces exist. The bootstrapped
+  # domain stays in the tree, READY, and is not wasted.
+  - g4-client-surfaces
 
 # Prior manual work the train must know about but must not treat as Pass A
 # input. A yardstick is a Pass B input and a truth-milestone comparison only.
@@ -119,7 +129,8 @@ follow_ups:
   chdr-i3-rewrite-vs-reverify: 'BLOCKING - spec 00-overview.md:82-83 forbids rewriting historical manifests while :89-90 re-verifies pre-revision editions. Replaces the retention-versus-retroactivity entry, which rested on a false reading of 03-headers 3.5. Owner ruling required'
   chdr-i3-epoch-dating: 'spec/03-headers.md:36-40 does not date the subject DID document against 01-identity-and-keys.md:116-119 and 00-overview.md:89-90: after an identity epoch, which epoch document does a verifier check an old edition against'
   chdr-i3-drop-retained-versions: 'spec/03-headers.md 3.5 drops old key versions under eager re-encryption; Header::rotate only inserts and no code path ever removes one. Spec permits, implementation does not do it'
-  chdr-028: 'BLOCKING, embargo - routing requires naming the surface, which describes the mechanism. Held by the orchestrator; no target recorded here'
+  chdr-028: 'EMBARGO LEVE le 2026-08-04 par le proprietaire, publie en entier dans docs/audits/features/c-headers.md section 6bis. verify_draft2_candidate ne controle rien sur I3, donc verify_public_only, verify_for_cas et PublicationUploadPlan::verified acceptent un paquet epinglant un header qui viole I3, la ou cold_verify le refuse. Cloture: verify_draft2_candidate appelle verify_pinned_headers sur candidate_store et did.json, avec un test RED. Owed par le premier cycle de d-bundle ou k-integration qui ouvre. c-headers est COMPLETE et ne le porte pas'
+  disclosure-barrier-durability: 'contre le process, P2, ouvert le 2026-08-04 en appliquant la levee d embargo. La barriere retient les enonces HORS DEPOT, donc sans durabilite: le depot est sauvegarde pousse et replique, le fichier hors depot ne l est pas. A la premiere levee, deux enonces sur trois avaient disparu avec l effacement du clone local; SC-12 et le bord code de SC-05 ont du etre re-derives depuis le code. Une retention temporaire peut ainsi devenir une suppression definitive, ce qui est le contraire de ce que la barriere promet. Ce qui manque: un support durable, depot prive ou chiffrement dans le depot public avec la cle chez le proprietaire. Meme genre que CHDR-040, la regle est appliquee et n est ecrite nulle part'
 
   # Spec consistency pass, 2026-08-04. Detail and proposed arbitrations in
   # docs/SPEC-CONSISTENCY-2026-08-04.md. Every arbitration is PROPOSED, NOT

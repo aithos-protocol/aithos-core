@@ -3,7 +3,12 @@
 > **Rôle** : cohérence interne de `spec/` et satisfiabilité par le code.
 > Ce document ne juge aucune feature, n'audite aucun scénario Gherkin, ne corrige rien.
 > **Aucun fichier de `spec/` n'a été modifié.** Aucune commande `cargo`, `git`, aucun
-> test, aucun build n'a été lancé.
+> test, aucun build n'a été lancé **par la passe elle-même** ; quatre gates ont été
+> exécutés par l'orchestrateur le 2026-08-04, après la levée d'embargo, pour les
+> seuls SC-05 et SC-12 (`ev-cb4ff302`, `ev-fafd51d8`, `ev-63e018d1`,
+> `ev-b8cee044`). Ils établissent une ligne de base verte à `223924e` ; ils ne
+> démontrent aucun défaut. Les onze autres constats restent des conclusions de
+> lecture pure.
 >
 > Périmètre lu : `spec/` intégralement (4 348 lignes, 11 fichiers, 79 énoncés
 > `MUST`/`SHALL`), `rust/crates/**/src/**` (28 603 lignes de source hors tests),
@@ -24,10 +29,9 @@
 
 | Famille | Nombre | Identifiants |
 |---|---:|---|
-| 1 — Contradiction (deux énoncés normatifs incompatibles) | 6 | SC-01, SC-02, SC-04, SC-05, SC-10, SC-13 |
+| 1 — Contradiction (deux énoncés normatifs incompatibles) | 7 | SC-01, SC-02, SC-04, SC-05, SC-10, SC-12, SC-13 |
 | 2 — Lettre morte (énoncé que rien n'implémente) | 3 | SC-03, SC-07, SC-09 |
 | 3 — Inatteignable (aucun chemin du code ne permet la satisfaction) | 3 | SC-06, SC-08, SC-11 |
-| Réservé divulgation (famille 1, énoncé retenu) | 1 | SC-12 |
 
 ### Par classe
 
@@ -35,13 +39,15 @@
 |---|---:|---|
 | `TEXTUELLE` | 3 | SC-02, SC-10, SC-13 |
 | `LES DEUX IMPLÉMENTÉS` | 3 | SC-01, SC-04, SC-12 |
-| `AUCUN` | 3 | SC-03, SC-07, SC-09 |
+| `AUCUN` | 4 | SC-03, SC-05 (moitié code), SC-07, SC-09 |
 | `INATTEIGNABLE` | 3 | SC-06, SC-08, SC-11 |
-| Classe retenue (bord code sous embargo) | 1 | SC-05 |
 
-La classe de SC-12 (`LES DEUX IMPLÉMENTÉS`) reste publiée : elle est le résultat
-de la taxonomie de la passe, pas un indice de localisation. Celle de SC-05 ne
-l'est pas, parce qu'elle se déduit directement du bord code retenu.
+SC-05 compte deux fois : sa moitié spec-contre-spec est `TEXTUELLE` sur
+`spec/04-mandates.md:238`, sa moitié code est `AUCUN`. Le total reste de treize
+constats. **Les deux classes retenues du 2026-08-04T07:40Z au
+2026-08-04T13:00Z sont publiées** : celle de SC-12 l'était déjà, celle de SC-05
+l'est depuis la levée — elle avait été retenue parce qu'elle se déduit
+directement du bord code, et qu'elle en donne le sens.
 
 ### Constats touchant un invariant nommé
 
@@ -68,30 +74,56 @@ La dérive attendue au lieu naturel n'y est pas. Les six divergences qui touchen
 I3/I4/I5 ci-dessus proviennent **toutes** du bord code, ou d'une clause satellite
 (§03.4, §05.5, §02.2, §07.9.2), jamais du texte de l'invariant lui-même.
 
-### Blocage — deux rétentions
+### Blocage — deux rétentions, levées le 2026-08-04
 
-Le dépôt est public. Deux constats décriraient, publiés en entier, une faiblesse
-exploitable pour laquelle aucun correctif n'est disponible.
+**Les deux rétentions de cette passe sont levées et les deux constats sont
+publiés en entier.** Le 2026-08-04T07:40Z, SC-12 (en entier) et la moitié code de
+SC-05 ont été retenus sous la « condition 9 » de la barrière de divulgation,
+telle que `features/.agents/orchestrator/BLOCKED.md` la nomme : dépôt public,
+faiblesse exploitable, aucun correctif disponible. Le
+2026-08-04T13:00Z, le propriétaire (Mathieu Colla) a tranché : publication
+intégrale des deux, au motif que le correcteur doit pouvoir citer ce qu'il
+répare, et que rien n'étant déployé, une divulgation ne coûte rien à personne
+tandis qu'une rétention coûte une correction. La décision est consignée dans
+`features/.agents/orchestrator/BLOCKED.md` § « Résolues ».
 
-- **SC-12 — retenu en entier.** Ce document ne porte qu'un identifiant et un
-  titre neutre, plus les sections normatives concernées, elles-mêmes déjà
-  publiques. **Aucun site de code n'est nommé.**
-- **SC-05 — retenu au bord code.** Sa moitié spec-contre-spec est intégralement
-  publiée (les deux côtés sont déjà dans `spec/`, dans le même fichier). Sa
-  moitié code — ce que le code fait de la ligne `F` de §04.13, donc le *sens* de
-  l'écart — est retenue, parce que cet écart est permissif et non restrictif.
-  **Aucun site de code n'est nommé.**
+**Les deux constats sont re-dérivés, pas restitués.** Leur texte complet vivait
+hors du dépôt, dans `/root/work/EMBARGO-SC-12.md` et `/root/work/EMBARGO-SC-05.md`.
+Ces deux fichiers n'existaient plus au moment de la levée : l'effacement
+silencieux du clone local les a détruits. Les énoncés publiés ci-dessous ont donc
+été **re-dérivés depuis `spec/` et depuis le code à `223924e`**. Chacun porte sa
+note de levée d'embargo, et chacun signale les points du dossier survivant que la
+re-dérivation contredit — il y en a, et c'est précisément l'argument pour
+re-dériver plutôt que restituer : une re-dérivation se vérifie ligne à ligne.
 
-Le détail technique complet de chacun est consigné **hors du dépôt**, dans un
-document distinct par constat, remis à l'orchestrateur pour décision du
-propriétaire. La levée de ces rétentions, la rédaction publique des constats et
-le calendrier de correction sont une condition de blocage qui appartient à
-l'orchestrateur, pas à ce rôle.
+**Ce que la re-dérivation a révélé, et qui vaut mieux que la décision elle-même.**
+`SC-12` était retenu, entre autres, parce que le durcir invaliderait
+rétroactivement des entrées publiées, et que §0.4 n'autorisait qu'un seul
+durcissement rétroactif dans la série. Cette phrase de `spec/00-overview.md` avait
+été **supprimée par l'orchestrateur lui-même** — commit `c8557f4`, appliquant la
+décision du propriétaire sur la condition de blocage 1 — vingt-quatre minutes
+après le commit de cette passe, sans que personne voie qu'un constat d'un autre
+document reposait dessus. Le constat est resté sous embargo cinq heures, défendu
+par une phrase inexistante. Personne ne l'a vu jusqu'à ce qu'il soit re-dérivé
+depuis les sources plutôt que restitué de mémoire ; si le fichier hors dépôt avait
+survécu, il aurait été republié tel quel, argument mort compris. Le détail est en
+`SC-12`, note de levée d'embargo.
 
-Corollaire assumé sur la lisibilité : trois autres constats (SC-07, SC-13, et la
-note de méthode) ont vu une référence de code retirée ou généralisée parce
-qu'elle rouvrait par une autre porte l'un des sites retenus. Chacun le signale
-sur place.
+Deux conséquences de process, portées hors de ce document. D'abord, une barrière
+de divulgation hors dépôt est une rétention **sans durabilité** : celle-ci a
+détruit deux énoncés sur trois à sa première levée — `QUEUE.yaml`,
+`disclosure-barrier-durability`. Ensuite, une correction dans un document peut
+retirer silencieusement la prémisse porteuse d'un constat retenu dans un autre,
+et une rétention hors dépôt soustrait précisément ce constat aux relectures qui
+l'attraperaient.
+
+Corollaire sur la lisibilité, désormais résolu : trois autres endroits (SC-07,
+SC-13, et la note de méthode) avaient vu une référence de code retirée ou
+généralisée parce qu'elle rouvrait par une autre porte l'un des sites retenus.
+**Les deux pointeurs nommés — la citation `check_revoke_authority` de SC-07 et
+l'intervalle de lignes `mandate.rs` de SC-13 — sont restaurés**, chacun signalé
+sur place avec la confirmation qu'il n'avait pas d'autre motif de retrait. La
+note de méthode est mise à jour au même titre.
 
 ---
 
@@ -468,19 +500,44 @@ Deux options exclusives, à trancher au gate humain :
 
 ## SC-05 — `max_sessions` : tier V en §04.4 contre fail-closed en §04.7/§04.13
 
-**Famille 1 — Contradiction. Classe : RETENUE (bord code sous embargo).**
+**Famille 1 — Contradiction. Moitié spec : classe `TEXTUELLE` sur §04.4.
+Moitié code : classe `AUCUN`. Sévérité : moyenne** (justifiée en (3)).
 
-### (1) Les deux côtés, verbatim
+> **Levée d'embargo, sur la moitié code seule.** La moitié spec-contre-spec —
+> l'étape (1) ci-dessous — a toujours été publiée en entier ; ses deux côtés sont
+> dans `spec/04-mandates.md`, à 1 550 lignes d'écart. La **moitié code** — les
+> étapes (2), (3) et (4) — a été retenue du **2026-08-04T07:40Z** au
+> **2026-08-04T13:00Z** sous la « condition 9 » de la barrière de divulgation
+> (`features/.agents/orchestrator/BLOCKED.md`), au motif que l'écart y est
+> permissif et non restrictif. **Levée par le propriétaire (Mathieu Colla) le
+> 2026-08-04**, décision consignée dans `features/.agents/orchestrator/BLOCKED.md`
+> § « Résolues ».
+>
+> Comme pour SC-12, le texte remis hors dépôt (`/root/work/EMBARGO-SC-05.md`)
+> n'existait plus au moment de la levée. La moitié code ci-dessous est
+> **re-dérivée depuis `spec/` et depuis le code à `223924e`**, pas restituée. Un
+> élément du résumé survivant ne tient pas tel quel ; il est corrigé en (2).
+>
+> **Chaque phrase ci-dessous dit de quelle couche elle parle.** C'est la raison
+> même du découpage : la moitié spec s'établit dans `spec/` seule et n'a besoin
+> d'aucun code ; la moitié code s'établit par lecture de `rust/**` et de
+> `vectors/**`, et n'établit rien de ce que `spec/` prescrit.
+
+### (1) Les deux côtés, verbatim — **couche spécification**
 
 `spec/04-mandates.md:238` — table du vocabulaire de contraintes §04.4, colonne
 « Tier » :
 
 > | `max_sessions: N` | at most N session keys simultaneously certified by the grantee's long-term key (§4.7) — blocks silent duplication of one mandate across N machines | V |
 
-avec `spec/04-mandates.md:232-233` pour la définition du tier :
+avec `spec/04-mandates.md:229-231` pour la définition du tier, **lue jusqu'à la
+parenthèse fermante** — la version publiée de ce constat citait `:232-233`, qui
+est le blanc précédant la table, et s'arrêtait avant la parenthèse ; les deux
+sont corrigés ici :
 
 > Each known key states its **enforcement tier**: **V** verifier (offline, from files)
-> or **X** executor/tool-host (runtime).
+> or **X** executor/tool-host (runtime). (Counter-signature, once its own tier **C**,
+> is now the owner instance of an obligation — tier V, §4.12.)
 
 `spec/04-mandates.md:1345-1348` :
 
@@ -505,43 +562,204 @@ La contradiction ci-dessus est **entièrement interne à `spec/`** : ses deux c�
 sont déjà publics, dans le même fichier, à 1 550 lignes d'écart. Elle est
 publiable telle quelle et n'apprend rien à personne qui n'ait déjà lu §04.
 
-### (2) Ce que le code fait de chaque côté — **RETENU**
+### (2) Ce que le code fait de chaque côté — **couche code, moitié re-dérivée**
 
-> **Constat partiellement retenu pour divulgation.** La détermination du bord
-> code de SC-05 a été faite et n'est pas reproduite ici.
->
-> Motif : §04.13:1789 impose `F` — « fail closed unconditionally » — sur les huit
-> colonnes d'opération. Publier ce que le code fait réellement de cette ligne
-> reviendrait à publier **dans quel sens** il s'en écarte. L'écart étant
-> permissif et non restrictif, l'énoncer donnerait à un lecteur mal intentionné
-> une information que `spec/` seule ne lui donne pas : `spec/` l'avertit que
-> `max_sessions` est réservé, elle ne lui dit pas si un mandat qui en porte un
-> est refusé ou accepté. C'est exactement la différence entre « ne compte pas
-> dessus » et « sers-t'en ».
->
-> **Aucun site de code n'est nommé pour ce constat, ici ni ailleurs dans ce
-> document.**
->
-> Le détail complet — la détermination du bord code avec ses `fichier:ligne`, la
-> classe, l'arbitrage proposé, son coût, ce qu'il casserait et le critère de
-> clôture — est consigné hors du dépôt, dans un document remis à l'orchestrateur
-> pour décision du propriétaire.
+**Aucun des deux côtés de l'étape (1) n'est implémenté.** Le tier `V` de §04.4
+n'a aucun chemin d'application en production, et le `F` de §04.13 n'a aucun
+chemin de refus. Le résultat net est que le code **accepte** — il ne compte pas,
+et il ne refuse pas.
 
-### (3) Classe — **RETENUE**
+- **Le mot-clé est connu et typé.** `rust/crates/aithos-core/src/constraints.rs:923`,
+  dans `validate_known_constraints` :
+  ```rust
+  "max_actions" | "max_children" | "max_sessions" | "max_mutations"
+  | "max_consumptions" => {
+      want_u64(key, v, None)?;
+  }
+  ```
+  Un lien de délégation portant `max_sessions: N` bien formé est donc **valide de
+  forme** — il n'est ni inconnu (donc pas soumis au fail-closed M0.c de §04.4
+  pour clé inconnue), ni réservé, ni refusé.
+- **Il est même atténué comme les autres compteurs.**
+  `rust/crates/aithos-core/src/constraints.rs:1341-1346`, dans
+  `family_containment` : le plafond de l'enfant ne peut pas dépasser celui du
+  parent. La chaîne complète de `verify_chain` (`mandate.rs:1111-1118`) l'exécute
+  à chaque lien. Le code traite donc `max_sessions` exactement comme
+  `max_actions` : une contrainte vivante, pas une contrainte réservée.
+- **Le compteur existe, et rien en production ne l'appelle.**
+  `rust/crates/aithos-core/src/constraints.rs:1293-1316`, `verify_max_sessions`,
+  dont le commentaire de doc (`:1291-1292`) est explicite sur ce qu'il ne fait
+  pas : « Enforce `max_sessions` over an injected set of already verified active
+  session public keys. This adds no certificate wire or storage rule. »
+  L'ensemble des sessions actives est **injecté** par l'appelant ; la fonction
+  n'a aucun moyen de le découvrir depuis les fichiers, ce que §04.4:229-231 exige
+  pourtant d'un tier `V` (« offline, from files »).
 
-La classe découle de l'étape (2) et la divulguerait. Elle figure dans le document
-hors dépôt.
+**L'affirmation d'absence, avec sa recherche, son périmètre et sa couche.**
+`grep -rn "verify_max_sessions" .` — périmètre : **dépôt entier** à `223924e`,
+donc les cinq crates de l'espace de travail (`rust/Cargo.toml:3-9` :
+`aithos-core`, `aithos-bundle`, `aithos-cli`, `aithos-owner`, `aithos-wasm`),
+`vectors/`, `docs/`, `features/`, `scripts/` — couche **code et corpus de
+données**. Résultats, en entier :
 
-### (4) Arbitrage proposé — **RETENU**
+- la définition, `rust/crates/aithos-core/src/constraints.rs:1293` ;
+- un `use` et **trois** sites d'appel, tous dans un seul fichier de **test** :
+  `rust/crates/aithos-core/tests/cb5_evidence_contracts.rs:3`, `:121`, `:124`,
+  `:128` ;
+- de la prose : `docs/research/topology-2026-07-28-unverified/lot-C-04.md:161`,
+  `:341`, `:532`, `:600` ; `docs/archive/HANDOFF-GATEWAY-G4-PROD-MCP-DELEGATED-SESSIONS-2026-07-22.md:221`,
+  `:372`, `:590`, `:782` ; `vectors/cb2-core-bundle-red-ledger.json:2205` ;
+- et `docs/audits/split/spl8-amputation.patch:22340` et `:28833`, qui **retirent**
+  (`-use aithos_core::constraints::verify_max_sessions;`,
+  `-    verify_max_sessions(max_sessions, active_session_keys)`) le dernier
+  appelant de production, celui du crate `gateway` amputé du dépôt.
 
-Voir le document hors dépôt. Il est marqué `PROPOSÉ — NON IMPLÉMENTÉ` comme tous
-les autres, et sa faisabilité n'a pas davantage été vérifiée par ce rôle.
+**Aucun fichier sous `rust/crates/*/src/**` n'appelle `verify_max_sessions`.**
+Même résultat pour son type de retour : `grep -rn "VerifiedSessionTally" .` ne
+renvoie que sa propre définition et la signature de la fonction
+(`constraints.rs:1280`, `:1284`, `:1296`, `:1314`). Cette recherche est
+**syntaxique** : elle n'exclut pas, à elle seule, un appel dynamique ou une
+réexportation qu'une lecture aurait manqués.
 
-**Ce qui reste publiable et actionnable sans lever la rétention :** la
-contradiction §04.4 ↔ §04.13 est un défaut de spécification pur. Le corriger —
-retirer le tier `V` de `spec/04-mandates.md:238` ou l'aligner sur la ligne
-réservée de §04.13:1789 — ne dépend d'aucune information retenue, ne touche aucun
-octet signé, et peut être fait indépendamment du bord code.
+**Corroboration mesurée.** Le test qui porte les trois appels est **vert** à
+`223924e` — `ev-fafd51d8`, `cargo test -p aithos-core --test
+cb5_evidence_contracts`, 5 tests passés — et l'espace de travail entier l'est aussi —
+`ev-cb4ff302`, 18 features / 114 règles / 836 scénarios / 3 577 étapes, tests
+unitaires compris. Ces deux transcriptions établissent que `verify_max_sessions`
+est bien exercée, qu'elle passe, et qu'elle l'est **depuis la couche test**. Le
+vert **est** le constat, il ne le réfute pas : la fonction fait exactement ce que
+son test lui demande, et rien ne la demande ailleurs. Ce que les transcriptions ne
+peuvent pas faire, c'est prouver une absence — le drapeau de lecture reste levé
+sur l'affirmation « aucun `src/` ne l'appelle », qui est établie par recherche
+syntaxique et par elle seule.
+
+> **Correction au dossier survivant.** `BLOCKED.md` et le résumé de la passe
+> parlent d'« une fonction sans appelant ». C'est imprécis et il faut le dire :
+> `verify_max_sessions` **a** trois appelants. Ils sont tous les trois dans
+> `rust/crates/aithos-core/tests/cb5_evidence_contracts.rs`, c'est-à-dire dans la
+> couche test. L'énoncé exact est : *aucun `src/` d'aucun crate de l'espace de
+> travail ne l'appelle*. La différence compte, parce qu'un test vert donne
+> l'apparence d'une contrainte appliquée — et
+> `cb5_evidence_contracts.rs:112-131` est nommé
+> `cb5_max_sessions_lifecycle_reaches_the_typed_validator`, ce qui est vrai du
+> validateur et faux de tout chemin de consommation.
+
+**La direction de l'écart — c'est le fait décisif, et il est permissif.** Trois
+observations indépendantes, couche code puis couche corpus de données :
+
+1. **Un émetteur de production émet des mandats qui en portent.**
+   `rust/crates/aithos-owner/src/lib.rs:804-816` : le délégué de session est
+   frappé avec `serde_json::json!({ "max_sessions": 3, "purpose": … })`, stocké
+   sous `certs/`, puis journalisé par `log_owner_grant` (`:825-827`). Aucun
+   refus, aucun avertissement, aucune trace de « réservé ».
+2. **Le vecteur normatif gèle l'acceptation.**
+   `vectors/cb2-mandate-contracts.json`, cas `"all known families well-formed"`
+   (`:5`), contient `"max_sessions": 1` (`:68`) et porte
+   `"expected_shape_valid": true` (`:96`). Le seul cas négatif du vecteur pour
+   cette clé est `"malformed max_sessions"` avec `-1` (`:113-117`,
+   `expected_shape_valid: false`). Autrement dit : la valeur **mal formée** est
+   refusée, la valeur **bien formée** est acceptée. C'est l'inverse exact d'un
+   `F`.
+3. **Les vecteurs de chaîne de session verrouillent la même chose.**
+   `vectors/cb14-delegated-session-chain.json` porte `max_sessions: 3` dans la
+   racine et dans la feuille de chaque chaîne positive (`:41`, `:90`, `:190`,
+   `:219`, `:268` …), et son `inventory.negative_ids` ne liste que
+   `truncated-chain`, `revoked-parent`, `substituted-leaf`,
+   `crossed-session-proof`, `verification-time-mismatch` — **aucun** cas négatif
+   `max_sessions`. Idem pour `vectors/cb15-external-delegated-grant.json:22`,
+   `:72`, `:144`.
+
+Ce que §04.13:1789 demandait — « fail closed unconditionally » sur les huit
+colonnes d'opération, pour une consommation de **grantee** (`spec/04-mandates.md:1780-1781`) —
+n'existe nulle part. Un mandat qui déclare « au plus 3 sessions simultanées » est
+consommé sans qu'aucune session ne soit comptée, sur toutes les opérations. La
+promesse de §04.4:238 est donc opposable à un lecteur de `spec/` et sans effet
+dans le code, et la réserve de §04.7:1345-1348 est opposable à un lecteur de
+`spec/` et sans effet non plus.
+
+**Honnêteté sur la lecture de `F`.** On peut lire la ligne `max_sessions`
+*lifecycle/counter* de §04.13 étroitement — « c'est le compteur qui échoue fermé,
+et comme rien n'en dépend, rien n'échoue ». Cette lecture sauve le code de la
+contradiction avec §04.13 mais le laisse en pleine contradiction avec §04.4:238,
+qui range `max_sessions` en tier `V`, c'est-à-dire appliqué « offline, from
+files » par le vérificateur. Sous l'une ou l'autre lecture, le comportement
+observé est le même et il est permissif. C'est pourquoi il n'a pas été publié en
+même temps que l'étape (1) : `spec/` avertit son lecteur que `max_sessions` est
+réservé ; elle ne lui dit pas qu'un mandat qui en porte un est **accepté et
+consommé**.
+
+### (3) Classe et sévérité — **couche code**
+
+**`AUCUN`.** Le classement est celui de SC-03, SC-07 et SC-09, pas celui de
+SC-01 : il n'y a pas deux comportements dans le code entre lesquels arbitrer, il
+y a **deux énoncés normatifs et zéro implémentation**. Le tier `V` de §04.4:238
+n'a aucun chemin d'application ; le `F` de §04.13:1789 n'a aucun chemin de refus.
+C'est cette classe, et non le détail des `fichier:ligne`, qui divulguait la
+direction de l'écart : dire « aucun des deux côtés n'est implémenté » sur une
+paire dont un côté est un refus, c'est dire que rien ne refuse.
+
+**Sévérité : moyenne.** Elle ne monte pas plus haut parce que la contrainte est
+*facultative* — elle ne relâche rien de ce que le mandat interdit par ailleurs,
+et un mandat sans `max_sessions` n'est pas plus permissif qu'un mandat qui en
+porte un. Le dommage est un dommage de **fausse assurance** : un émetteur, y
+compris `aithos-owner` lui-même (`lib.rs:812`), croit borner la duplication d'un
+mandat sur N machines et ne la borne pas ; §04.4:238 lui a promis un tier `V`.
+Elle ne descend pas plus bas parce que la contrainte est gelée dans des vecteurs
+normatifs comme acceptée, ce qui la rend coûteuse à durcir plus tard qu'à durcir
+maintenant.
+
+### (4) Arbitrage proposé — `PROPOSÉ — NON IMPLÉMENTÉ`
+
+La moitié spec et la moitié code se corrigent séparément et dans cet ordre.
+
+**Moitié spec (indépendante, gratuite).** La contradiction §04.4:238 ↔
+§04.13:1789 est un défaut de spécification pur. Retirer le tier `V` de
+`spec/04-mandates.md:238` et le remplacer par une mention explicite de réserve
+renvoyant à §04.7:1345-1348 — ou, symétriquement, retirer la ligne réservée de
+§04.13:1789. Coût faible, une ligne, aucun octet signé, aucun code.
+
+**Moitié code.** Deux options exclusives, à trancher au gate humain :
+
+- **(a) Appliquer §04.13 à la lettre : refuser.** Sortir `max_sessions` de la
+  liste de `constraints.rs:923` et lui donner sa propre branche qui échoue fermé
+  à la validation de lien, comme le fait déjà `validate_profile_constraints`
+  (`constraints.rs:1319-1336`) pour `max_mutations`/`max_consumptions` hors
+  `draft.3`. Coût faible en lignes ; mais cela casse
+  `rust/crates/aithos-owner/src/lib.rs:812` (à retirer), le vecteur
+  `vectors/cb2-mandate-contracts.json` (cas positif à régénérer),
+  `vectors/cb14-delegated-session-chain.json` et
+  `vectors/cb15-external-delegated-grant.json` (chaînes entières à régénérer),
+  et le test `cb5_evidence_contracts.rs:112-131`. C'est un vrai coût au sens de
+  `features/AGENTS.md` § *Project stage* : il porte sur les vecteurs et les tests
+  **du dépôt**, pas sur des détenteurs qui n'existent pas.
+- **(b) Appliquer §04.4 à la lettre : compter.** Définir le wire de cycle de vie
+  de session que §04.7:1345-1348 déclare manquant — émission, remplacement,
+  révocation, indexation d'expiration, ensemble public des sessions actives — puis
+  brancher `verify_max_sessions` sur cet ensemble reconstruit depuis les fichiers,
+  et non injecté. Coût lourd : nouveau construit signé, donc nouveau profil au
+  sens de §00.4:74-84, nouveaux vecteurs. C'est exactement le travail que
+  §04.7:1345-1348 met en réserve, et le trancher ici serait décider un point de
+  protocole.
+- **Variante minimale, à arbitrer contre les deux :** ne rien changer au wire et
+  écrire dans §04.4:238 ce que le code fait — `max_sessions` est parsé, typé et
+  atténué, jamais appliqué — comme §04.13 le fait déjà pour d'autres lignes avec
+  le suffixe `W`. Coût texte faible ; mais cela grave une contrainte inerte dans
+  le vocabulaire normatif, ce que §04.4 reproche ailleurs aux extensions
+  inconnues (bloc `CB1 decision G-E`, `spec/04-mandates.md:214-227`).
+
+**Critère de clôture** — attribuable depuis la ligne de base `ev-cb4ff302`
+(espace de travail vert à `223924e`) et `ev-fafd51d8` (`cb5_evidence_contracts`
+vert, 5 tests). Sous (a) : un test RED démontre qu'un mandat de
+délégation portant `max_sessions` bien formé est refusé par `verify_chain`, là où
+il est aujourd'hui accepté, et les vecteurs cités sont régénérés. Sous (b) :
+`verify_max_sessions` est appelée depuis au moins un `src/` de crate, avec un
+ensemble de sessions actives reconstruit depuis le store, et un test RED démontre
+qu'une (N+1)-ième session est refusée sans que l'appelant ait à injecter la liste.
+Dans les deux cas, la recherche `grep -rn "verify_max_sessions" rust/crates/*/src/`
+cesse d'être vide, ou la fonction disparaît.
+
+- **La faisabilité de ces arbitrages n'a pas été vérifiée par ce rôle**, et aucune
+  commande `cargo`, `git` ou de test n'a été lancée pour ce constat.
 
 ---
 
@@ -717,8 +935,15 @@ la chaîne du signataire couvre le mandat qui détenait cette ligne, en réutili
 le contrôle d'autorité de révocation déjà spécifié en §06.4 plutôt qu'en écrivant
 une seconde règle d'autorité. Puis l'appeler depuis `verify_pinned_headers`.
 
-> Le site d'implémentation de ce contrôle n'est pas nommé ici : il coïncide avec
-> l'un des deux sites de SC-12, retenu pour divulgation.
+> **Pointeur restauré le 2026-08-04.** Ce paragraphe portait la mention « le site
+> d'implémentation de ce contrôle n'est pas nommé ici : il coïncide avec l'un des
+> deux sites de SC-12, retenu pour divulgation ». La relecture confirme que ce
+> retrait n'avait **aucun autre motif** que la protection de SC-12, dont l'embargo
+> est levé. Le contrôle d'autorité de révocation de §06.4 est
+> `aithos_core::revocation::check_revoke_authority`,
+> `rust/crates/aithos-core/src/revocation.rs:57-103`. Rien d'autre de ce constat
+> n'est modifié — et il faut lire ce renvoi avec SC-12 : le contrôle qu'il propose
+> de réutiliser est lui-même défectueux sur sa branche de portée nue.
 
 - Coût estimé : lourd. Le vérificateur d'édition ne dispose aujourd'hui d'aucune
   liaison `kid → mandat` : `verify_pinned_headers` ne reçoit que `store`, `files`
@@ -1065,26 +1290,383 @@ Deux options exclusives :
 
 ## SC-12 — Portée effective d'une entrée de périmètre `revoke` non scopée
 
-**Famille 1 — Contradiction. Classe : `LES DEUX IMPLÉMENTÉS`. Invariant touché : I4.**
+**Famille 1 — Contradiction. Classe : `LES DEUX IMPLÉMENTÉS`. Invariant touché : I4.
+Sévérité : élevée** (justifiée en (3)).
 
-> **Constat retenu pour divulgation.** Le dépôt est public et l'énoncé complet de
-> ce constat décrirait une faiblesse exploitable pour laquelle aucun correctif
-> n'est disponible. Conformément aux règles de la passe, ce document ne porte
-> qu'un identifiant et un titre neutre.
+> **Levée d'embargo.** Retenu à l'identifiant, au titre neutre et aux trois
+> sections normatives du **2026-08-04T07:40Z** au **2026-08-04T13:00Z**, sous la
+> « condition 9 » de la barrière de divulgation, telle que
+> `features/.agents/orchestrator/BLOCKED.md` la nomme : dépôt public, faiblesse
+> exploitable, aucun correctif disponible. **Levé par le propriétaire (Mathieu
+> Colla) le 2026-08-04**, décision consignée dans
+> `features/.agents/orchestrator/BLOCKED.md` § « Résolues ».
 >
-> Sections normatives concernées : `spec/04-mandates.md:184-186`,
-> `spec/06-revocation.md:119-130`, `spec/00-overview.md:41-45` (I4). Ces
-> sections sont déjà publiques ; les citer ne réduit aucun espace de recherche.
+> *(`BLOCKED.md` rattache cette « condition 9 » à une section « Blocking
+> conditions » de `PROCESS.md` qui **n'existe pas** à `223924e`. Ce n'est pas un
+> constat de cette passe : c'est **`CHDR-040`**, `OPEN`, P2,
+> `docs/audits/features/c-headers.md:2385-2397`, qui vise le train et non une
+> feature, et dont le point 2 nomme précisément « la liste numérotée des
+> conditions de blocage, 1 à 10 ». Troisième observation indépendante du même
+> défaut ; elle est versée à cet identifiant et n'en ouvre pas un nouveau.)*
 >
-> **Aucun site de code n'est nommé, ici ni ailleurs dans ce document.**
+> L'énoncé ci-dessous n'est **pas** celui qui avait été remis hors dépôt. Le
+> fichier `/root/work/EMBARGO-SC-12.md` n'existait plus au moment de la levée :
+> l'effacement silencieux du clone local l'a détruit. Le constat est donc
+> **re-dérivé depuis `spec/` et depuis le code à `223924e`**, et non restitué de
+> mémoire. Deux éléments que le résumé survivant de `BLOCKED.md` attribuait à ce
+> constat **ne survivent pas** à la re-dérivation ; ils sont signalés sur place en
+> (2a) et en (4).
 >
-> La levée de cette rétention, la rédaction publique du constat et le calendrier
-> de correction sont une condition de blocage qui appartient à l'orchestrateur.
-> Le détail complet — les deux citations verbatim, les `fichier:ligne` exacts des
-> deux branches de code, la raison pour laquelle les deux sont implémentées,
-> l'arbitrage proposé et le critère de clôture — est consigné hors du dépôt, dans
-> un document remis à l'orchestrateur pour décision du propriétaire. Il n'est
-> reproduit nulle part dans l'arbre git.
+> **Pourquoi la re-dérivation était la bonne méthode, et ce n'est pas une
+> assertion — c'est montrable.** Le résumé survivant défendait la non-correction
+> de ce constat par un argument unique : durcir le contrôle invaliderait
+> rétroactivement des entrées déjà publiées, et `spec/00-overview.md` §0.4
+> n'autorise qu'**un seul** durcissement rétroactif dans cette série, déjà dépensé
+> sur I3. Cette phrase de §0.4 **n'existait plus** au moment où l'argument était
+> encore invoqué. Elle a été supprimée par le commit `c8557f4`, « spec: I3 binds
+> profiles, not time — and stop costing backward compatibility », le
+> 2026-08-04T08:01Z — vingt-quatre minutes après le commit de cette passe
+> (`d3ce85f`, 07:37Z).
+>
+> **`c8557f4` est le lot de spécification de l'orchestrateur lui-même**, appliquant
+> la décision du propriétaire du 2026-08-04 qui a fermé la condition de blocage 1.
+> L'orchestrateur en assume la paternité et la conséquence : il a retiré cette
+> phrase délibérément, dans le cadre de la correction de §0.4, **sans voir qu'un
+> autre constat, dans un autre document, faisait reposer toute sa sévérité
+> dessus**. Le constat est alors resté sous embargo cinq heures, défendu par une
+> phrase qui n'existait plus.
+>
+> Personne ne l'a vu jusqu'à ce que ce constat soit re-dérivé depuis les sources
+> au lieu d'être restitué de mémoire. Si le fichier hors dépôt avait survécu et
+> avait simplement été recollé, `SC-12` serait publié aujourd'hui avec un argument
+> mort à l'intérieur. C'est la démonstration, et non la promesse, qu'une
+> correction dans un document peut retirer silencieusement la prémisse porteuse
+> d'un constat retenu dans un autre — et qu'une barrière de divulgation qui garde
+> ses énoncés hors du dépôt les soustrait précisément aux relectures qui
+> l'auraient attrapé.
+
+### (1) Les deux côtés, verbatim
+
+`spec/00-overview.md:41-45` (I4) — **lu jusqu'au point**, la dernière phrase
+portant tout le cas délégué :
+
+> 4. **I4 — Authority follows issuance.** Only the issuer of a mandate (or an ancestor
+>    in its chain, transitively up to the owner) may revoke it or remove its lines.
+>    Verifiable from certificates alone. A `revoke` perimeter entry (§04.2, §06.7)
+>    delegates the *certificate* half of this authority — never the key half — within
+>    attenuation.
+
+`spec/04-mandates.md:183-186` (§04.2, règle `covers` normative) — les deux
+phrases, lues jusqu'à leurs points respectifs :
+
+> A `revoke` entry conveys no key and no
+> read: only the authority to publish revocation entries for mandates whose perimeter
+> it covers; attenuation applies (§06.7). A bare `revoke` covers the issuer's own
+> revocable scope.
+
+`spec/06-revocation.md:121-130` (§06.7) — la clause d'atténuation **et** la
+clause de modèle de menace qui la ferme, lues jusqu'au point final :
+
+> A mandate MAY carry a `revoke` perimeter entry (§04.2) while holding **no content key
+> at all** (no header line anywhere). Its bearer — a daemon, a Lambda, a phone app —
+> can publish revocation entries for any mandate whose perimeter its `revoke` scope
+> covers (attenuation applies: it can only be granted `revoke` over what its issuer
+> could itself revoke), cutting the revoked party's *actions* instantly at every
+> honoring verifier. It can neither read a byte nor rotate a lock. Rotation — the
+> future-read cut — is then executed by a manager-holder on notification, or as lazy
+> hygiene (§6.8). Compromising the watchdog exposes no content; the worst abuse is a
+> revocation DoS, bounded to its perimeter, attributable (signed), and repaired at one
+> line per victim (re-grant, §03.3).
+
+et `spec/06-revocation.md:79-84`, qui fait de cette portée une **règle de
+validité d'entrée** et non une recommandation :
+
+> - the owner (owner-signed entry), or
+> - the revoked mandate's **issuer** (revoker leaf grantee key == `issued_by`), or
+> - a **transitive ancestor** (the revoker's leaf mandate id appears in the
+>   revoked mandate's parent chain), or
+> - a **watchdog** whose `revoke` perimeter covers the revoked mandate's
+>   perimeter (§6.7, attenuation applies).
+
+La grammaire de §04.2 admet enfin les deux formes, `spec/04-mandates.md:113` :
+
+> ```
+>   | "revoke" [ "." <zone> [ "#" <selector> ] ]  revocation right, certificate half only (§06.7)
+> ```
+
+**Les deux côtés.** §04.2:183-185 et §06.7:123-124 énoncent **un test de
+périmètre** : le revocateur peut couper les mandats « whose perimeter it covers »,
+c'est-à-dire un test de treillis entre deux périmètres. §04.2:185-186 énonce, pour
+la forme **non scopée**, **un test d'ascendance** : « the issuer's own revocable
+scope », or « the issuer's revocable scope » n'est défini nulle part ailleurs que
+par I4 (`00-overview.md:41-42`) — les mandats que l'émetteur a émis, et leurs
+descendants. Un `revoke` nu n'a pas de périmètre à soumettre au premier test : le
+test de treillis est **vide** sur lui, et le test d'ascendance n'est pas exprimable
+depuis un périmètre. Les deux tests sont dans `spec/`, ils ne donnent pas la même
+réponse sur la forme nue, et — c'est le point — **les deux sont dans le code**.
+
+### (2) Ce que le code fait de chaque côté
+
+Le contrôle d'autorité est unique et vit dans un fichier de 131 lignes :
+`rust/crates/aithos-core/src/revocation.rs`, `check_revoke_authority`
+(`:57-103`). Il a trois branches d'acceptation : propriétaire (`:67-69`),
+watchdog (`:74-81`), puis émetteur (`:83-86`) et ancêtre transitif (`:88-97`).
+**La branche watchdog est testée en premier et renvoie avant les deux autres.**
+Elle contient deux défauts distincts. Le second est celui que l'embargo protégeait
+et il est énoncé en (2b) ; **le premier est plus large, et il n'était dans aucun
+dossier** — il vient en tête pour cette raison.
+
+#### (2a) Le trou le plus large : quatre variantes de périmètre ne sont jamais testées
+
+`features/.agents/orchestrator/BLOCKED.md` résume ce constat par « the mitigation
+is correctly coded for the scoped case, and the bare case short-circuits it ».
+La seconde moitié est exacte. **La première est fausse**, et c'est la trouvaille
+principale de la re-dérivation : la forme **scopée** n'est pas bornée non plus.
+
+`rust/crates/aithos-core/src/revocation.rs:111-118` filtre les entrées du
+périmètre de la cible avant de les soumettre au treillis :
+
+```rust
+for te in &target_perimeter {
+    let ethos_like = matches!(
+        te,
+        PerimeterEntry::Ethos { .. } | PerimeterEntry::Act { .. }
+    );
+    if !ethos_like {
+        continue;
+    }
+```
+
+Or `PerimeterEntry` a six variantes (`rust/crates/aithos-core/src/mandate.rs:72-113`) :
+`Ethos`, `EthosId`, `Act`, `Gamma`, `Issue`, `Revoke`. Quatre sont donc
+**sautées**. Un mandat cible dont le périmètre ne contient aucune entrée `Ethos`
+ni `Act` traverse la boucle sans qu'aucun test s'exécute, et `revoke_covers`
+renvoie `Ok(true)` **par vacuité** — pour n'importe quel revocateur portant
+n'importe quelle entrée `revoke`, si étroite soit-elle, puisque `has_revoke_right`
+(`:76-78`) accepte `Revoke { .. }` sans regarder sa portée.
+
+Ce n'est pas une hypothèse : `write.circle#id=<sid>` se parse en `EthosId`
+(`mandate.rs:199-203`, `#id=` ne compose avec rien, D1 — `mandate.rs:200-201`), et
+le vecteur normatif `vectors/cb2-mandate-contracts.json:294-295` gèle deux mandats
+dont les périmètres sont exactement `["read.circle#id=…","issue#depth=1"]` et
+`["read.circle#id=…"]` — aucune entrée `Ethos`, aucune entrée `Act`. Un watchdog
+scopé sur `revoke.public#dir=<autre>` les révoque tous les deux.
+
+La borne réelle du modèle de menace de §06.7 est donc : **le périmètre de la cible
+doit contenir au moins une entrée `Ethos` ou `Act` pour que l'atténuation
+s'applique du tout**. Cette phrase n'est écrite nulle part dans `spec/`.
+
+**Pourquoi cette moitié compte plus que l'autre.** (2b) suppose que le
+propriétaire a émis un `revoke` nu. (2a) ne suppose rien : il suffit d'un watchdog
+scopé — le cas que §06.7 présente comme le cas sûr, celui que le seul scénario
+Gherkin de watchdog exerce — et d'une cible dont le périmètre est gravé tel quel
+dans un vecteur du dépôt. Ce défaut est strictement pire que celui qui était sous
+embargo, et il a été trouvé par l'acte de vérifier, pas par l'acte de se souvenir.
+
+#### (2b) La portée nue court-circuite l'atténuation
+
+- **Côté treillis (§06.7), codé au treillis pour la forme scopée** — correctement
+  quant au treillis lui-même, sous la réserve de (2a) sur les entrées qui n'y
+  arrivent jamais. `rust/crates/aithos-core/src/revocation.rs:119-125`, dans
+  `revoke_covers` :
+  ```rust
+  let covered = revoker_perimeter.iter().any(|re| match re {
+      // A bare `revoke` covers the issuer's whole revocable scope;
+      // a scoped `revoke.<zone>#…` covers by the same lattice as reads.
+      PerimeterEntry::Revoke { scope: None } => true,
+      PerimeterEntry::Revoke { scope: Some(s) } => covers(s, te),
+      _ => false,
+  });
+  ```
+  La ligne `:123` est l'atténuation de §06.7 écrite littéralement : la portée
+  déclarée du revocateur doit couvrir, au même treillis que les lectures
+  (`rust/crates/aithos-core/src/mandate.rs:342-457`, `PerimeterEntry::covers`),
+  chaque entrée du périmètre de la cible.
+
+- **Côté portée nue, qui court-circuite le premier.** La ligne `:122` renvoie
+  `true` **inconditionnellement**, sans regarder ni la cible, ni l'émetteur du
+  `revoke` nu, ni aucune ascendance. `revoke_covers` renvoie donc `Ok(true)` pour
+  **toute** cible, `check_revoke_authority` renvoie `Ok(())` en `:79-81`, et les
+  branches émetteur/ancêtre — les seules qui implémentent la phrase I4 — ne sont
+  jamais atteintes. Le commentaire de `:120-121` et celui de l'énumération
+  (`rust/crates/aithos-core/src/mandate.rs:109-112`, « `None` scope = the issuer's
+  whole revocable reach ») énoncent tous deux la borne de §04.2:185 ; le code
+  au-dessous ne l'implémente pas, parce que `revoke_covers` ne reçoit que deux
+  périmètres (`revocation.rs:108`) et jamais l'identité de l'émetteur — alors que
+  `check_revoke_authority`, lui, tient les deux chaînes complètes (`:58-59`) et
+  pourrait la calculer.
+
+**Conséquence, énoncée sans détour.** Le porteur d'un mandat dont le périmètre
+contient l'entrée `revoke` nue peut publier une entrée `revoke` valide contre
+**n'importe quel** mandat du sujet : un délégué émis directement par le
+propriétaire, un frère sans lien avec lui, son propre émetteur, son propre
+ancêtre. La borne annoncée par §06.7:128-130 — « bounded to its perimeter » — est
+vide sur la forme nue, puisque cette forme n'a pas de périmètre à borner.
+
+**Les deux côtés sont atteints par un vérificateur, pas seulement par un
+producteur.** `grep -rn "check_revoke_authority" --include=*.rs .` (périmètre :
+dépôt entier, couche code) renvoie six lignes : la définition
+(`rust/crates/aithos-core/src/revocation.rs:57`), deux `use`
+(`rust/crates/aithos-bundle/src/revoke.rs:19`,
+`rust/crates/aithos-core/src/gamma_replay.rs:18`) et **trois** sites d'appel, pas
+un de plus :
+`rust/crates/aithos-bundle/src/revoke.rs:65` (`log_revoke_as`, production
+d'entrée), `rust/crates/aithos-bundle/src/revoke.rs:105` (`active_revocations`,
+reconstruction de l'ensemble actif §06.5) et
+`rust/crates/aithos-core/src/gamma_replay.rs:355` — dans `verify_semantics`, donc
+dans `GammaReplayState::admit`, que `rust/crates/aithos-bundle/src/log.rs:860-862`
+exécute pour **chaque** entrée dans `gamma_verify`, « Full offline log
+verification ». L'entrée forgée n'est donc pas seulement acceptée à l'écriture :
+elle est ratifiée par le rejeu froid sans clé.
+
+### (3) Classe et sévérité
+
+`LES DEUX IMPLÉMENTÉS`. Les deux comportements coexistent dans une seule fonction
+et sur une seule ligne d'écart : `:123` implémente l'atténuation de §06.7, `:122`
+l'annule. Ce n'est pas une omission — la ligne `:122` est délibérée, commentée, et
+elle transcrit une phrase de `spec/` (§04.2:185) dont elle donne la lecture la
+plus large. Arbitrer veut dire supprimer un des deux comportements, et l'un des
+deux est adossé à une phrase normative.
+
+**Sévérité : élevée.** Trois raisons, et la troisième est celle qui la fait
+monter. D'abord la portée : la coupure atteint la totalité du graphe de délégation
+du sujet, y compris les délégués directs du propriétaire, depuis un mandat qui ne
+détient **aucune** clé — c'est exactement le profil que §06.7 décrit comme le moins
+dangereux à confier. Ensuite la surface : le rejeu froid `gamma_verify` ratifie
+l'entrée, donc la coupure est opposable à tout vérificateur honnête, pas seulement
+au producteur qui l'a écrite. Enfin, et c'est le point (2a), la borne annoncée
+ne tient pas non plus pour la forme scopée : le propriétaire n'a pas besoin
+d'avoir commis l'imprudence d'émettre un `revoke` nu pour que la promesse
+« bounded to its perimeter » soit fausse.
+
+**Ce qui la retient de monter plus haut.** La forme nue ne se délègue pas vers le
+bas : `rust/crates/aithos-core/src/mandate.rs:448-454` refuse `(Some(_), None)` (`:452`),
+donc un revocateur scopé ne peut pas émettre un enfant portant un `revoke` nu, et
+la règle de containment de périmètre (`mandate.rs:1128-1141`, §05.3 règle 1)
+l'applique à chaque lien. Une entrée `revoke` nue ne peut donc apparaître que dans
+un mandat racine signé par le propriétaire, ou sous une chaîne de `revoke` nus
+issue d'une telle racine. C'est une borne réelle, mais c'est une borne sur *ce qui
+peut être accordé*, jamais sur *ce qui peut être révoqué* — et c'est précisément
+la confusion que §04.2:185 installe.
+
+### (4) Arbitrage proposé — `PROPOSÉ — NON IMPLÉMENTÉ`
+
+Deux options exclusives, à trancher au gate humain. La différence entre elles est
+un choix de protocole, pas d'implémentation.
+
+- **(a) Aligner le code sur I4.** Donner à `revoke_covers` le paramètre qui lui
+  manque — la chaîne du revocateur, que `check_revoke_authority` tient déjà
+  (`revocation.rs:58`) — et traiter `Revoke { scope: None }` non plus comme `true`
+  mais comme « l'émetteur de cette entrée est un ancêtre de la cible », c'est-à-dire
+  la règle de `:88-97` appliquée à `revoker_chain[len-2]` au lieu de
+  `revoker_chain[len-1]`. Corriger dans le même geste le filtre `:111-118` pour
+  qu'il couvre les six variantes de `PerimeterEntry`, ou pour qu'il **échoue
+  fermé** sur toute variante qu'il ne sait pas comparer. Coût : moyen, entièrement
+  dans `aithos-core/src/revocation.rs` ; aucun octet signé ne change, le wire ne
+  bouge pas.
+- **(b) Aligner la spec sur le code.** Retirer la phrase §04.2:185-186 et réécrire
+  §06.7:128-130 pour dire ce qui est vrai : un `revoke` nu confère l'autorité de
+  révocation universelle sur le sujet, et il ne doit être émis qu'au niveau
+  racine par le propriétaire, comme un rôle de rupture d'urgence. Coût texte
+  faible ; mais cela publie une escalade de privilège dans le modèle de menace au
+  lieu de la corriger, et cela laisse le trou de vacuité de (2a) intact —
+  celui-là n'a **aucune** phrase de `spec/` pour l'adosser et doit être fermé dans
+  les deux options.
+
+**Ce que cela casserait.** Rien dans le dépôt. La recherche est explicite :
+aucun fichier de `vectors/` ne contient d'entrée de périmètre commençant par
+`revoke` (parcours programmatique de chaque clé `perimeter` de chaque
+`vectors/*.json`, couche corpus de données) ; les seules chaînes `revoke` /
+`revoke.circle#id=…` de `vectors/cb2-mandate-contracts.json:690-697` sont des cas
+d'aller-retour de parsing, pas des périmètres opposables. Les 73 entrées
+`kind:"revoke"` déléguées de `vectors/cb2-delegated-counts.json` sont des fixtures
+de comptage : ce vecteur ne contient **aucun** champ `perimeter` (0 occurrence).
+Le seul scénario Gherkin de watchdog, `features/g-revocation.feature:51-55` et
+`features/k-integration.feature:147-155`, utilise une portée **scopée**
+(`rust/crates/aithos-bundle/tests/cucumber.rs:15343-15351`,
+`revoke.circle#dir=…`) contre une cible portant une entrée `Ethos` : il reste vert
+sous l'option (a).
+
+Cette dernière affirmation repose désormais sur une mesure et non sur une lecture.
+La feature `@g-revocation` est **verte** à `223924e` — `ev-63e018d1`, 1 feature /
+9 règles / **26 scénarios** / 116 étapes — et le vecteur d'autorité §06.4 l'est
+aussi — `ev-b8cee044`, `g1_revocation`, 2 tests passés. La ligne de base de comparaison est
+l'espace de travail entier, vert à `223924e` : **`ev-cb4ff302`**, 18 features /
+114 règles / 836 scénarios / 3 577 étapes, plus l'ensemble des tests unitaires.
+Tout RED écrit pour le critère de clôture ci-dessous est donc attribuable depuis
+cette ligne. Ces transcriptions établissent l'**état vert de départ** ; **aucune
+ne démontre le défaut lui-même**, qui n'a pas de test — c'est exactement ce que le
+critère de clôture demande d'écrire, et le drapeau de lecture reste levé sur lui.
+
+**Le motif de blocage enregistré ne survit pas.** `BLOCKED.md` retient contre le
+durcissement qu'il « would retroactively invalidate entries already published »,
+et que `spec/00-overview.md` §0.4 n'autorise qu'un seul durcissement rétroactif
+dans cette série, déjà dépensé sur I3. **Cette phrase n'existe plus dans
+`spec/`.** Elle a été supprimée par `c8557f4` (« spec: I3 binds profiles, not
+time », 2026-08-04T08:01Z), vingt-quatre minutes après le commit de cette passe
+(`d3ce85f`, 07:37Z) : `grep -rni "retroactiv" spec/` ne renvoie aujourd'hui
+qu'une occurrence, `spec/07-gamma.md:156`, sans rapport. Le budget d'un
+durcissement n'existe donc pas, et l'argument n'a plus d'ancrage normatif.
+
+Reste la question de fond, qu'il faut séparer proprement, parce que l'argument
+visait deux choses à la fois :
+
+- **Au niveau du protocole, dans un déploiement hypothétique, il tient encore.**
+  Le rejeu gamma n'est pas le rejeu d'édition : `GammaReplayState::admit` repart
+  du genèse et re-soumet chaque entrée historique à `check_revoke_authority`
+  (`gamma_replay.rs:1-6`, « Pure, prefix-sensitive semantic replay for historical
+  Gamma entries »). Une entrée `revoke` acceptée hier serait rejetée demain, et
+  `spec/00-overview.md:82` interdit la réparation : « Historical manifests and
+  entries are never rewritten or assigned synthetic references. » Le journal
+  entier deviendrait invérifiable. C'est un vrai coût, et il faudra le porter le
+  jour où un journal existera. La levée d'ambiguïté du 2026-08-04 sur §0.4 ne le
+  couvre pas : elle porte sur les **éditions superseded**, que le vérificateur ne
+  reparcourt pas ; les entrées gamma, elles, sont reparcourues.
+- **Au niveau de ce dépôt, il est nul aujourd'hui — et c'est une politique, pas
+  seulement un fait.** `features/AGENTS.md` § *Project stage* (`:5-34`) constate
+  que rien n'est déployé, qu'aucune édition n'a été publiée et qu'aucun détenteur
+  n'existe, puis en tire une **règle** que tout rôle de feature lit par le routage
+  obligatoire : « Do not weigh backward compatibility […] Do not soften a
+  correction to spare the past. » Un rôle n'a donc pas seulement le droit
+  d'ignorer ce coût, il a l'instruction de ne pas le compter. Le paragraphe
+  précédent l'établit en outre sur les artefacts eux-mêmes : aucun vecteur, aucun
+  scénario ne dépend de la branche `:122`, et `ev-cb4ff302` mesure l'espace de
+  travail vert sans en dépendre. Il n'y a donc **rien** à invalider
+  rétroactivement, et le coût de l'option (a) est celui de son diff.
+
+  **Cette réponse est écrite pour expirer, et il faut la relire plutôt que
+  l'hériter.** La même section (`features/AGENTS.md:30-34`) cesse d'être vraie « the
+  day a first edition is published outside this repository, or the crate leaves
+  `alpha` », et charge celui qui franchit l'une des deux bornes de la supprimer
+  dans le même changement. Le jour où elle disparaît, le niveau protocole ci-dessus
+  redevient le niveau applicable et la question doit être **reposée**, pas déduite
+  de ce paragraphe. Un rôle qui trouverait la section encore présente après l'une
+  des deux bornes doit le signaler au lieu d'obéir : elle le dit elle-même.
+
+L'argument enregistré était donc un argument de protocole, écrit au futur, appliqué
+par erreur au présent d'un dépôt vide. C'est ce qui a maintenu la rétention plus
+longtemps qu'elle ne le méritait.
+
+**Critère de clôture** — attribuable depuis `ev-cb4ff302` (espace de travail vert
+à `223924e`), `ev-63e018d1` (`@g-revocation` vert, 26 scénarios) et `ev-b8cee044`
+(`g1_revocation` vert, 2 tests). Un test RED démontre qu'un mandat portant l'entrée
+`revoke` nue, dont l'émetteur n'est ni le propriétaire ni un ancêtre de la cible,
+voit son entrée `revoke` refusée par `check_revoke_authority`, par
+`Bundle::active_revocations` et par `Bundle::gamma_verify` — là où elle est
+aujourd'hui acceptée par les trois ; et un second test RED démontre le même refus
+contre une cible dont le périmètre ne contient que des entrées `EthosId`,
+`Gamma`, `Issue` ou `Revoke`, pour un revocateur scopé qui ne la couvre pas. Le
+scénario `features/g-revocation.feature:51-55` reste vert sans modification — au
+compte mesuré de `ev-63e018d1`, 1 feature / 9 règles / 26 scénarios / 116 étapes.
+
+- **La faisabilité de ces arbitrages n'a pas été vérifiée par ce rôle.** Quatre
+  gates ont été exécutés par l'orchestrateur pour ce constat et pour SC-05 —
+  `ev-cb4ff302`, `ev-fafd51d8`, `ev-63e018d1`, `ev-b8cee044` — et ils établissent
+  une **ligne de base verte**, rien de plus. Aucun d'eux n'exerce ni la branche
+  `:122` ni le filtre `:111-118` ; **aucun ne démontre le défaut**. Les
+  affirmations de (2a) et (2b) restent donc des conclusions de **lecture**, et le
+  drapeau posé sur elles n'est pas levé. Il le sera par les deux RED du critère de
+  clôture, et pas avant.
 
 ---
 
@@ -1124,10 +1706,17 @@ documenté dans `spec/`.
 
 - Côté périmètre, `create` n'est pas un verbe : le registre de verbes du crate
   `aithos-core` et la fonction de containment `covers()` — celle que §04.2:132
-  nomme déjà — ne connaissent que `read|edit|append|delete|write`. Le
-  `fichier:ligne` n'est pas donné : le module concerné héberge aussi l'un des
-  deux sites de SC-12, retenu pour divulgation, et un intervalle de lignes
-  l'encadrerait.
+  nomme déjà — ne connaissent que `read|edit|append|delete|write`.
+
+  > **Intervalle de lignes restauré le 2026-08-04.** Ce point portait la mention
+  > « le `fichier:ligne` n'est pas donné : le module concerné héberge aussi l'un
+  > des deux sites de SC-12, retenu pour divulgation, et un intervalle de lignes
+  > l'encadrerait ». La relecture confirme que ce retrait n'avait **aucun autre
+  > motif** que la protection de SC-12, dont l'embargo est levé. Le module est
+  > `rust/crates/aithos-core/src/mandate.rs` : `enum Verb` (`:25-31`),
+  > `Verb::parse` (`:34-43`, `other => return Err(…"unknown verb"…)`), le treillis
+  > `Verb::covers` (`:58-67`) et `PerimeterEntry::covers` (`:342-457`). Aucune de
+  > ces lignes ne connaît `create`. Rien d'autre de ce constat n'est modifié.
 - Côté faits d'opération, `create` est un littéral obligatoire, dans
   `rust/crates/aithos-core/src/operation.rs`, avec ses vecteurs
   `vectors/cb2-operation-facts-mutation.json` et
@@ -1214,23 +1803,28 @@ follow_ups:
   - id: SPEC-CONS-05-MAX-SESSIONS
     title: "max_sessions : tier V en §04.4 contre fail-closed en §04.7/§04.13"
     family: contradiction
-    class: RETENUE
+    class: "textuelle (moitie spec) + aucun (moitie code)"
     invariant: null
-    spec_refs: ["spec/04-mandates.md:238", "spec/04-mandates.md:1347", "spec/04-mandates.md:1789"]
-    code_refs: ["RETENU"]
+    spec_refs: ["spec/04-mandates.md:238", "spec/04-mandates.md:229", "spec/04-mandates.md:1347", "spec/04-mandates.md:1789"]
+    code_refs: ["rust/crates/aithos-core/src/constraints.rs:923", "rust/crates/aithos-core/src/constraints.rs:1293", "rust/crates/aithos-core/src/constraints.rs:1341", "rust/crates/aithos-owner/src/lib.rs:812", "vectors/cb2-mandate-contracts.json:68"]
     proposed_arbitration: >-
-      Moitie publiable : retirer le tier V de §04.4 ou l'aligner sur la ligne
-      reservee de §04.13. Ne touche aucun octet signe et ne depend d'aucune
-      information retenue. Moitie code : RETENU.
+      Moitie spec : retirer le tier V de §04.4 ou l'aligner sur la ligne reservee
+      de §04.13. Moitie code, deux options exclusives : (a) sortir max_sessions de
+      la liste des cles connues et echouer ferme au lien de delegation, OU (b)
+      definir le wire de cycle de vie de session de §04.7 et brancher
+      verify_max_sessions sur un ensemble reconstruit depuis les fichiers.
     status: PROPOSE-NON-IMPLEMENTE
-    breaks: ["RETENU"]
+    breaks: ["(a) rust/crates/aithos-owner/src/lib.rs:812", "(a) vectors/cb2-mandate-contracts.json", "(a) vectors/cb14-delegated-session-chain.json", "(a) vectors/cb15-external-delegated-grant.json", "(a) rust/crates/aithos-core/tests/cb5_evidence_contracts.rs:112-131", "(b) nouveau construit signe, donc nouveau profil §00.4"]
     gate_required: true
-    disclosure: partial-withheld
+    disclosure: lifted-2026-08-04
+    baseline_evidence: ["ev-cb4ff302", "ev-fafd51d8"]
     disclosure_note: >-
-      Depot public. La contradiction spec-contre-spec est publiee : ses deux
-      cotes sont deja dans spec/. Le bord code est retenu : l'ecart y est
-      permissif et non restrictif, donc l'enoncer donnerait plus que ce que
-      spec/ donne deja. Aucun site de code n'est nomme. Detail hors depot.
+      Bord code retenu du 2026-08-04T07:40Z au 2026-08-04T13:00Z sous la
+      condition de blocage 9, puis publie en entier sur decision du proprietaire.
+      Re-derive depuis spec/ et depuis le code a 223924e, non restitue : le
+      fichier hors depot avait ete detruit. L'ecart est permissif : le code
+      accepte et consomme un mandat portant max_sessions, la ou §04.13 exige un
+      fail-closed et §04.4 promet un tier V. Classe de la moitie code : AUCUN.
 
   - id: SPEC-CONS-06-ROTATION-EXACTLY-N
     title: "Le repli exactly-N de §03.4 est rejete par check_rotation"
@@ -1309,18 +1903,32 @@ follow_ups:
     family: contradiction
     class: les-deux-implementes
     invariant: I4
-    spec_refs: ["RETENU"]
-    code_refs: ["RETENU"]
-    proposed_arbitration: "RETENU"
+    spec_refs: ["spec/00-overview.md:41", "spec/04-mandates.md:183", "spec/06-revocation.md:79", "spec/06-revocation.md:121"]
+    code_refs: ["rust/crates/aithos-core/src/revocation.rs:122", "rust/crates/aithos-core/src/revocation.rs:111", "rust/crates/aithos-core/src/revocation.rs:57", "rust/crates/aithos-core/src/gamma_replay.rs:355", "rust/crates/aithos-bundle/src/revoke.rs:105"]
+    severity: elevee
+    proposed_arbitration: >-
+      (a) Donner a revoke_covers la chaine du revocateur et traiter la portee nue
+      comme un test d'ascendance de l'emetteur, et faire echouer ferme le filtre
+      de variantes de revocation.rs:111-118 ; OU (b) retirer §04.2:185-186 et
+      reecrire §06.7:128-130 pour declarer la portee nue universelle. Le trou de
+      vacuite du filtre doit etre ferme dans les deux options.
     status: PROPOSE-NON-IMPLEMENTE
-    breaks: ["RETENU"]
+    breaks: ["rien dans le depot : aucun vecteur ne porte d'entree de perimetre revoke, aucun scenario Gherkin n'exerce la branche nue"]
     gate_required: true
-    disclosure: withheld
+    disclosure: lifted-2026-08-04
+    baseline_evidence: ["ev-cb4ff302", "ev-63e018d1", "ev-b8cee044"]
     disclosure_note: >-
-      Depot public. L'enonce complet decrirait une faiblesse exploitable sans
-      correctif. Titre neutre et identifiant seuls. La levee de la retention est
-      une condition de blocage appartenant a l'orchestrateur. Detail transmis
-      hors document.
+      Retenu en entier du 2026-08-04T07:40Z au 2026-08-04T13:00Z sous la
+      condition de blocage 9, puis publie en entier sur decision du proprietaire.
+      Re-derive depuis spec/ et depuis le code a 223924e, non restitue : le
+      fichier hors depot avait ete detruit. Deux points du dossier survivant sont
+      contredits : la forme scopee n'est pas correctement bornee non plus (le
+      filtre revocation.rs:111-118 saute quatre variantes de PerimeterEntry), et
+      l'argument du durcissement retroactif unique reposait sur une phrase de
+      §00.4 supprimee par c8557f4 — le lot de specification de l'orchestrateur
+      lui-meme, applique 24 minutes apres le commit de la passe. Une correction
+      dans un document a retire la premisse porteuse d'un constat retenu dans un
+      autre ; seule la re-derivation depuis les sources l'a revele.
 
   - id: SPEC-CONS-13-WIRE-VERB-CREATE
     title: "'There is no wire verb create' (§04.2) face aux registres verb de K1.2"
@@ -1328,7 +1936,7 @@ follow_ups:
     class: textuelle
     invariant: null
     spec_refs: ["spec/04-mandates.md:152", "spec/04-mandates.md:708", "spec/04-mandates.md:792"]
-    code_refs: ["rust/crates/aithos-core/src/operation.rs", "REGISTRE-VERBES-PERIMETRE (fichier:ligne non publie, cf. SC-12)"]
+    code_refs: ["rust/crates/aithos-core/src/operation.rs", "rust/crates/aithos-core/src/mandate.rs:25-43", "rust/crates/aithos-core/src/mandate.rs:342-457"]
     proposed_arbitration: "Restreindre la phrase a la grammaire de perimetre."
     status: PROPOSE-NON-IMPLEMENTE
     breaks: []
@@ -1356,9 +1964,27 @@ pourquoi chaque constat porte son étape (2).
 ni build n'a été lancé, conformément à la consigne. Les conclusions sur le
 comportement du code sont donc des conclusions de **lecture**, pas d'exécution :
 un `#[cfg]`, une réexportation ou un appel dynamique que la lecture aurait manqué
-pourrait invalider une affirmation d'absence d'appelant (SC-07, et les constats
-dont le bord code est sous embargo). Les recherches ont été faites sur l'arbre
-source complet, mais elles restent syntaxiques.
+pourrait invalider une affirmation d'absence d'appelant — **SC-07** (`check_rotation`
+jamais appelée par un vérificateur) et **SC-05** (`verify_max_sessions` appelée
+par aucun `src/` de crate). Les recherches ont été faites sur l'arbre source
+complet, mais elles restent syntaxiques.
+
+> **Mise à jour du 2026-08-04.** Cette phrase désignait « les constats dont le
+> bord code est sous embargo » ; les deux embargos sont levés et les deux constats
+> sont nommés ci-dessus. La généralisation n'avait pas d'autre motif que la
+> protection de SC-05 et de SC-12.
+>
+> Depuis la levée, quatre gates ont été exécutés par l'orchestrateur sur ces deux
+> constats seulement : `ev-cb4ff302` (espace de travail à `223924e` : 18 features /
+> 114 règles / 836 scénarios / 3 577 étapes, plus les tests unitaires),
+> `ev-fafd51d8` (`cb5_evidence_contracts`, 5 tests), `ev-63e018d1`
+> (`@g-revocation` : 1/9/26/116) et `ev-b8cee044` (`g1_revocation`, 2 tests) —
+> **tous verts**. Ce qu'ils
+> changent : le critère de clôture de SC-05 et celui de SC-12 sont désormais
+> attribuables depuis une ligne de base mesurée. Ce qu'ils ne changent pas :
+> aucun n'exerce les branches en cause, donc **aucune affirmation d'absence de ce
+> document n'est levée par eux**. Un vert ne prouve pas qu'un chemin manquant
+> manque ; il prouve que rien de ce qui existe ne le réclame.
 
 **Sur les références manquantes.** Certaines conclusions d'autres rôles ont été
 retirées de l'extrait. Une trace en subsiste et a été rencontrée en cours de

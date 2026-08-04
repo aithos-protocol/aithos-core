@@ -1,0 +1,10 @@
+
+running 2 tests
+test forward_only_verdicts_match_python ... ok
+test owner_revoke_entry_verifies ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.52s
+     Running tests/g1_revocation.rs (rust/target/debug/deps/g1_revocation-1497597b9a48cef6)
