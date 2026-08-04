@@ -5,7 +5,7 @@ mode: correction
 round: 1
 base_main: a2087f2392389fb17e0bc0ba9e20a164d53766d8
 audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8
-candidate_revision: 1a6129a0dbf2c1aff7037977d371b87df966987f
+candidate_revision: 9dc58895b5c822d13ea5daf8c25302ccd657b668
 branch: codex/audit-c-headers-r2
 assigned_findings: [CHDR-007, CHDR-012]
 open_findings: [CHDR-001, CHDR-002, CHDR-007, CHDR-009, CHDR-012, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025]
@@ -23,7 +23,7 @@ last_transition: 2026-08-04T05:20:00+00:00
 | Round | 1 |
 | Base of round 1 | not frozen (`base_main: a2087f2392389fb17e0bc0ba9e20a164d53766d8`) — the role that opens the round records the exact local `main` revision here and in its run report |
 | Audit revision | not frozen (`audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8`) |
-| Candidate revision | none (`candidate_revision: 1a6129a0dbf2c1aff7037977d371b87df966987f`) — no correction exists |
+| Candidate revision | `9dc5889` on `codex/fix-c-headers-i3-authority` — lot B, `CHDR-007` and `CHDR-012` at `IMPLEMENTED`. This is the revision the independent reviewer extracts, without `.git` and without the corrector's run report, until its behavioural verdict is frozen |
 | Canonical branch | `codex/audit-c-headers-r2` |
 | Why not `codex/audit-c-headers` | that name is reserved: `../orchestrator/QUEUE.yaml:55-56` registers it as this feature's **yardstick**, prior manual work that is a Pass B input and a milestone comparison only, never a Pass A input |
 | Correction branch | **lot B**: `codex/fix-c-headers-i3-authority`, based on `5be3047` whose `rust/` tree is byte-identical to the audited revision `a2087f2`. Carries `CHDR-007` and `CHDR-012`. Run `2026-08-04-r1`, sixteen gates, RED before GREEN in ledger order. **Lot A** follows on its own branch with the nine test-semantics findings |
