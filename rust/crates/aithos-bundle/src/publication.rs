@@ -879,6 +879,23 @@ pub fn cold_verify<S: Store>(
             return Err(invalid(format!("pinned object was substituted: {path}")));
         }
     }
+    // I3 at the edition tier (§00.2, §03.1, §09.4). `cold_verify` is this
+    // crate's SECOND edition verifier; the obligation binds it exactly as it
+    // binds `Bundle::verify`, on every manifest profile. Keyless.
+    if candidate
+        .manifest
+        .files
+        .keys()
+        .any(|path| crate::bundle::is_header_file(path))
+    {
+        let did_bytes = store
+            .get("did.json")
+            .map_err(io_error)?
+            .ok_or_else(|| invalid("cold verification DID document is missing"))?;
+        let did: DidDocument = serde_json::from_slice(&did_bytes)
+            .map_err(|error| invalid(format!("cold verification DID is invalid: {error}")))?;
+        crate::bundle::verify_pinned_headers(store, &candidate.manifest.files, &did)?;
+    }
     let height = candidate.manifest.edition.height;
     let history_path = format!("manifests/{height}.json");
     if store.get(&history_path).map_err(io_error)?.as_deref()

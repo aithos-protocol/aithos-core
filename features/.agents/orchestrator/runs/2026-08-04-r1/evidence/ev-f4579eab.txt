@@ -1,0 +1,12 @@
+
+running 4 tests
+test a_clean_rotation_is_accepted ... ok
+test survivor_set_is_old_minus_revoked ... ok
+test a_smuggled_recipient_is_rejected ... ok
+test uplink_wrap_bytes_match_python ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.27s
+     Running tests/g2_rotation.rs (/root/work/target-shared/debug/deps/g2_rotation-da8231095fab4918)

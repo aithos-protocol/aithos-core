@@ -422,8 +422,10 @@ impl<S: Store> Bundle<S> {
             &format!("aithos-core/v1/x/{connector}"),
             &{
                 let header: aithos_core::header::Header = self.get_json("e/x/header.json")?;
-                header.validate()?;
-                header.open(&self.did, KV, "owner-kex", owner_kex)?
+                let owner_kid =
+                    aithos_core::header::owner_kid(&x25519_dalek::PublicKey::from(owner_kex));
+                header.validate(&owner_kid)?;
+                header.open_owner(&self.did, KV, owner_kex)?
             },
         ))
     }

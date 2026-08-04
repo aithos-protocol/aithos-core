@@ -1,0 +1,80 @@
+Diff in /root/work/aithos-core/rust/crates/aithos-bundle/src/bundle.rs:310:
+     }
+     let owner_kid = doc.keys.kex.as_str();
+     for path in paths {
+[31m-        let bytes = store
+[m[31m-            .get(path)
+[m[31m-            .map_err(io_err)?
+[m[31m-            .ok_or_else(|| Error::SealRejected(format!("edition: pinned header missing: {path}")))?;
+[m[32m+        let bytes = store.get(path).map_err(io_err)?.ok_or_else(|| {
+[m[32m+            Error::SealRejected(format!("edition: pinned header missing: {path}"))
+[m[32m+        })?;
+[m         let header: Header = serde_json::from_slice(&bytes)
+             .map_err(|e| Error::SealRejected(format!("edition: header {path}: {e}")))?;
+         header.validate(owner_kid)?;
+Diff in /root/work/aithos-core/rust/crates/aithos-bundle/tests/c3_owner_line_edition.rs:225:
+ fn c3_edition_with_no_owner_line_at_all_is_rejected() {
+     let v = vector();
+     let (_root, mut bundle, owner) = fixture("no-owner-line");
+[31m-    bundle.verify().expect("C3 fixture edition verifies as built");
+[m[32m+    bundle
+[m[32m+        .verify()
+[m[32m+        .expect("C3 fixture edition verifies as built");
+[m 
+     let path = header_path(&bundle);
+     let mut header = read_header(&bundle, &path);
+Diff in /root/work/aithos-core/rust/crates/aithos-bundle/tests/c3_owner_line_edition.rs:257:
+ fn c3_edition_with_owner_labelled_foreign_key_is_rejected() {
+     let v = vector();
+     let (_root, mut bundle, owner) = fixture("foreign-key");
+[31m-    bundle.verify().expect("C3 fixture edition verifies as built");
+[m[32m+    bundle
+[m[32m+        .verify()
+[m[32m+        .expect("C3 fixture edition verifies as built");
+[m 
+     let path = header_path(&bundle);
+     let mut header = read_header(&bundle, &path);
+Diff in /root/work/aithos-core/rust/crates/aithos-bundle/tests/c3_owner_line_edition.rs:269:
+             retargeted += 1;
+         }
+     }
+[31m-    assert!(retargeted > 0, "the fixture must carry an owner line to retarget");
+[m[32m+    assert!(
+[m[32m+        retargeted > 0,
+[m[32m+        "the fixture must carry an owner line to retarget"
+[m[32m+    );
+[m     write_header(&mut bundle, &path, &header);
+     bundle
+         .publish(&owner, "2026-08-04T10:04:00Z")
+Diff in /root/work/aithos-core/rust/crates/aithos-core/src/header.rs:389:
+             let version: u64 = v
+                 .parse()
+                 .map_err(|_| Error::SealRejected(format!("{}: bad key version {v}", self.node)))?;
+[31m-            self.open(subject_did, version, &kid, owner_kex).map_err(|_| {
+[m[31m-                Error::MissingOwnerLine(format!(
+[m[31m-                    "{} v{v}: the line declaring owner_kex does not open under it",
+[m[31m-                    self.node
+[m[31m-                ))
+[m[31m-            })?;
+[m[32m+            self.open(subject_did, version, &kid, owner_kex)
+[m[32m+                .map_err(|_| {
+[m[32m+                    Error::MissingOwnerLine(format!(
+[m[32m+                        "{} v{v}: the line declaring owner_kex does not open under it",
+[m[32m+                        self.node
+[m[32m+                    ))
+[m[32m+                })?;
+[m         }
+         Ok(())
+     }
+Diff in /root/work/aithos-core/rust/crates/aithos-core/tests/c3_owner_line.rs:131:
+     let mut mismatches: Vec<String> = Vec::new();
+     for c in &v.cases {
+         let keyless_accepts = c.verdict == "valid" || c.tier == "owner_kex";
+[31m-        match (keyless_accepts, c.header.validate(&v.owner_kex_pub_multibase)) {
+[m[32m+        match (
+[m[32m+            keyless_accepts,
+[m[32m+            c.header.validate(&v.owner_kex_pub_multibase),
+[m[32m+        ) {
+[m             (true, Err(e)) => mismatches.push(format!(
+                 "{}: keyless I3 must accept (verdict={}, tier={}), rejected: {e}",
+                 c.name, c.verdict, c.tier

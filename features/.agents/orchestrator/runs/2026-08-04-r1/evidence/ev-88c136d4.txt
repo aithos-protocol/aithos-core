@@ -1,0 +1,24 @@
+
+running 5 tests
+test cb2_bundle_concurrency_vector_hash_is_stable_preexisting_green ... ok
+test cb2_bundle_fresh_store_order_and_api_inventory_preliminary ... ok
+test cb2_bundle_merge_conflict_and_authority_decisions_preexisting_green ... ok
+test cb2_bundle_resolution_and_counter_recomposition_preexisting_green ... ok
+test cb2_bundle_concurrency_historical_hashes_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+
+running 5 tests
+test cb2_bundle_revocation_rotation_reopen_preexisting_green ... ok
+test cb2_bundle_structural_authority_and_atomic_consequences_preexisting_green ... ok
+test cb2_bundle_structure_vault_vector_hash_is_stable_preexisting_green ... ok
+test cb2_bundle_vault_isolation_and_cb10_api_inventory ... ok
+test cb2_bundle_structure_vault_historical_hashes_preexisting_green ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.69s
+     Running tests/cb2_bundle_concurrency_final.rs (/root/work/target-shared/debug/deps/cb2_bundle_concurrency_final-3a21c0d700ec6311)
+     Running tests/cb2_bundle_structure_vault.rs (/root/work/target-shared/debug/deps/cb2_bundle_structure_vault-aaded4f60025bb33)

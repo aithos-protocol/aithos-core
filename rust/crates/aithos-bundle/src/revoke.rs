@@ -11,7 +11,7 @@ use crate::Store;
 use aithos_core::derive::node_key;
 use aithos_core::error::{Error, Result};
 use aithos_core::gamma::{self, delegated_entry, owner_entry, Entry, EntrySpec, Kind};
-use aithos_core::header::{Header, Recipient, Wrap};
+use aithos_core::header::{owner_kid as header_owner_kid, Header, Recipient, Wrap};
 use aithos_core::ids::Sid;
 use aithos_core::keys::{ed2x, OwnerKeys};
 use aithos_core::mandate::Mandate;
@@ -160,9 +160,14 @@ impl<S: Store> Bundle<S> {
         // folder carries a fresh sealed key that pure derivation from the
         // zone root can no longer reach — the same hole class section_add
         // had before owner_current_section_key (step G).
-        let (_, old_folder_dk) = header.open_latest(&self.did, "owner-kex", &owner.owner_kex)?;
+        let (_, old_folder_dk) = header.open_owner_latest(&self.did, &owner.owner_kex)?;
 
         // Survivors = current lines minus the revoked (owner always kept).
+        // The owner line is the one whose kid is the DID document's owner_kex
+        // (§03.1, §05.5): a rotation re-seals to THAT key, never to whatever
+        // key the previous owner line happened to carry.
+        let owner_kex = self.owner_kex_pub()?;
+        let owner_kid = header_owner_kid(&owner_kex);
         let kv = header
             .key_versions
             .get(&old_v.to_string())
@@ -177,8 +182,8 @@ impl<S: Store> Bundle<S> {
             if line.kid == revoked_kid {
                 continue;
             }
-            if line.to == "owner" {
-                survivors.push(self.owner_kex_recipient()?);
+            if line.kid == owner_kid {
+                survivors.push(Recipient::owner(owner_kex));
             } else {
                 let ed = wire::multibase_to_ed25519_pub(&line.to)?;
                 let vk = VerifyingKey::from_bytes(&ed)
@@ -195,8 +200,18 @@ impl<S: Store> Bundle<S> {
         let new_dk = ent.e32();
         let eph: Vec<[u8; 32]> = survivors.iter().map(|_| ent.e32()).collect();
         let nonces: Vec<[u8; 24]> = survivors.iter().map(|_| ent.e24()).collect();
-        header.rotate(&self.did.clone(), new_v, &new_dk, &survivors, &eph, &nonces)?;
-        header.check_rotation(new_v)?; // fail-closed: no smuggled recipient
+        header.rotate(
+            &self.did.clone(),
+            new_v,
+            &new_dk,
+            &owner_kex,
+            &survivors,
+            &eph,
+            &nonces,
+        )?;
+        // fail-closed: no smuggled recipient, and the owner line survives as
+        // §03.1 defines it — by its key, not by its label.
+        header.check_rotation(new_v, &owner_kid)?;
         self.put_json(&file, &header)?;
 
         // Up-link wrap (§03.4 step 2bis): seal DK' under the zone-root key so
@@ -287,7 +302,7 @@ impl<S: Store> Bundle<S> {
     ) -> Result<(u64, [u8; 32])> {
         if let Some(bytes) = self.store.get(&hdr_file(node.zone, node)).ok().flatten() {
             if let Ok(header) = serde_json::from_slice::<Header>(&bytes) {
-                let (v, dk) = header.open_latest(&self.did, "owner-kex", &owner.owner_kex)?;
+                let (v, dk) = header.open_owner_latest(&self.did, &owner.owner_kex)?;
                 return Ok((v, dk));
             }
         }
@@ -358,22 +373,25 @@ impl<S: Store> Bundle<S> {
         new_chain.push(m_last);
         let new_node = NodePath::folder(zone, new_chain.clone());
 
-        // M's current key and its full current line set (owner always there).
+        // M's current key and its full current line set (owner always there,
+        // recognized by its key — §03.1).
+        let owner_kex = self.owner_kex_pub()?;
+        let owner_kid = header_owner_kid(&owner_kex);
         let (old_v, old_dk, survivors) =
             match self.store.get(&hdr_file(zone, &old_node)).ok().flatten() {
                 Some(bytes) => {
                     let header: Header = serde_json::from_slice(&bytes)
                         .map_err(|e| Error::SealRejected(format!("old header: {e}")))?;
                     let v = header.latest_version();
-                    let dk = header.open(&self.did, v, "owner-kex", &owner.owner_kex)?;
+                    let dk = header.open_owner(&self.did, v, &owner.owner_kex)?;
                     let kv = header
                         .key_versions
                         .get(&v.to_string())
                         .ok_or_else(|| Error::SealRejected("no current version".to_owned()))?;
                     let mut survivors = Vec::new();
                     for line in &kv.lines {
-                        if line.to == "owner" {
-                            survivors.push(self.owner_kex_recipient()?);
+                        if line.kid == owner_kid {
+                            survivors.push(Recipient::owner(owner_kex));
                         } else {
                             let ed = wire::multibase_to_ed25519_pub(&line.to)?;
                             let vk = VerifyingKey::from_bytes(&ed)
@@ -415,6 +433,7 @@ impl<S: Store> Bundle<S> {
             &new_node.to_string(),
             new_v,
             &new_dk,
+            &owner_kex,
             &survivors,
             &eph,
             &nonces,
@@ -517,7 +536,7 @@ impl<S: Store> Bundle<S> {
             } else {
                 header.latest_version()
             };
-            if let Ok(base) = header.open(&self.did, v, "owner-kex", &owner.owner_kex) {
+            if let Ok(base) = header.open_owner(&self.did, v, &owner.owner_kex) {
                 let rest = NodePath {
                     zone,
                     folders: folders[depth..].to_vec(),

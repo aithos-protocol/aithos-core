@@ -1,0 +1,14 @@
+
+running 6 tests
+test c3_line_aad_cross_check ... ok
+test c3_keyless_i3_verdicts ... ok
+test c3_owner_kex_opens_exactly_the_owner_lines ... ok
+test c3_owner_recipient_names_its_key_on_the_wire ... ok
+test c3_owner_kex_tier_verdicts ... ok
+test c3_positive_owner_line_is_byte_exact ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.70s
+     Running tests/c3_owner_line.rs (/root/work/target-shared/debug/deps/c3_owner_line-8fd6586dbf24917e)

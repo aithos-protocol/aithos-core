@@ -1,0 +1,12 @@
+
+running 3 tests
+test c3_edition_owner_line_names_the_did_documents_owner_kex ... ok
+test c3_edition_with_no_owner_line_at_all_is_rejected ... ok
+test c3_edition_with_owner_labelled_foreign_key_is_rejected ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.16s
+     Running tests/c3_owner_line_edition.rs (/root/work/target-shared/debug/deps/c3_owner_line_edition-fd5c78f872ed4e71)

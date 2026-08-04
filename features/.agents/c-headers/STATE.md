@@ -1,17 +1,17 @@
 ---
 feature: c-headers
-status: CORRECTION_REQUESTED
+status: REVIEW_REQUESTED
 mode: correction
 round: 1
 base_main: a2087f2392389fb17e0bc0ba9e20a164d53766d8
 audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8
-candidate_revision: null
+candidate_revision: 1a6129a0dbf2c1aff7037977d371b87df966987f
 branch: codex/audit-c-headers-r2
 assigned_findings: [CHDR-007, CHDR-012]
 open_findings: [CHDR-001, CHDR-002, CHDR-007, CHDR-009, CHDR-012, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-03T14:55:00+00:00
+last_transition: 2026-08-04T05:20:00+00:00
 ---
 
 # Domain state — `c-headers`
@@ -19,14 +19,14 @@ last_transition: 2026-08-03T14:55:00+00:00
 | Field | Value |
 |---|---|
 | Status | `CORRECTION_REQUESTED` — the initial audit completed on runs `2026-08-03-r1` and `-r2`. **All four blocking conditions are now closed.** Conditions 9, 6 and 7 by the disclosure and budget ruling of 2026-08-03; condition 1 by `decisions/2026-08-03-chdr-007-012-i3-authority.md`, which rules reading A on both findings: I3 binds the recipient key, not the label, and it binds the edition verifier |
-| Expected mode | `correction` — lot B, `CHDR-007` and `CHDR-012`, after the owner ruling of 2026-08-03 |
+| Expected mode | `review` — lot B is implemented and awaits an independent reviewer. `CHDR-007` and `CHDR-012` are `IMPLEMENTED`, never `VERIFIED`: only the reviewer may raise them |
 | Round | 1 |
 | Base of round 1 | not frozen (`base_main: a2087f2392389fb17e0bc0ba9e20a164d53766d8`) — the role that opens the round records the exact local `main` revision here and in its run report |
 | Audit revision | not frozen (`audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8`) |
-| Candidate revision | none (`candidate_revision: null`) — no correction exists |
+| Candidate revision | none (`candidate_revision: 1a6129a0dbf2c1aff7037977d371b87df966987f`) — no correction exists |
 | Canonical branch | `codex/audit-c-headers-r2` |
 | Why not `codex/audit-c-headers` | that name is reserved: `../orchestrator/QUEUE.yaml:55-56` registers it as this feature's **yardstick**, prior manual work that is a Pass B input and a milestone comparison only, never a Pass A input |
-| Correction branch | **lot B**: `codex/fix-c-headers-i3-authority`, from the immutable audited revision `a2087f2`, carrying `CHDR-007` and `CHDR-012` together. **Lot A** follows on its own branch with the nine test-semantics findings, after lot B, so the shared fixtures migrate once |
+| Correction branch | **lot B**: `codex/fix-c-headers-i3-authority`, based on `5be3047` whose `rust/` tree is byte-identical to the audited revision `a2087f2`. Carries `CHDR-007` and `CHDR-012`. Run `2026-08-04-r1`, sixteen gates, RED before GREEN in ledger order. **Lot A** follows on its own branch with the nine test-semantics findings |
 | Canonical tag | `@c-headers` (`features/c-headers.feature:1`) |
 | Expected gate selection | 1 feature / 4 rules / 8 scenarios / 28 steps |
 | Decision on record | `decisions/2026-08-03-chdr-007-012-i3-authority.md` — reading A on `CHDR-007` and `CHDR-012`. Consequences: a specification lot before any code, five public signatures of `aithos-core` change, major version bump |
@@ -34,7 +34,7 @@ last_transition: 2026-08-03T14:55:00+00:00
 | Public audit | `docs/audits/features/c-headers.md` — written by run `2026-08-03-r1`, completed by `-r2` after the owner lifted the embargo. Every finding is stated in full |
 | Gherkin markers | 6 scenarios carry markers for unresolved findings; gate re-run after each marker edit is green and unchanged at 1/4/8/28 (`ev-c30fa81e`, then `ev-91717a6d`) |
 | Recorded follow-up owed | `TARGETED` from the accepted b-derivation round-2 impact review (`../orchestrator/QUEUE.yaml:61-62`, `../orchestrator/runs/2026-08-03-b-derivation-impact-review-02.md:494`): the independent-generation claim of `vectors/c1-header-seal.json` and `rust/crates/aithos-core/tests/c1_header_seal.rs:2-3`. Evidence class, not behaviour |
-| Next role | the corrector, via `corrector/correct-c-headers/SKILL.md`, on `assigned_findings` only. **The specification lot it depends on is applied** (`SI3-1`..`SI3-10`, variant A, retroactive obligation; `docs/PROPOSITION-SPEC-I3-AUTHORITY-2026-08-03.md` §9), and the C3 conformance vector exists with its generator. What remains before the corrector is the owner's read-through of the specification diff — the amendments are transcribed from a document the owner arbitrated but did not review line by line |
+| Next role | the **independent reviewer**, via `auditor/audit-c-headers/SKILL.md` in review mode. It receives an extract of the candidate without `.git` and **without the corrector's run report** until its behavioural verdict is frozen (`PROCESS.md`, § *Material isolation of Pass A*). Two debts are named for it: the markers at `features/c-headers.feature:47-55` still read `DECISION_REQUIRED … neither is assigned to a corrector`, which the decision of 2026-08-03 made false; and the marker block also carries lot A identifiers, so the edit is not a simple deletion |
 | Blocked | no. All four conditions raised by runs `-r1` and `-r2` are resolved in `../orchestrator/BLOCKED.md`. The gap noted on 2026-08-03 stands and is recorded for the train's own backlog: `train-status.py` rejects a `blocked` entry on any status other than `BLOCKED`, so a feature that proceeds while some of its findings await a human ruling has no representation in the frontmatter |
 
 ## Inputs

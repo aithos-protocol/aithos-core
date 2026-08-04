@@ -9,7 +9,7 @@ use crate::bundle::{Bundle, FolderRow, TreeEntry, ZoneIndex};
 use crate::entropy::EntropySource;
 use crate::Store;
 use aithos_core::error::{Error, Result};
-use aithos_core::header::{Header, Recipient, Wrap};
+use aithos_core::header::{owner_kid as header_owner_kid, Header, Recipient, Wrap};
 use aithos_core::ids::{validate_tag, Sid};
 use aithos_core::keys::{ed2x, grantee_kex_secret};
 use aithos_core::mandate::{covers_op, covers_section_op, Mandate, Op, SectionOp, Verb};
@@ -253,11 +253,15 @@ impl<S: Store> Bundle<S> {
             .get(&version.to_string())
             .ok_or_else(|| Error::SealRejected("missing structural key version".into()))?
             .lines;
+        // The owner line is the one declaring owner_kex, never the one
+        // labelled `"owner"` (§03.1).
+        let owner_kex = self.owner_kex_pub()?;
+        let owner_kid = header_owner_kid(&owner_kex);
         lines
             .iter()
             .map(|line| {
-                if line.to == "owner" {
-                    self.owner_kex_recipient()
+                if line.kid == owner_kid {
+                    Ok(Recipient::owner(owner_kex))
                 } else {
                     let bytes = wire::multibase_to_ed25519_pub(&line.to)?;
                     let verifying = VerifyingKey::from_bytes(&bytes)
@@ -779,6 +783,7 @@ impl<S: Store> Bundle<S> {
             &new_node.to_string(),
             new_version,
             &new_key,
+            &self.owner_kex_pub()?,
             &recipients,
             &ephemerals,
             &nonces,

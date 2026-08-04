@@ -268,7 +268,14 @@ fn xsk(b: u8) -> StaticSecret {
     StaticSecret::from([b; 32])
 }
 fn owner_rec() -> Recipient {
-    Recipient::owner(XPublicKey::from(&xsk(0x0A)))
+    Recipient::owner(owner_pub_c())
+}
+/// The C-fixtures' owner_kex, and the `kid` its owner line declares (§03.1).
+fn owner_pub_c() -> XPublicKey {
+    XPublicKey::from(&xsk(0x0A))
+}
+fn owner_kid_c() -> String {
+    aithos_core::header::owner_kid(&owner_pub_c())
 }
 fn grantee_rec(name: &str, b: u8) -> Recipient {
     Recipient {
@@ -3047,6 +3054,7 @@ fn core_header_capability_scenario() -> Result<CoreCapabilityObservation, String
         subject,
         "/e/circle/d/01K00000000000000000000092",
         &dk,
+        &owner.owner_kex_pub(),
         &[Recipient::owner(owner.owner_kex_pub())],
         &[[0x73; 32]],
         &[[0x74; 24]],
@@ -7556,6 +7564,7 @@ fn sealed_header_owner_grantee(w: &mut ProtocolWorld) {
             DID_C,
             NODE_A,
             &DK,
+            &owner_pub_c(),
             &[owner_rec(), grantee_rec("g1", 0x21)],
             &[eph(1), eph(2)],
             &[non(1), non(2)],
@@ -7567,7 +7576,16 @@ fn sealed_header_owner_grantee(w: &mut ProtocolWorld) {
 #[given("a sealed header for the owner on one node")]
 #[given("a sealed header for the owner")]
 fn sealed_header_owner_only(w: &mut ProtocolWorld) {
-    let header = Header::build(DID_C, NODE_A, &DK, &[owner_rec()], &[eph(1)], &[non(1)]).unwrap();
+    let header = Header::build(
+        DID_C,
+        NODE_A,
+        &DK,
+        &owner_pub_c(),
+        &[owner_rec()],
+        &[eph(1)],
+        &[non(1)],
+    )
+    .unwrap();
     w.saved_line = Some(header.key_versions["1"].lines[0].clone());
     w.header = Some(header);
 }
@@ -7582,6 +7600,7 @@ fn sealed_header_three(w: &mut ProtocolWorld) {
             DID_C,
             NODE_A,
             &DK,
+            &owner_pub_c(),
             &[
                 owner_rec(),
                 grantee_rec("g1", 0x21),
@@ -8095,7 +8114,8 @@ fn seal_into_header(w: &mut ProtocolWorld) {
 
 #[when("a third keypair tries every line")]
 fn stranger_tries(w: &mut ProtocolWorld) {
-    for kid in ["owner-kex", "g1"] {
+    let owner_kid = owner_kid_c();
+    for kid in [owner_kid.as_str(), "g1"] {
         w.open_into(1, kid, 0x99);
     }
 }
@@ -8107,17 +8127,25 @@ fn corrupt_line(w: &mut ProtocolWorld) {
     let c = &mut kv.lines[0].c;
     let flipped = if c.starts_with('0') { "1" } else { "0" };
     c.replace_range(0..1, flipped);
-    w.open_into(1, "owner-kex", 0x0A);
+    w.open_into(1, &owner_kid_c(), 0x0A);
 }
 
 #[when("its owner line is replayed on a different node's header")]
 fn replay_line_other_node(w: &mut ProtocolWorld) {
     let stolen = w.header.as_ref().unwrap().key_versions["1"].lines[0].clone();
-    let mut other =
-        Header::build(DID_C, NODE_OTHER, &DK, &[owner_rec()], &[eph(4)], &[non(4)]).unwrap();
+    let mut other = Header::build(
+        DID_C,
+        NODE_OTHER,
+        &DK,
+        &owner_pub_c(),
+        &[owner_rec()],
+        &[eph(4)],
+        &[non(4)],
+    )
+    .unwrap();
     other.key_versions.get_mut("1").unwrap().lines[0] = stolen;
     w.header = Some(other);
-    w.open_into(1, "owner-kex", 0x0A);
+    w.open_into(1, &owner_kid_c(), 0x0A);
 }
 
 #[when("a header is built without the owner line")]
@@ -8126,6 +8154,7 @@ fn build_without_owner(w: &mut ProtocolWorld) {
         DID_C,
         NODE_A,
         &DK,
+        &owner_pub_c(),
         &[grantee_rec("g1", 0x21)],
         &[eph(1)],
         &[non(1)],
@@ -8153,6 +8182,7 @@ fn rotate_without_g1(w: &mut ProtocolWorld) {
             DID_C,
             2,
             &DK2,
+            &owner_pub_c(),
             &[owner_rec(), grantee_rec("g2", 0x22)],
             &[eph(6), eph(7)],
             &[non(6), non(7)],
@@ -12314,7 +12344,7 @@ fn owner_opens(w: &mut ProtocolWorld) {
         .header
         .as_ref()
         .unwrap()
-        .open(DID_C, 1, "owner-kex", &xsk(0x0A))
+        .open(DID_C, 1, &owner_kid_c(), &xsk(0x0A))
         .unwrap();
     assert_eq!(dk, DK);
 }
@@ -12387,7 +12417,7 @@ fn owner_opens_new(w: &mut ProtocolWorld) {
         .header
         .as_ref()
         .unwrap()
-        .open(DID_C, 2, "owner-kex", &xsk(0x0A))
+        .open(DID_C, 2, &owner_kid_c(), &xsk(0x0A))
         .unwrap();
     assert_eq!(dk, DK2);
 }
@@ -15244,12 +15274,14 @@ fn smuggle_recipient(w: &mut ProtocolWorld) {
     };
     let doc = w.did_document();
     let owner_kex = aithos_core::wire::multibase_to_x25519_pub(&doc.keys.kex).unwrap();
-    let owner_rec = Recipient::owner(owner_kex.into());
+    let owner_pub: XPublicKey = owner_kex.into();
+    let owner_rec = Recipient::owner(owner_pub);
     header
         .rotate(
             &w.bundle.as_ref().unwrap().did.clone(),
             2,
             &[9u8; 32],
+            &owner_pub,
             &[owner_rec, intruder],
             &[[1u8; 32], [2u8; 32]],
             &[[1u8; 24], [2u8; 24]],
@@ -15257,7 +15289,7 @@ fn smuggle_recipient(w: &mut ProtocolWorld) {
         .unwrap();
     w.g_result = Some(
         header
-            .check_rotation(2)
+            .check_rotation(2, &aithos_core::header::owner_kid(&owner_pub))
             .map(|_| "ok".into())
             .map_err(|e| e.to_string()),
     );

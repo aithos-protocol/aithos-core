@@ -26,6 +26,7 @@ use aithos_core::seal::{blob_aad, blob_open, blob_seal};
 use aithos_core::wire;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use std::collections::BTreeMap;
+use x25519_dalek::PublicKey as XPublicKey;
 
 fn io_err(error: std::io::Error) -> Error {
     Error::SealRejected(format!("store i/o: {error}"))
@@ -168,10 +169,16 @@ impl<S: Store> Bundle<S> {
         self.get_json("did.json")
     }
 
-    pub(crate) fn owner_kex_recipient(&self) -> Result<Recipient> {
+    /// The subject's `owner_kex` as published in its DID document — the key
+    /// that DEFINES the owner line (§03.1, §01.4). Every writer of a header
+    /// reads it from here, so no rotation can reproduce a wrong owner line.
+    pub(crate) fn owner_kex_pub(&self) -> Result<XPublicKey> {
         let doc = self.did_doc()?;
-        let bytes = wire::multibase_to_x25519_pub(&doc.keys.kex)?;
-        Ok(Recipient::owner(bytes.into()))
+        Ok(wire::multibase_to_x25519_pub(&doc.keys.kex)?.into())
+    }
+
+    pub(crate) fn owner_kex_recipient(&self) -> Result<Recipient> {
+        Ok(Recipient::owner(self.owner_kex_pub()?))
     }
 
     /// Resolve a display folder path to its sid chain (clear zones).
@@ -290,12 +297,13 @@ impl<S: Store> Bundle<S> {
                 self.put_json(&file, &header)
             }
             None => {
-                let owner_line = self.owner_kex_recipient()?;
+                let owner_kex = self.owner_kex_pub()?;
                 let header = Header::build(
                     &did,
                     &node.to_string(),
                     dk,
-                    &[owner_line, recipient.clone()],
+                    &owner_kex,
+                    &[Recipient::owner(owner_kex), recipient.clone()],
                     &[ent.e32(), ent.e32()],
                     &[ent.e24(), ent.e24()],
                 )?;
@@ -456,7 +464,7 @@ impl<S: Store> Bundle<S> {
                 let mut header: Header = serde_json::from_slice(&bytes)
                     .map_err(|error| Error::SealRejected(format!("{file}: {error}")))?;
                 let version = header.latest_version();
-                let key = header.open(&self.did, version, "owner-kex", &owner.owner_kex)?;
+                let key = header.open_owner(&self.did, version, &owner.owner_kex)?;
                 header.append_line(&self.did, version, &key, recipient, ent.e32(), ent.e24())?;
                 self.put_json(&file, &header)?;
             }
@@ -465,11 +473,13 @@ impl<S: Store> Bundle<S> {
                 // descendant of the historical audit root. An audit holder
                 // therefore cannot derive it.
                 let key = ent.e32();
+                let owner_kex = self.owner_kex_pub()?;
                 let header = Header::build(
                     &self.did,
                     &node,
                     &key,
-                    &[self.owner_kex_recipient()?, recipient.clone()],
+                    &owner_kex,
+                    &[Recipient::owner(owner_kex), recipient.clone()],
                     &[ent.e32(), ent.e32()],
                     &[ent.e24(), ent.e24()],
                 )?;

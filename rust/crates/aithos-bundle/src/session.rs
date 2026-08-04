@@ -11,14 +11,14 @@ use crate::Store;
 use aithos_core::carriers::{K1cActor, K1cVerificationContext};
 use aithos_core::error::{Error, Result};
 use aithos_core::gamma::{owner_entry, Entry, EntrySpec};
-use aithos_core::header::{Header, Recipient};
+use aithos_core::header::{owner_kid as header_owner_kid, Header, Recipient};
 use aithos_core::keys::OwnerKeys;
 use aithos_core::mandate::Mandate;
 use aithos_core::path::Zone;
 use ed25519_dalek::SigningKey;
 use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
-use x25519_dalek::StaticSecret;
+use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
 
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -360,8 +360,8 @@ impl<'a> LocalSession<'a> {
         nonce: [u8; 24],
     ) -> Result<()> {
         self.check(&capability.binding, CapabilityClass::Header)?;
-        header.validate()?;
-        let (version, dk) = header.open_latest(&self.subject, "owner-kex", capability.owner_kex)?;
+        header.validate(&header_owner_kid(&XPublicKey::from(capability.owner_kex)))?;
+        let (version, dk) = header.open_owner_latest(&self.subject, capability.owner_kex)?;
         header.append_line(&self.subject, version, &dk, recipient, ephemeral, nonce)
     }
 

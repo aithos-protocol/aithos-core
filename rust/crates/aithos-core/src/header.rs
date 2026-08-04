@@ -3,11 +3,21 @@
 
 use crate::error::{Error, Result};
 use crate::seal::{line_aad, open_line, seal_line, wrap_aad, wrap_open, wrap_seal};
+use crate::wire;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
 
 pub const OWNER_LABEL: &str = "owner";
+
+/// The `kid` of the owner line (§03.1): the subject's `owner_kex` in
+/// multibase, byte-identical to `keys.kex` of its DID document (§01.4). The
+/// owner line names its recipient key on the wire exactly as a grantee's line
+/// does — that is what lets a verifier holding no key at all recognize it.
+#[must_use]
+pub fn owner_kid(owner_kex: &XPublicKey) -> String {
+    wire::x25519_pub_to_multibase(owner_kex.as_bytes())
+}
 
 /// One recipient of a key version: routing label + kid + X25519 public key.
 #[derive(Debug, Clone)]
@@ -22,7 +32,7 @@ impl Recipient {
     pub fn owner(pubkey: XPublicKey) -> Self {
         Recipient {
             to: OWNER_LABEL.to_owned(),
-            kid: "owner-kex".to_owned(),
+            kid: owner_kid(&pubkey),
             pubkey,
         }
     }
@@ -67,9 +77,16 @@ fn hex24(s: &str, what: &str) -> Result<[u8; 24]> {
         .ok_or_else(|| Error::SealRejected(format!("bad {what} encoding")))
 }
 
-/// I3: every key version MUST include the owner line.
-fn check_owner_line(node: &str, recipients: &[Recipient]) -> Result<()> {
-    if recipients.iter().any(|r| r.to == OWNER_LABEL) {
+/// I3 at build time: the recipient set MUST include the owner — the recipient
+/// whose KEY is the subject's `owner_kex` (§03.1). The routing label decides
+/// nothing. The kid is checked too, so a writer can never emit a header that
+/// an edition verifier would reject (§00.2, §09.4).
+fn check_owner_line(node: &str, recipients: &[Recipient], owner_kex: &XPublicKey) -> Result<()> {
+    let kid = owner_kid(owner_kex);
+    if recipients
+        .iter()
+        .any(|r| r.pubkey.as_bytes() == owner_kex.as_bytes() && r.kid == kid)
+    {
         Ok(())
     } else {
         Err(Error::MissingOwnerLine(node.to_owned()))
@@ -104,16 +121,29 @@ fn build_lines(
 
 impl Header {
     /// Build version 1 of a node's header. Fail-closed on a missing owner
-    /// line (I3). One ephemeral and one nonce per recipient, injected.
+    /// line (I3) — `owner_kex` is the subject's key as published in its DID
+    /// document, and the owner line is the one sealed to it (§03.1). One
+    /// ephemeral and one nonce per recipient, injected.
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         subject_did: &str,
         node: &str,
         dk: &[u8; 32],
+        owner_kex: &XPublicKey,
         recipients: &[Recipient],
         ephemerals: &[[u8; 32]],
         nonces: &[[u8; 24]],
     ) -> Result<Self> {
-        Self::build_at(subject_did, node, 1, dk, recipients, ephemerals, nonces)
+        Self::build_at(
+            subject_did,
+            node,
+            1,
+            dk,
+            owner_kex,
+            recipients,
+            ephemerals,
+            nonces,
+        )
     }
 
     /// Build a node's header whose FIRST version is `version` — the moved
@@ -126,11 +156,12 @@ impl Header {
         node: &str,
         version: u64,
         dk: &[u8; 32],
+        owner_kex: &XPublicKey,
         recipients: &[Recipient],
         ephemerals: &[[u8; 32]],
         nonces: &[[u8; 24]],
     ) -> Result<Self> {
-        check_owner_line(node, recipients)?;
+        check_owner_line(node, recipients, owner_kex)?;
         let mut key_versions = BTreeMap::new();
         key_versions.insert(
             version.to_string(),
@@ -189,16 +220,18 @@ impl Header {
 
     /// Rotate = new key version sealed to the survivors only (§03.4).
     /// The revoked simply has no line; old versions are retained (§03.5).
+    #[allow(clippy::too_many_arguments)]
     pub fn rotate(
         &mut self,
         subject_did: &str,
         new_version: u64,
         new_dk: &[u8; 32],
+        owner_kex: &XPublicKey,
         survivors: &[Recipient],
         ephemerals: &[[u8; 32]],
         nonces: &[[u8; 24]],
     ) -> Result<()> {
-        check_owner_line(&self.node, survivors)?;
+        check_owner_line(&self.node, survivors, owner_kex)?;
         self.key_versions.insert(
             new_version.to_string(),
             KeyVersion {
@@ -245,6 +278,30 @@ impl Header {
         )))
     }
 
+    /// Open the OWNER's line in a given version: the line whose `kid` is the
+    /// subject's `owner_kex` in multibase (§03.1, §03.2). The kid is derived
+    /// from the key held, never spelled out — a read path can no longer look
+    /// up a label.
+    pub fn open_owner(
+        &self,
+        subject_did: &str,
+        version: u64,
+        owner_kex: &StaticSecret,
+    ) -> Result<[u8; 32]> {
+        let kid = owner_kid(&XPublicKey::from(owner_kex));
+        self.open(subject_did, version, &kid, owner_kex)
+    }
+
+    /// The owner's line in the LATEST version. Returns `(version, dk)`.
+    pub fn open_owner_latest(
+        &self,
+        subject_did: &str,
+        owner_kex: &StaticSecret,
+    ) -> Result<(u64, [u8; 32])> {
+        let kid = owner_kid(&XPublicKey::from(owner_kex));
+        self.open_latest(subject_did, &kid, owner_kex)
+    }
+
     /// Highest key version present (§03.4/§03.5): reads always target the
     /// newest lock.
     #[must_use]
@@ -271,8 +328,10 @@ impl Header {
     /// Rotation well-formedness (§03.4): the new version's recipient set MUST
     /// equal the previous version's minus the revoked (owner always kept). A
     /// smuggled-in recipient — one whose kid is absent from the prior version
-    /// — makes the rotation invalid, fail-closed.
-    pub fn check_rotation(&self, new_version: u64) -> Result<()> {
+    /// — makes the rotation invalid, fail-closed. `owner_kid` is the subject's
+    /// `owner_kex` in multibase: the new version MUST carry the owner line as
+    /// §03.1 defines it, not merely a line labelled `"owner"`.
+    pub fn check_rotation(&self, new_version: u64, owner_kid: &str) -> Result<()> {
         if new_version <= 1 {
             return Ok(());
         }
@@ -295,7 +354,7 @@ impl Header {
                 )));
             }
         }
-        if !new.lines.iter().any(|l| l.to == OWNER_LABEL) {
+        if !new.lines.iter().any(|l| l.kid == owner_kid) {
             return Err(Error::MissingOwnerLine(format!(
                 "{} v{new_version}",
                 self.node
@@ -304,12 +363,39 @@ impl Header {
         Ok(())
     }
 
-    /// Parse-time validation: I3 on every version.
-    pub fn validate(&self) -> Result<()> {
+    /// Parse-time validation, KEYLESS tier (§03.1): every key version MUST
+    /// carry a line declaring the subject's `owner_kex` as its `kid`.
+    /// `owner_kid` is that key in multibase — byte-identical to `keys.kex` of
+    /// the subject's DID document, so an edition verifier passes it straight
+    /// from the document it already read, holding no key at all.
+    pub fn validate(&self, owner_kid: &str) -> Result<()> {
         for (v, kv) in &self.key_versions {
-            if !kv.lines.iter().any(|l| l.to == OWNER_LABEL) {
+            if !kv.lines.iter().any(|l| l.kid == owner_kid) {
                 return Err(Error::MissingOwnerLine(format!("{} v{v}", self.node)));
             }
+        }
+        Ok(())
+    }
+
+    /// `owner_kex`-BEARING tier (§03.1): the keyless check, plus the proof
+    /// that the line declaring `owner_kex` actually opens under it. A line
+    /// that names the owner's key but is sealed to another one passes every
+    /// keyless verifier — that residual gap is the documented boundary of
+    /// §03.1, and this is the check that closes it.
+    pub fn validate_as_owner(&self, subject_did: &str, owner_kex: &StaticSecret) -> Result<()> {
+        let kid = owner_kid(&XPublicKey::from(owner_kex));
+        self.validate(&kid)?;
+        for v in self.key_versions.keys() {
+            let version: u64 = v
+                .parse()
+                .map_err(|_| Error::SealRejected(format!("{}: bad key version {v}", self.node)))?;
+            self.open(subject_did, version, &kid, owner_kex)
+                .map_err(|_| {
+                    Error::MissingOwnerLine(format!(
+                        "{} v{v}: the line declaring owner_kex does not open under it",
+                        self.node
+                    ))
+                })?;
         }
         Ok(())
     }

@@ -6,6 +6,20 @@ use aithos_core::header::{Header, KeyVersion, Line, Wrap};
 use serde::Deserialize;
 use serde_json::Value;
 
+/// G2 is a fixture of SHAPE: its kids are synthetic routing identities,
+/// `zAGENT1` and `zAGENT2` included — none of the three is a real key. This is
+/// that fixture's owner kid, not an assertion about the wire: §03.1 requires
+/// `check_rotation` to be given the owner key it must find, and this test
+/// gives it. The real wire form of the owner line — its `kid` carrying
+/// `owner_kex` in multibase — is proven by C3 and by
+/// `c3_owner_recipient_names_its_key_on_the_wire`, which is where it belongs.
+///
+/// Rewriting G2 to carry a real `owner_kex` was considered and deliberately
+/// NOT done: the vector is pinned four levels deep (see the run report of
+/// 2026-08-04-r1), and the cascade lies entirely outside `CHDR-007` /
+/// `CHDR-012`. Do not reopen it without pricing that first.
+const G2_OWNER_KID: &str = "owner-kex";
+
 #[derive(Deserialize)]
 struct G2 {
     old_kids: Vec<String>,
@@ -23,9 +37,9 @@ fn vector() -> G2 {
     .expect("valid vector json")
 }
 
-fn line(kid: &str) -> Line {
+fn line(kid: &str, owner_kid: &str) -> Line {
     Line {
-        to: if kid == "owner-kex" {
+        to: if kid == owner_kid {
             "owner".into()
         } else {
             kid.into()
@@ -37,12 +51,12 @@ fn line(kid: &str) -> Line {
     }
 }
 
-fn header_with(kids: &[String]) -> Header {
+fn header_with(kids: &[String], owner_kid: &str) -> Header {
     let mut kv = std::collections::BTreeMap::new();
     kv.insert(
         "1".to_owned(),
         KeyVersion {
-            lines: kids.iter().map(|k| line(k)).collect(),
+            lines: kids.iter().map(|k| line(k, owner_kid)).collect(),
         },
     );
     Header {
@@ -69,14 +83,18 @@ fn survivor_set_is_old_minus_revoked() {
 fn a_smuggled_recipient_is_rejected() {
     let v = vector();
     // v2 lines = survivors + an intruder never present in v1.
-    let mut header = header_with(&v.old_kids);
-    let mut v2: Vec<Line> = v.expected_survivor_kids.iter().map(|k| line(k)).collect();
-    v2.push(line(&v.smuggled_new_kid));
+    let mut header = header_with(&v.old_kids, G2_OWNER_KID);
+    let mut v2: Vec<Line> = v
+        .expected_survivor_kids
+        .iter()
+        .map(|k| line(k, G2_OWNER_KID))
+        .collect();
+    v2.push(line(&v.smuggled_new_kid, G2_OWNER_KID));
     header
         .key_versions
         .insert("2".to_owned(), KeyVersion { lines: v2 });
     assert!(matches!(
-        header.check_rotation(2),
+        header.check_rotation(2, G2_OWNER_KID),
         Err(Error::GammaRevocationRejected(_))
     ));
 }
@@ -84,12 +102,16 @@ fn a_smuggled_recipient_is_rejected() {
 #[test]
 fn a_clean_rotation_is_accepted() {
     let v = vector();
-    let mut header = header_with(&v.old_kids);
-    let v2: Vec<Line> = v.expected_survivor_kids.iter().map(|k| line(k)).collect();
+    let mut header = header_with(&v.old_kids, G2_OWNER_KID);
+    let v2: Vec<Line> = v
+        .expected_survivor_kids
+        .iter()
+        .map(|k| line(k, G2_OWNER_KID))
+        .collect();
     header
         .key_versions
         .insert("2".to_owned(), KeyVersion { lines: v2 });
-    header.check_rotation(2).unwrap();
+    header.check_rotation(2, G2_OWNER_KID).unwrap();
 }
 
 #[test]

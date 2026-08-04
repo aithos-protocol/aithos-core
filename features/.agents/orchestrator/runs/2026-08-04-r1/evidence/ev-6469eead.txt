@@ -1,0 +1,23 @@
+
+running 4 tests
+test cb10_circle_tag_views_and_delegated_move_follow_the_atomic_key_boundary ... ok
+test cb10_exact_connector_vault_is_isolated_secret_free_and_cold_verifiable ... ok
+test cb10_revocation_rotation_publication_is_one_durable_cut ... ok
+test cb10_structural_operations_compose_authority_and_rollback_refusals ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.47s
+
+
+running 5 tests
+test manifest_is_a_partition_of_the_vectors_directory ... ok
+test service_side_consumes_only_its_own_and_declared_shared_vectors ... ok
+test core_side_never_references_service_entries ... ok
+test vectors_match_their_pinned_digests ... ok
+test vector_bytes_are_never_duplicated_outside_vectors_dir ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.54s
+     Running tests/cb10_structure_vault.rs (/root/work/target-shared/debug/deps/cb10_structure_vault-748ff6bcf8986dc2)
+     Running tests/vectors_ownership.rs (/root/work/target-shared/debug/deps/vectors_ownership-9b44bc31dc8a492c)

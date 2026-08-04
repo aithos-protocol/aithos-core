@@ -10,7 +10,7 @@ use crate::{validate_display_path, validate_store_key, Store};
 use aithos_core::derive::node_key;
 use aithos_core::did::DidDocument;
 use aithos_core::error::{Error, Result};
-use aithos_core::header::{Header, Recipient};
+use aithos_core::header::{owner_kid as header_owner_kid, Header, Recipient};
 use aithos_core::ids::Sid;
 use aithos_core::jcs;
 use aithos_core::keys::OwnerKeys;
@@ -20,7 +20,7 @@ use aithos_core::seal::{blob_aad, blob_open, blob_seal};
 use ed25519_dalek::Signer;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use x25519_dalek::StaticSecret;
+use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
 
 pub(crate) const KV: u64 = 1; // single key version until step G (revocation rotates)
 
@@ -283,6 +283,41 @@ pub enum GranteeContentOutcome {
 pub struct Bundle<S: Store> {
     pub store: S,
     pub did: String,
+}
+
+/// Is this pinned path a header object? Zone and vault roots live at
+/// `e/<zone>/header.json` and `e/x/<connector>/header.json`; granted nodes at
+/// `e/<zone>/hdr/<digest>.json` (`grants::hdr_file`).
+pub(crate) fn is_header_file(path: &str) -> bool {
+    path.starts_with("e/")
+        && path.ends_with(".json")
+        && (path.ends_with("/header.json") || path.contains("/hdr/"))
+}
+
+/// I3 at the EDITION tier (§00.2, §03.1, §09.4): an edition verifier MUST
+/// parse every header the edition pins and MUST reject the edition if any key
+/// version of any of them has no owner line. Keyless — the owner line is
+/// recognized by the `kid` it declares, which §03.1 makes byte-identical to
+/// `keys.kex` of the DID document the verifier has already read.
+pub(crate) fn verify_pinned_headers<S: Store>(
+    store: &S,
+    files: &BTreeMap<String, String>,
+    doc: &DidDocument,
+) -> Result<()> {
+    let mut paths = files.keys().filter(|p| is_header_file(p)).peekable();
+    if paths.peek().is_none() {
+        return Ok(());
+    }
+    let owner_kid = doc.keys.kex.as_str();
+    for path in paths {
+        let bytes = store.get(path).map_err(io_err)?.ok_or_else(|| {
+            Error::SealRejected(format!("edition: pinned header missing: {path}"))
+        })?;
+        let header: Header = serde_json::from_slice(&bytes)
+            .map_err(|e| Error::SealRejected(format!("edition: header {path}: {e}")))?;
+        header.validate(owner_kid)?;
+    }
+    Ok(())
 }
 
 /// What one signed edition commits (gathered by [`Bundle::publish_artifacts`]).
@@ -553,6 +588,7 @@ impl<S: Store> Bundle<S> {
                     &bundle.did.clone(),
                     &node,
                     &dk,
+                    &owner.owner_kex_pub(),
                     &[Recipient::owner(owner.owner_kex_pub())],
                     &[ent.e32()],
                     &[ent.e24()],
@@ -566,6 +602,7 @@ impl<S: Store> Bundle<S> {
                     &bundle.did.clone(),
                     "/x",
                     &dk,
+                    &owner.owner_kex_pub(),
                     &[Recipient::owner(owner.owner_kex_pub())],
                     &[ent.e32()],
                     &[ent.e24()],
@@ -627,15 +664,15 @@ impl<S: Store> Bundle<S> {
     /// seam separate lets higher-level keyholders discard those capabilities.
     pub fn zone_dk_with_owner_kex(&self, zone: Zone, owner_kex: &StaticSecret) -> Result<[u8; 32]> {
         let header: Header = self.get_json(&format!("e/{}/header.json", zone.as_str()))?;
-        header.validate()?;
-        header.open(&self.did, KV, "owner-kex", owner_kex)
+        header.validate(&header_owner_kid(&XPublicKey::from(owner_kex)))?;
+        header.open_owner(&self.did, KV, owner_kex)
     }
 
     /// Vault root DK (§08.2) — parent of the per-connector audit keys.
     pub fn vault_dk(&self, owner: &OwnerKeys) -> Result<[u8; 32]> {
         let header: Header = self.get_json("e/x/header.json")?;
-        header.validate()?;
-        header.open(&self.did, KV, "owner-kex", &owner.owner_kex)
+        header.validate(&header_owner_kid(&owner.owner_kex_pub()))?;
+        header.open_owner(&self.did, KV, &owner.owner_kex)
     }
 
     /// Owner write-side key for a NEW circle section: the deepest ancestor
@@ -670,7 +707,7 @@ impl<S: Store> Bundle<S> {
             let Ok(header) = serde_json::from_slice::<Header>(&bytes) else {
                 continue;
             };
-            let (v, base) = header.open_latest(&self.did, "owner-kex", owner_kex)?;
+            let (v, base) = header.open_owner_latest(&self.did, owner_kex)?;
             let rest = NodePath {
                 zone,
                 folders: folders[depth..].to_vec(),
@@ -1716,6 +1753,10 @@ impl<S: Store> Bundle<S> {
                 return Err(err(format!("pinned file altered: {path}")));
             }
         }
+        // I3 (§00.2, §03.1, §09.4): every header this edition pins MUST carry
+        // the owner line — the line whose recipient key is the subject's
+        // owner_kex — in every key version. No key is needed to see it.
+        verify_pinned_headers(&self.store, &latest.files, &doc)?;
         // No unpinned strays besides the manifest itself.
         for path in self.store.list("").map_err(io_err)? {
             if path != "manifest.json"

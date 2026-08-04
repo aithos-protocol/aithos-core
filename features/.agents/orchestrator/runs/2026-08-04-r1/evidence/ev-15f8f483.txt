@@ -1,0 +1,115 @@
+
+running 5 tests
+test c3_line_aad_cross_check ... ok
+test c3_owner_kex_opens_exactly_the_owner_lines ... ok
+test c3_keyless_i3_verdicts ... FAILED
+test c3_owner_recipient_names_its_key_on_the_wire ... FAILED
+test c3_positive_owner_line_is_byte_exact ... FAILED
+
+failures:
+
+---- c3_keyless_i3_verdicts stdout ----
+
+thread 'c3_keyless_i3_verdicts' (5484) panicked at crates/aithos-core/tests/c3_owner_line.rs:145:5:
+assertion `left == right` failed: C3 keyless I3 verdicts
+  left: ["owner_label_foreign_key: keyless I3 must reject (verdict=invalid, tier=keyless), accepted", "unlabelled_owner_line: keyless I3 must accept (verdict=valid, tier=keyless), rejected: I3 violated — header without an owner line: /e/circle v1"]
+ right: []
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::panicking::assert_failed_inner
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:434:23
+   3: core::panicking::assert_failed
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:394:5
+   4: c3_owner_line::c3_keyless_i3_verdicts
+             at ./tests/c3_owner_line.rs:145:5
+   5: c3_owner_line::c3_keyless_i3_verdicts::{{closure}}
+             at ./tests/c3_owner_line.rs:128:28
+   6: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   7: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+---- c3_owner_recipient_names_its_key_on_the_wire stdout ----
+
+thread 'c3_owner_recipient_names_its_key_on_the_wire' (5487) panicked at crates/aithos-core/tests/c3_owner_line.rs:89:5:
+assertion `left == right` failed: Recipient::owner must name owner_kex, not a fixed label
+  left: "owner-kex"
+ right: "z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS"
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::panicking::assert_failed_inner
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:434:23
+   3: core::panicking::assert_failed
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:394:5
+   4: c3_owner_line::c3_owner_recipient_names_its_key_on_the_wire
+             at ./tests/c3_owner_line.rs:89:5
+   5: c3_owner_line::c3_owner_recipient_names_its_key_on_the_wire::{{closure}}
+             at ./tests/c3_owner_line.rs:86:50
+   6: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   7: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+---- c3_positive_owner_line_is_byte_exact stdout ----
+
+thread 'c3_positive_owner_line_is_byte_exact' (5488) panicked at crates/aithos-core/tests/c3_owner_line.rs:116:5:
+assertion `left == right` failed: the built owner line must equal C3's owner_line_present line 0
+  left: Line { to: "owner", kid: "owner-kex", epk: "7ea13ddfcbacd8a13542dece890886486fb8024d0d3cc7f95ed8bb4efad66b73", n: "000102030405060708090a0b0c0d0e0f1011121314151617", c: "5d87dc5a4ca26c2c27db027d6808046fd1cabc2a946e1ed24e0104eedacd479cfb0c4c0998fd0e6a639dde27fc4a2c7e" }
+ right: Line { to: "owner", kid: "z6LSeYCJg2G3i6zEiYd2bvnacfR8EnQoUUv3315nBbJL85sS", epk: "7ea13ddfcbacd8a13542dece890886486fb8024d0d3cc7f95ed8bb4efad66b73", n: "000102030405060708090a0b0c0d0e0f1011121314151617", c: "5d87dc5a4ca26c2c27db027d6808046fd1cabc2a946e1ed24e0104eedacd479cfb0c4c0998fd0e6a639dde27fc4a2c7e" }
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::panicking::assert_failed_inner
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:434:23
+   3: core::panicking::assert_failed
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:394:5
+   4: c3_owner_line::c3_positive_owner_line_is_byte_exact
+             at ./tests/c3_owner_line.rs:116:5
+   5: c3_owner_line::c3_positive_owner_line_is_byte_exact::{{closure}}
+             at ./tests/c3_owner_line.rs:101:42
+   6: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   7: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    c3_keyless_i3_verdicts
+    c3_owner_recipient_names_its_key_on_the_wire
+    c3_positive_owner_line_is_byte_exact
+
+test result: FAILED. 2 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+   Compiling syn v2.0.118
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling memchr v2.8.3
+   Compiling serde_json v1.0.150
+   Compiling zeroize_derive v1.5.0
+   Compiling curve25519-dalek-derive v0.1.1
+   Compiling zeroize v1.9.0
+   Compiling cipher v0.4.4
+   Compiling curve25519-dalek v4.1.3
+   Compiling serde_derive v1.0.228
+   Compiling chacha20 v0.9.1
+   Compiling thiserror-impl v1.0.69
+   Compiling x25519-dalek v2.0.1
+   Compiling chacha20poly1305 v0.10.1
+   Compiling ed25519-dalek v2.2.0
+   Compiling thiserror v1.0.69
+   Compiling serde_jcs v0.1.0
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 21.30s
+     Running tests/c3_owner_line.rs (/root/work/target-shared/debug/deps/c3_owner_line-8fd6586dbf24917e)
+error: test failed, to rerun pass `-p aithos-core --test c3_owner_line`

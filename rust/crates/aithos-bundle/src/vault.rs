@@ -13,7 +13,7 @@ use aithos_core::error::{Error, Result};
 use aithos_core::gamma::{
     delegated_entry, owner_entry, verify_delegated_entry, Entry, EntrySpec, Kind,
 };
-use aithos_core::header::{Header, Recipient};
+use aithos_core::header::{owner_kid as header_owner_kid, Header, Recipient};
 use aithos_core::keys::{ed2x, grantee_kex_secret, OwnerKeys};
 use aithos_core::mandate::{Mandate, PerimeterEntry};
 use aithos_core::seal::{blob_aad, blob_open, blob_seal};
@@ -333,7 +333,7 @@ impl<S: Store> Bundle<S> {
     pub fn read_vault_config_owner(&self, owner: &OwnerKeys, connector: &str) -> Result<Vec<u8>> {
         Self::gate_display_name(connector)?;
         let header: Header = self.get_json(&Self::config_header_path(connector))?;
-        let (version, key) = header.open_latest(&self.did, "owner-kex", &owner.owner_kex)?;
+        let (version, key) = header.open_owner_latest(&self.did, &owner.owner_kex)?;
         self.open_config_blob(&VaultConfigCapability {
             connector: connector.to_owned(),
             subject: "owner".into(),
@@ -357,7 +357,7 @@ impl<S: Store> Bundle<S> {
             let path = Self::config_header_path(connector);
             let mut header: Header = bundle.get_json(&path)?;
             let old_version = header.latest_version();
-            let old_key = header.open(&bundle.did, old_version, "owner-kex", &owner.owner_kex)?;
+            let old_key = header.open_owner(&bundle.did, old_version, &owner.owner_kex)?;
             let current = header
                 .key_versions
                 .get(&old_version.to_string())
@@ -367,13 +367,16 @@ impl<S: Store> Bundle<S> {
                     "revoked config recipient is not present".into(),
                 ));
             }
+            // The owner line is the one declaring owner_kex (§03.1).
+            let owner_kex = bundle.owner_kex_pub()?;
+            let owner_kid = header_owner_kid(&owner_kex);
             let mut survivors = Vec::new();
             for line in &current.lines {
                 if line.kid == revoked_kid {
                     continue;
                 }
-                if line.to == "owner" {
-                    survivors.push(bundle.owner_kex_recipient()?);
+                if line.kid == owner_kid {
+                    survivors.push(Recipient::owner(owner_kex));
                 } else {
                     let bytes = wire::multibase_to_ed25519_pub(&line.to)?;
                     let verifying = VerifyingKey::from_bytes(&bytes)
@@ -393,11 +396,12 @@ impl<S: Store> Bundle<S> {
                 &bundle.did,
                 new_version,
                 &new_key,
+                &owner_kex,
                 &survivors,
                 &ephemerals,
                 &nonces,
             )?;
-            header.check_rotation(new_version)?;
+            header.check_rotation(new_version, &owner_kid)?;
             bundle.put_json(&path, &header)?;
             let blob_path = Self::config_blob_path(connector);
             if bundle

@@ -1,0 +1,91 @@
+
+running 3 tests
+test c3_edition_owner_line_names_the_did_documents_owner_kex ... FAILED
+test c3_edition_with_no_owner_line_at_all_is_rejected ... FAILED
+test c3_edition_with_owner_labelled_foreign_key_is_rejected ... FAILED
+
+failures:
+
+---- c3_edition_owner_line_names_the_did_documents_owner_kex stdout ----
+
+thread 'c3_edition_owner_line_names_the_did_documents_owner_kex' (6009) panicked at crates/aithos-bundle/tests/c3_owner_line_edition.rs:213:5:
+assertion `left == right` failed: the owner line must declare owner_kex as its kid (spec §03.1)
+  left: ["owner-kex"]
+ right: ["z6LSn1MhDKaNek66HMwDCxB7h3ft4vzxi631RQvLCXUPnuMH"]
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::panicking::assert_failed_inner
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:434:23
+   3: core::panicking::assert_failed
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:394:5
+   4: c3_owner_line_edition::c3_edition_owner_line_names_the_did_documents_owner_kex
+             at ./tests/c3_owner_line_edition.rs:213:5
+   5: c3_owner_line_edition::c3_edition_owner_line_names_the_did_documents_owner_kex::{{closure}}
+             at ./tests/c3_owner_line_edition.rs:194:61
+   6: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   7: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+---- c3_edition_with_no_owner_line_at_all_is_rejected stdout ----
+
+thread 'c3_edition_with_no_owner_line_at_all_is_rejected' (6010) panicked at crates/aithos-bundle/tests/c3_owner_line_edition.rs:244:10:
+an edition pinning a header with no owner line is invalid (I3, §09.4): ()
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::result::unwrap_failed
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/result.rs:1867:5
+   3: core::result::Result<T,E>::expect_err
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/result.rs:1298:22
+   4: c3_owner_line_edition::c3_edition_with_no_owner_line_at_all_is_rejected
+             at ./tests/c3_owner_line_edition.rs:244:10
+   5: c3_owner_line_edition::c3_edition_with_no_owner_line_at_all_is_rejected::{{closure}}
+             at ./tests/c3_owner_line_edition.rs:225:54
+   6: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   7: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+---- c3_edition_with_owner_labelled_foreign_key_is_rejected stdout ----
+
+thread 'c3_edition_with_owner_labelled_foreign_key_is_rejected' (6011) panicked at crates/aithos-bundle/tests/c3_owner_line_edition.rs:280:10:
+a line labelled "owner" sealed to a stranger is not the owner line: ()
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::result::unwrap_failed
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/result.rs:1867:5
+   3: core::result::Result<T,E>::expect_err
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/result.rs:1298:22
+   4: c3_owner_line_edition::c3_edition_with_owner_labelled_foreign_key_is_rejected
+             at ./tests/c3_owner_line_edition.rs:280:10
+   5: c3_owner_line_edition::c3_edition_with_owner_labelled_foreign_key_is_rejected::{{closure}}
+             at ./tests/c3_owner_line_edition.rs:257:60
+   6: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+   7: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    c3_edition_owner_line_names_the_did_documents_owner_kex
+    c3_edition_with_no_owner_line_at_all_is_rejected
+    c3_edition_with_owner_labelled_foreign_key_is_rejected
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.18s
+     Running tests/c3_owner_line_edition.rs (/root/work/target-shared/debug/deps/c3_owner_line_edition-fd5c78f872ed4e71)
+error: test failed, to rerun pass `-p aithos-bundle --test c3_owner_line_edition`

@@ -1,0 +1,38 @@
+
+running 2 tests
+test b2_deep_chain_and_anchors ... ok
+test b2_folder_key_alone_derives_descendants ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test c1_fail_closed ... ok
+test c1_owner_and_grantee_lines ... ok
+test c2_wrap_roundtrip_and_cross_check ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 4 tests
+test a_smuggled_recipient_is_rejected ... ok
+test a_clean_rotation_is_accepted ... ok
+test survivor_set_is_old_minus_revoked ... ok
+test uplink_wrap_bytes_match_python ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test derivation_below_moved_node_is_stable ... ok
+test nodal_containment_verdicts ... ok
+test new_path_bindings_and_parent_wrap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling aithos-core v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.42s
+     Running tests/b2_derivation.rs (/root/work/target-shared/debug/deps/b2_derivation-353e7af56948cab0)
+     Running tests/c1_header_seal.rs (/root/work/target-shared/debug/deps/c1_header_seal-dd2dc2d766bb0340)
+     Running tests/g2_rotation.rs (/root/work/target-shared/debug/deps/g2_rotation-da8231095fab4918)
+     Running tests/g3_move.rs (/root/work/target-shared/debug/deps/g3_move-142ae24403b352e6)
