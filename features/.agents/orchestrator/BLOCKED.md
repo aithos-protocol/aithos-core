@@ -56,63 +56,6 @@ implemented, by construction.
 
 ---
 
-### 2026-08-04-r4 · c-headers · condition 1 — rewriting history versus re-verifying it
-
-- **Raised:** 2026-08-04T07:20:00Z, replacing the entry raised at 06:10 on the
-  same condition, which rested on a false premise
-- **Stage:** impact review complete, before `INTEGRATION`
-- **Evidence:** `runs/2026-08-04-c-headers-impact-review-v2.md` §4
-
-**Question.** `spec/00-overview.md:82-83` forbids rewriting historical
-manifests. `spec/00-overview.md:89-90` re-verifies pre-revision editions under
-the new I3. Which one wins when an old edition can only be made conformant by
-touching what the first clause protects?
-
-**What changed since the first version of this entry.** The blind re-run of the
-impact review, cut from a revision predating the first report so it could not
-read it, reached the opposite conclusion by reading the specification instead of
-grepping the code. It established, with verbatim citations, that:
-
-- the cost inside the repository is **nil** — three artefacts carry the old
-  literal, none is a serialised header, the one that is replayed does not fall;
-- bringing an old header into conformance is a **re-labelling, not a
-  re-sealing**: `kid` is not in the line AAD (`spec/00-overview.md:62-65`,
-  `spec/03-headers.md:141-145`), and I2 already provides for it — « All change
-  happens in storage (headers, ciphertext) » (`spec/00-overview.md:33-34`). One
-  edition suffices;
-- a legitimate change of the owner key adds **no** burden: `owner_kex` derives
-  from `S`, `S` never rotates (`spec/01-identity-and-keys.md:36-37`), and the
-  only exit is the identity epoch, which already requires « rotate +
-  re-encrypt nodes under the new tree, supersede old editions »
-  (`spec/10-threat-model.md:39-44`).
-
-The impasse the first entry described does not exist. What remains is this
-narrower and better-posed contradiction, which neither the orchestrator nor the
-first review saw.
-
-**A second composition point, recorded with it.** `spec/03-headers.md:36-40`
-does not date « the subject's DID document » against
-`spec/01-identity-and-keys.md:116-119` and `spec/00-overview.md:89-90`: after an
-identity epoch, which epoch's document does a verifier check an old edition
-against?
-
-**Options.**
-
-1. **The re-verification clause wins**, and a conformance re-labelling is an
-   explicit exception to the no-rewrite rule, named as such in §0.4. Cost: one
-   spec sentence; the no-rewrite rule stops being absolute.
-2. **The no-rewrite rule wins**, and pre-revision editions are verified against
-   the DID document of their own epoch. Cost: verifiers become epoch-aware,
-   which is the second point above and is larger than it looks.
-3. **Neither is amended and the composition is declared undefined for the
-   alpha**, with a follow-up. Cost: the question returns the day real data
-   exists, and it will return through an incident.
-
-**What the train did not do.** It did not choose, did not amend `spec/` a
-second time, and did not integrate into `main`.
-
----
-
 ### 2026-08-04-r2 · c-headers · condition 9 — disclosure gate on `CHDR-028`
 
 - **Raised:** 2026-08-04T05:45:00Z
@@ -174,6 +117,55 @@ option is legible.
 ```
 
 ## Resolved
+
+### Ruling — 2026-08-04, Mathieu Colla (owner) — condition 1, rewrite versus re-verify
+
+> The binding is over profiles, not over time. I3 reaches the edition a verifier
+> is presented with, and every future edition; it does not walk the chain
+> re-verifying superseded ones.
+
+Applied to `spec/00-overview.md` §0.4. The anti-escape clause is kept verbatim —
+it is the sentence that stops a rule being dodged by declaring an older profile,
+and the code already behaves that way. What is removed is the `therefore` that
+slid from profiles to time, and the sentence that followed it.
+
+Two reasons are written into the specification rather than left in a run report.
+What I3 protects is that the owner reaches the **current** state, and a
+superseded edition is not the state anyone reads from. And an edition already
+published **cannot** be brought into conformance: the remedy rewrites a header,
+which changes a signed byte, which the same section forbids. A rule no one can
+satisfy is not a tightening, it is a trap.
+
+The second composition point recorded beside this entry — that the specification
+never dates "the subject's DID document" across an identity epoch — is **not**
+settled by this ruling and stays as follow-up `chdr-i3-epoch-dating`.
+
+Gates after the edit: `ev-57bf5be1` and `ev-ae472548`, 1 feature / 4 rules /
+8 scenarios / 28 steps, unchanged.
+
+---
+
+### Standing ruling — 2026-08-04, Mathieu Colla (owner) — project stage
+
+> While the project has no users, backward compatibility is not a cost. Roles
+> must stop weighing it.
+
+Recorded in `features/AGENTS.md` § *Project stage*, which every feature role
+reads by the mandatory routing, and as `policy.backward_compatibility_required:
+false` in `QUEUE.yaml`, which the orchestrator reads.
+
+Deliberately made to expire: it stops being true the day a first edition is
+published outside this repository or the crate leaves alpha, whoever does that
+removes it in the same change, and a role finding it still there after either
+condition has passed must report it rather than obey it. A standing exemption
+with no end date becomes the next false statement.
+
+It does **not** exempt a change that breaks the repository's own tests, vectors
+or pinned digests, and it does not downgrade an obligation the implementation
+cannot satisfy: that is a defect at zero users as much as at a million.
+
+---
+
 
 ### Ruling — 2026-08-03, Mathieu Colla (owner) — condition 1
 

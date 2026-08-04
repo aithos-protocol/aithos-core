@@ -86,10 +86,19 @@ A profile gates the introduction of signed constructs; it never gates a verifica
 rule. The I3 obligation of §0.2 introduces no signed construct and changes no signed
 byte: it binds every `aithos-core` profile, historical ones included. A rule that
 bound only the newest profile would be escaped by publishing under an older one, and
-would bind nothing. Editions published before specification revision
-`2026-08-03-i3-authority` are therefore re-verified under it; this is the one
-retroactive tightening of this series, and it is stated here rather than hidden in a
-profile.
+would bind nothing.
+
+That binding is over profiles, not over time. A verifier applies I3 to the edition it
+is presented with — the head of the chain it is asked to verify — whatever profile
+that edition declares. It does not walk the chain re-verifying superseded editions
+under a rule that postdates them. Two reasons, and the second is the load-bearing
+one. First, what I3 protects is that the owner can reach the current state; a
+superseded edition is not the state anyone reads from. Second, an edition already
+published cannot be brought into conformance: the remedy is to rewrite its header,
+which changes a signed byte, and this section forbids rewriting historical manifests
+and entries. A rule no one can satisfy is not a tightening, it is a trap. The
+obligation therefore reaches every profile and every future edition, and stops at the
+boundary this specification itself draws around the past.
 
 The mandate plane separately supports two currently issuable semantic profiles:
 

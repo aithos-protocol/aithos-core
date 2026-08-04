@@ -2,6 +2,37 @@
 
 These instructions apply to all work started from `features/`.
 
+## Project stage — read this before costing anything as a breaking change
+
+**As of 2026-08-04, `aithos-core` is `0.1.0-alpha.1`. Nothing is deployed, no
+edition has been published by anyone, and there is no user whose data a change
+could invalidate.** Verified rather than assumed: `git ls-files` returns no
+serialised `header.json` or `hdr/*.json`, and the crate version is in
+`rust/Cargo.toml`.
+
+Two consequences, and they are meant to save you work:
+
+1. **Do not weigh backward compatibility.** A change that would break an
+   existing holder of data breaks nobody. Do not propose a migration path, a
+   grandfather clause, a legacy profile, or a compatibility shim to protect a
+   population that does not exist. Say plainly that the cost is nil today, and
+   move on.
+2. **Do not soften a correction to spare the past.** The right shape now is the
+   one you would choose with no history at all. The window in which that is free
+   is exactly this one, and it closes on its own.
+
+What still counts, and is not covered by the above: a change that breaks the
+**repository's own** tests, vectors, or pinned digests is a real cost and you
+cost it normally. And a rule the implementation cannot satisfy is a defect
+whatever the user count — an unsatisfiable obligation is a trap, not a
+tightening, and it stays a defect at zero users.
+
+**This section expires.** It stops being true the day a first edition is
+published outside this repository, or the crate leaves `alpha`. Whoever
+publishes that edition removes this section in the same change; until then any
+role may rely on it. If you find it still here while either condition has
+passed, that is itself a finding — report it rather than obey it.
+
 ## Branch isolation
 
 - Start each initial feature audit on

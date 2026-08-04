@@ -23,6 +23,14 @@ policy:
   run_branch_prefix: agents/train
   push_main: false
   disclosure_gate: true
+  # Project stage, 2026-08-04. Nothing is deployed and no edition has been
+  # published by anyone, so a change cannot invalidate any holder's data. Roles
+  # do not weigh backward compatibility, propose migration paths, or soften a
+  # correction to spare the past. Expires when a first edition is published
+  # outside this repository or the crate leaves alpha; whoever does that flips
+  # this key in the same change. Full statement in features/AGENTS.md.
+  backward_compatibility_required: false
+  backward_compatibility_expires_on: 'first published edition outside this repository, or leaving alpha'
 
 budget:
   # Panel size is refuters_per_finding x (number of P1/P2 findings), so this
