@@ -99,5 +99,7 @@ follow_ups:
   chdr-i3-a-identity: 'keys.kex is now the field that defines I3; an identity-epoch transition has an unstated header consequence and no migration path. TARGETED, not a reopening of a COMPLETE feature'
   chdr-i3-cb2-pinning: 'revising one promoted vector costs four levels of pinning across the CB2 slice; g2-rotation.json still freezes the pre-variant-A wire form. Subject of any future lot is the CB2 cascade, never an I3 side effect'
   chdr-i3-versioning: 'five public aithos-core::header signatures broke and the at-rest header format broke; rust/Cargo.toml still reads 0.1.0-alpha.1 and CHANGELOG Unreleased names neither (CHDR-033)'
-  chdr-i3-retention-vs-retroactivity: 'BLOCKING - spec 00-overview.md re-verifies pre-revision editions under I3, while spec 03-headers.md 3.5 retains old key versions that can never be made conformant. Owner ruling required'
+  chdr-i3-rewrite-vs-reverify: 'BLOCKING - spec 00-overview.md:82-83 forbids rewriting historical manifests while :89-90 re-verifies pre-revision editions. Replaces the retention-versus-retroactivity entry, which rested on a false reading of 03-headers 3.5. Owner ruling required'
+  chdr-i3-epoch-dating: 'spec/03-headers.md:36-40 does not date the subject DID document against 01-identity-and-keys.md:116-119 and 00-overview.md:89-90: after an identity epoch, which epoch document does a verifier check an old edition against'
+  chdr-i3-drop-retained-versions: 'spec/03-headers.md 3.5 drops old key versions under eager re-encryption; Header::rotate only inserts and no code path ever removes one. Spec permits, implementation does not do it'
   chdr-028: 'BLOCKING, embargo - routing requires naming the surface, which describes the mechanism. Held by the orchestrator; no target recorded here'

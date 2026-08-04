@@ -9,52 +9,60 @@ conditions". Anything absent from that list is not a reason to stop.
 
 ## Open
 
-### 2026-08-04-r3 · c-headers · condition 1 — retention versus retroactivity
+### 2026-08-04-r4 · c-headers · condition 1 — rewriting history versus re-verifying it
 
-- **Raised:** 2026-08-04T06:10:00Z
+- **Raised:** 2026-08-04T07:20:00Z, replacing the entry raised at 06:10 on the
+  same condition, which rested on a false premise
 - **Stage:** impact review complete, before `INTEGRATION`
-- **Evidence:** `runs/2026-08-04-c-headers-impact-review.md` §C.4, §C.5
+- **Evidence:** `runs/2026-08-04-c-headers-impact-review-v2.md` §4
 
-**Question.** Can an edition written before the 2026-08-03 revision ever be
-made I3-conformant without violating the retention rule the same specification
-imposes?
+**Question.** `spec/00-overview.md:82-83` forbids rewriting historical
+manifests. `spec/00-overview.md:89-90` re-verifies pre-revision editions under
+the new I3. Which one wins when an old edition can only be made conformant by
+touching what the first clause protects?
 
-The impact review established the impasse by reading, and neither the corrector
-nor the reviewer had instructed it. `Header::validate` loops over **every**
-`key_versions` entry. A header written by an older binary carries the literal
-`"owner-kex"` in every one of them. Rotation adds a conformant version but
-`spec/03-headers.md` §3.5 **retains** the old ones, which stay non-conformant
-for ever. The only conformant path is to rewrite every key version of every
-header — which retention forbids. The refusal is keyless, so the data holder
-cannot present a key to work around it, and `validate_as_owner` is stricter,
-not more permissive.
+**What changed since the first version of this entry.** The blind re-run of the
+impact review, cut from a revision predating the first report so it could not
+read it, reached the opposite conclusion by reading the specification instead of
+grepping the code. It established, with verbatim citations, that:
 
-The same impasse hits a legitimate `owner_kex` epoch transition, which is not a
-migration problem and does not go away with time.
+- the cost inside the repository is **nil** — three artefacts carry the old
+  literal, none is a serialised header, the one that is replayed does not fall;
+- bringing an old header into conformance is a **re-labelling, not a
+  re-sealing**: `kid` is not in the line AAD (`spec/00-overview.md:62-65`,
+  `spec/03-headers.md:141-145`), and I2 already provides for it — « All change
+  happens in storage (headers, ciphertext) » (`spec/00-overview.md:33-34`). One
+  edition suffices;
+- a legitimate change of the owner key adds **no** burden: `owner_kex` derives
+  from `S`, `S` never rotates (`spec/01-identity-and-keys.md:36-37`), and the
+  only exit is the identity epoch, which already requires « rotate +
+  re-encrypt nodes under the new tree, supersede old editions »
+  (`spec/10-threat-model.md:39-44`).
 
-Practical scope today is limited: `aithos-core` is `0.1.0-alpha.1` and no
-tracked bundle, fixture or frozen package carries a header in the old format.
-The question is what the specification says, not what today's corpus contains.
+The impasse the first entry described does not exist. What remains is this
+narrower and better-posed contradiction, which neither the orchestrator nor the
+first review saw.
+
+**A second composition point, recorded with it.** `spec/03-headers.md:36-40`
+does not date « the subject's DID document » against
+`spec/01-identity-and-keys.md:116-119` and `spec/00-overview.md:89-90`: after an
+identity epoch, which epoch's document does a verifier check an old edition
+against?
 
 **Options.**
 
-1. **Bound the obligation to the current key version.** `validate` checks the
-   latest version only; retained versions are exempt by construction. Cost: an
-   edition can retain a version whose owner line is absent, which is precisely
-   what I3 was strengthened to forbid.
-2. **Grandfather by revision.** Editions published before the revision are
-   verified under the old I3; the obligation binds new issuance only. Cost:
-   this is the `draft.3` profile gating the owner rejected on 2026-08-03,
-   returning through the door rather than the window.
-3. **Allow a conformance rewrite as an explicit, signed operation** that
-   rewrites retained versions and records why, as a bounded exception to §3.5.
-   Cost: a new normative operation, a spec section, and a vector.
-4. **Accept the impasse for the alpha** and revisit before any data exists.
-   Cost: the epoch-transition case remains unsolved on its own terms.
+1. **The re-verification clause wins**, and a conformance re-labelling is an
+   explicit exception to the no-rewrite rule, named as such in §0.4. Cost: one
+   spec sentence; the no-rewrite rule stops being absolute.
+2. **The no-rewrite rule wins**, and pre-revision editions are verified against
+   the DID document of their own epoch. Cost: verifiers become epoch-aware,
+   which is the second point above and is larger than it looks.
+3. **Neither is amended and the composition is declared undefined for the
+   alpha**, with a follow-up. Cost: the question returns the day real data
+   exists, and it will return through an incident.
 
-**What the train did not do.** It did not choose. It did not amend `spec/` a
-second time. It did not integrate into `main` — that gesture is the owner's in
-any case.
+**What the train did not do.** It did not choose, did not amend `spec/` a
+second time, and did not integrate into `main`.
 
 ---
 

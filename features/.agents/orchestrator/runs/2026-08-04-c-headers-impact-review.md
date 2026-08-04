@@ -1,3 +1,25 @@
+> **`SUPERSEDED` — 2026-08-04.** Ce rapport est conservé, non corrigé et non
+> effacé, parce qu'il est la seule preuve dure que le fil peut se tromper avec
+> assurance, et que l'effacer supprimerait le moyen de mesurer si le correctif
+> de méthode fonctionne.
+>
+> **Ce qui est faux.** §C.4 et §C.5 affirment qu'aucun chemin de migration
+> n'existe et que la rétention de `spec/03-headers.md` §3.5 est inconditionnelle.
+> Les deux sont contredits par le texte de la spécification elle-même.
+>
+> **Pourquoi.** Les dix axes de recherche `R1`–`R10` de ce rapport prennent tous
+> `rust/**`, `vectors/` et `cucumber.rs` pour source ; **aucun ne prend `spec/`**.
+> Le rôle a prouvé une absence dans le code par `git grep`, puis l'a énoncée du
+> protocole. Le rapport porte 57 affirmations d'absence et une seule dit sur quoi
+> elle a cherché. C'est la faute même que l'audit traque : une affirmation prouvée
+> étroitement, énoncée largement. La responsabilité première est celle de
+> l'orchestrateur, dont le brief faisait de `spec/` un index de citations et non
+> une source à lire.
+>
+> **Remplacé par** le rapport de la relance aveugle, cut depuis `c547ccd` —
+> antérieur à ce fichier — de sorte que le nouveau rôle ne peut pas le lire.
+> La comparaison des deux est le test du correctif de méthode.
+
 # Revue d'impact Gherkin globale — `c-headers`, cycle « autorité I3 »
 
 ## Identité du run
