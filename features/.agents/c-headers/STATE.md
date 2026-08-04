@@ -1,6 +1,6 @@
 ---
 feature: c-headers
-status: REVIEW_REQUESTED
+status: REVIEW_ACCEPTED
 mode: review
 round: 2
 base_main: 2f2d55d
@@ -11,7 +11,7 @@ assigned_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-019, 
 open_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025, CHDR-028, CHDR-029, CHDR-030]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-04T09:20:00+00:00
+last_transition: 2026-08-04T10:05:00+00:00
 ---
 
 # Domain state — `c-headers`
@@ -19,13 +19,17 @@ last_transition: 2026-08-04T09:20:00+00:00
 > **Read this section first. Everything below it is round 1 and is kept for the
 > record, not for instruction.** Where the two disagree, this section wins.
 
-## Round 2, lot A — `REVIEW_REQUESTED`, 2026-08-04
+## Round 2, lot A — `REVIEW_ACCEPTED`, 2026-08-04
 
 | Field | Value |
 |---|---|
-| Status | `REVIEW_REQUESTED`. Lot A is `IMPLEMENTED` on **eight** findings — `CHDR-001`, `-002`, `-009`, `-013`, `-014`, `-019`, `-021`, `-025`. None is `VERIFIED`: only the independent reviewer may raise them |
+| Status | `REVIEW_ACCEPTED`. All **eight** assigned findings are **`VERIFIED`** by the independent reviewer — `CHDR-001`, `-002`, `-009`, `-013`, `-014`, `-019`, `-021`, `-025`. No `NOT_VERIFIED`, no `REGRESSION`, rejection counter at 0/3 |
+| Review report | `auditor/runs/2026-08-04-review-lot-a.md`. Pass A on an out-of-tree extract of `c1f8380` with no `.git`, without the corrector's run report and without the run journal; Pass B opened only once every requested transcript was delivered, and **moved no verdict** |
 | Candidate revision | `5905bec` on `codex/fix-c-headers-lot-a`. Two commits: `03283b0` the corrector's, `5905bec` the orchestrator's state and journal |
-| Corrector run report | `corrector/runs/2026-08-04-correction-lot-a.md` — **withheld from the reviewer** until its behavioural verdict is frozen (`../PROCESS.md`, § *Material isolation of Pass A*) |
+| Corrector run report | `corrector/runs/2026-08-04-correction-lot-a.md` — withheld from the reviewer until its behavioural verdict was frozen (`../PROCESS.md`, § *Material isolation of Pass A*) |
+| Reviewer's mutants | thirteen more, all run by the orchestrator: `M1` `ev-9ba93af7` · `M2` `ev-39f02b30` · `M3` `ev-c16f1a9a` + `ev-2e427d6e` · `M4` `ev-a1f966ca` · `M5` `ev-1b889900` · `M6` `ev-b3ccaaf3` · `M7` `ev-c78772c4` · `M8` `ev-16a836a9` · `M9` `ev-11dee753` · `M10` `ev-dce43f1c` + `ev-4ed2d6f3` · `M11` `ev-ad4db6a1` + `ev-34e698d8` · `M12` `ev-ec9412a7` + `ev-debade53` + `ev-cbce8aa0`. Baselines `ev-14592971`, `ev-1335c8f1`, `ev-1a19fdf4` |
+| New findings raised by the review | `CHDR-037`, `-038`, `-039`, **`-040` (P2, against this train's own process)**, `-042`. `CHDR-041` is **reserved and not opened**. Nothing embargoed |
+| Three acceptance conditions, now the orchestrator's to carry | (1) the `CHDR-021` surviving-mutant paragraph survives closure **verbatim**, with `ev-ec9412a7` and `ev-cbce8aa0` appended as a pair — green where this feature's scenarios look, red where the vectors look; (2) the audit's §6 mutant for `CHDR-019` is corrected before republication and sited at `c1_fail_closed`, not at scenario 7; (3) the markers are **rewritten, not stripped** |
 | `CHDR-016` | out of lot A. Re-routed, not closed and not withdrawn — see below |
 | Method | the lot is test-semantics: no production behaviour was wrong, what was missing was proof. So no assertion is RED against unmutated production code, and each is instead proved by a **named mutant** under which the old assertion is green and the new one red |
 | Mutants run | sixteen, across two waves, all by the orchestrator, all journalled in `../orchestrator/runs/2026-08-04-r6/ledger.jsonl` with both halves where the base fixture can express the mutation |
