@@ -9,6 +9,53 @@ conditions". Anything absent from that list is not a reason to stop.
 
 ## Open
 
+### 2026-08-04-r5 · spec · condition 9 — disclosure gate on `SC-12`, and a split on `SC-05`
+
+- **Raised:** 2026-08-04T07:40:00Z
+- **Stage:** specification consistency pass, outside any feature cycle
+- **Evidence:** `docs/SPEC-CONSISTENCY-2026-08-04.md`; ledger `2026-08-04-r5`
+
+**Question.** The consistency pass found thirteen defects in the specification.
+One of them, and half of a second, describe exploitable weaknesses for which no
+fix exists. What is published, and when?
+
+- **`SC-12`** — I4, contradiction, **both sides implemented**. The document
+  carries its identifier, a neutral title, and the three normative sections
+  only; **no code site is named**. Its full statement is outside the
+  repository. Both sides being implemented is what makes it heavy: the
+  mitigation is correctly coded for the scoped case, and the bare case
+  short-circuits it. The pass names the real obstacle to hardening: it would
+  retroactively invalidate entries already published, and
+  `spec/00-overview.md:88-92` allows exactly **one** retroactive tightening in
+  this series — the one already spent on I3.
+- **`SC-05`** — the pass **split** it rather than withholding it whole. The
+  specification-against-specification half is published in full: both sides sit
+  in the same file 1 550 lines apart, withholding it would protect nothing and
+  would deny the train a free correction. The code-side half — which says
+  whether the gap is permissive — is held out of repository.
+
+**What the pass did on its own, and it is worth recording.** Asked to check
+whether its own text leaked, it found three further routes it had not
+anticipated, including an arbitration in another finding that pointed at a
+131-line file, and closed them. The barrier held because a role was asked to
+attack its own output, not because an instruction said so.
+
+**Options.**
+
+1. **Publish both in full now.** The train can then assign them. Cost: two
+   exploitable paths become public before a fix exists.
+2. **Publish `SC-05`'s code half, hold `SC-12`.** The permissive gap is narrow
+   and half-public already; the I4 contradiction is not.
+3. **Hold both until fixed**, and drive their correction from the
+   out-of-repository text. Cost: two of thirteen findings stay unassignable by
+   any role that reads only the repository.
+
+**What the train did not do.** It did not publish either statement, did not
+assign them, and did not amend `spec/` — no arbitration from this pass is
+implemented, by construction.
+
+---
+
 ### 2026-08-04-r4 · c-headers · condition 1 — rewriting history versus re-verifying it
 
 - **Raised:** 2026-08-04T07:20:00Z, replacing the entry raised at 06:10 on the

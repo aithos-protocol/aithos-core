@@ -103,3 +103,22 @@ follow_ups:
   chdr-i3-epoch-dating: 'spec/03-headers.md:36-40 does not date the subject DID document against 01-identity-and-keys.md:116-119 and 00-overview.md:89-90: after an identity epoch, which epoch document does a verifier check an old edition against'
   chdr-i3-drop-retained-versions: 'spec/03-headers.md 3.5 drops old key versions under eager re-encryption; Header::rotate only inserts and no code path ever removes one. Spec permits, implementation does not do it'
   chdr-028: 'BLOCKING, embargo - routing requires naming the surface, which describes the mechanism. Held by the orchestrator; no target recorded here'
+
+  # Spec consistency pass, 2026-08-04. Detail and proposed arbitrations in
+  # docs/SPEC-CONSISTENCY-2026-08-04.md. Every arbitration is PROPOSED, NOT
+  # IMPLEMENTED, and its feasibility has not been checked: a later correction
+  # cycle owns that. 13 findings, 6 contradictions, 3 dead letters, 3
+  # unreachable statements.
+  spec-cons-01-gamma-layout: 'contradiction, both implemented - canonical location of the Gamma log, 02.3 against 07.1. Breaks a2-did.json and the signed bytes of every published did.json'
+  spec-cons-02-aad-purposes: 'contradiction, textual - the AAD purpose inventory of 00.3 omits purposes the code uses'
+  spec-cons-03-structure-vault-kinds: 'dead letter, I5 - the closed registry of 07.9.2 has no kind for structure or vault-config while 04.5.1 defines those families and 04.13 requires logging them. The code fills the gap with an undeclared payload key. H2 roots hash each line JCS, so no rewrite is possible'
+  spec-cons-04-log-reads: 'contradiction, both implemented, I5 - log_reads parsed and mitigated on both sides'
+  spec-cons-05-max-sessions: 'contradiction, spec against spec, published in full; the code-side gap is held out of repository under the disclosure gate'
+  spec-cons-06-exactly-n-rotation: 'UNREACHABLE, I3 - 03.4:109 admits recipients absent from the previous version in the exactly-N case; check_rotation rejects every kid absent from prev without exception, so the 03.4:92-95 fallback cannot be taken. No vector covers it'
+  spec-cons-07-rotation-authority: 'dead letter, I4 - 05.5:101 requires rejecting a rotation that drops a line the signer had no authority over. The signer does not enter check_rotation and no verifier calls it'
+  spec-cons-08-uplink-author: 'UNREACHABLE, I4 - 03.4:112 requires rejecting an up-link wrap whose author does not hold P, but the Wrap struct carries neither author nor signature. The criterion is not in the wire. The vector required by 09.2:55 is absent'
+  spec-cons-09-dead-letter-3: 'dead letter - see the document'
+  spec-cons-10-contradiction-6: 'contradiction, textual - see the document'
+  spec-cons-11-vault-header-path: 'UNREACHABLE, I3 - 02.3, 02.1 and 03.1 place the vault header outside the prefix is_header_file requires, so verify_pinned_headers never parses it. A spec-conformant implementation produces an edition whose pinned header escapes I3'
+  spec-cons-12: 'BLOCKING, embargo - identifier and neutral title only. I4, contradiction, both implemented. Held by the orchestrator'
+  spec-cons-13-create-verb: 'contradiction, textual - there is no wire verb create, against the K1.2 tables'
