@@ -1,0 +1,28 @@
+FEATURE TRAIN — état de la queue
+
+  ✓ c-headers                  COMPLETE
+    d-bundle                   AUDIT_INITIAL
+    h-merkle                   UNBOOTSTRAPPED
+    e-mandates                 UNBOOTSTRAPPED
+    e-mandate-sections         UNBOOTSTRAPPED
+    n-structural-mutations     UNBOOTSTRAPPED
+    i-concurrency              UNBOOTSTRAPPED
+    h2-gamma-roots             UNBOOTSTRAPPED
+    g-revocation               UNBOOTSTRAPPED
+    l-delegated-writes         UNBOOTSTRAPPED
+    m-delegated-editions       UNBOOTSTRAPPED
+    o-connector-classes-vault  UNBOOTSTRAPPED
+    g-plus-obligations         UNBOOTSTRAPPED
+    f-plus-constraints         UNBOOTSTRAPPED
+    f-gamma                    UNBOOTSTRAPPED
+    k-integration              UNBOOTSTRAPPED
+    g4-client-surfaces         READY
+
+  hors queue, terminées : a-identity, b-derivation
+
+PROCHAINE ACTION
+  feature : d-bundle
+  statut  : AUDIT_INITIAL   round 1
+  rôle    : A3 — Pass B et intégration
+  tâche   : réconcilier, passe d'état partagé, audit public, marqueurs
+  ouverts : DBND-101, DBND-102, DBND-201, DBND-202, DBND-301, DBND-302, DBND-401, DBND-402, DBND-501, DBND-502, DBND-503, DBND-504, DBND-505, DBND-601, DBND-603, DBND-701, DBND-702, DBND-703, DBND-704, DBND-705, DBND-706, DBND-707, DBND-708, DBND-709, DBND-710
