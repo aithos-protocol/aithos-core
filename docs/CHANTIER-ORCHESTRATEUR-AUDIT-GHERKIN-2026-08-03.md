@@ -304,7 +304,15 @@ clone.
   sens du PROCESS ; elle avance d'un cycle accepté à la fois ;
 - branches par feature : `codex/audit-<f>` et `codex/fix-<f>-<scope>`, comme
   aujourd'hui ;
-- **le fil ne pousse jamais sur `main`**. Il pousse la branche de run et les
+- ~~**le fil ne pousse jamais sur `main`**~~ — **révisé le 2026-08-04 par le
+  propriétaire** : le fil intègre un cycle accepté dans `main` et le pousse.
+  Motif identique à `policy.backward_compatibility_required` : rien n'est
+  déployé, aucune édition n'a été publiée, donc une mauvaise intégration coûte
+  un `revert` et rien d'autre. C'était le seul endroit où un humain regardait
+  avant que le travail n'atterrisse sur la branche principale, et cette relecture
+  est abandonnée en connaissance de cause. Expire à la même condition —
+  première édition publiée hors du dépôt, ou sortie de l'alpha. Il pousse aussi
+  la branche de run et les
   branches de feature. La promotion vers `main` reste ton geste ;
 - push après chaque cycle `COMPLETE` → l'état survit à la mort du conteneur ;
 - au réveil : tu lis `BLOCKED.md`, tu regardes la branche de run, tu promeus ou

@@ -21,7 +21,15 @@ policy:
   # therefore a write gate, not a publication gate.
   durability_remote: origin
   run_branch_prefix: agents/train
-  push_main: false
+  # Changed from false on 2026-08-04 by the owner. The train integrates an
+  # accepted cycle into main and pushes it, instead of stopping for a human
+  # gesture. Same reasoning as backward_compatibility_required below: nothing is
+  # deployed and no edition has been published, so a bad integration costs a
+  # revert and nothing else. It is the one place a human looked before work
+  # landed on the main branch, and that review is now given up knowingly.
+  # Expires on the same condition, and whoever flips that one flips this one.
+  push_main: true
+  push_main_expires_on: 'first published edition outside this repository, or leaving alpha'
   disclosure_gate: true
   # Project stage, 2026-08-04. Nothing is deployed and no edition has been
   # published by anyone, so a change cannot invalidate any holder's data. Roles

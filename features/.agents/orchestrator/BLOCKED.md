@@ -118,6 +118,34 @@ option is legible.
 
 ## Resolved
 
+### Standing ruling — 2026-08-04, Mathieu Colla (owner) — the train may push `main`
+
+> « On peut corriger aussi le "Ne pousse jamais main", pour l'instant c'est OK. »
+
+Taken as a change of rule, not as a one-off permission, and therefore applied
+everywhere the rule was written rather than only where it was convenient:
+`QUEUE.yaml` `policy.push_main: true`, the chantier §8, and the `Prohibitions`
+section of the AM-1..5 proposal, which had not yet been applied to `PROCESS.md`
+and would otherwise have carried the opposite text into it.
+
+Three documents said the same thing. Flipping the flag and leaving two of them
+stating the reverse would have recreated, in the governance layer, exactly the
+defect this session spent its day hunting in the protocol layer: a written rule
+the implementation does not follow.
+
+**What is given up, stated plainly.** The integration gesture was the one point
+where a human looked before work landed on the main branch. That review is now
+abandoned. The compensations are that the train still stops on every blocking
+condition, that the process warden can still invalidate a cycle, and that at
+this stage a bad integration costs a `revert` and nothing else.
+
+**It expires** on the same condition as the project-stage ruling — first edition
+published outside this repository, or leaving alpha — and whoever flips one
+flips the other in the same change.
+
+---
+
+
 ### Ruling — 2026-08-04, Mathieu Colla (owner) — condition 1, rewrite versus re-verify
 
 > The binding is over profiles, not over time. I3 reaches the edition a verifier

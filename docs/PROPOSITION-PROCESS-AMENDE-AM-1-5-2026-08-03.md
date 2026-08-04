@@ -480,10 +480,19 @@ writes, not when a human reviews.
 
 ### Prohibitions
 
-The orchestrator may not reopen a feature already `COMPLETE`, may not push
-`main`, may not choose a semantics under `DECISION_REQUIRED`, may not widen a
-corrector's assigned scope, and may not run a cycle on a repository whose
-recorded `main` base it did not itself verify.
+The orchestrator may not reopen a feature already `COMPLETE`, may not choose a
+semantics under `DECISION_REQUIRED`, may not widen a corrector's assigned scope,
+and may not run a cycle on a repository whose recorded `main` base it did not
+itself verify.
+
+*Revised 2026-08-04 by the owner, before this proposal was ever applied to
+`PROCESS.md`: « may not push `main` » is struck. The train integrates an accepted
+cycle into `main` and pushes it, gated by `policy.push_main` in `QUEUE.yaml`.
+Nothing is deployed and no edition has been published, so a bad integration costs
+a revert. This was the one place a human looked before work landed on the main
+branch; the review is given up knowingly and the gate expires on the first
+published edition outside this repository, or on leaving alpha. Whoever flips
+`policy.backward_compatibility_required` flips this one in the same change.*
 
 ## Evidence statuses
 
