@@ -34,7 +34,7 @@ last_transition: 2026-08-04T05:45:00+00:00
 | Public audit | `docs/audits/features/c-headers.md` — written by run `2026-08-03-r1`, completed by `-r2` after the owner lifted the embargo. Every finding is stated in full |
 | Gherkin markers | 6 scenarios carry markers for unresolved findings; gate re-run after each marker edit is green and unchanged at 1/4/8/28 (`ev-c30fa81e`, then `ev-91717a6d`) |
 | Recorded follow-up owed | `TARGETED` from the accepted b-derivation round-2 impact review (`../orchestrator/QUEUE.yaml:61-62`, `../orchestrator/runs/2026-08-03-b-derivation-impact-review-02.md:494`): the independent-generation claim of `vectors/c1-header-seal.json` and `rust/crates/aithos-core/tests/c1_header_seal.rs:2-3`. Evidence class, not behaviour |
-| Next role | the **independent reviewer**, via `auditor/audit-c-headers/SKILL.md` in review mode. It receives an extract of the candidate without `.git` and **without the corrector's run report** until its behavioural verdict is frozen (`PROCESS.md`, § *Material isolation of Pass A*). Two debts are named for it: the markers at `features/c-headers.feature:47-55` still read `DECISION_REQUIRED … neither is assigned to a corrector`, which the decision of 2026-08-03 made false; and the marker block also carries lot A identifiers, so the edit is not a simple deletion |
+| Next role — superseded | the **independent reviewer**, via `auditor/audit-c-headers/SKILL.md` in review mode. It receives an extract of the candidate without `.git` and **without the corrector's run report** until its behavioural verdict is frozen (`PROCESS.md`, § *Material isolation of Pass A*). Two debts are named for it: the markers at `features/c-headers.feature:47-55` still read `DECISION_REQUIRED … neither is assigned to a corrector`, which the decision of 2026-08-03 made false; and the marker block also carries lot A identifiers, so the edit is not a simple deletion |
 | Blocked | no. All four conditions raised by runs `-r1` and `-r2` are resolved in `../orchestrator/BLOCKED.md`. The gap noted on 2026-08-03 stands and is recorded for the train's own backlog: `train-status.py` rejects a `blocked` entry on any status other than `BLOCKED`, so a feature that proceeds while some of its findings await a human ruling has no representation in the frontmatter |
 
 ## Inputs
@@ -63,3 +63,24 @@ The yardstick branch `codex/audit-c-headers` and any material it carries are
 Pass B inputs only. If it is opened before Pass A is frozen, the review unit is
 contaminated and must be restarted per `../PROCESS.md`, section "Pass A —
 current code, history-blind".
+
+## Awaiting the owner — the fil stops here by design
+
+The cycle has reached the one step no agent role performs. `PROCESS.md`
+§ *Impact review* and the chantier both reserve integration into local `main` to
+the human owner, and the fil never pushes `main`. `train.py` agrees:
+`IMPACT_REVIEW_REQUESTED` leads only to `INTEGRATION` or `BLOCKED`.
+
+**The gesture.** Merge `codex/fix-c-headers-i3-authority` into `main` and push
+it. Fourteen commits ahead of `origin/main`, which still sits at `a2087f2`.
+
+**A structural gap found on trying to continue.** Lot A — the nine
+test-semantics findings still open — cannot be started from here. The state
+machine models **one** correction per round: `AUDIT_INITIAL` →
+`CORRECTION_REQUESTED` → `REVIEW_REQUESTED` → `REVIEW_ACCEPTED` →
+`IMPACT_REVIEW_REQUESTED` → `INTEGRATION` → `COMPLETE`, and `COMPLETE` is
+terminal with reopening forbidden. A feature whose audit yields findings in two
+lots has no representation: the second lot must become a round 2 opened from an
+integrated `main`, which is the `b-derivation` pattern. That is workable, but it
+means an audit cannot hand a corrector two independent lots without a human
+integration between them. Recorded rather than worked around.
