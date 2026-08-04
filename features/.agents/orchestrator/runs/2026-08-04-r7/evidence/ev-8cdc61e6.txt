@@ -1,0 +1,27 @@
+FEATURE TRAIN — état de la queue
+
+  ✓ c-headers                  COMPLETE
+    d-bundle                   READY
+    h-merkle                   UNBOOTSTRAPPED
+    e-mandates                 UNBOOTSTRAPPED
+    e-mandate-sections         UNBOOTSTRAPPED
+    n-structural-mutations     UNBOOTSTRAPPED
+    i-concurrency              UNBOOTSTRAPPED
+    h2-gamma-roots             UNBOOTSTRAPPED
+    g-revocation               UNBOOTSTRAPPED
+    l-delegated-writes         UNBOOTSTRAPPED
+    m-delegated-editions       UNBOOTSTRAPPED
+    o-connector-classes-vault  UNBOOTSTRAPPED
+    g-plus-obligations         UNBOOTSTRAPPED
+    f-plus-constraints         UNBOOTSTRAPPED
+    f-gamma                    UNBOOTSTRAPPED
+    k-integration              UNBOOTSTRAPPED
+    g4-client-surfaces         READY
+
+  hors queue, terminées : a-identity, b-derivation
+
+PROCHAINE ACTION
+  feature : d-bundle
+  statut  : READY   round 0
+  rôle    : I1 puis A2 — inventaire et Pass A
+  tâche   : geler la révision, découper en unités de revue, tracer à l'aveugle

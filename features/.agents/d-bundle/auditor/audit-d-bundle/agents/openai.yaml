@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit D — Bundle and editions"
+  short_description: "Audit d-bundle.feature semantic proof"
+  default_prompt: "Use $audit-d-bundle to run the mode requested by features/.agents/d-bundle/STATE.md."

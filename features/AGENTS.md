@@ -102,6 +102,13 @@ For `g4-client-surfaces.feature`:
 - correction:
   `.agents/g4-client-surfaces/corrector/correct-g4-client-surfaces/SKILL.md`.
 
+For `d-bundle.feature`:
+
+- audit or review:
+  `.agents/d-bundle/auditor/audit-d-bundle/SKILL.md`;
+- correction:
+  `.agents/d-bundle/corrector/correct-d-bundle/SKILL.md`.
+
 ## Role boundaries
 
 - The auditor inspects, classifies, documents, and reviews. It does not correct

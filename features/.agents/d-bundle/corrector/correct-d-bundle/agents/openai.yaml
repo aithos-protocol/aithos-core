@@ -1,0 +1,4 @@
+interface:
+  display_name: "Correct D — Bundle and editions"
+  short_description: "Implement assigned d-bundle findings"
+  default_prompt: "Use $correct-d-bundle to implement only the findings assigned by features/.agents/d-bundle/STATE.md."
