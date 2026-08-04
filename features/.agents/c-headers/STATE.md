@@ -7,7 +7,7 @@ base_main: 2f2d55d
 audit_revision: a2087f2392389fb17e0bc0ba9e20a164d53766d8
 candidate_revision: 9dc58895b5c822d13ea5daf8c25302ccd657b668
 branch: codex/fix-c-headers-lot-a
-assigned_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025]
+assigned_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-019, CHDR-021, CHDR-025]
 open_findings: [CHDR-001, CHDR-002, CHDR-009, CHDR-013, CHDR-014, CHDR-016, CHDR-019, CHDR-021, CHDR-025, CHDR-028, CHDR-029, CHDR-030]
 rejection_count: {}
 blocked: null
@@ -114,6 +114,17 @@ performs the merge; no agent role does.
 **Why lot A comes second and not first.** The fixtures it edits migrated to the
 new signature during lot B. Doing it first would have opened `cucumber.rs`
 twice.
+
+**`CHDR-016` left lot A, by orchestrator decision, 2026-08-04.** It is removed
+from `assigned_findings` above; the count is eight, not nine. Its statement —
+*the grant path actually taken in production implements neither step 1 nor
+step 3 of §3.3* — is a production-behaviour finding about the grant surface of
+the bundle layer, not a Gherkin-assertion finding. Correcting it inside lot A
+would have meant editing production code in `g-revocation` and `d-bundle`
+territory from a branch whose scope is this feature's test semantics: blocking
+condition 8, *scope*. It is recorded in `../orchestrator/QUEUE.yaml` as a
+follow-up owned by those two features. It is **not** closed and **not**
+withdrawn: it is re-routed, and the feature that inherits it owes it a lot.
 
 **One thing the corrector must be told, and it is new.** `features/AGENTS.md`
 now carries the § *Project stage* section: nothing is deployed, no edition has
