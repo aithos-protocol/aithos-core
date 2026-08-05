@@ -1,0 +1,13 @@
+diff --git a/rust/crates/aithos-bundle/src/log.rs b/rust/crates/aithos-bundle/src/log.rs
+index 60d379f..cb7029f 100644
+--- a/rust/crates/aithos-bundle/src/log.rs
++++ b/rust/crates/aithos-bundle/src/log.rs
+@@ -198,7 +198,7 @@ impl<S: Store> Bundle<S> {
+     ) -> Result<()> {
+         let prev = self.gamma_head()?;
+         let spec = match node.zone {
+-            Zone::Public => EntrySpec {
++            Zone::Public | Zone::Self_ => EntrySpec {
+                 id: self.next_gamma_id(ent),
+                 prev,
+                 prevs: None,

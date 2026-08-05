@@ -1,0 +1,26 @@
+diff --git a/rust/crates/aithos-bundle/src/bundle.rs b/rust/crates/aithos-bundle/src/bundle.rs
+index 15de876..00e492d 100644
+--- a/rust/crates/aithos-bundle/src/bundle.rs
++++ b/rust/crates/aithos-bundle/src/bundle.rs
+@@ -1601,10 +1601,17 @@ impl<S: Store> Bundle<S> {
+                     target = Some(f.sid.clone());
+                 }
+                 let sid = target.ok_or_else(|| Error::InvalidPath(display_path.to_owned()))?;
+-                for f in &mut index.folders {
+-                    if f.sid == sid {
+-                        f.name = new_name.to_owned();
+-                    }
++                let alias = index
++                    .folders
++                    .iter()
++                    .find(|f| f.sid == sid)
++                    .map(|f| crate::bundle::FolderRow {
++                        sid: f.sid.clone(),
++                        name: new_name.to_owned(),
++                        parent_sid: f.parent_sid.clone(),
++                    });
++                if let Some(alias) = alias {
++                    index.folders.push(alias);
+                 }
+                 self.put_json(&index_path, &index)
+             }

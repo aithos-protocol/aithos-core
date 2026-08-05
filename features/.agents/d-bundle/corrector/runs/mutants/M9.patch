@@ -1,0 +1,15 @@
+diff --git a/rust/crates/aithos-bundle/src/bundle.rs b/rust/crates/aithos-bundle/src/bundle.rs
+index 15de876..e8eb30a 100644
+--- a/rust/crates/aithos-bundle/src/bundle.rs
++++ b/rust/crates/aithos-bundle/src/bundle.rs
+@@ -707,7 +707,9 @@ impl<S: Store> Bundle<S> {
+             let Ok(header) = serde_json::from_slice::<Header>(&bytes) else {
+                 continue;
+             };
+-            let (v, base) = header.open_owner_latest(&self.did, owner_kex)?;
++            let (v, base) = header
++                .open_owner_latest(&self.did, owner_kex)
++                .unwrap_or((KV, [0u8; 32]));
+             let rest = NodePath {
+                 zone,
+                 folders: folders[depth..].to_vec(),

@@ -1,0 +1,24 @@
+diff --git a/rust/crates/aithos-bundle/src/session.rs b/rust/crates/aithos-bundle/src/session.rs
+index 3c67413..7730266 100644
+--- a/rust/crates/aithos-bundle/src/session.rs
++++ b/rust/crates/aithos-bundle/src/session.rs
+@@ -207,14 +207,16 @@ impl<'a> LocalSession<'a> {
+     }
+ 
+     pub fn header_capability(&self) -> Result<HeaderWrappingCapability<'a>> {
++        static SUBSTITUTE: std::sync::OnceLock<StaticSecret> = std::sync::OnceLock::new();
+         Ok(HeaderWrappingCapability {
+             binding: SessionBinding {
+                 id: self.id,
+                 class: CapabilityClass::Header,
+             },
+-            owner_kex: self.owner_kex.ok_or_else(|| {
+-                Error::InvalidSession("actor has no owner header capability".into())
+-            })?,
++            owner_kex: match self.owner_kex {
++                Some(owner_kex) => owner_kex,
++                None => SUBSTITUTE.get_or_init(|| StaticSecret::from([0u8; 32])),
++            },
+         })
+     }
+ 

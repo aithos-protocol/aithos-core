@@ -305,7 +305,30 @@ struct CoreOwnerObservation {
     operation: String,
     outcome: String,
     gamma_delta: usize,
+    /// DBND-018 (P1). This used to be the literal `0`, written at one line and
+    /// computed nowhere, so `assert_eq!(observation.mandate_counter_delta, 0)`
+    /// was `assert_eq!(0, 0)`. It is now COUNTED from the entries the operation
+    /// actually appended, using the observable spec 07.10 § *max_actions* names:
+    /// `count entries whose authorized_via contains this mandate id`.
     mandate_counter_delta: usize,
+    /// DBND-018 (P1). `aithos_core::gamma::verify_owner_entry` is the protocol's
+    /// dedicated enforcement of `owner entries carry no mandate` (spec 07.2) and
+    /// `Bundle::verify` never reaches it: `verify_links` calls only `check_form`,
+    /// which reads neither `authorized_by` nor `authorized_via`. Every entry the
+    /// operation appended is now put through it, and its refusal is carried here
+    /// rather than swallowed.
+    owner_entry_rejection: Option<String>,
+    /// DBND-040. `journalized` was proved by cardinality alone: an `edit` that
+    /// appended a well-formed `section.add` entry left the delta at 1 and all
+    /// nine mutating rows green (`ev-f18d4843`). The wire `kind` of each
+    /// appended entry is now observed, so the log has to describe the operation
+    /// that produced it.
+    journal_kinds: Vec<String>,
+    /// DBND-019. The same operation, run against an equivalent fixture from an
+    /// unrelated `OwnerKeys`. `true` when the stranger cannot produce a valid
+    /// edition — either the call is refused or the resulting bundle fails
+    /// `verify()`. This is the negative control the Rule had nowhere.
+    stranger_refused: bool,
     reopened: bool,
 }
 
@@ -319,6 +342,29 @@ struct CoreAtomicObservation {
     complete_new_state: bool,
     reopened: bool,
     partial_state_observed: bool,
+    /// DBND-026. `partial_state_observed` is `canonical_unchanged` inverted,
+    /// and `canonical_unchanged` compares three `cb7_store_snapshot` maps —
+    /// which for `FsStore` resolve through `canonical_base()` and therefore see
+    /// only the ACTIVE generation directory. Everything the sentence at
+    /// `features/d-bundle.feature:176` is about lives outside that range: the
+    /// staging generations under `.aithos-generations/`, the pointer, the
+    /// mirror marker, the transient `.tmp-*` files. A permanently leaked
+    /// staging generation — the textbook local-mutation orphan — changed none
+    /// of the bytes the old assertion compared (`ev-f7ee3968`). This is read
+    /// off the raw tree, after the reopen, and is the only observable in the
+    /// Rule that can see one.
+    staging_orphan_observed: bool,
+    /// DBND-025. `a crash or lost acknowledgement at that point` had no fixture
+    /// anywhere in the tree: the scenario carrying it induced no crash, so its
+    /// assertion reduced to `after a successful commit, reopening yields the
+    /// same bytes`, and the whole `FsStore` recovery path could be replaced by
+    /// `self.transaction = None` without moving the gate (`ev-7caa8332`). A
+    /// crash IS now induced — the store's linearization call fails and no
+    /// rollback runs, because a dead process unwinds nothing — and this records
+    /// whether the reopen resolved to one COMPLETE state, read from the
+    /// canonical manifest and the Gamma head rather than inferred from map
+    /// equality, with nothing of the dead attempt left behind.
+    crash_resolved_completely: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -327,6 +373,17 @@ struct CoreCapabilityObservation {
     protocol_object: String,
     observable_result: String,
     operation_succeeded: bool,
+    /// DBND-031. The `<mismatched_object>` column used to bind and be thrown
+    /// away: `d_mismatched_capability_refused` wrote it to a world field that
+    /// exhaustive search showed was never read, and the boolean it asserted had
+    /// been computed by the `When`, which never received the column. Replacing
+    /// the cell with a string that exists nowhere in the repository left the
+    /// gate green (`ev-3fa9d172`) while replacing the neighbouring
+    /// `observable_result` cell turned it red (`ev-1eefbb66`) — one column of
+    /// one table row reached an assertion and the other reached nothing. The
+    /// executed attempt now NAMES the object it presented, and the `Then`
+    /// compares the Gherkin cell against that name.
+    mismatched_object: String,
     mismatched_object_refused: bool,
     mismatched_session_refused: bool,
     cross_class_substitution_refused: bool,
@@ -339,6 +396,14 @@ struct CorePathObservation {
     input_kind: String,
     invalid_input: String,
     rejected: bool,
+    /// DBND-033. `rejected` was `.is_err()`, which cannot tell *the confinement
+    /// grammar refused this path* from *no such section exists*. The fixture
+    /// publishes exactly one circle section, so with `validate_display_path`
+    /// reduced to `Ok(())` all four `MemStore` rows still failed — in
+    /// `resolve_clear`, on `Error::InvalidPath("no folder ...")` — and the
+    /// outline stayed green (`ev-2d2ebd1b`). The refusal now has to be the RIGHT
+    /// refusal, and the message it came back with is carried here to be checked.
+    rejection_reason: Option<String>,
     canonical_unchanged: bool,
     outside_access_observed: bool,
 }
@@ -512,6 +577,26 @@ pub struct ProtocolWorld {
     ent: SeqEntropy,
     read_body: Option<Result<String, String>>,
     inspected: String,
+    /// DBND-001/DBND-002: the error identity the `When` that broke the edition
+    /// expects `verify()` to produce. `Then edition verification is rejected`
+    /// is bound to two different `When`s in two scenarios; `is_err()` alone
+    /// cannot tell a chain break from a pinned-file tamper, so the step that
+    /// created the defect declares which rejection it created.
+    expected_verify_error: Option<String>,
+    /// DBND-008: the sid and the sealed-blob digest of the renamed section,
+    /// captured BEFORE the rename so the `Then` can prove the rename re-keyed
+    /// nothing and moved no bytes (spec 02.9), not merely that some read
+    /// succeeds at the new path.
+    rename_sid_before: Option<String>,
+    rename_blob_sha_before: Option<String>,
+    rename_old_display_path: Option<String>,
+    /// DBND-013/DBND-014: the store KEYS the self-zone inspection walked,
+    /// alongside their contents. `w.inspected` holds values only, so a
+    /// listing that returns nothing used to satisfy every `!contains`.
+    inspected_keys: Vec<String>,
+    /// DBND-003 limb A: the display path the keyless stranger actually read,
+    /// so the integrity `Then` has a referent for the word "its".
+    public_read_path: Option<String>,
     // --- step E: mandates ---
     chain: Vec<Mandate>,
     helper_chain: Vec<Mandate>,
@@ -1471,6 +1556,32 @@ enum CoreAtomicFault {
     HeaderWrite,
     WrapWrite,
     ManifestWrite,
+    /// DBND-025. Every other variant fails BEFORE the logical commit point,
+    /// which is the subject of `features/d-bundle.feature:168`. The sentence at
+    /// `:204` is about the other side of that boundary — *"a crash or lost
+    /// acknowledgement at that point"* — and no fixture in the tree drove the
+    /// system there: the only scenario reaching it had no injected failure at
+    /// all, so its assertion said `after a successful commit, reopening yields
+    /// the same bytes`, which is durability, not atomicity at the
+    /// linearization boundary. With the whole `FsStore` recovery path gutted
+    /// the scenario stayed green (`ev-7caa8332`).
+    ///
+    /// This variant lets the inner `commit_transaction` run to completion —
+    /// staging is synced, the generation pointer is durable — and only then
+    /// returns an error, so the caller never receives success while the outcome
+    /// is committed. That is `acknowledgement-lost` from
+    /// `vectors/cb2-bundle-boundaries.json → transaction.recovery_cases`,
+    /// `internal_state: "new reference durable, caller did not receive
+    /// success"`, driven rather than counted.
+    AcknowledgementLost,
+    /// DBND-025. A crash, not a refusal: the store's linearization call never
+    /// completes AND no rollback runs, because the process died. That is
+    /// `prepared-not-linearized` from the same `recovery_cases` array, and it
+    /// is the only shape that obliges reopen to DISCOVER the outcome — the
+    /// complete old state — and to sweep what the dead process left behind.
+    /// Distinguished from `StateReplacement`, which is an orderly refusal whose
+    /// rollback tidies up.
+    Crash,
 }
 
 impl CoreAtomicFault {
@@ -1497,7 +1608,9 @@ impl CoreAtomicFault {
             Self::IndexPreparation => path.ends_with("index.json"),
             Self::HeaderOrWrap => path.ends_with("header.json") || path.contains("/wrap"),
             Self::GammaValidation => path.starts_with("gamma/"),
-            Self::StateReplacement => false,
+            // Both of these fire at the store's linearization call, never at a
+            // candidate write.
+            Self::StateReplacement | Self::AcknowledgementLost | Self::Crash => false,
             Self::HeaderWrite => path.contains("/hdr/") || path.ends_with("header.json"),
             Self::WrapWrite => path.contains("/wraps/"),
             Self::ManifestWrite => path == "manifest.json",
@@ -1568,13 +1681,32 @@ impl<S: Store> Store for CoreAtomicFaultStore<S> {
     }
 
     fn commit_transaction(&mut self) -> io::Result<()> {
-        if self.injected.get() == 0 && self.fault == CoreAtomicFault::StateReplacement {
+        if self.injected.get() == 0
+            && matches!(
+                self.fault,
+                CoreAtomicFault::StateReplacement | CoreAtomicFault::Crash
+            )
+        {
+            return self.injection_error();
+        }
+        // DBND-025: linearize for real, then lose the acknowledgement. The
+        // caller sees `Err`; the outcome is nevertheless committed and can only
+        // be discovered from the canonical manifest and Gamma head.
+        if self.injected.get() == 0 && self.fault == CoreAtomicFault::AcknowledgementLost {
+            self.inner.commit_transaction()?;
             return self.injection_error();
         }
         self.inner.commit_transaction()
     }
 
     fn rollback_transaction(&mut self) -> io::Result<()> {
+        // DBND-025: a crash is not a refusal. A refused mutation unwinds; a
+        // dead process unwinds nothing, and everything the reopen finds it must
+        // resolve for itself. Swallowing the rollback here is what makes the
+        // difference between the two observable.
+        if self.fault == CoreAtomicFault::Crash {
+            return Ok(());
+        }
         self.inner.rollback_transaction()
     }
 
@@ -1732,6 +1864,133 @@ fn core_atomic_bundle<S: Store>(store: S) -> Result<(Bundle<S>, OwnerKeys, SeqEn
     Ok((bundle, owner, entropy))
 }
 
+/// DBND-026. Does the raw tree still hold a staging generation that is not the
+/// active one? `cb7_store_snapshot` cannot answer this: `store.list("")` walks
+/// `canonical_base()`, and `collect_from` (`lib.rs:602-609`) skips every
+/// top-level component beginning `.aithos-` — which is exactly where the leaked
+/// generation lives.
+fn core_atomic_staging_orphan(root: &Path) -> Result<bool, String> {
+    let active = std::fs::read_to_string(root.join(".aithos-current")).ok();
+    let generations = root.join(".aithos-generations");
+    let entries = match std::fs::read_dir(&generations) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(format!("CORE-OWN-002 generations root unreadable: {error}"));
+        }
+    };
+    let mut leaked = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("CORE-OWN-002 generations walk: {error}"))?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if active.as_deref() != Some(name.as_str()) {
+            leaked.push(name);
+        }
+    }
+    Ok(!leaked.is_empty())
+}
+
+/// DBND-025. `complete` is not `some bytes came back`. The reopened bundle must
+/// verify — which is the protocol's own definition of a whole edition: the
+/// manifest is the chain tip, every pin re-hashes, no stray survives — and the
+/// canonical manifest's `gamma_head` must pin the tip of the Gamma tree that is
+/// actually on disk, read explicitly rather than inferred from map equality.
+fn core_atomic_state_is_complete<S: Store>(reopened: &Bundle<S>) -> Result<(), String> {
+    reopened.verify().map_err(|error| {
+        format!("CORE-OWN-002 the reopened state is not a complete edition: {error}")
+    })?;
+    let manifest_bytes = reopened
+        .store
+        .get("manifest.json")
+        .map_err(|error| format!("CORE-OWN-002 canonical manifest unreadable: {error}"))?
+        .ok_or_else(|| "CORE-OWN-002 canonical manifest missing after reopen".to_owned())?;
+    let manifest: Manifest = serde_json::from_slice(&manifest_bytes)
+        .map_err(|error| format!("CORE-OWN-002 canonical manifest does not parse: {error}"))?;
+    let head = reopened
+        .gamma_head()
+        .map_err(|error| format!("CORE-OWN-002 Gamma head unreadable: {error}"))?;
+    if manifest.gamma_head != head {
+        return Err(format!(
+            "CORE-OWN-002 the canonical manifest pins '{}' and the Gamma tree tip is '{head}'",
+            manifest.gamma_head
+        ));
+    }
+    Ok(())
+}
+
+/// DBND-025, `MemStore`. `recover_transaction` is what drops the overlay a dead
+/// process left in place; without it the reopen would expose staged writes that
+/// were never linearized.
+fn core_atomic_crash_mem() -> Result<bool, String> {
+    let (bundle, owner, mut entropy) = core_atomic_bundle(MemStore::default())?;
+    let before = cb7_store_snapshot(&bundle.store)?;
+    let wrapped = CoreAtomicFaultStore::new(bundle.store, CoreAtomicFault::Crash);
+    let mut bundle = Bundle::open(wrapped)
+        .map_err(|error| format!("CORE-OWN-002 crash reopen failed: {error}"))?;
+    let acknowledged = bundle
+        .owner_content_operation(
+            Zone::Circle,
+            OwnerContentOperation::Edit {
+                display_path: "projects/note",
+                body: "never linearized",
+                now: "2026-07-18T10:05:00Z",
+            },
+            &owner,
+            &mut entropy,
+        )
+        .is_ok();
+    if acknowledged {
+        return Err("CORE-OWN-002 the MemStore crash was acknowledged as success".into());
+    }
+    if bundle.store.injected.get() != 1 {
+        return Err("CORE-OWN-002 the MemStore crash was not injected exactly once".into());
+    }
+    let canonical = bundle.store.inner.clone();
+    drop(bundle);
+    let reopened = Bundle::open(canonical)
+        .map_err(|error| format!("CORE-OWN-002 MemStore crash recovery failed: {error}"))?;
+    core_atomic_state_is_complete(&reopened)?;
+    let after = cb7_store_snapshot(&reopened.store)?;
+    Ok(after == before)
+}
+
+/// DBND-025, `FsStore`. The crash leaves a prepared staging generation and no
+/// pointer advance. Reopen must resolve to the complete OLD state and must
+/// sweep what the dead process left behind — the half `recover_transaction`
+/// owns, and the half no assertion in this feature could see.
+fn core_atomic_crash_fs() -> Result<bool, String> {
+    let root = Cb7TempRoot::new("core-atomic-crash")?;
+    let (bundle, owner, mut entropy) = core_atomic_bundle(FsStore::new(root.path()))?;
+    let before = cb7_store_snapshot(&bundle.store)?;
+    let wrapped = CoreAtomicFaultStore::new(bundle.store, CoreAtomicFault::Crash);
+    let mut bundle = Bundle::open(wrapped)
+        .map_err(|error| format!("CORE-OWN-002 crash reopen failed: {error}"))?;
+    let acknowledged = bundle
+        .owner_content_operation(
+            Zone::Circle,
+            OwnerContentOperation::Edit {
+                display_path: "projects/note",
+                body: "never linearized",
+                now: "2026-07-18T10:05:00Z",
+            },
+            &owner,
+            &mut entropy,
+        )
+        .is_ok();
+    if acknowledged {
+        return Err("CORE-OWN-002 the FsStore crash was acknowledged as success".into());
+    }
+    if bundle.store.injected.get() != 1 {
+        return Err("CORE-OWN-002 the FsStore crash was not injected exactly once".into());
+    }
+    drop(bundle);
+    let reopened = Bundle::open(FsStore::new(root.path()))
+        .map_err(|error| format!("CORE-OWN-002 FsStore crash recovery failed: {error}"))?;
+    core_atomic_state_is_complete(&reopened)?;
+    let after = cb7_store_snapshot(&reopened.store)?;
+    Ok(after == before && !core_atomic_staging_orphan(root.path())?)
+}
+
 fn core_atomic_injected_mutation<S: Store>(
     bundle: Bundle<S>,
     owner: &OwnerKeys,
@@ -1785,6 +2044,10 @@ fn core_atomic_failure_mem(
         complete_new_state: false,
         reopened: true,
         partial_state_observed: !canonical_unchanged,
+        // `MemStore` has no staging generation to leak: `rollback_transaction`
+        // drops the overlay and there is nothing outside the canonical map.
+        staging_orphan_observed: false,
+        crash_resolved_completely: false,
     })
 }
 
@@ -1807,6 +2070,9 @@ fn core_atomic_failure_fs(
         .map_err(|error| format!("CORE-OWN-002 FsStore verify failed: {error}"))?;
     let reopened_snapshot = cb7_store_snapshot(&reopened_bundle.store)?;
     let canonical_unchanged = before == after && before == reopened_snapshot;
+    // DBND-026: taken from the raw tree, after the reopen, because the three
+    // maps above cannot reach it.
+    let staging_orphan_observed = core_atomic_staging_orphan(root.path())?;
     Ok(CoreAtomicObservation {
         store: "FsStore".into(),
         boundary: Some(boundary.into()),
@@ -1816,6 +2082,8 @@ fn core_atomic_failure_fs(
         complete_new_state: false,
         reopened: true,
         partial_state_observed: !canonical_unchanged,
+        staging_orphan_observed,
+        crash_resolved_completely: false,
     })
 }
 
@@ -1884,6 +2152,10 @@ fn core_atomic_success_mem() -> Result<CoreAtomicObservation, String> {
         .verify()
         .map_err(|error| format!("CORE-OWN-002 MemStore success verify failed: {error}"))?;
     let reopened_snapshot = cb7_store_snapshot(&reopened_bundle.store)?;
+    // DBND-025: the second phase, on its own fixture — a crash at the store's
+    // linearization call, with no rollback, and a reopen that has to discover
+    // the outcome for itself.
+    let crash_resolved_completely = core_atomic_crash_mem()?;
     Ok(CoreAtomicObservation {
         store: "MemStore".into(),
         boundary: None,
@@ -1893,6 +2165,8 @@ fn core_atomic_success_mem() -> Result<CoreAtomicObservation, String> {
         complete_new_state,
         reopened: reopened_snapshot == after,
         partial_state_observed: reopened_snapshot != after,
+        staging_orphan_observed: false,
+        crash_resolved_completely,
     })
 }
 
@@ -1921,6 +2195,9 @@ fn core_atomic_success_fs() -> Result<CoreAtomicObservation, String> {
         .verify()
         .map_err(|error| format!("CORE-OWN-002 FsStore success verify failed: {error}"))?;
     let reopened_snapshot = cb7_store_snapshot(&reopened_bundle.store)?;
+    let staging_orphan_observed = core_atomic_staging_orphan(root.path())?;
+    // DBND-025: the second phase, on its own fixture.
+    let crash_resolved_completely = core_atomic_crash_fs()?;
     Ok(CoreAtomicObservation {
         store: "FsStore".into(),
         boundary: None,
@@ -1930,6 +2207,8 @@ fn core_atomic_success_fs() -> Result<CoreAtomicObservation, String> {
         complete_new_state,
         reopened: reopened_snapshot == after,
         partial_state_observed: reopened_snapshot != after,
+        staging_orphan_observed,
+        crash_resolved_completely,
     })
 }
 
@@ -2050,6 +2329,59 @@ fn core_capability_context(
     })
 }
 
+/// DBND-029 (P1) — `no seed or private key is accepted or returned by the
+/// bundle operation`, computed instead of asserted.
+///
+/// The field behind that Gherkin line was declared once and written at exactly
+/// four sites, each of them the literal `false`, so
+/// `assert!(!observation.secret_material_exposed)` was `assert!(!false)`: a
+/// public `manifest_private_key()` accessor added to `LocalSession` left the
+/// gate green (`ev-ed18d7ef`). Both halves of the clause are now executed.
+///
+/// *Returned* — nothing the narrow operation produced may carry private
+/// material, in raw bytes or in hex. Spec 01.6: *"MUST NOT expose private
+/// material as an output."*
+///
+/// *Accepted* — a session that holds no owner private material must be REFUSED
+/// an owner-only narrow capability, not handed one built from substitute bytes.
+/// Spec 01.6: *"Stable APIs MUST NOT require a raw seed or private key when the
+/// narrow operation suffices."* `LocalSession::grantee` is precisely such a
+/// session: its `owner_kex` is `None`, and `header_capability()` /
+/// `audit_capability()` are the two mints that need it.
+///
+/// **Stated limit, so nobody reads more into this than it proves.** No runtime
+/// assertion can see a `pub fn` that was merely ADDED and never called — that
+/// is compile-time information, and `ev-ed18d7ef` is therefore NOT killed by
+/// this. The audit's closure criterion for `DBND-029` asks for exactly that and
+/// cannot be met at this tier; see the run report.
+fn core_capability_secret_material_exposed(produced: &[u8], secrets: &[[u8; 32]]) -> bool {
+    let rendered = String::from_utf8_lossy(produced);
+    for secret in secrets {
+        if produced.windows(32).any(|window| window == secret.as_slice()) {
+            return true;
+        }
+        if rendered.contains(&hex::encode(secret)) {
+            return true;
+        }
+    }
+    let keyless_signer = SigningKey::from_bytes(&[0x2a; 32]);
+    let keyless = LocalSession::grantee(
+        "did:aithos:core-own-003-keyless",
+        &keyless_signer,
+        Vec::new(),
+    );
+    keyless.header_capability().is_ok() || keyless.audit_capability().is_ok()
+}
+
+/// The owner's three private halves, as the bytes an output must never carry.
+fn core_capability_owner_secrets(owner: &OwnerKeys) -> [[u8; 32]; 3] {
+    [
+        owner.root_sign.to_bytes(),
+        owner.content_sign.to_bytes(),
+        owner.owner_kex.to_bytes(),
+    ]
+}
+
 fn core_capability_api_is_narrow() -> bool {
     let source = include_str!("../src/session.rs");
     !source.contains("pub fn sign(")
@@ -2067,11 +2399,10 @@ fn core_manifest_capability_scenario() -> Result<CoreCapabilityObservation, Stri
             .ok_or_else(|| "CORE-OWN-003 grantee seed missing".to_owned())?,
     )
     .map_err(|error| format!("CORE-OWN-003 grantee seed is invalid: {error}"))?;
-    let signer = SigningKey::from_bytes(
-        &seed
-            .try_into()
-            .map_err(|_| "CORE-OWN-003 grantee seed is not 32 bytes".to_owned())?,
-    );
+    let seed_bytes: [u8; 32] = seed
+        .try_into()
+        .map_err(|_| "CORE-OWN-003 grantee seed is not 32 bytes".to_owned())?;
+    let signer = SigningKey::from_bytes(&seed_bytes);
     let session = LocalSession::grantee(
         context.subject.clone(),
         &signer,
@@ -2087,11 +2418,13 @@ fn core_manifest_capability_scenario() -> Result<CoreCapabilityObservation, Stri
     let candidate = session
         .assemble_draft2(&capability, &context, evidence.clone())
         .map_err(|error| format!("CORE-OWN-003 manifest capability failed: {error}"))?;
-    let expected = vector["positive"]["candidate"].clone();
-    let operation_succeeded = candidate
+    let produced = candidate
         .to_value()
-        .map_err(|error| format!("CORE-OWN-003 candidate encoding failed: {error}"))?
-        == expected;
+        .map_err(|error| format!("CORE-OWN-003 candidate encoding failed: {error}"))?;
+    let expected = vector["positive"]["candidate"].clone();
+    let operation_succeeded = produced == expected;
+    let produced_bytes = serde_json::to_vec(&produced)
+        .map_err(|error| format!("CORE-OWN-003 candidate serialization failed: {error}"))?;
     let mismatched_session_refused = other
         .assemble_draft2(&capability, &context, evidence)
         .is_err();
@@ -2100,10 +2433,20 @@ fn core_manifest_capability_scenario() -> Result<CoreCapabilityObservation, Stri
         protocol_object: "domain-tagged edition manifest".into(),
         observable_result: "the signature verifies against the public key".into(),
         operation_succeeded,
+        // DBND-031, stated exactly. The object dimension of this row is
+        // enforced by the type system — `ManifestSigningCapability` is the only
+        // thing `assemble_draft2` accepts, `CapabilityClass` is a private item,
+        // and the runtime guard at `session.rs:234` is unreachable — so what
+        // executes here is the session binding, and it is named as such rather
+        // than dressed as an object-class refusal.
+        mismatched_object: "Gamma entry".into(),
         mismatched_object_refused: mismatched_session_refused,
         mismatched_session_refused,
         cross_class_substitution_refused: core_capability_api_is_narrow(),
-        secret_material_exposed: false,
+        secret_material_exposed: core_capability_secret_material_exposed(
+            &produced_bytes,
+            &[seed_bytes],
+        ),
     })
 }
 
@@ -3010,15 +3353,23 @@ fn core_gamma_capability_scenario() -> Result<CoreCapabilityObservation, String>
     .map_err(|error| format!("CORE-OWN-003 did parse failed: {error}"))?;
     let operation_succeeded = aithos_core::gamma::verify_owner_entry(&entry, &did).is_ok();
     let mismatched_session_refused = other.accepts_gamma_capability(&capability).is_err();
+    let produced_bytes = serde_json::to_vec(&entry)
+        .map_err(|error| format!("CORE-OWN-003 entry serialization failed: {error}"))?;
     Ok(CoreCapabilityObservation {
         capability: "sign".into(),
         protocol_object: "domain-tagged Gamma entry".into(),
         observable_result: "the signature verifies against the public key".into(),
         operation_succeeded,
+        // DBND-031: same statement as the manifest row — type-enforced object
+        // dimension, executed session binding.
+        mismatched_object: "edition manifest".into(),
         mismatched_object_refused: mismatched_session_refused,
         mismatched_session_refused,
         cross_class_substitution_refused: core_capability_api_is_narrow(),
-        secret_material_exposed: false,
+        secret_material_exposed: core_capability_secret_material_exposed(
+            &produced_bytes,
+            &core_capability_owner_secrets(&owner),
+        ),
     })
 }
 
@@ -3043,10 +3394,17 @@ fn core_body_capability_scenario() -> Result<CoreCapabilityObservation, String> 
         protocol_object: "node-and-version-bound sealed body".into(),
         observable_result: "the expected plaintext is recovered only locally".into(),
         operation_succeeded: opened == "before atomic mutation",
+        // DBND-031: the one honest row, and the audit credits it. The refusal
+        // comes from the node-path binding at `session.rs:275-282`, which fires
+        // on the object before any store access, not from a session mismatch.
+        mismatched_object: "body from a sibling node or version".into(),
         mismatched_object_refused,
         mismatched_session_refused,
         cross_class_substitution_refused: core_capability_api_is_narrow(),
-        secret_material_exposed: false,
+        secret_material_exposed: core_capability_secret_material_exposed(
+            opened.as_bytes(),
+            &core_capability_owner_secrets(&owner),
+        ),
     })
 }
 
@@ -3089,15 +3447,27 @@ fn core_header_capability_scenario() -> Result<CoreCapabilityObservation, String
         .open_latest(subject, "delegate-kex", &wrong_secret)
         .is_err();
     let mismatched_session_refused = other.accepts_header_capability(&capability).is_err();
+    let produced_bytes = serde_json::to_vec(&header)
+        .map_err(|error| format!("CORE-OWN-003 header serialization failed: {error}"))?;
+    let mut secrets = core_capability_owner_secrets(&owner).to_vec();
+    secrets.push(dk);
+    secrets.push(intended_secret.to_bytes());
     Ok(CoreCapabilityObservation {
         capability: "wrap".into(),
         protocol_object: "node-version-and-recipient header line".into(),
         observable_result: "only the intended recipient opens the wrapped key".into(),
         operation_succeeded,
+        // DBND-031: the refusal executed on this row is a wrong-X25519-secret
+        // decryption failure in which the capability plays no part; named here
+        // so the report says so rather than the boolean implying otherwise.
+        mismatched_object: "line for another node or recipient".into(),
         mismatched_object_refused,
         mismatched_session_refused,
         cross_class_substitution_refused: core_capability_api_is_narrow(),
-        secret_material_exposed: false,
+        // The wrapped DK and the recipient's KEX secret are the two pieces of
+        // private material this operation is closest to, and neither may be
+        // resident in the header it produced.
+        secret_material_exposed: core_capability_secret_material_exposed(&produced_bytes, &secrets),
     })
 }
 
@@ -3125,22 +3495,23 @@ fn core_path_mem_scenario(
     }
     let (mut bundle, owner, mut entropy) = core_atomic_bundle(MemStore::default())?;
     let before = cb7_store_snapshot(&bundle.store)?;
-    let rejected = bundle
-        .owner_content_operation(
-            Zone::Circle,
-            OwnerContentOperation::Read {
-                display_path: invalid_input,
-            },
-            &owner,
-            &mut entropy,
-        )
-        .is_err();
+    let outcome = bundle.owner_content_operation(
+        Zone::Circle,
+        OwnerContentOperation::Read {
+            display_path: invalid_input,
+        },
+        &owner,
+        &mut entropy,
+    );
+    let rejection_reason = outcome.as_ref().err().map(ToString::to_string);
+    let rejected = outcome.is_err();
     let after = cb7_store_snapshot(&bundle.store)?;
     Ok(CorePathObservation {
         store: "MemStore".into(),
         input_kind: input_kind.into(),
         invalid_input: invalid_input.into(),
         rejected,
+        rejection_reason,
         canonical_unchanged: before == after,
         outside_access_observed: false,
     })
@@ -3320,6 +3691,7 @@ fn core_path_fs_scenario(
             .map_err(|error| aithos_core::Error::InvalidPath(error.to_string()))
     };
     let rejected = result.is_err();
+    let rejection_reason = result.as_ref().err().map(ToString::to_string);
     let escaped_bytes = result.ok().flatten();
     let after = core_path_raw_snapshot(root.path())?;
     let outside_after = core_path_raw_snapshot(outside.path())?;
@@ -3328,6 +3700,7 @@ fn core_path_fs_scenario(
         input_kind: input_kind.into(),
         invalid_input: invalid_input.into(),
         rejected,
+        rejection_reason,
         canonical_unchanged: before == after,
         outside_access_observed: outside_before != outside_after
             || escaped_bytes
@@ -3358,6 +3731,158 @@ fn core_path_scenario(
     }
 }
 
+/// DBND-019. Which of the fifteen rows actually walk a path that consumes the
+/// owner's content key, and which are keyless by construction.
+///
+/// `zone_entries_with_owner_kex` (`bundle.rs:1430-1443`) routes every zone but
+/// `self` to `clear_zone_entries`, whose doc comment is *"Reconstruct typed
+/// public/circle display entries without a content key"*, and
+/// `read_section_with_owner_kex` (`:1236-1237`) routes `Zone::Public` to
+/// `public_read`, the very function a keyless stranger is given at
+/// `features/d-bundle.feature:95`. Those three rows are keyless in production
+/// and correctly so; what was wrong was the `Then` claiming a capability for
+/// them. Pinning the partition here means a change in either direction — a
+/// keyless row that starts demanding a key, or a keyed row that stops — fails
+/// the Rule instead of passing it silently. `ev-b6a36f72` enumerated the same
+/// split, row for row, from the other side.
+fn core_owner_row_is_keyed(zone_name: &str, operation: &str) -> bool {
+    !matches!(
+        (zone_name, operation),
+        ("public", "list") | ("public", "read") | ("circle", "list")
+    )
+}
+
+/// DBND-040. The wire `kind` spec 07.1 gives each owner content mutation. The
+/// expected value is a function of the `<operation>` column of the `Examples`
+/// grid, never a constant read back out of the entry under test.
+fn core_owner_expected_kind(operation: &str) -> Option<&'static str> {
+    match operation {
+        "create" => Some("section.add"),
+        "edit" => Some("section.modify"),
+        "delete" => Some("section.delete"),
+        _ => None,
+    }
+}
+
+/// The fixture of `Given a published existing folder and section in that zone`,
+/// built twice per row: once for the operation under test, once for DBND-019's
+/// stranger control. `Cb7TempRoot` is returned so the caller keeps the
+/// directory alive for as long as the bundle.
+fn core_owner_fixture_bundle(
+    zone: Zone,
+    label: &str,
+) -> Result<(Cb7TempRoot, Bundle<FsStore>, OwnerKeys, SeqEntropy), String> {
+    let root = Cb7TempRoot::new(label)?;
+    let seed = MasterSeed::from_slice(&[0x58; 32])
+        .map_err(|error| format!("CORE-OWN-001 owner seed failed: {error}"))?;
+    let owner = OwnerKeys::genesis(&seed);
+    let succession = succession_from_entropy([0x68; 32]);
+    let mut entropy = SeqEntropy::default();
+    let mut bundle = Bundle::init(
+        FsStore::new(root.path()),
+        &owner,
+        &succession.verifying_key(),
+        &mut entropy,
+        "2026-07-18T11:00:00Z",
+    )
+    .map_err(|error| format!("CORE-OWN-001 {label} init failed: {error}"))?;
+    bundle
+        .transaction(|bundle| {
+            bundle.section_add(
+                &SectionSpec {
+                    zone,
+                    folder_path: "projects",
+                    name: "note",
+                    title: "existing",
+                    tags: &["toto".to_owned()],
+                    body: "before",
+                    now: "2026-07-18T11:01:00Z",
+                },
+                &owner,
+                &mut entropy,
+            )?;
+            bundle.publish(&owner, "2026-07-18T11:02:00Z")
+        })
+        .map_err(|error| format!("CORE-OWN-001 {label} fixture failed: {error}"))?;
+    Ok((root, bundle, owner, entropy))
+}
+
+/// The one common bundle operation `features/d-bundle.feature:132` names,
+/// dispatched from the `<operation>` column. Shared by the row under test and
+/// by DBND-019's stranger control so both walk the identical production path.
+fn core_owner_invoke(
+    bundle: &mut Bundle<FsStore>,
+    zone: Zone,
+    operation: &str,
+    keys: &OwnerKeys,
+    entropy: &mut SeqEntropy,
+) -> std::result::Result<OwnerContentOutcome, aithos_core::Error> {
+    match operation {
+        "list" => bundle.owner_content_operation(zone, OwnerContentOperation::List, keys, entropy),
+        "read" => bundle.owner_content_operation(
+            zone,
+            OwnerContentOperation::Read {
+                display_path: "projects/note",
+            },
+            keys,
+            entropy,
+        ),
+        "create" => bundle.owner_content_operation(
+            zone,
+            OwnerContentOperation::Create {
+                folder_path: "projects",
+                name: "new",
+                title: "created",
+                tags: &[],
+                body: "created body",
+                now: "2026-07-18T11:03:00Z",
+            },
+            keys,
+            entropy,
+        ),
+        "edit" => bundle.owner_content_operation(
+            zone,
+            OwnerContentOperation::Edit {
+                display_path: "projects/note",
+                body: "after",
+                now: "2026-07-18T11:04:00Z",
+            },
+            keys,
+            entropy,
+        ),
+        "delete" => bundle.owner_content_operation(
+            zone,
+            OwnerContentOperation::Delete {
+                display_path: "projects/note",
+                now: "2026-07-18T11:05:00Z",
+            },
+            keys,
+            entropy,
+        ),
+        other => Err(aithos_core::Error::InvalidOperation(format!(
+            "CORE-OWN-001 unknown operation {other}"
+        ))),
+    }
+}
+
+/// DBND-019. The negative control: the identical operation, against an
+/// identical fixture, driven by an unrelated `OwnerKeys`. `true` when the
+/// stranger cannot produce a valid edition — the call is refused, or the bundle
+/// it leaves behind no longer verifies.
+fn core_owner_stranger_refused(
+    zone: Zone,
+    zone_name: &str,
+    operation: &str,
+) -> Result<bool, String> {
+    let (_root, mut bundle, _owner, mut entropy) =
+        core_owner_fixture_bundle(zone, &format!("core-owner-control-{zone_name}-{operation}"))?;
+    let stranger_seed = MasterSeed::from_slice(&[0x59; 32])
+        .map_err(|error| format!("CORE-OWN-001 stranger seed failed: {error}"))?;
+    let stranger = OwnerKeys::genesis(&stranger_seed);
+    let outcome = core_owner_invoke(&mut bundle, zone, operation, &stranger, &mut entropy);
+    Ok(outcome.is_err() || bundle.verify().is_err())
+}
+
 fn core_owner_scenario(zone_name: &str, operation: &str) -> Result<CoreOwnerObservation, String> {
     let zone = match zone_name {
         "public" => Zone::Public,
@@ -3380,90 +3905,20 @@ fn core_owner_scenario(zone_name: &str, operation: &str) -> Result<CoreOwnerObse
         })
         .ok_or_else(|| format!("CORE-OWN-001 missing matrix row {zone_name}-{operation}"))?;
 
-    let root = Cb7TempRoot::new(&format!("core-owner-{zone_name}-{operation}"))?;
-    let seed = MasterSeed::from_slice(&[0x58; 32])
-        .map_err(|error| format!("CORE-OWN-001 owner seed failed: {error}"))?;
-    let owner = OwnerKeys::genesis(&seed);
-    let succession = succession_from_entropy([0x68; 32]);
-    let mut entropy = SeqEntropy::default();
-    let mut bundle = Bundle::init(
-        FsStore::new(root.path()),
-        &owner,
-        &succession.verifying_key(),
-        &mut entropy,
-        "2026-07-18T11:00:00Z",
-    )
-    .map_err(|error| format!("CORE-OWN-001 {zone_name}-{operation} init failed: {error}"))?;
-    bundle
-        .transaction(|bundle| {
-            bundle.section_add(
-                &SectionSpec {
-                    zone,
-                    folder_path: "projects",
-                    name: "note",
-                    title: "existing",
-                    tags: &["toto".to_owned()],
-                    body: "before",
-                    now: "2026-07-18T11:01:00Z",
-                },
-                &owner,
-                &mut entropy,
-            )?;
-            bundle.publish(&owner, "2026-07-18T11:02:00Z")
-        })
-        .map_err(|error| format!("CORE-OWN-001 {zone_name}-{operation} fixture failed: {error}"))?;
+    let (root, mut bundle, owner, mut entropy) =
+        core_owner_fixture_bundle(zone, &format!("core-owner-{zone_name}-{operation}"))?;
 
-    let gamma_before = bundle
+    // DBND-018 and DBND-040: the WHOLE entries, not their cardinality. The
+    // journal evidence of this Rule used to be `gamma_entries()?.len()` before
+    // and after, and nothing else — so an entry declaring a mandate chain
+    // (`ev-19a635cf`) or misdescribing its own operation (`ev-f18d4843`) left
+    // the delta at 1 and all fifteen rows green.
+    let gamma_before_entries = bundle
         .gamma_entries()
-        .map_err(|error| format!("CORE-OWN-001 Gamma before failed: {error}"))?
-        .len();
-    let outcome = match operation {
-        "list" => {
-            bundle.owner_content_operation(zone, OwnerContentOperation::List, &owner, &mut entropy)
-        }
-        "read" => bundle.owner_content_operation(
-            zone,
-            OwnerContentOperation::Read {
-                display_path: "projects/note",
-            },
-            &owner,
-            &mut entropy,
-        ),
-        "create" => bundle.owner_content_operation(
-            zone,
-            OwnerContentOperation::Create {
-                folder_path: "projects",
-                name: "new",
-                title: "created",
-                tags: &[],
-                body: "created body",
-                now: "2026-07-18T11:03:00Z",
-            },
-            &owner,
-            &mut entropy,
-        ),
-        "edit" => bundle.owner_content_operation(
-            zone,
-            OwnerContentOperation::Edit {
-                display_path: "projects/note",
-                body: "after",
-                now: "2026-07-18T11:04:00Z",
-            },
-            &owner,
-            &mut entropy,
-        ),
-        "delete" => bundle.owner_content_operation(
-            zone,
-            OwnerContentOperation::Delete {
-                display_path: "projects/note",
-                now: "2026-07-18T11:05:00Z",
-            },
-            &owner,
-            &mut entropy,
-        ),
-        _ => unreachable!(),
-    }
-    .map_err(|error| format!("CORE-OWN-001 {zone_name}-{operation} failed: {error}"))?;
+        .map_err(|error| format!("CORE-OWN-001 Gamma before failed: {error}"))?;
+    let gamma_before = gamma_before_entries.len();
+    let outcome = core_owner_invoke(&mut bundle, zone, operation, &owner, &mut entropy)
+        .map_err(|error| format!("CORE-OWN-001 {zone_name}-{operation} failed: {error}"))?;
 
     let outcome_name = match (operation, outcome) {
         ("list", OwnerContentOutcome::Listed(entries))
@@ -3479,11 +3934,64 @@ fn core_owner_scenario(zone_name: &str, operation: &str) -> Result<CoreOwnerObse
             ));
         }
     };
-    let gamma_after = bundle
+    let gamma_after_entries = bundle
         .gamma_entries()
-        .map_err(|error| format!("CORE-OWN-001 Gamma after failed: {error}"))?
-        .len();
+        .map_err(|error| format!("CORE-OWN-001 Gamma after failed: {error}"))?;
+    let gamma_after = gamma_after_entries.len();
+    if gamma_after < gamma_before
+        || gamma_before_entries.as_slice() != &gamma_after_entries[..gamma_before]
+    {
+        return Err(format!(
+            "CORE-OWN-001 {zone_name}-{operation} rewrote the existing Gamma prefix"
+        ));
+    }
+    let appended = &gamma_after_entries[gamma_before..];
+
+    // DBND-018 (P1). Two readings of one clause of spec 04 — *"journalized, and
+    // consumes no mandate counter or constraint"* — both computed from the
+    // entries the operation appended, neither of them a literal.
+    //
+    // The counter first, using the observable spec 07.10 § *max_actions* names:
+    // an owner entry that carried `authorized_via` WOULD count against that
+    // mandate's budget, so the number of such entries IS the counter delta this
+    // Rule claims is zero.
+    let mandate_counter_delta = appended
+        .iter()
+        .filter(|entry| {
+            entry
+                .authorized_via
+                .as_ref()
+                .is_some_and(|via| !via.is_empty())
+        })
+        .count();
+
+    // Then the protocol's own enforcement, which `Bundle::verify` never
+    // reaches: `verify_links` calls `check_form`, and `check_form` reads
+    // neither `authorized_by` nor `authorized_via`. `verify_owner_entry`
+    // (`aithos-core/src/gamma.rs:494`) reads both, and additionally requires
+    // the `#content` signature spec 07.2 binds owner entries to.
+    let did_bytes = bundle
+        .store
+        .get("did.json")
+        .map_err(|error| format!("CORE-OWN-001 did read failed: {error}"))?
+        .ok_or_else(|| "CORE-OWN-001 did.json missing".to_owned())?;
+    let did_doc: DidDocument = serde_json::from_slice(&did_bytes)
+        .map_err(|error| format!("CORE-OWN-001 did parse failed: {error}"))?;
+    let owner_entry_rejection = appended.iter().find_map(|entry| {
+        aithos_core::gamma::verify_owner_entry(entry, &did_doc)
+            .err()
+            .map(|error| error.to_string())
+    });
+
+    // DBND-040: the wire kind of every appended entry, so `journalized` stops
+    // meaning `the count moved by one`.
+    let journal_kinds: Vec<String> = appended.iter().map(|entry| entry.kind.clone()).collect();
+
     drop(bundle);
+
+    // DBND-019: the negative control, on its own fixture so the row under test
+    // is left untouched.
+    let stranger_refused = core_owner_stranger_refused(zone, zone_name, operation)?;
 
     let reopened = Bundle::open(FsStore::new(root.path()))
         .map_err(|error| format!("CORE-OWN-001 {zone_name}-{operation} reopen failed: {error}"))?;
@@ -3546,7 +4054,10 @@ fn core_owner_scenario(zone_name: &str, operation: &str) -> Result<CoreOwnerObse
         operation: operation.to_owned(),
         outcome: outcome_name.to_owned(),
         gamma_delta,
-        mandate_counter_delta: 0,
+        mandate_counter_delta,
+        owner_entry_rejection,
+        journal_kinds,
+        stranger_refused,
         reopened: true,
     })
 }
@@ -8346,30 +8857,73 @@ fn publish_edition(w: &mut ProtocolWorld) {
     w.publish_bundle();
 }
 
+// DBND-002: the flat manifest pins are kept BESIDE the Merkle roots
+// (`manifest.rs:33-35`) precisely because they, and nothing else, cover
+// byte-rollback of a SEALED blob. Tampering `e/circle/index.json` measured
+// nothing about them: `verify()` re-derives that object a second time through
+// the state-root recomputation (`state.rs:76`), so the whole flat-pin loop
+// could be deleted and this scenario stayed green (`ev-de2706a8`). The tamper
+// now lands inside `e/circle/blobs/<sid>.enc`, resolved from the index rather
+// than hard-coded, which no other check in `verify()` re-derives.
 #[when("one byte of a pinned file is altered")]
 fn alter_pinned_file(w: &mut ProtocolWorld) {
     let bundle = w.bundle.as_mut().unwrap();
-    let mut bytes = bundle.store.get("e/circle/index.json").unwrap().unwrap();
+    let index: ZoneIndex =
+        serde_json::from_slice(&bundle.store.get("e/circle/index.json").unwrap().unwrap())
+            .expect("the circle index parses");
+    let sid = index
+        .sections
+        .first()
+        .expect("the fixture published one circle section")
+        .sid
+        .clone();
+    let blob_path = format!("e/circle/blobs/{sid}.enc");
+    let mut bytes = bundle
+        .store
+        .get(&blob_path)
+        .unwrap()
+        .unwrap_or_else(|| panic!("the sealed blob {blob_path} exists"));
     bytes[10] ^= 1;
-    bundle.store.put("e/circle/index.json", &bytes).unwrap();
+    bundle.store.put(&blob_path, &bytes).unwrap();
+    w.expected_verify_error = Some(format!("pinned file altered: {blob_path}"));
 }
 
+// DBND-001: the forgery used to be over-determined. Advancing the tip to
+// height 3 while copying height 2's `files` map verbatim left
+// `manifests/2.json` an unpinned stray, and `verify()`'s stray check rejected
+// the edition whether or not the chain link was ever compared — which is why
+// deleting the predecessor-hash comparison from `Bundle::verify` left this
+// scenario green (`ev-d1fc33b5`). Pinning `manifests/2.json` with its true
+// digest removes that confound, so the wrong `prev_hash` is the only remaining
+// cause of rejection, and the `Then` asserts that rejection by identity.
 #[when("the newest manifest claims a wrong predecessor hash")]
 fn wrong_predecessor(w: &mut ProtocolWorld) {
     let owner = w.owner(0);
     let latest = w.latest_manifest();
+    let superseded = format!("manifests/{}.json", latest.edition.height);
+    let superseded_bytes = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .store
+        .get(&superseded)
+        .unwrap()
+        .unwrap_or_else(|| panic!("the superseded manifest {superseded} exists"));
+    let mut files = latest.files.clone();
+    files.insert(superseded.clone(), sha256_hex(&superseded_bytes));
     let forged = Manifest::build(
         &owner.root_sign,
         latest.edition.height + 1,
         "0".repeat(64),
         NOW.to_owned(),
-        latest.files.clone(),
+        files,
         latest.roots.clone(),
         latest.gamma_roots.clone(),
         latest.gamma_counts_root.clone(),
         latest.gamma_head.clone(),
     )
     .unwrap();
+    w.expected_verify_error = Some(format!("broken chain at height {}", forged.edition.height));
     let bundle = w.bundle.as_mut().unwrap();
     let bytes = serde_json::to_vec_pretty(&forged).unwrap();
     bundle
@@ -8395,6 +8949,36 @@ fn owner_reads_circle(w: &mut ProtocolWorld, path: String) {
 fn rename_the_folder(w: &mut ProtocolWorld, name: String, new_name: String) {
     let owner = w.owner(0);
     let full = format!("projets/{name}");
+    // DBND-008: spec 02.2 and 02.9 — the sid is `never changed`, and renaming
+    // `re-keys nothing, moves no bytes`. Neither obligation was observed
+    // anywhere, so a rename that minted a fresh sid, or re-sealed the child
+    // under a fresh nonce, was indistinguishable from a conformant one. The
+    // two observables are captured here, BEFORE the rename, so the `Then` can
+    // compare rather than re-derive.
+    let (sid_before, blob_sha_before, section_name) = {
+        let store = &w.bundle.as_ref().unwrap().store;
+        let index: ZoneIndex =
+            serde_json::from_slice(&store.get("e/circle/index.json").unwrap().unwrap())
+                .expect("the circle index parses");
+        let folder = index
+            .folders
+            .iter()
+            .find(|folder| folder.name == name)
+            .expect("the folder being renamed exists");
+        let section = index
+            .sections
+            .iter()
+            .find(|section| section.folder_sid.as_deref() == Some(folder.sid.as_str()))
+            .expect("the renamed folder holds the section this scenario reads");
+        (
+            section.sid.clone(),
+            section.blob_sha.clone(),
+            section.name.clone(),
+        )
+    };
+    w.rename_sid_before = Some(sid_before);
+    w.rename_blob_sha_before = Some(blob_sha_before);
+    w.rename_old_display_path = Some(format!("{full}/{section_name}"));
     w.bundle
         .as_mut()
         .unwrap()
@@ -8409,18 +8993,90 @@ fn stranger_reads_public(w: &mut ProtocolWorld, path: String) {
         Bundle::<MemStore>::public_read(&w.bundle.as_ref().unwrap().store, &path)
             .map_err(|e| e.to_string()),
     );
+    w.public_read_path = Some(path);
 }
 
+// DBND-013 and DBND-014, together, because they are the two halves of the same
+// step.
+//
+// DBND-013 — the Gherkin says the names must not appear `anywhere`, and this
+// walked the CONTENTS of objects whose key begins `e/self/` and nothing else.
+// Spec 02.8 makes the claim four-sited — on disk, in the index, in headers, and
+// in gamma targets — and the search reached one and a half of the four. Store
+// keys were dropped on the floor (`store.get(&path)` pushed the value and
+// discarded the key), and `gamma/gamma.jsonl` and `manifests/**` were never
+// opened: with `log.rs:201` made to log the self zone like the public zone, so
+// the section name travelled in clear inside the SIGNED gamma log, this
+// scenario stayed green (`ev-f1718be8`). The scope is now the whole store minus
+// a named allow-list of objects the protocol publishes in clear on purpose, and
+// the key is accumulated alongside the value.
+//
+// DBND-014 — nothing constrained `w.inspected` from below, so
+// `store.list("e/self/") == []` yielded `""`, and `""` contains none of the five
+// needles. With the `e/self` prefix hidden from `MemStore::list` and every byte
+// left in place the scenario passed HAVING INSPECTED NOTHING (`ev-0b4e1076`).
+// The lower bound is tied to what the `Given` actually creates.
 #[when("I inspect every file of the self zone as a stranger")]
 fn inspect_self_zone(w: &mut ProtocolWorld) {
-    let store = &w.bundle.as_ref().unwrap().store;
-    let mut all = String::new();
-    for path in store.list("e/self/").unwrap() {
-        all.push_str(&String::from_utf8_lossy(
-            &store.get(&path).unwrap().unwrap(),
-        ));
-    }
+    // Objects the protocol publishes in the clear BY DESIGN, and only those.
+    // Spec 02.8 is explicit about which: a name is *"Pure metadata: clear in
+    // the index for `public`/`circle`, sealed for `self`"*, the DID document
+    // and the signed manifest are public artifacts (02.6, 02.11), and mandate
+    // certificates are the public authority record (03.1). Everything else in
+    // the store — the self zone, the Gamma log, the per-height manifests and
+    // the Merkle index objects — is in scope for the word `anywhere`.
+    const CLEAR_BY_CONTRACT: [&str; 2] = ["manifest.json", "did.json"];
+    const CLEAR_PREFIXES: [&str; 3] = ["e/public/", "e/circle/", "certs/"];
+
+    let (all, keys) = {
+        let store = &w.bundle.as_ref().unwrap().store;
+        let mut all = String::new();
+        let mut keys = Vec::new();
+        for path in store.list("").unwrap() {
+            if CLEAR_BY_CONTRACT.contains(&path.as_str())
+                || CLEAR_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
+            {
+                continue;
+            }
+            let bytes = store
+                .get(&path)
+                .unwrap()
+                .unwrap_or_else(|| panic!("listed object vanished: {path}"));
+            all.push_str(&path);
+            all.push('\n');
+            all.push_str(&String::from_utf8_lossy(&bytes));
+            all.push('\n');
+            keys.push(path);
+        }
+        (all, keys)
+    };
+
+    let self_objects: Vec<&String> = keys
+        .iter()
+        .filter(|path| path.starts_with("e/self/"))
+        .collect();
+    assert!(
+        self_objects
+            .iter()
+            .any(|path| path.as_str() == "e/self/index.json"),
+        "the self zone index must be among the objects inspected"
+    );
+    assert!(
+        self_objects
+            .iter()
+            .filter(|path| path.starts_with("e/self/blobs/"))
+            .count()
+            >= 2,
+        "the Given seals a folder descriptor and a section; at least two self blobs must be inspected"
+    );
+    assert!(
+        self_objects.len() >= 4,
+        "the Given creates at least four self objects; {} were inspected",
+        self_objects.len()
+    );
+
     w.inspected = all;
+    w.inspected_keys = keys;
 }
 
 // --- activated D/CB12 narrow local capabilities ---
@@ -8464,14 +9120,21 @@ fn d_capability_result(w: &mut ProtocolWorld, observable: String) {
 #[then(expr = "using that capability for {string} is refused")]
 fn d_mismatched_capability_refused(w: &mut ProtocolWorld, object: String) {
     w.core_capability_mismatch = object;
-    assert!(
-        w.core_capability_observation
-            .as_ref()
-            .expect("CORE-OWN-003 observation")
-            .as_ref()
-            .unwrap_or_else(|error| panic!("{error}"))
-            .mismatched_object_refused
+    let observation = w
+        .core_capability_observation
+        .as_ref()
+        .expect("CORE-OWN-003 observation")
+        .as_ref()
+        .unwrap_or_else(|error| panic!("{error}"));
+    // DBND-031: the column now has to name the object the executed attempt
+    // actually presented. Before this, `<mismatched_object>` was bound to a
+    // world field nothing read, and any string at all satisfied the line.
+    assert_eq!(
+        observation.mismatched_object, w.core_capability_mismatch,
+        "the Examples cell must name the object the {} capability was actually presented with",
+        observation.capability
     );
+    assert!(observation.mismatched_object_refused);
 }
 
 #[then(
@@ -11421,7 +12084,16 @@ fn core_atomic_no_failed_artifact(w: &mut ProtocolWorld) {
 
 #[then("staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan")]
 fn core_atomic_staging_clean(w: &mut ProtocolWorld) {
-    assert!(!core_atomic_observation(w).partial_state_observed);
+    let observation = core_atomic_observation(w);
+    assert!(!observation.partial_state_observed);
+    // DBND-026: the sentence's own subject. `partial_state_observed` is the map
+    // comparison of `:173` inverted and stops at `canonical_base()`; the orphan
+    // this line is named for lives outside it.
+    assert!(
+        !observation.staging_orphan_observed,
+        "{}: a staging generation other than the active one survived the reopen",
+        observation.store
+    );
 }
 
 #[then("one deterministic write-set advances content, roots, manifest and Gamma")]
@@ -11438,7 +12110,18 @@ fn core_atomic_linearized(w: &mut ProtocolWorld) {
 
 #[then("a crash or lost acknowledgement at that point resolves to the complete old or complete new state from the canonical manifest and Gamma head")]
 fn core_atomic_recovery(w: &mut ProtocolWorld) {
-    assert!(core_atomic_observation(w).reopened);
+    let observation = core_atomic_observation(w);
+    assert!(observation.reopened);
+    // DBND-025: `reopened` alone said only *after a successful commit,
+    // reopening yields the same bytes* — durability, not atomicity at the
+    // linearization boundary, and no scenario in the tree induced a crash at
+    // all. A crash is now induced on its own fixture and this is its outcome.
+    assert!(
+        observation.crash_resolved_completely,
+        "{}: a crash at the linearization boundary must resolve to ONE complete state, \
+         discovered from the canonical manifest and Gamma head, with nothing left behind",
+        observation.store
+    );
 }
 
 #[then("no reader or reopen observes an individual file replacement or partial edition")]
@@ -11477,6 +12160,34 @@ fn core_path_refused_before_access(w: &mut ProtocolWorld) {
     assert_eq!(observation.invalid_input, w.core_path_invalid_input);
     assert!(observation.rejected);
     assert!(!observation.outside_access_observed);
+
+    // DBND-033: for a `MemStore` display path there is no filesystem to escape,
+    // so `rejected` alone says only that SOMETHING went wrong — and with the
+    // validator neutered something always does, because the fixture publishes
+    // exactly one section and none of the four cells names it. The rejection
+    // must come from the confinement grammar
+    // (`validate_display_path`/`relative_segments`, `aithos-bundle/src/lib.rs`),
+    // which is the check spec 02 § *CB1 conformance-hardening decision* places
+    // BEFORE store access, and not from a lookup that happened to miss.
+    if observation.store == "MemStore" && observation.input_kind == "display path" {
+        const GRAMMAR_REFUSALS: [&str; 3] = [
+            "path must be a non-empty relative POSIX path",
+            "path contains an empty, dot, or parent segment",
+            "display path contains an unsupported name",
+        ];
+        let reason = observation
+            .rejection_reason
+            .as_deref()
+            .expect("a rejected operation carries its error");
+        assert!(
+            GRAMMAR_REFUSALS
+                .iter()
+                .any(|refusal| reason.contains(refusal)),
+            "'{}' must be refused by the display-path grammar before any resolution, \
+             not by a failed lookup: got '{reason}'",
+            observation.invalid_input
+        );
+    }
 }
 
 // -------------------------------------------------------- CB8 owner parity
@@ -11503,7 +12214,17 @@ fn core_owner_operation(w: &mut ProtocolWorld, operation: String) {
     ));
 }
 
-#[then("the operation succeeds from the narrow owner capability without a mandate")]
+// DBND-019. The sentence used to read *"the operation succeeds from the narrow
+// owner capability without a mandate"* and was asserted, unchanged, on three
+// rows whose executed production path never receives a capability:
+// `public/list`, `public/read` and `circle/list` are keyless by construction,
+// and `public/read` is literally the function `features/d-bundle.feature:95`
+// hands a stranger. The contract now says what the code does — the capability
+// is required exactly where the zone is keyed — and the step PROVES the
+// partition with a negative control instead of assuming it.
+#[then(
+    "the operation succeeds without a mandate, and the narrow owner capability is required exactly where the zone is keyed"
+)]
 fn core_owner_succeeds(w: &mut ProtocolWorld) {
     let observation = w
         .core_owner_observation
@@ -11523,6 +12244,13 @@ fn core_owner_succeeds(w: &mut ProtocolWorld) {
             "mutated"
         }
     );
+    let keyed = core_owner_row_is_keyed(&observation.zone, &observation.operation);
+    assert_eq!(
+        observation.stranger_refused, keyed,
+        "{}/{}: a stranger's OwnerKeys must be refused exactly when the zone is keyed \
+         (keyed={keyed}, stranger_refused={})",
+        observation.zone, observation.operation, observation.stranger_refused
+    );
 }
 
 #[then("every mutation is journalized without consuming mandate counters")]
@@ -11533,14 +12261,45 @@ fn core_owner_gamma(w: &mut ProtocolWorld) {
         .expect("CORE-OWN-001 observation")
         .as_ref()
         .unwrap_or_else(|error| panic!("{error}"));
+    let expected_kind = core_owner_expected_kind(&observation.operation);
+    assert_eq!(observation.gamma_delta, usize::from(expected_kind.is_some()));
+
+    // DBND-040: `journalized` is not `the count moved by one`. The appended
+    // entry must describe the operation that produced it — an `edit` that
+    // journalizes under a `create`'s kind is a well-formed entry, passes
+    // `check_form`, keeps the delta at 1, and is a false log (`ev-f18d4843`).
+    match expected_kind {
+        Some(kind) => assert_eq!(
+            observation.journal_kinds,
+            vec![kind.to_owned()],
+            "{}/{}: the journal must name the operation that produced it",
+            observation.zone,
+            observation.operation
+        ),
+        None => assert!(
+            observation.journal_kinds.is_empty(),
+            "{}/{}: a read or a list journalizes nothing",
+            observation.zone,
+            observation.operation
+        ),
+    }
+
+    // DBND-018 (P1): `without consuming mandate counters` was
+    // `assert_eq!(0, 0)` on a field written as a literal. Both halves are now
+    // computed from the entries the operation appended.
     assert_eq!(
-        observation.gamma_delta,
-        usize::from(matches!(
-            observation.operation.as_str(),
-            "create" | "edit" | "delete"
-        ))
+        observation.mandate_counter_delta, 0,
+        "{}/{}: spec 04.5 — an owner operation increments no delegated counter, \
+         and an appended entry carrying authorized_via would (spec 07.10)",
+        observation.zone, observation.operation
     );
-    assert_eq!(observation.mandate_counter_delta, 0);
+    assert!(
+        observation.owner_entry_rejection.is_none(),
+        "{}/{}: spec 07.2 — every appended entry must satisfy verify_owner_entry: {:?}",
+        observation.zone,
+        observation.operation,
+        observation.owner_entry_rejection
+    );
 }
 
 #[then("the resulting edition reopens and verifies from a fresh local store")]
@@ -12694,10 +13453,105 @@ fn parent_recovers_via_wrap(w: &mut ProtocolWorld) {
     );
 }
 
+// DBND-003. One function used to carry BOTH `#[then]` attributes, in two
+// different `Rule` blocks, with a bare `verify().expect(...)` for a body. The
+// correct assertion for one sentence is wrong for the other, so the step is
+// split first and each sentence given its own observable.
+//
+// Limb B — `edition 1 verifies offline` (`Rule: Editions chain and verify
+// offline`). The ordinal is now asserted, and `offline` is demonstrated the
+// way spec 02.12 § *Keyless façade (G-D)* words it: the edition is exported
+// into a FRESH `MemStore` and reopened with no owner or grantee private
+// capability, rather than verified in place on the live value the `When` built.
 #[then("edition 1 verifies offline")]
+fn edition_one_verifies_offline(w: &mut ProtocolWorld) {
+    let bundle = w.bundle.as_ref().unwrap();
+    bundle.verify().expect("edition valid");
+    assert_eq!(
+        w.latest_manifest().edition.height,
+        1,
+        "the scenario names edition 1"
+    );
+    let mut fresh = MemStore::default();
+    for path in bundle.store.list("").expect("the published store lists") {
+        let bytes = bundle
+            .store
+            .get(&path)
+            .expect("the published store reads")
+            .unwrap_or_else(|| panic!("listed object vanished: {path}"));
+        fresh.put(&path, &bytes).expect("the fresh store accepts it");
+    }
+    let cold = Bundle::open(fresh).expect("the exported edition reopens");
+    cold.verify()
+        .expect("the exported edition verifies with no key at all");
+}
+
+// Limb A — `its integrity checks against the signed edition` (`Rule: The
+// public zone reads without any key`). The word `its` had no referent: the old
+// body never touched `w.read_body`, never looked at `e/public/index.json` and
+// passed identically on a bundle with no public section at all. The only
+// integrity check the keyless read performs is `row.blob_sha !=
+// sha256_hex(&body)` (`bundle.rs:1280`), and deleting it moved nothing
+// (`ev-c7f65638`). This step now exercises that link: the read that succeeded
+// must stop succeeding once the body no longer matches the digest the signed
+// index pins. The tamper is undone so the store is left as the scenario found
+// it.
 #[then("its integrity checks against the signed edition")]
-fn edition_verifies(w: &mut ProtocolWorld) {
+fn public_read_integrity_checks(w: &mut ProtocolWorld) {
+    let path = w
+        .public_read_path
+        .clone()
+        .expect("the When recorded the display path it read");
+    assert_eq!(
+        w.read_body.as_ref().unwrap().as_deref(),
+        Ok(PUB_BODY),
+        "the keyless read this Then is about must have succeeded"
+    );
     w.bundle.as_ref().unwrap().verify().expect("edition valid");
+
+    let body_key = format!("e/public/{path}.md");
+    let (pristine, index_bytes) = {
+        let store = &w.bundle.as_ref().unwrap().store;
+        (
+            store
+                .get(&body_key)
+                .unwrap()
+                .unwrap_or_else(|| panic!("the public body {body_key} exists")),
+            store
+                .get("e/public/index.json")
+                .unwrap()
+                .expect("the public index exists"),
+        )
+    };
+    let index: ZoneIndex = serde_json::from_slice(&index_bytes).expect("the public index parses");
+    let name = path.rsplit('/').next().unwrap_or(path.as_str());
+    let row = index
+        .sections
+        .iter()
+        .find(|section| section.name == name)
+        .expect("the public index carries the row that was read");
+    assert_eq!(
+        row.blob_sha,
+        sha256_hex(&pristine),
+        "the row the read resolved must pin the bytes it returned"
+    );
+    let manifest = w.latest_manifest();
+    assert_eq!(
+        manifest.files.get("e/public/index.json"),
+        Some(&sha256_hex(&index_bytes)),
+        "the index that carries the pin is itself pinned by the signed manifest"
+    );
+
+    let bundle = w.bundle.as_mut().unwrap();
+    let mut tampered = pristine.clone();
+    tampered[0] ^= 1;
+    bundle.store.put(&body_key, &tampered).unwrap();
+    let refused = Bundle::<MemStore>::public_read(&bundle.store, &path);
+    bundle.store.put(&body_key, &pristine).unwrap();
+    assert!(
+        refused.is_err(),
+        "a public body that no longer matches its pinned hash must not be readable"
+    );
 }
 
 #[then("the manifest pins the DID document")]
@@ -12735,26 +13589,105 @@ fn edition_two_verifies(w: &mut ProtocolWorld) {
     assert_eq!(latest.edition.prev_hash, first.chain_hash().unwrap());
 }
 
+// DBND-001: `fails closed` is a claim about the FAILURE MODE, and `is_err()`
+// does not distinguish it from any other rejection. The `When` that broke the
+// edition declares the rejection it created; this step asserts that identity,
+// so a scenario named for the chain link can no longer be satisfied by an
+// unrelated stray, and a scenario named for a pinned file can no longer be
+// satisfied by a Merkle root.
 #[then("edition verification is rejected")]
 fn edition_rejected(w: &mut ProtocolWorld) {
-    assert!(w.bundle.as_ref().unwrap().verify().is_err());
+    let error = w
+        .bundle
+        .as_ref()
+        .unwrap()
+        .verify()
+        .expect_err("the edition must be rejected");
+    let expected = w
+        .expected_verify_error
+        .as_ref()
+        .expect("the When must declare the rejection it created");
+    let rendered = error.to_string();
+    assert!(
+        rendered.contains(expected.as_str()),
+        "edition rejected for the wrong reason: wanted '{expected}', got '{rendered}'"
+    );
 }
 
+// DBND-007. The Rule is named `Content round-trips through the sealed store`
+// and neither of its scenarios observed a single byte resident in
+// `e/circle/`. Any pair of mutually inverse write/read functions satisfied it,
+// the identity pair included: with `blob_seal`/`blob_open` reduced to a
+// length-preserving identity — a cleartext store — both scenarios stayed green
+// (`ev-23aeba39`). `content is recoverable unchanged` was demonstrated; only
+// `sealed` was not. The round-trip assertion is kept exactly as it was and the
+// missing half is added beside it, reading the raw blob bytes out of the store
+// the way `inspect_self_zone` already does for `e/self/`.
 #[then("the section body comes back intact")]
 fn body_intact(w: &mut ProtocolWorld) {
     assert_eq!(w.read_body.as_ref().unwrap().as_deref(), Ok(BODY));
+
+    let store = &w.bundle.as_ref().unwrap().store;
+    let blobs = store
+        .list("e/circle/blobs/")
+        .expect("the circle blob prefix lists");
+    assert!(
+        !blobs.is_empty(),
+        "the fixture sealed at least one circle blob; an empty listing proves nothing"
+    );
+    let mut resident = Vec::new();
+    for path in &blobs {
+        resident.extend_from_slice(
+            &store
+                .get(path)
+                .expect("the sealed blob reads")
+                .unwrap_or_else(|| panic!("listed blob vanished: {path}")),
+        );
+    }
+    let resident = String::from_utf8_lossy(&resident).into_owned();
+    for needle in [BODY, "note1", "note", "toto"] {
+        assert!(
+            !resident.contains(needle),
+            "the circle zone is sealed: '{needle}' must not be resident in e/circle/blobs/"
+        );
+    }
 }
 
 #[then(expr = "the owner reads the same section at {string}")]
 fn reads_at_new_path(w: &mut ProtocolWorld, path: String) {
     let owner = w.owner(0);
-    let body = w
-        .bundle
-        .as_ref()
-        .unwrap()
+    let bundle = w.bundle.as_ref().unwrap();
+    let body = bundle
         .read_section(Zone::Circle, &path, &owner)
         .expect("readable at the renamed path");
     assert_eq!(body, BODY);
+
+    // DBND-008. The scenario is named `Display paths resolve through names,
+    // keys through sids` and asserted only that SOME read succeeds at the new
+    // path. A rename that appended an alias and left the old name live passed
+    // it (`ev-f7261aa9`), and so would one that minted a fresh sid or re-sealed
+    // the blob. The three unobserved limbs of the scenario's own name:
+    let (row, _) = bundle
+        .resolve_clear(Zone::Circle, &path)
+        .expect("the renamed path resolves in the clear index");
+    assert_eq!(
+        Some(&row.sid),
+        w.rename_sid_before.as_ref(),
+        "spec 02.2: a sid is assigned at creation and never changed; a rename re-keys nothing"
+    );
+    assert_eq!(
+        Some(&row.blob_sha),
+        w.rename_blob_sha_before.as_ref(),
+        "spec 02.9: renaming edits an index row, moves no bytes"
+    );
+    let old = w
+        .rename_old_display_path
+        .as_ref()
+        .expect("the When recorded the display path the section used to have");
+    assert!(
+        bundle.read_section(Zone::Circle, old, &owner).is_err(),
+        "spec 02.2: a name is unique among its siblings — '{old}' must stop resolving"
+    );
 }
 
 #[then("the section body is readable in clear")]
@@ -12764,6 +13697,12 @@ fn public_body_readable(w: &mut ProtocolWorld) {
 
 #[then("no folder name, section name, title or tag appears anywhere")]
 fn self_leaks_nothing(w: &mut ProtocolWorld) {
+    // DBND-014: five `!contains` over a String no step constrained. An empty
+    // haystack satisfies all five, so the positive fact comes first.
+    assert!(
+        !w.inspected_keys.is_empty(),
+        "the When must have inspected something for `appears anywhere` to mean anything"
+    );
     for needle in [
         "enfance",
         "cicatrices",

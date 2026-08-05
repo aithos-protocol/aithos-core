@@ -1,0 +1,12 @@
+diff --git a/rust/crates/aithos-core/src/gamma.rs b/rust/crates/aithos-core/src/gamma.rs
+index 4ba25c4..ed8b889 100644
+--- a/rust/crates/aithos-core/src/gamma.rs
++++ b/rust/crates/aithos-core/src/gamma.rs
+@@ -299,6 +299,7 @@ impl EntrySpec {
+ /// Owner entry (§07.2): signed by `content_sign`, no mandate attached.
+ pub fn owner_entry(spec: EntrySpec, content_sign: &SigningKey) -> Result<Entry> {
+     let mut e = spec.into_entry("#content".to_owned());
++    e.authorized_by = Some("mandate_x".to_owned());
+     sign_entry(&mut e, content_sign)?;
+     e.check_form()?;
+     Ok(e)

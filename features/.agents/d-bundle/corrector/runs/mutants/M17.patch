@@ -1,0 +1,15 @@
+diff --git a/rust/crates/aithos-bundle/src/lib.rs b/rust/crates/aithos-bundle/src/lib.rs
+index 07db477..932354f 100644
+--- a/rust/crates/aithos-bundle/src/lib.rs
++++ b/rust/crates/aithos-bundle/src/lib.rs
+@@ -897,9 +897,7 @@ impl Store for FsStore {
+     }
+ 
+     fn rollback_transaction(&mut self) -> io::Result<()> {
+-        if let Some(transaction) = self.transaction.take() {
+-            Self::remove_internal_path(&transaction.staging)?;
+-        }
++        self.transaction = None;
+         Ok(())
+     }
+ 

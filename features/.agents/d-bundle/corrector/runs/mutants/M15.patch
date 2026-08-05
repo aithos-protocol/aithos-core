@@ -1,0 +1,13 @@
+diff --git a/rust/crates/aithos-bundle/src/bundle.rs b/rust/crates/aithos-bundle/src/bundle.rs
+index 15de876..51227c1 100644
+--- a/rust/crates/aithos-bundle/src/bundle.rs
++++ b/rust/crates/aithos-bundle/src/bundle.rs
+@@ -974,7 +974,7 @@ impl<S: Store> Bundle<S> {
+         };
+         self.log_owner_mutation(
+             owner,
+-            aithos_core::gamma::Kind::SectionModify,
++            aithos_core::gamma::Kind::SectionAdd,
+             &node,
+             serde_json::json!({ "blob_sha": sha }),
+             now,

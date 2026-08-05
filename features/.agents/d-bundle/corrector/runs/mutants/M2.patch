@@ -1,0 +1,17 @@
+diff --git a/rust/crates/aithos-bundle/src/bundle.rs b/rust/crates/aithos-bundle/src/bundle.rs
+index 15de876..0802a42 100644
+--- a/rust/crates/aithos-bundle/src/bundle.rs
++++ b/rust/crates/aithos-bundle/src/bundle.rs
+@@ -1747,12 +1747,6 @@ impl<S: Store> Bundle<S> {
+             return Err(err("manifest.json is not the chain tip".into()));
+         }
+         // Pinned files of the latest edition.
+-        for (path, sha) in &latest.files {
+-            let bytes = self.get(path)?;
+-            if &sha256_hex(&bytes) != sha {
+-                return Err(err(format!("pinned file altered: {path}")));
+-            }
+-        }
+         // I3 (§00.2, §03.1, §09.4): every header this edition pins MUST carry
+         // the owner line — the line whose recipient key is the subject's
+         // owner_kex — in every key version. No key is needed to see it.

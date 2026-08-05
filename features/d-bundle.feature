@@ -130,7 +130,7 @@ Feature: Bundle and editions
       Given an owner-local bundle session for zone "<zone>"
       And a published existing folder and section in that zone
       When the owner performs "<operation>" through the common bundle operation
-      Then the operation succeeds from the narrow owner capability without a mandate
+      Then the operation succeeds without a mandate, and the narrow owner capability is required exactly where the zone is keyed
       And every mutation is journalized without consuming mandate counters
       And the resulting edition reopens and verifies from a fresh local store
 

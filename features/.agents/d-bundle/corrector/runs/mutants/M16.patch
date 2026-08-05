@@ -1,0 +1,76 @@
+diff --git a/rust/crates/aithos-bundle/src/lib.rs b/rust/crates/aithos-bundle/src/lib.rs
+index 07db477..d51febe 100644
+--- a/rust/crates/aithos-bundle/src/lib.rs
++++ b/rust/crates/aithos-bundle/src/lib.rs
+@@ -904,70 +904,7 @@ impl Store for FsStore {
+     }
+ 
+     fn recover_transaction(&mut self) -> io::Result<()> {
+-        self.rollback_transaction()?;
+-        Self::ensure_plain_directory(&self.root)?;
+-        let active = self.read_pointer()?;
+-        let generations = self.generations_dir()?;
+-        match std::fs::symlink_metadata(&generations) {
+-            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+-                return Err(confinement_error(
+-                    "transaction generations root is not a plain directory",
+-                ));
+-            }
+-            Ok(_) => {
+-                for entry in std::fs::read_dir(&generations)? {
+-                    let entry = entry?;
+-                    let name = entry
+-                        .file_name()
+-                        .to_str()
+-                        .ok_or_else(|| invalid_path("generation name is not UTF-8"))?
+-                        .to_owned();
+-                    if !name.starts_with("generation-")
+-                        || !name
+-                            .bytes()
+-                            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+-                    {
+-                        return Err(confinement_error(
+-                            "unexpected object in transaction generations root",
+-                        ));
+-                    }
+-                    if active.as_deref() != Some(name.as_str()) {
+-                        Self::remove_internal_path(&entry.path())?;
+-                    }
+-                }
+-            }
+-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+-                if active.is_some() {
+-                    return Err(io::Error::new(
+-                        io::ErrorKind::InvalidData,
+-                        "transaction pointer references a missing generations root",
+-                    ));
+-                }
+-            }
+-            Err(error) => return Err(error),
+-        }
+-        for entry in std::fs::read_dir(&self.root)? {
+-            let entry = entry?;
+-            if entry.file_name().to_str().is_some_and(|name| {
+-                name.starts_with(".aithos-current.tmp-")
+-                    || name.starts_with(".aithos-mirror-current.tmp-")
+-            }) {
+-                Self::remove_internal_path(&entry.path())?;
+-            }
+-        }
+-        if let Some(active_generation) = active {
+-            let canonical = self.canonical_base()?;
+-            if self.read_mirror_marker()?.as_deref() == Some(active_generation.as_str()) {
+-                self.reconcile_compatibility_mirror(&canonical)?;
+-            } else {
+-                self.materialize_compatibility_mirror(&canonical)?;
+-                self.write_generation_marker(
+-                    &self.mirror_marker_path(),
+-                    ".aithos-mirror-current.tmp",
+-                    &active_generation,
+-                )?;
+-            }
+-        }
++        self.transaction = None;
+         Ok(())
+     }
+ 

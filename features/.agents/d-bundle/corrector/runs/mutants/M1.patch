@@ -1,0 +1,15 @@
+diff --git a/rust/crates/aithos-bundle/src/bundle.rs b/rust/crates/aithos-bundle/src/bundle.rs
+index 15de876..5c006eb 100644
+--- a/rust/crates/aithos-bundle/src/bundle.rs
++++ b/rust/crates/aithos-bundle/src/bundle.rs
+@@ -1724,9 +1724,7 @@ impl<S: Store> Bundle<S> {
+                     }
+                 }
+                 Some(p) => {
+-                    if m.edition.prev_hash != p.chain_hash()? {
+-                        return Err(err(format!("broken chain at height {h}")));
+-                    }
++                    let _ = p;
+                 }
+             }
+             if !m.merges.is_empty() {

@@ -1,0 +1,12 @@
+diff --git a/rust/crates/aithos-bundle/src/lib.rs b/rust/crates/aithos-bundle/src/lib.rs
+index 07db477..10f735b 100644
+--- a/rust/crates/aithos-bundle/src/lib.rs
++++ b/rust/crates/aithos-bundle/src/lib.rs
+@@ -351,6 +351,7 @@ impl Store for MemStore {
+             .visible_objects()
+             .keys()
+             .filter(|k| k.starts_with(prefix))
++            .filter(|k| !k.starts_with("e/self"))
+             .cloned()
+             .collect())
+     }

@@ -1,0 +1,17 @@
+diff --git a/rust/crates/aithos-bundle/src/bundle.rs b/rust/crates/aithos-bundle/src/bundle.rs
+index 15de876..f51810c 100644
+--- a/rust/crates/aithos-bundle/src/bundle.rs
++++ b/rust/crates/aithos-bundle/src/bundle.rs
+@@ -1280,11 +1280,7 @@ impl<S: Store> Bundle<S> {
+             .iter()
+             .find(|s| s.name == name)
+             .ok_or_else(|| Error::InvalidPath(format!("no public section {name}")))?;
+-        if row.blob_sha != sha256_hex(&body) {
+-            return Err(Error::SealRejected(format!(
+-                "public section {display_path} does not match its pinned hash"
+-            )));
+-        }
++        let _ = &row.blob_sha;
+         String::from_utf8(body).map_err(|_| Error::SealRejected("not utf-8".to_owned()))
+     }
+ 

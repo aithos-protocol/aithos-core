@@ -1,0 +1,13 @@
+diff --git a/features/d-bundle.feature b/features/d-bundle.feature
+index ad4d6f0..0393002 100644
+--- a/features/d-bundle.feature
++++ b/features/d-bundle.feature
+@@ -236,7 +236,7 @@ Feature: Bundle and editions
+ 
+       Examples:
+         | capability | protocol_object                         | mismatched_object                       | observable_result                                |
+-        | sign       | domain-tagged edition manifest          | Gamma entry                             | the signature verifies against the public key    |
++        | sign       | domain-tagged edition manifest          | a carrier that exists nowhere           | the signature verifies against the public key    |
+         | sign       | domain-tagged Gamma entry               | edition manifest                        | the signature verifies against the public key    |
+         | open       | node-and-version-bound sealed body      | body from a sibling node or version      | the expected plaintext is recovered only locally |
+         | wrap       | node-version-and-recipient header line  | line for another node or recipient       | only the intended recipient opens the wrapped key |
