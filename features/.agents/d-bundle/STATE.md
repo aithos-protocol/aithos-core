@@ -1,17 +1,17 @@
 ---
 feature: d-bundle
-status: CORRECTION_REQUESTED
-mode: correction
+status: REVIEW_REQUESTED
+mode: review
 round: 1
 base_main: d9120d7
 audit_revision: d9120d7e0d154cee517b983bf7b6cac0cf8e8096
-candidate_revision: null
-branch: codex/audit-d-bundle
+candidate_revision: 9807374c58a46e30a0864b24d6be66c516674394
+branch: codex/fix-d-bundle-lot-a
 assigned_findings: [DBND-001, DBND-002, DBND-003, DBND-007, DBND-008, DBND-013, DBND-014, DBND-018, DBND-019, DBND-025, DBND-026, DBND-029, DBND-031, DBND-032, DBND-033, DBND-034, DBND-040]
 open_findings: [DBND-001, DBND-002, DBND-003, DBND-004, DBND-005, DBND-006, DBND-007, DBND-008, DBND-009, DBND-010, DBND-011, DBND-012, DBND-013, DBND-014, DBND-015, DBND-016, DBND-017, DBND-018, DBND-019, DBND-021, DBND-022, DBND-023, DBND-024, DBND-025, DBND-026, DBND-027, DBND-028, DBND-029, DBND-031, DBND-032, DBND-033, DBND-034, DBND-036, DBND-037, DBND-038, DBND-039, DBND-040]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-05T08:15:00+00:00
+last_transition: 2026-08-05T11:05:00+00:00
 ---
 
 # Domain state — `d-bundle`
