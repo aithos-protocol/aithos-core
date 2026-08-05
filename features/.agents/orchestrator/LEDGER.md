@@ -119,3 +119,43 @@ for the human owner.
 Anything else is a parse error, reported with its line number. No anchors, no
 multi-line scalars, no flow nesting. The reader has no third-party dependency
 so that the state can be inspected on any machine.
+
+## Branches, and the one that must never be merged
+
+Ruled by the owner on 2026-08-05, after a branch list of nine had stopped being
+readable. The keys are in `QUEUE.yaml` under `policy:`; this is what they mean.
+
+**A branch exists only while a cycle is open.** `STATE.md` names it in its
+`branch:` field. When the cycle integrates into `main`, the branch is deleted.
+In steady state the repository carries `main`, the yardsticks, and at most one
+live cycle branch.
+
+The point is not tidiness. It is that **"who did what, and what is current"
+must be answerable from `STATE.md` and `git log main`, and never from the
+branch list.** A branch that outlives its cycle is a second, silent claim about
+the state of the work, and this train already spends most of its effort on
+files that make claims not matching what happened.
+
+**A yardstick branch is neither deleted nor merged, ever.** `QUEUE.yaml`
+registers them under `yardsticks:`. A yardstick is prior manual work: a Pass B
+input and a truth-milestone comparison, **never** a Pass A input. Merging one
+would contaminate every future Pass A on that feature — the whole value of the
+comparison is that the audit reached its findings without it. Deleting one would
+break the reference. A naive branch cleanup does one or the other, which is why
+`yardstick_branches_are_protected` exists to be read before one is attempted.
+These branches should also carry branch protection on the forge, because a
+policy key does not stop a `git push --delete`.
+
+**Before deleting, prove the branch is merged rather than assuming it.**
+
+```
+git merge-base --is-ancestor <branch> origin/main   # exit 0 = fully merged
+git log --oneline origin/main..<branch>             # must print nothing
+```
+
+**Durability.** `policy.durability_remote` names the remote a cycle must reach
+for its work to survive. Nothing verifies it, and on 2026-08-04 that cost a full
+warden remediation: `fetch` kept working while `push` was refused, so the train
+produced work it could not deliver and only a manual copy outside the container
+saved it. A **read-only** reachability check would not have caught it. Recorded
+as `durability-remote-unverified`.

@@ -31,6 +31,20 @@ policy:
   push_main: true
   push_main_expires_on: 'first published edition outside this repository, or leaving alpha'
   disclosure_gate: true
+  # Branch hygiene, ruled 2026-08-05 by the owner. A branch exists only while a
+  # cycle is open, STATE.md names it, and when the cycle integrates the branch
+  # dies. In steady state the repository carries main, the yardsticks, and at
+  # most one live cycle branch. The point is not tidiness: it is that "who did
+  # what, and what is current" must be answerable from STATE.md and git log main,
+  # never from the branch list. On 2026-08-05 three fully merged branches had
+  # survived integration and the list had stopped being readable.
+  branch_dies_on_integration: true
+  # A yardstick branch is NEITHER deleted NOR merged, ever. Merging it would
+  # contaminate every future Pass A on that feature — it is a Pass B input and a
+  # milestone comparison only. Deleting it would break the reference below.
+  # A naive branch cleanup does one or the other, so this key exists to be read
+  # before one is attempted. These branches should carry branch protection.
+  yardstick_branches_are_protected: true
   # Project stage, 2026-08-04. Nothing is deployed and no edition has been
   # published by anyone, so a change cannot invalidate any holder's data. Roles
   # do not weigh backward compatibility, propose migration paths, or soften a
@@ -173,3 +187,8 @@ follow_ups:
   chdr-lota-b-derivation: 'TARGETED, light. Its M5 rationale (b-derivation.md:136, 191-193) states an out-of-API capability in the grammar of an in-API one, the CHDR-019 shape. The finding does not rest on it and the measured half is sufficient, so this is a one-sentence correction, not a re-audit'
   chdr-lota-evidence: 'fourteen transcripts on run 2026-08-04-r6 settle every behavioural claim; NOTHING FURTHER IS OWED. Baselines ev-3d485476 f-gamma 204/891 and ev-3f2994ef o-vault 58/249. Proxy confirmations ev-dd652e01, ev-db029aa9, ev-bc687fb8, ev-887c6f1b, ev-0002cc6b. Refutation of this review own MI-4 framing ev-e7d1ca62, complement ev-69cd5f74, disclosed compile error ev-5b25fc6f. Disclosure probe ev-826f8f15, nothing embargoed. MI-7 ev-c0d4a435 and ev-f818dc4b. MI-8 ev-dd761130, ev-ce3f49ad, ev-a82b15ab. The depth figures for CB4_ACCEPTANCE, CB5_CATALOG_ACCEPTANCE and CB7_ACCEPTANCE are deliberately NOT requested: CB10 was worth measuring because it decided a queue position, those three decide nothing until their cycles open'
   chdr-lota-disclosure: 'blocking condition 9 assessed in every pass and raised NOTHING. The close call was MI-8 and the ruling is publish in full, reached independently of the orchestrator and agreeing with it. Grounds: the guard is present and correct in shipped code at vault.rs:75-96 so there is no weakness to fix and nothing for the statement to be before; reaching the described state requires editing the victim source and rebuilding; the repository is public and both cited lines are already readable; nothing is deployed; and M9, M10, MI-3 and the CHDR-032 emission path were all published in full. The angle the review added: this finding is of more use to a supply-chain attacker than a network one, since it says a string-preserving predicate break would pass every gate. Published anyway because gates are not the merge control, the fix is one behavioural negative and is cheaper than the embargo that would delay it, and an embargo that protects a weakness by preventing its repair is not a disclosure control. CHDR-028 remains embargoed and is not restated anywhere in the report'
+
+  # Recorded 2026-08-05, against the train itself. Raised by the d-bundle warden
+  # in warden-2.md and confirmed by three losses in one day.
+  durability-remote-unverified: 'BLOCKING CLASS, process not code. policy.durability_remote declares origin as this train durability boundary and NOTHING VERIFIES IT. On 2026-08-04 the session git proxy began refusing this repository at 20h; fetch kept working, push did not, and the train went on producing an entire warden remediation it could not deliver. The container then reset and that work survived only because it had been written to the owner disk by hand. Same shape three times in one day: two of three embargoed statements destroyed for living outside the tree, the Pass A corpus of d-bundle nearly lost the same way, and this. What is owed: a bootstrap check that a cycle cannot open unless it can WRITE to durability_remote, so a cycle that cannot reach origin blocks BEFORE producing work rather than after. A read-only reachability check is not enough — fetch worked throughout'
+  branch-hygiene-backlog: 'recorded 2026-08-05 with the policy keys above. Three train branches were fully merged into main and never deleted: codex/audit-c-headers-r2 at 5be3047, codex/fix-c-headers-i3-authority at 2f2d55d, codex/fix-c-headers-lot-a at 4dc856b. Verified merged by git merge-base --is-ancestor against origin/main before the rule was written. codex/audit-c-headers is the c-headers yardstick and is exempt from deletion by yardstick_branches_are_protected. Three further branches — bundle-publication-performance, gse-0-extension-registry-wip, olr-oauth-libs-upstream — are not this train work and no role touches them'
