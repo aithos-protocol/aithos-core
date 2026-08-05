@@ -255,19 +255,21 @@ Feature: Bundle and editions
     # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: An untrusted path or Store key can never escape its selected root
       Given a published "<store>" bundle snapshotted byte for byte
-      When a caller supplies "<invalid_input>" as a "<input_kind>" under "<filesystem_condition>"
-      Then the operation is rejected before any out-of-root store access
+      When a caller supplies "<input>" as a "<input_kind>" under "<filesystem_condition>"
+      Then the operation is "<verdict>" before any out-of-root store access
       And the canonical bundle is byte-for-byte identical to the snapshot
 
       Examples:
-        | store    | input_kind   | invalid_input                  | filesystem_condition                         |
-        | MemStore | display path | ../circle/secret               | no filesystem indirection                    |
-        | MemStore | display path | /absolute/section              | no filesystem indirection                    |
-        | MemStore | display path | folder/./section               | no filesystem indirection                    |
-        | MemStore | display path | folder//section                | no filesystem indirection                    |
-        | FsStore  | display path | folder/link-out/section        | link-out is a symlink outside the zone       |
-        | FsStore  | Store key    | ../../outside                  | no filesystem indirection                    |
-        | FsStore  | Store key    | e/circle/unlisted-object.json  | no filesystem indirection                    |
-        | FsStore  | Store key    | e/circle/link-out/index.json   | intermediate link-out targets outside root   |
-        | FsStore  | Store key    | e/circle/index.json            | final index component links outside root      |
-        | FsStore  | cold-load key | manifest.json                 | signed manifest component links outside root  |
+        | store    | input_kind   | input                          | filesystem_condition                         | verdict  |
+        | MemStore | display path | ../circle/secret               | no filesystem indirection                    | rejected |
+        | MemStore | display path | /absolute/section              | no filesystem indirection                    | rejected |
+        | MemStore | display path | folder/./section               | no filesystem indirection                    | rejected |
+        | MemStore | display path | folder//section                | no filesystem indirection                    | rejected |
+        | MemStore | display path | projects/note                  | no filesystem indirection                    | resolved |
+        | FsStore  | display path | folder/link-out/section        | link-out is a symlink outside the zone       | rejected |
+        | FsStore  | Store key    | ../../outside                  | no filesystem indirection                    | rejected |
+        | FsStore  | Store key    | e/circle/unlisted-object.json  | no filesystem indirection                    | rejected |
+        | FsStore  | Store key    | e/circle/link-out/index.json   | intermediate link-out targets outside root   | rejected |
+        | FsStore  | Store key    | e/circle/index.json            | final index component links outside root      | rejected |
+        | FsStore  | Store key    | e/circle/index.json            | no filesystem indirection                    | resolved |
+        | FsStore  | cold-load key | manifest.json                 | signed manifest component links outside root  | rejected |

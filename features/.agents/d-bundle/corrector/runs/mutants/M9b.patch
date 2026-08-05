@@ -1,0 +1,13 @@
+diff --git a/rust/crates/aithos-bundle/src/bundle.rs b/rust/crates/aithos-bundle/src/bundle.rs
+index 15de876..f679f8b 100644
+--- a/rust/crates/aithos-bundle/src/bundle.rs
++++ b/rust/crates/aithos-bundle/src/bundle.rs
+@@ -1697,7 +1697,7 @@ impl<S: Store> Bundle<S> {
+         for h in 1..=latest.edition.height {
+             let m: Manifest = self.get_json(&format!("manifests/{h}.json"))?;
+             if m.authorized_via.is_empty() {
+-                m.verify_signature(&doc)?;
++                // M9b: the owner-signature check on the manifest is removed.
+             } else if m.version == CORE_DRAFT2_VERSION {
+                 let chain = m
+                     .authorized_via

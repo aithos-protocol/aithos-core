@@ -394,7 +394,11 @@ struct CoreCapabilityObservation {
 struct CorePathObservation {
     store: String,
     input_kind: String,
-    invalid_input: String,
+    /// DBND-034. Renamed from `invalid_input`: two of the twelve rows now carry
+    /// a VALID input, and a column named for a property two of its cells do not
+    /// have is the `Given announces one state and constructs another` defect
+    /// this audit tracks.
+    input: String,
     rejected: bool,
     /// DBND-033. `rejected` was `.is_err()`, which cannot tell *the confinement
     /// grammar refused this path* from *no such section exists*. The fixture
@@ -404,6 +408,13 @@ struct CorePathObservation {
     /// outline stayed green (`ev-2d2ebd1b`). The refusal now has to be the RIGHT
     /// refusal, and the message it came back with is carried here to be checked.
     rejection_reason: Option<String>,
+    /// DBND-034. The positive control's own observable. All ten rows of `:256`
+    /// asserted rejection and no row supplied a valid input, so a defect that
+    /// rejected EVERY input kept the outline green — which is what a suite with
+    /// no positive control looks like from the outside (`ev-2d2ebd1b`). A row
+    /// that merely fails to be rejected proves little; this records that the
+    /// resolved operation returned the CANONICAL value the fixture published.
+    resolved_matches_canonical: bool,
     canonical_unchanged: bool,
     outside_access_observed: bool,
 }
@@ -627,7 +638,7 @@ pub struct ProtocolWorld {
     core_capability_observation: Option<Result<CoreCapabilityObservation, String>>,
     core_path_store: String,
     core_path_input_kind: String,
-    core_path_invalid_input: String,
+    core_path_input: String,
     core_path_filesystem_condition: String,
     core_path_observation: Option<Result<CorePathObservation, String>>,
     core_delegated_authority: String,
@@ -3484,10 +3495,7 @@ fn core_capability_scenario(
     }
 }
 
-fn core_path_mem_scenario(
-    input_kind: &str,
-    invalid_input: &str,
-) -> Result<CorePathObservation, String> {
+fn core_path_mem_scenario(input_kind: &str, input: &str) -> Result<CorePathObservation, String> {
     if input_kind != "display path" {
         return Err(format!(
             "CORE-OWN-004 MemStore does not expect input kind {input_kind}"
@@ -3498,20 +3506,28 @@ fn core_path_mem_scenario(
     let outcome = bundle.owner_content_operation(
         Zone::Circle,
         OwnerContentOperation::Read {
-            display_path: invalid_input,
+            display_path: input,
         },
         &owner,
         &mut entropy,
     );
     let rejection_reason = outcome.as_ref().err().map(ToString::to_string);
     let rejected = outcome.is_err();
+    // DBND-034: the positive control walks this identical call. `resolved` is
+    // not `did not error` — the read has to hand back the body
+    // `core_atomic_bundle` published at `projects/note`.
+    let resolved_matches_canonical = matches!(
+        &outcome,
+        Ok(OwnerContentOutcome::Read(body)) if body == "before atomic mutation"
+    );
     let after = cb7_store_snapshot(&bundle.store)?;
     Ok(CorePathObservation {
         store: "MemStore".into(),
         input_kind: input_kind.into(),
-        invalid_input: invalid_input.into(),
+        input: input.into(),
         rejected,
         rejection_reason,
+        resolved_matches_canonical,
         canonical_unchanged: before == after,
         outside_access_observed: false,
     })
@@ -3572,7 +3588,7 @@ fn core_path_active_generation(root: &Path) -> Result<PathBuf, String> {
 #[cfg(unix)]
 fn core_path_fs_scenario(
     input_kind: &str,
-    invalid_input: &str,
+    input: &str,
     filesystem_condition: &str,
 ) -> Result<CorePathObservation, String> {
     use std::os::unix::fs::symlink;
@@ -3646,10 +3662,15 @@ fn core_path_fs_scenario(
                 .map_err(|error| format!("CORE-OWN-004 manifest symlink failed: {error}"))?;
             Some(b"escaped manifest".to_vec())
         }
+        // DBND-034: the positive control. The SAME `Store key` this outline
+        // rejects when its final component is a symlink out of the root is a
+        // perfectly good canonical key with no filesystem indirection, and it
+        // must resolve. No fixture is planted and nothing is expected outside.
+        ("Store key", "no filesystem indirection") if input == "e/circle/index.json" => None,
         ("Store key", "no filesystem indirection")
-            if invalid_input == "e/circle/unlisted-object.json" =>
+            if input == "e/circle/unlisted-object.json" =>
         {
-            let target = active.join(invalid_input);
+            let target = active.join(input);
             std::fs::create_dir_all(target.parent().expect("unlisted parent"))
                 .map_err(|error| format!("CORE-OWN-004 unlisted parent failed: {error}"))?;
             std::fs::write(&target, b"unlisted but present")
@@ -3675,7 +3696,7 @@ fn core_path_fs_scenario(
             .owner_content_operation(
                 Zone::Public,
                 OwnerContentOperation::Read {
-                    display_path: invalid_input,
+                    display_path: input,
                 },
                 &owner,
                 &mut entropy,
@@ -3687,20 +3708,28 @@ fn core_path_fs_scenario(
     } else {
         bundle
             .store
-            .get(invalid_input)
+            .get(input)
             .map_err(|error| aithos_core::Error::InvalidPath(error.to_string()))
     };
     let rejected = result.is_err();
     let rejection_reason = result.as_ref().err().map(ToString::to_string);
     let escaped_bytes = result.ok().flatten();
+    // DBND-034: for the positive control the resolved bytes must BE the
+    // canonical circle index — the one the fixture published, carrying the
+    // section it published — not merely some bytes that came back.
+    let resolved_matches_canonical = escaped_bytes.as_ref().is_some_and(|bytes| {
+        serde_json::from_slice::<ZoneIndex>(bytes)
+            .is_ok_and(|index| index.sections.iter().any(|section| section.name == "note"))
+    });
     let after = core_path_raw_snapshot(root.path())?;
     let outside_after = core_path_raw_snapshot(outside.path())?;
     Ok(CorePathObservation {
         store: "FsStore".into(),
         input_kind: input_kind.into(),
-        invalid_input: invalid_input.into(),
+        input: input.into(),
         rejected,
         rejection_reason,
+        resolved_matches_canonical,
         canonical_unchanged: before == after,
         outside_access_observed: outside_before != outside_after
             || escaped_bytes
@@ -3712,7 +3741,7 @@ fn core_path_fs_scenario(
 #[cfg(not(unix))]
 fn core_path_fs_scenario(
     _input_kind: &str,
-    _invalid_input: &str,
+    _input: &str,
     _filesystem_condition: &str,
 ) -> Result<CorePathObservation, String> {
     Err("CORE-OWN-004 symlink scenarios require Unix".into())
@@ -3721,12 +3750,12 @@ fn core_path_fs_scenario(
 fn core_path_scenario(
     store: &str,
     input_kind: &str,
-    invalid_input: &str,
+    input: &str,
     filesystem_condition: &str,
 ) -> Result<CorePathObservation, String> {
     match store {
-        "MemStore" => core_path_mem_scenario(input_kind, invalid_input),
-        "FsStore" => core_path_fs_scenario(input_kind, invalid_input, filesystem_condition),
+        "MemStore" => core_path_mem_scenario(input_kind, input),
+        "FsStore" => core_path_fs_scenario(input_kind, input, filesystem_condition),
         other => Err(format!("CORE-OWN-004 unknown store {other}")),
     }
 }
@@ -12132,23 +12161,30 @@ fn core_atomic_no_partial_state(w: &mut ProtocolWorld) {
 #[when(expr = "a caller supplies {string} as a {string} under {string}")]
 fn core_path_attempt(
     w: &mut ProtocolWorld,
-    invalid_input: String,
+    input: String,
     input_kind: String,
     filesystem_condition: String,
 ) {
-    w.core_path_invalid_input = invalid_input;
+    w.core_path_input = input;
     w.core_path_input_kind = input_kind;
     w.core_path_filesystem_condition = filesystem_condition;
     w.core_path_observation = Some(core_path_scenario(
         &w.core_path_store,
         &w.core_path_input_kind,
-        &w.core_path_invalid_input,
+        &w.core_path_input,
         &w.core_path_filesystem_condition,
     ));
 }
 
-#[then("the operation is rejected before any out-of-root store access")]
-fn core_path_refused_before_access(w: &mut ProtocolWorld) {
+// DBND-034. The Rule's confinement half was a vacuous negative: all ten rows
+// asserted rejection, no row supplied a valid input or a valid Store key, and a
+// defect that rejected EVERY input would have kept the outline green — which is
+// exactly what `ev-2d2ebd1b` looks like from the outside. The verdict is now a
+// column of the `Examples` grid and this one step function decides both, so the
+// positive control walks the identical `Given`, `When` and `Then` as the ten
+// negatives rather than sitting beside them as a separate test.
+#[then(expr = "the operation is {string} before any out-of-root store access")]
+fn core_path_verdict(w: &mut ProtocolWorld, verdict: String) {
     let observation = w
         .core_path_observation
         .as_ref()
@@ -12157,36 +12193,64 @@ fn core_path_refused_before_access(w: &mut ProtocolWorld) {
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(observation.store, w.core_path_store);
     assert_eq!(observation.input_kind, w.core_path_input_kind);
-    assert_eq!(observation.invalid_input, w.core_path_invalid_input);
-    assert!(observation.rejected);
+    assert_eq!(observation.input, w.core_path_input);
+    // Neither verdict may reach outside the root: a resolved operation stays
+    // inside its zone just as a rejected one does.
     assert!(!observation.outside_access_observed);
 
-    // DBND-033: for a `MemStore` display path there is no filesystem to escape,
-    // so `rejected` alone says only that SOMETHING went wrong — and with the
-    // validator neutered something always does, because the fixture publishes
-    // exactly one section and none of the four cells names it. The rejection
-    // must come from the confinement grammar
-    // (`validate_display_path`/`relative_segments`, `aithos-bundle/src/lib.rs`),
-    // which is the check spec 02 § *CB1 conformance-hardening decision* places
-    // BEFORE store access, and not from a lookup that happened to miss.
-    if observation.store == "MemStore" && observation.input_kind == "display path" {
-        const GRAMMAR_REFUSALS: [&str; 3] = [
-            "path must be a non-empty relative POSIX path",
-            "path contains an empty, dot, or parent segment",
-            "display path contains an unsupported name",
-        ];
-        let reason = observation
-            .rejection_reason
-            .as_deref()
-            .expect("a rejected operation carries its error");
-        assert!(
-            GRAMMAR_REFUSALS
-                .iter()
-                .any(|refusal| reason.contains(refusal)),
-            "'{}' must be refused by the display-path grammar before any resolution, \
-             not by a failed lookup: got '{reason}'",
-            observation.invalid_input
-        );
+    match verdict.as_str() {
+        "rejected" => {
+            assert!(
+                observation.rejected,
+                "'{}' must not resolve",
+                observation.input
+            );
+
+            // DBND-033: for a `MemStore` display path there is no filesystem to
+            // escape, so `rejected` alone says only that SOMETHING went wrong —
+            // and with the validator neutered something always does, because
+            // the fixture publishes exactly one section and none of the four
+            // rejecting cells names it. The rejection must come from the
+            // confinement grammar (`validate_display_path`/`relative_segments`,
+            // `aithos-bundle/src/lib.rs`), which is the check spec 02 § *CB1
+            // conformance-hardening decision* places BEFORE store access, and
+            // not from a lookup that happened to miss.
+            if observation.store == "MemStore" && observation.input_kind == "display path" {
+                const GRAMMAR_REFUSALS: [&str; 3] = [
+                    "path must be a non-empty relative POSIX path",
+                    "path contains an empty, dot, or parent segment",
+                    "display path contains an unsupported name",
+                ];
+                let reason = observation
+                    .rejection_reason
+                    .as_deref()
+                    .expect("a rejected operation carries its error");
+                assert!(
+                    GRAMMAR_REFUSALS
+                        .iter()
+                        .any(|refusal| reason.contains(refusal)),
+                    "'{}' must be refused by the display-path grammar before any resolution, \
+                     not by a failed lookup: got '{reason}'",
+                    observation.input
+                );
+            }
+        }
+        "resolved" => {
+            assert!(
+                !observation.rejected,
+                "'{}' is a conforming input and must resolve: {:?}",
+                observation.input, observation.rejection_reason
+            );
+            // DBND-034: `resolved` is not `did not error`. A control that only
+            // checked the absence of an error would be satisfied by an
+            // implementation that returned nothing at all.
+            assert!(
+                observation.resolved_matches_canonical,
+                "'{}' resolved to something other than the canonical value the fixture published",
+                observation.input
+            );
+        }
+        other => panic!("CORE-OWN-004 unknown verdict {other}"),
     }
 }
 
