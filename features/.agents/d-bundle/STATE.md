@@ -1,17 +1,17 @@
 ---
 feature: d-bundle
-status: AUDIT_INITIAL
-mode: audit
+status: CORRECTION_REQUESTED
+mode: correction
 round: 1
 base_main: d9120d7
 audit_revision: d9120d7e0d154cee517b983bf7b6cac0cf8e8096
 candidate_revision: null
 branch: codex/audit-d-bundle
-assigned_findings: []
-open_findings: [DBND-001, DBND-002, DBND-003, DBND-004, DBND-005, DBND-006, DBND-007, DBND-008, DBND-009, DBND-010, DBND-011, DBND-012, DBND-013, DBND-014, DBND-015, DBND-016, DBND-017, DBND-018, DBND-019, DBND-021, DBND-022, DBND-023, DBND-024, DBND-025, DBND-027, DBND-028, DBND-029, DBND-031, DBND-032, DBND-033, DBND-034, DBND-036, DBND-037, DBND-038, DBND-039]
+assigned_findings: [DBND-001, DBND-002, DBND-003, DBND-007, DBND-008, DBND-013, DBND-014, DBND-018, DBND-019, DBND-025, DBND-026, DBND-029, DBND-031, DBND-032, DBND-033, DBND-034, DBND-040]
+open_findings: [DBND-001, DBND-002, DBND-003, DBND-004, DBND-005, DBND-006, DBND-007, DBND-008, DBND-009, DBND-010, DBND-011, DBND-012, DBND-013, DBND-014, DBND-015, DBND-016, DBND-017, DBND-018, DBND-019, DBND-021, DBND-022, DBND-023, DBND-024, DBND-025, DBND-026, DBND-027, DBND-028, DBND-029, DBND-031, DBND-032, DBND-033, DBND-034, DBND-036, DBND-037, DBND-038, DBND-039, DBND-040]
 rejection_count: {}
 blocked: null
-last_transition: 2026-08-04T18:30:00+00:00
+last_transition: 2026-08-05T08:15:00+00:00
 ---
 
 # Domain state — `d-bundle`
@@ -24,11 +24,11 @@ last_transition: 2026-08-04T18:30:00+00:00
 
 | Field | Value |
 |---|---|
-| Status | `AUDIT_INITIAL`. The initial audit is written and published; the warden has invalidated once and the cycle is being re-submitted |
+| Status | **`CORRECTION_REQUESTED`**. The warden validated on its third review (`warden-3.md`), after invalidating twice — once on six real breaches, once on delivery when the remediation commit could not be pushed. Two further rounds of measurement followed the `VALID` and changed the note; the warden ruled each outcome in advance of its transcript |
 | Audited revision | `d9120d7`, frozen. Feature gate `ev-6a76a789`, green, **1 feature / 7 rules / 51 scenarios / 299 steps** — a count the bootstrapper had reached from the file alone before anything ran |
 | Branch | `codex/audit-d-bundle` |
 | Public audit | `docs/audits/features/d-bundle.md` |
-| Findings | **35 active** — 2 P1, 13 P2, 20 P3 — reconciled from 48 frozen in Pass A. Ten more were **removed by the adversarial panel** and are published in §7 with the fact that killed each |
+| Findings | **37 active** — 2 P1, 15 P2, 20 P3 — reconciled from 48 frozen in Pass A. Ten more were **removed by the adversarial panel** and are published in §7 with the fact that killed each |
 | Evidential state, per finding | fifteen are **confirmed by a named mutant transcript**; twenty stand **on the record alone** and say so in those words. **No finding survived the adversarial panel** — ten were tested and ten fell, so that category is empty and the audit says so rather than leaving it silently unused |
 | Pass A | six auditors, seven review units — `RU-3` held `RU-4` as well, because the pair is the finding surface. Out-of-tree extracts with no `.git`, no run journal, no ledger, no prior verdict. Frozen at `pass-a/frozen.json` **before any mutant ran**; the warden verified the ordering at 6m15s and the hash |
 | Mutants | **nineteen distinct edits over twenty transcripts**, all run by the orchestrator, every one named and predicted by an auditor before a transcript existed |
@@ -50,11 +50,16 @@ reach this feature. Both columns of the largest `Scenario Outline` were changed
 to values that exist nowhere in the repository and both go red (`ev-f0658ee9`,
 `ev-de8fa887`). That is a measured negative result and it is recorded as one.
 
-### Next role
+### Next role — the corrector, and its lot is exactly seventeen
 
-The **corrector**, once the warden accepts the re-submission. Its lot is the
-findings the audit marks `confirmed by transcript`; the twenty resting on the
-record alone are not assignable until they carry evidence.
+`assigned_findings` carries the **2 P1 and 15 P2**, and every one of the
+seventeen is **confirmed by transcript**. That was not true of any earlier round
+of this train: the c-headers lots mixed measured findings with argued ones.
+
+The **twenty P3** stay in `open_findings` and are **deliberately not assigned**.
+They rest on the record alone and say so in the note. A finding without evidence
+is not a thing to correct, it is a thing to measure first, and correcting one
+would spend a corrector's round on somebody's reading.
 
 ---
 

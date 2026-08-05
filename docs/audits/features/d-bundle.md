@@ -10,9 +10,9 @@
 | Observed revision | `d9120d7e0d154cee517b983bf7b6cac0cf8e8096` (`d9120d7`) |
 | Branch | `codex/audit-d-bundle` |
 | Orchestrated run | `2026-08-04-r7` (`features/.agents/orchestrator/runs/2026-08-04-r7/`) |
-| Worktree state | `rust/`, `spec/` and `vectors/` are **byte-identical** to `d9120d7`: `git diff d9120d7..HEAD -- rust/ spec/ vectors/` is empty. `features/d-bundle.feature` is **not**: commit `b19c7fd` inserted 99 marker lines into it and this note's round-2 marker edit brings the total to 107, changing no scenario, rule, step or `Examples` row, and moving every line number below the first insertion. Round 1 of this note claimed the audited bytes and the current bytes were the same bytes; that was false for the feature file and is corrected here (§8.4) |
+| Worktree state | `rust/`, `spec/` and `vectors/` are **byte-identical** to `d9120d7`: `git diff d9120d7..HEAD -- rust/ spec/ vectors/` is empty. `features/d-bundle.feature` is **not**: commit `b19c7fd` inserted 99 marker lines into it and this note's round-2 and round-3 marker edits bring the total to 108, changing no scenario, rule, step or `Examples` row, and moving every line number below the first insertion. Round 1 of this note claimed the audited bytes and the current bytes were the same bytes; that was false for the feature file and is corrected here (§8.4) |
 | Feature file, audited | `d9120d7:features/d-bundle.feature`, 165 lines, sha256 `59a6f361598de459fa063e7bff9915427c5e3d70423c20204d26f294b618c8b5` — the numbering used by `INVENTORY.md`, by all six Pass A reports and by `frozen.json` |
-| Feature file, current | `features/d-bundle.feature` as delivered by this note, 272 lines, sha256 `9913e2aaf034dc5ba68b6eb9f13b74d0b536042515cc7953cbb6f0ae17033ceb` |
+| Feature file, current | `features/d-bundle.feature` as delivered by this note, 273 lines, sha256 `2780ed65348776e64406d2d2d9a63932c360b00b25cb122351bd4deb2abf0deb` |
 | Line-citation convention | **every `d-bundle.feature` line number in this note is a line of the audited file**, never of the current one. §5.2 translates each to its current line. See the block below |
 | Scope | the semantic truth of the 51 scenarios of `d-bundle.feature`; seven `Rule` blocks |
 | Finding prefix | `DBND-*` (`docs/audits/features/README.md`, § *Convention*) |
@@ -74,13 +74,15 @@ hundred-block. This note renumbers them into one `DBND-001`… series, ordered b
 review unit and then by severity, and publishes the complete old→new map in
 §6.0.
 
-**Round 2 removed four more findings and did not renumber again.** `DBND-020`,
-`DBND-026`, `DBND-030` and `DBND-035` are **retired identifiers**: the series
-runs `DBND-001`…`DBND-039` with those four absent. Renumbering a second time in
-two commits would defeat the purpose of §6.0 — round 1 of this note is committed
-at `b19c7fd` and a reader will arrive carrying its numbers, exactly as readers
-arrive carrying the Pass A numbers. **No `DBND-*` identifier retired at any
-stage is ever reused for anything else.**
+**Rounds 2 and 3 changed the membership and never renumbered.** Round 2 removed
+four findings; round 3 restored two of them by measurement. The series runs
+`DBND-001`…`DBND-039` with **three absent** — `DBND-020`, `DBND-030`,
+`DBND-035` — plus `DBND-026`, un-retired under its own number, and `DBND-040`,
+appended out of unit order because it never held a reconciled identifier. §6.0
+states the ordering rule. Renumbering at any of these steps would defeat the
+purpose of §6.0: rounds 1 and 2 are committed and a reader will arrive carrying
+their numbers, exactly as readers arrive carrying the Pass A numbers. **No
+`DBND-*` identifier retired at any stage is ever reused for anything else.**
 
 ## 2. Method provenance
 
@@ -136,10 +138,14 @@ block below because they are not worth the same thing:
    four **under-panelled**, on the orchestrator's own stated rule that a
    refutation resting on judgement rather than on a checkable fact gets the full
    panel — a rule that had not been applied to them. A second refuter was run on
-   all four. **All four fell, each on a fact verified in the source.**
-   The panel result is therefore **ten tested, ten refuted, none survived**, and
-   all ten are in §7. **No finding in this note carries the evidential state
-   *survived the adversarial panel*, because none survived one.**
+   all four and all four fell on facts in the source. Round 3 then **tested three
+   of the ten refutations against the gate instead of reading them**, and two of
+   the three did not survive their own transcript. The panel result is
+   **ten examined, eight refuted, two restored by measurement** (§7).
+   **No finding in this note carries the evidential state *survived the
+   adversarial panel*, because none survived one** — the two restorations were
+   restored by a mutant, not by outlasting an attack, and they carry
+   *confirmed by transcript* like any other measured finding.
 3. **The 23 P3 findings had neither.** That was a budget decision, recorded in
    `VERDICTS.md` § D — the panel budget was spent where it changes what a
    corrector does. This note rules on them **on the record alone** and says so
@@ -208,20 +214,27 @@ carry the round.
    this feature. That is recorded as a negative result, not as an absence
    (§10).
 
-**Reconciled count: 35 findings — 2 P1, 13 P2, 20 P3** — from 48 frozen: **ten
-removed by the panel** (§7), five merged into two (§8.1), one split into two
-(§8.2). Nothing was invented in Pass B; two findings gained a transcript they
-did not have, from a control run designed for something else (§8.5).
+**Reconciled count: 37 findings — 2 P1, 15 P2, 20 P3** — from 48 frozen: **eight
+removed by the panel and two restored by measurement** (§7), five merged into two
+(§8.1), one split into two (§8.2). Nothing was invented in Pass B; four findings
+carry a transcript they did not have at the freeze, two of them from a control
+run designed for something else (§8.5).
 
-**The panel killed everything it examined: ten tested, ten refuted.** Round 1 of
-this note published four survivors; the warden ruled them under-panelled and a
-second refuter killed all four on checkable facts (§7). A reader should draw the
-obvious inference and this note draws it first: **on this feature, a P1 or P2
-finding that met a serious adversary did not survive it.** The fifteen findings
-that stand on a transcript stand on a transcript, not on having been attacked —
-the panel never examined them, by the same owner ruling that scoped it. Of the
-35 findings published here, fifteen are confirmed by a mutant and **twenty rest
-on reading alone**.
+**The panel examined ten findings, and the count moved three times.** Round 1 of
+this note published six removals and four survivors. The warden ruled the four
+under-panelled and a second refuter killed all four, so round 2 published ten
+removals and drew the inference in bold: *on this feature, a P1 or P2 finding
+that met a serious adversary did not survive it.* **That inference was wrong, and
+it was wrong because it was drawn from citations rather than from transcripts.**
+Two of the ten refutations were then tested and both failed: `DBND-026` is
+restored under its own number by `ev-f7ee3968`, and `DBND-504` is restored,
+narrowed, as `DBND-040` by `ev-f18d4843`. **Ten tested, eight refuted, two
+restored by measurement.** The sentence that replaces the wrong inference is
+narrower and is a rule rather than a mood, and it is in §8.5.2.
+
+Of the 37 findings published here, **seventeen are confirmed by a mutant** and
+**twenty rest on reading alone**. The corrector's lot — every P1 and P2 — is
+**seventeen findings**, and every one of them carries a transcript.
 
 **Two debts this cycle owes but does not open**: `chdr-028` and
 `chdr-016-grant-path`. `d-bundle` is first in line for both by the `order:` list
@@ -363,12 +376,12 @@ the largest outline. §10 records it as the negative result it is.
 
 Every `d-bundle.feature` line number in this note is a line of the **audited**
 file (`d9120d7`, 165 lines, sha256 `59a6f361598de459fa063e7bff9915427c5e3d70423c20204d26f294b618c8b5`).
-The marker edits — `b19c7fd` plus this note's round-2 revision of four blocks —
-insert 107 comment and tag lines above scenario headers and change nothing else,
-so the shift is a **constant offset within each block**. To translate any cited
-line, find the block it falls in and add the offset. The current file is 272
-lines, sha256
-`9913e2aaf034dc5ba68b6eb9f13b74d0b536042515cc7953cbb6f0ae17033ceb`.
+The marker edits — `b19c7fd`, plus this note's round-2 revision of four blocks
+and round-3 revision of two — insert 108 comment and tag lines above scenario
+headers and change nothing else, so the shift is a **constant offset within each
+block**. To translate any cited line, find the block it falls in and add the
+offset. The current file is 273 lines, sha256
+`2780ed65348776e64406d2d2d9a63932c360b00b25cb122351bd4deb2abf0deb`.
 
 | Block | Audited | Current | Offset |
 |---|---|---|---|
@@ -386,31 +399,35 @@ lines, sha256
 | `Rule:` The self zone leaks no structure | `:53` | `:99` | **+46** |
 | `Scenario:` Self is a flat sea of opaque blobs | `:55`–`:59` | `:109`–`:113` | **+54** |
 | `Rule:` Owner operations have durable parity across all three zones | `:61` | `:115` | **+54** |
-| `Scenario Outline:` The local owner performs every content operation without a mandate, with its `Examples` | `:63`–`:87` | `:127`–`:151` | **+64** |
-| `Rule:` A local mutation commits state and Gamma as one transaction | `:89` | `:153` | **+64** |
-| `Scenario Outline:` Failure before the logical commit point preserves the old bundle byte for byte, with its `Examples` | `:91`–`:114` | `:167`–`:190` | **+76** |
-| `Scenario Outline:` A successful local transaction publishes content and Gamma together, with its `Examples` | `:116`–`:127` | `:198`–`:209` | **+82** |
-| `Rule:` Local capabilities and paths stay narrow | `:129` | `:211` | **+82** |
-| `Scenario Outline:` A bundle operation uses only its narrow opaque cryptographic capability, with its `Examples` | `:131`–`:146` | `:226`–`:241` | **+95** |
-| `Scenario Outline:` An untrusted path or Store key can never escape its selected root, with its `Examples` | `:148`–`:165` | `:255`–`:272` | **+107** |
+| `Scenario Outline:` The local owner performs every content operation without a mandate, with its `Examples` | `:63`–`:87` | `:129`–`:153` | **+66** |
+| `Rule:` A local mutation commits state and Gamma as one transaction | `:89` | `:155` | **+66** |
+| `Scenario Outline:` Failure before the logical commit point preserves the old bundle byte for byte, with its `Examples` | `:91`–`:114` | `:168`–`:191` | **+77** |
+| `Scenario Outline:` A successful local transaction publishes content and Gamma together, with its `Examples` | `:116`–`:127` | `:199`–`:210` | **+83** |
+| `Rule:` Local capabilities and paths stay narrow | `:129` | `:212` | **+83** |
+| `Scenario Outline:` A bundle operation uses only its narrow opaque cryptographic capability, with its `Examples` | `:131`–`:146` | `:227`–`:242` | **+96** |
+| `Scenario Outline:` An untrusted path or Store key can never escape its selected root, with its `Examples` | `:148`–`:165` | `:256`–`:273` | **+108** |
 
 The two citations the warden named are the worked examples. `:139` — *no seed or
 private key is accepted or returned by the bundle operation*, the clause carrying
-the P1 `DBND-029` — is **`:234`** in the current file; read as a current line it
+the P1 `DBND-029` — is **`:235`** in the current file; read as a current line it
 lands on an `Examples` row. `:148` — the head of the confinement outline — is
-**`:255`**; read as a current line it lands inside the `Examples` grid of a
+**`:256`**; read as a current line it lands inside the `Examples` grid of a
 different Rule. Both citations are correct as audited lines and both were
 misleading as published. That is why the convention is now stated rather than
 assumed.
 
-**This table moved once already, between round 1 and round 2 of this note**, for
-the same reason it will move again: four marker blocks were rewritten to drop
-the findings the panel killed, and four offsets changed with them. The audited
-column never moves.
+**This table has moved at every round of this note** — four marker blocks
+rewritten in round 2 to drop the findings the panel killed, two rewritten in
+round 3 to restore two of them — and it will move again for the same reason. The
+audited column never moves. That is the point of the convention: a citation is
+stable, a line number is not.
 
 **This table does not need rewriting when the markers move again.** The
 audited file is immutable at `d9120d7`; only the *Current* and *Offset* columns
 describe `HEAD`, and both are regenerable by diffing the two revisions.
+**Any edit to `features/d-bundle.feature` invalidates the *Current* column until
+the digest above is re-pinned** — that is the check, and it is cheap: if the
+file's sha256 is not the one in §1, do not trust the right-hand columns.
 
 ## 6. Findings
 
@@ -419,7 +436,9 @@ so that no reader has to infer it. Round 1 of this note defined three states.
 **There are now two, and the reason the third is gone is itself a result:**
 
 - **confirmed by transcript** — a named mutant ran and the prediction landed; the
-  `evidence_id` is cited. Fifteen findings.
+  `evidence_id` is cited. **Seventeen findings** — the fifteen of the original
+  campaign plus `DBND-026` and `DBND-040`, both restored in round 3 by a mutant
+  that falsified the refutation which had removed them.
 - **on the record alone** — no mutant ran against it and the panel did not
   examine it. Stated in those words. Twenty findings.
 - ~~**survived the adversarial panel**~~ — **this state no longer exists and no
@@ -427,9 +446,11 @@ so that no reader has to infer it. Round 1 of this note defined three states.
   under-panelled against the orchestrator's own rule — a refutation resting on
   judgement rather than on a checkable fact gets the full panel — and a second
   refuter killed all four on facts in the source. Ten findings were examined by
-  the panel and ten were refuted. All ten are in §7. The category is struck
-  rather than left standing with an empty membership, because a reader scanning
-  for it is entitled to learn that nothing earned it.
+  the panel; **eight are refuted and two were restored by measurement**, and all
+  ten are recorded in §7. The category is struck rather than left standing with
+  an empty membership, because a reader scanning for it is entitled to learn that
+  nothing earned it — **including the two restorations, which were not restored
+  by surviving an attack but by a transcript that falsified the attack.**
 
 `OPEN` is the state of every finding in this note: this is round 1 and no
 corrector has run.
@@ -465,7 +486,7 @@ Pass A → this note. Ordered by unit, then by severity within the unit. The
 | `DBND-503` | RU-5 | P2 | ~~`DBND-020`~~ | merged with `DBND-714`/`DBND-715`, then **removed by the panel, round 2** (§7). Identifier retired |
 | `DBND-714` | RU-7 | P3 | ~~`DBND-020`~~ | merged into `DBND-503`, removed with it (§7) |
 | `DBND-715` | RU-7 | P3 | ~~`DBND-020`~~ | merged into `DBND-503`, removed with it (§7) |
-| `DBND-504` | RU-5 | P2 | — | **removed by the panel** (§7) |
+| `DBND-504` | RU-5 | P2 | **`DBND-040`** | removed by the panel round 1, **restored by measurement round 3** and **narrowed** (`ev-f18d4843`, §7). It never held a reconciled identifier, so this is not un-retirement: it enters the series **appended, out of unit order** |
 | `DBND-505` | RU-5 | P2 | — | **removed by the panel** (§7) |
 | `DBND-506` | RU-5 | P3 | **`DBND-021`** | carried, **narrowed** (§8.3) |
 | `DBND-507` | RU-5 | P3 | **`DBND-022`** | carried |
@@ -473,7 +494,7 @@ Pass A → this note. Ordered by unit, then by severity within the unit. The
 | `DBND-605` | RU-6 | P3 | **`DBND-023`** | **merged** with `DBND-508` |
 | `DBND-509` | RU-5 | P3 | **`DBND-024`** | carried |
 | `DBND-601` | RU-6 | P2 | **`DBND-025`** | carried |
-| `DBND-603` | RU-6 | P2 | ~~`DBND-026`~~ | **removed by the panel, round 2** (§7). Identifier retired. Its two round-1 refuter corrections are kept in §8.4 |
+| `DBND-603` | RU-6 | P2 | **`DBND-026`** | removed by the panel round 2, **restored by measurement round 3 under its own number** (`ev-f7ee3968`, §7). **Un-retired**: the identifier was never reused, so it came back to itself. Its two round-1 refuter corrections are kept in the block |
 | `DBND-602` | RU-6 | P3 | **`DBND-027`** | carried, **narrowed** (§8.3) |
 | `DBND-604` | RU-6 | P3 | **`DBND-028`** | carried, **gained a transcript** (§8.5) |
 | `DBND-703` | RU-7 | **P1** | **`DBND-029`** | carried |
@@ -490,15 +511,31 @@ Pass A → this note. Ordered by unit, then by severity within the unit. The
 | `DBND-712` | RU-7 | P3 | **`DBND-037`**, **`DBND-038`** | **split** (§8.2) |
 | `DBND-713` | RU-7 | P3 | **`DBND-039`** | carried |
 
-48 in, **35 out**: 10 removed by the panel, 5 merged into 2, 1 split into 2.
+48 in, **37 out**: 10 examined by the panel of which **8 removed and 2
+restored by measurement**, 5 merged into 2, 1 split into 2.
 
-**Four identifiers of this note's own series are retired.** `DBND-020`,
-`DBND-026`, `DBND-030` and `DBND-035` were published in round 1 (`b19c7fd`) and
-are removed in round 2. The series is **not** renumbered a second time and those
-four numbers are never reused: a reader arriving with round 1 in hand must be
-able to look up a number and find out that it died, which is the whole reason
-this table exists for the Pass A numbers. **Reader's shortcut: if a `DBND-0xx`
-number appears nowhere in §6, it is in §7.**
+**Ordering of the series, ruled and recorded so that nobody later "fixes" it.**
+`DBND-001`…`DBND-039` are ordered by review unit and then by severity, as §6.0
+says. **`DBND-040` is out of that order by restoration**: it belongs to RU-5 and
+would sit beside `DBND-018`, but slotting it there would renumber every finding
+after it, and those numbers are already published in round 1 and round 2, quoted
+in `STATE.md`, written into the Gherkin markers and cited in `ev-1ad4fe50`.
+**A restored finding is appended, never slotted.** The same rule applies to any
+future restoration, and the ordering claim above should be read as *unit-ordered
+through `039`*.
+
+**Three identifiers of this note's own series are retired: `DBND-020`,
+`DBND-030` and `DBND-035`.** They were published in round 1 (`b19c7fd`) and
+removed in round 2, and those numbers are never reused: a reader arriving with
+round 1 in hand must be able to look up a number and find out that it died,
+which is the whole reason this table exists for the Pass A numbers.
+
+**`DBND-026` was retired in round 2 and un-retired in round 3.** It came back
+under its own number rather than a fresh one, because the number had not been
+reused and because §6.0's row for it is the place a reader looks; giving a
+restored finding a new identifier would have cost a row in the 48-row map and
+told the reader nothing true. **Reader's shortcut: if a `DBND-0xx` number appears
+nowhere in §6, it is in §7 — and §7 says whether it stayed there.**
 
 *A caution about one of them, recorded because it cost real work.* The
 orchestrator's remediation brief identified the four newly refuted findings by
@@ -1737,6 +1774,116 @@ and the claim is carried by a scenario that induces the state. Either way,
 
 ---
 
+### `DBND-026` — `OPEN`, P2 — line 99 claims no local-mutation orphan; the snapshot it is asserted against cannot see one, and a snapshot that can exists in the same file
+
+> **Evidential state: confirmed by transcript. Restored in round 3 after being
+> removed in round 2 — see §7.** `ev-f7ee3968` — the mutant pair the auditor
+> itself named as this finding's closure test, `RU-6.md` § M1 **and** § M3
+> applied together: `FsStore::rollback_transaction` reduced to
+> `self.transaction = None`, so the staging generation leaks permanently, **and**
+> `FsStore::recover_transaction` gutted, so nothing sweeps it on reopen. Feature
+> gate **green, 51/51, 299/299**. A leaked staging generation is invisible to
+> every one of the fifty-one scenarios, exactly as predicted at the freeze.
+
+**Scenario `:91`, the six `FsStore` rows / RU-6.**
+
+**Two corrections carried from the round-1 refuter, in the published text.**
+1. Pass A wrote that the assertion compares **two maps**. It compares **three**:
+   `canonical_unchanged = before == after && before == reopened_snapshot`
+   (`cucumber.rs:1774`, `:1809`).
+2. Pass A wrote that the sighted helper is **1857 lines away**. The arithmetic
+   gives **1774**: `cb7_store_snapshot` is at `cucumber.rs:1375` and
+   `core_path_raw_snapshot` at `:3149` — Pass A had cited `:3232`, which is the
+   start of the fixture `match`, not the helper. Verified against the tree.
+
+**Statement.** `:99` — *"staging remains non-canonical and is cleaned or
+recoverably resolved with no local-mutation orphan"* — resolves to
+`core_atomic_staging_clean` (`cucumber.rs:11423`), body
+`assert!(!core_atomic_observation(w).partial_state_observed)`, i.e.
+`canonical_unchanged`, i.e. the same map comparison as `:96`.
+
+Those maps are `cb7_store_snapshot` (`:1375-1389`): `store.list("")`, then
+`store.get(path)` for each key. For `FsStore` both resolve through
+`canonical_base()` (`lib.rs:527-540`), which — with no transaction active, which
+is the state at every one of the three snapshots — returns the **generation
+directory** named by the `.aithos-current` pointer. Everything the sentence is
+about is outside its range: the staging generations under `.aithos-generations/`
+(`lib.rs:419-421`), the pointer `.aithos-current` (`:423`), the mirror marker
+(`:427`), the transient `.tmp-*` files (`:490-524`), and the compatibility
+mirror under the root (`:652-684`). **A leaked staging generation — the textbook
+local-mutation orphan — changes none of the bytes this assertion compares**, and
+`ev-f7ee3968` measures it.
+
+A helper that *would* see it is 1774 lines away in the same file:
+`core_path_raw_snapshot` (`cucumber.rs:3149-3193`) walks the raw tree, records
+directories and symlink targets, and is used by RU-7b (`:3300`, `:3324`) — the
+Rule about paths, where orphans are not the claim. The unit that claims *no
+orphan* uses the blind snapshot; the unit that does not claim it uses the
+sighted one.
+
+**Two further sentences of § 2.12 land on this line and are unasserted.** Quoted
+verbatim under `DBND-025`: *"`FsStore` prepares in recoverable staging physically
+outside the canonical bundle directory"* and *"Any internal generation metadata,
+commit marker, or reference is outside the canonical bundle namespace, §2.3
+layout, manifest, pins, and signed wire"*. The vector states both as booleans —
+`staging_outside_canonical_namespace: true`,
+`internal_generation_metadata_is_not_wire: true` — and their **only** consumer is
+`cb2_bundle_boundaries.rs:326-329`, comparing a JSON literal to itself. Search:
+`grep -rn "staging_outside_canonical_namespace" --include=*.rs --include=*.py .`
+→ `gen-cb2-bundle-boundaries.py:620` and `cb2_bundle_boundaries.rs:326` only.
+
+**Why the round-2 refutation failed, in full, because it is instructive.** The
+refuter offered three routes by which a leak would become visible.
+*Route one* — `canonical_base()`'s first branch returns `transaction.staging`,
+which is under `.aithos-generations/` — is a true statement about the function
+that does not apply at snapshot time, because that branch fires only while
+`self.transaction` is `Some` and all three snapshots are taken with it `None`.
+Round 2 of this note said so, against its own removal.
+*Route two* — `recover_transaction` (`lib.rs:906-909`) reads the pointer on the
+reopen path and its `Err` propagates into a panic — is **the auditor's own
+conceded caveat**, and the auditor had already named its answer: § M1, gutting
+`recover_transaction`, which is half of the pair `ev-f7ee3968` runs.
+*Route three* — `reconcile_compatibility_mirror` (`lib.rs:686-692`) collects
+every key under the store root and reconciles it against the active generation
+before `reopened_snapshot` is taken — **is structurally blind, and nobody
+checked.** It collects through `collect_from` (`lib.rs:581`), whose loop at
+`:602-609` is:
+
+```rust
+if relative
+    .components()
+    .next()
+    .and_then(|component| component.as_os_str().to_str())
+    .is_some_and(|name| name.starts_with(".aithos-"))
+{
+    continue;
+}
+```
+
+**Every top-level component beginning `.aithos-` is skipped — which is exactly
+where the leaked generation lives.** The refutation was verified as far as *"it
+calls `collect_from`"* and stopped one function short. `ev-f7ee3968` adds a
+second, blunter fact: under the M1+M3 pair the compiler reports
+`reconcile_compatibility_mirror` **never used** (transcript line 365), because M1
+removes its only caller. Route three is not merely blind under that mutant; it is
+not reached.
+
+**Closure criterion.** `:99` asserts against a raw-tree snapshot — reuse
+`core_path_raw_snapshot` (`cucumber.rs:3149`) — taken **before** the mutation and
+again after the reopen, and asserts (a) no `.aithos-generations/` entry other
+than the active one survives the reopen, and (b) no key of the raw tree absent
+from the canonical view carries any byte of the refused mutation. Closed when
+`ev-f7ee3968` turns at least one `FsStore` row of `:91` red. Note the ordering
+dependency: a pre-fixture snapshot must exist, which is `DBND-023`'s closure
+criterion, so `DBND-023` is done first.
+
+**Pass A origin.** `DBND-603`, RU-6, mutants M3 and M4 — **both now run, as the
+pair `ev-f7ee3968`**. A blind auditor specified the mutant that would decide its
+own finding, and specified it as a pair precisely because M3 alone leaves a
+defence standing. Nothing in the panel round improved on that.
+
+---
+
 ### `DBND-027` — `OPEN`, P3 — nine `Then` steps across the unit assert four distinct bits, two of them against hardcoded struct fields
 
 > **Evidential state: on the record alone.** No mutant ran against it and the
@@ -2295,35 +2442,99 @@ its own rather than expected as a by-product.
 
 **Pass A origin.** `DBND-713`, RU-7.
 
-## 7. Findings removed by the adversarial panel
+### `DBND-040` — `OPEN`, P2 — "journalized" is proved by cardinality alone, and a Gamma entry carrying the wrong operation's `kind` is invisible to all fifty-one scenarios
 
-**Ten of ten.** The panel examined the ten P1/P2 findings carrying no confirmed
-mutant, and **every one of them was falsified**. A finding whose statement the
+> **Evidential state: confirmed by transcript. Restored in round 3, narrowed,
+> after being removed in round 1 — see §7.** `ev-f18d4843` — an owner `edit`
+> made to journalize under a `create`'s kind: `aithos_core::gamma::Kind::SectionModify`
+> → `Kind::SectionAdd` at `bundle.rs:975`. Feature gate **green, 51/51,
+> 299/299**. That is the finding's own first worked example, applied unaltered,
+> and no scenario of this feature notices an operation misdescribing itself in
+> the signed log.
+
+**Scenario `:63`, the nine mutating rows / RU-5. Out of series by restoration —
+see §6.0.**
+
+**Narrowed on restoration, and the narrowing is the refuter's, kept.** The frozen
+statement said of `Entry`'s seven fields *"none is read"*. **That is false and
+stays refuted:** `Bundle::verify` calls `gamma::verify_links` (`bundle.rs:1772`),
+which calls `Entry::check_form` on every entry (`gamma.rs:428`), and `check_form`
+reads `kind`, `target`, `payload` and `body_enc` — four of the seven. The
+finding's *second* worked example is refuted with it: a circle entry whose
+`target` names a different node is rejected at write time in `gamma_append`,
+before any count is taken. Neither claim is made here any more.
+
+**What survives, and it is the centre.** The only journal evidence in this unit
+is `bundle.gamma_entries()?.len()` before and after (`cucumber.rs:3414-3419`,
+`:3477-3480`) and the delta comparison at `:3537-3542`. **Cardinality is all this
+feature checks.** `check_form` reading `kind` does not help, because it validates
+the entry's *shape* and never ties it to the operation that produced it: an
+`edit` that appends a well-formed `SectionAdd` entry is well-formed, the count
+delta is still 1, and all nine mutating rows stay green. `ev-f18d4843` is that
+defect, applied and run.
+
+**Spec reference**, `spec/07-gamma.md:111`, verbatim to the end of the sentence
+— the entry kind is what distinguishes one owner operation from another in the
+log, and the log is what a cold verifier replays:
+
+> - **Owner** entries: signed by `content_sign` (§01.1); no `authorized_by`. The
+
+**Relation to `DBND-018`, stated so the two are not confused.** `DBND-018` is
+about the mandate fields `authorized_by`/`authorized_via`, which `check_form`
+does **not** read; this is about `kind`, which it does read but does not bind to
+the operation. Different fields, different mechanisms, different closure
+criteria. They are both P-class findings on the same step line (`:68`) and
+neither subsumes the other.
+
+**Closure criterion.** `core_owner_scenario` asserts on the appended entry that
+`kind` matches the operation under test — `SectionAdd` for `create`,
+`SectionModify` for `edit`, `SectionDelete` for `delete` — as a per-row expected
+value driven from the `Examples` grid or the vector, not from a constant. Closed
+when `ev-f18d4843` turns the nine mutating rows of `:63` red.
+
+**Pass A origin.** `DBND-504`, RU-5. Removed by the panel in round 1 on a
+refutation that answered the finding's second worked example and left its first
+untested; restored in round 3 when the first was tested.
+
+---
+
+## 7. The adversarial panel — ten examined, eight removed, two restored
+
+**Ten examined. Eight removed. Two restored by measurement.** The panel took the
+ten P1/P2 findings carrying no confirmed mutant. A finding whose statement the
 panel falsified is not downgraded and not quietly rewritten: it is removed, and
-the fact that killed it is printed beside it.
+the fact that killed it is printed beside it. **A finding whose refutation is
+itself falsified comes back**, and this section keeps its removal on the record
+alongside the transcript that undid it.
 
-Six fell in round 1. The other four were published in round 1 of this note as
-**survivors**, and they were not. The warden ruled them under-panelled: the
-orchestrator's own rule is that a refutation resting on judgement rather than on
-a checkable fact gets the full panel, and that rule had not been applied to them.
-A second refuter was run on all four and all four fell, each on a fact in the
-source. **This pass re-verified all four facts in the tree before printing them**,
-and one of the four refutations is only partly right — that is said in its own
-entry rather than smoothed over.
+The history, because the count moved three times and a reader is entitled to all
+three positions:
 
-The four late removals are marked **round 2**. Each refutation reduces to a
-checkable fact.
+| Round | What happened | Result |
+|---|---|---|
+| 1 | Panel run on ten findings, one refuter each | 6 removed, 4 published as survivors |
+| 2 | Warden rules the four **under-panelled** — the orchestrator's own rule is that a refutation resting on judgement rather than on a checkable fact gets the full panel, and it had not been applied. Second refuter on all four | all 4 fall; 10 removed, 0 survivors |
+| 3 | **Three of the ten refutations are put to the gate instead of read.** Two do not survive their own transcript | **8 removed, 2 restored** |
+
+**The two restorations are the most important measurement in this note**, and not
+because of the two findings. Every one of the ten removals was decided by reading
+code and citing it. Eight of those readings hold. Two did not, and neither would
+have been caught by more reading — one died on twenty unread lines of a helper,
+the other on a worked example nobody applied. §8.5.2 turns that into a rule.
+
+Each entry below states its round, its killing fact, and — where one exists — the
+transcript that overturned it.
 
 | Pass A id | Unit | Sev | Round | Killed on |
 |---|---|---|---|---|
 | `DBND-302` | RU-3 | P2 | 1 | the input the uncalled function needs is written by no code path in this repository |
-| `DBND-504` | RU-5 | P2 | 1 | `check_form` reads the fields the finding said nothing reads, and the worked example is rejected at write time |
+| `DBND-504` | RU-5 | P2 | 1 | `check_form` reads the fields the finding said nothing reads, and the worked example is rejected at write time — **overturned in round 3, `ev-f18d4843`; restored narrowed as `DBND-040`** |
 | `DBND-505` | RU-5 | P2 | 1 | the two `Then`s compare against **two different sources**, and nothing cross-checks them |
 | `DBND-705` | RU-7 | P2 | 1 | the typed method does take caller-supplied bytes, and the fixture submits them |
 | `DBND-708` | RU-7 | P2 | 1 | the sibling row tests the case, and does so for a correct reason |
 | `DBND-710` | RU-7 | P2 | 1 | the ordering is stated correctly and the conclusion is inverted |
 | `DBND-503` + `-714` + `-715` (was `DBND-020`) | RU-5, RU-7 | P2 | **2** | an executing test asserts the absence the finding reports, and the finding's own remedy would break it |
-| `DBND-603` (was `DBND-026`) | RU-6 | P2 | **2** | the leaked staging generation is reachable by the comparison and by two further routes on the reopen path |
+| `DBND-603` (was `DBND-026`) | RU-6 | P2 | **2** | the leaked staging generation is reachable by the comparison and by two further routes on the reopen path — **overturned in round 3, `ev-f7ee3968`; restored whole as `DBND-026`** |
 | `DBND-701` (was `DBND-030`) | RU-7 | P2 | **2** | one row's English sentence *is* evaluated, by the very step the finding attacks |
 | `DBND-709` (was `DBND-035`) | RU-7 | P2 | **2** | the repository's own confinement matrix declares the six as application points of **one** check |
 
@@ -2367,11 +2578,27 @@ different node, keeps the count delta at 1 and all nine mutating rows green.
 naming a different node — is rejected at write time in `gamma_append`, before the
 count is ever taken.
 
-*What survives.* Nothing that this note carries. Note the boundary carefully:
+**OVERTURNED IN ROUND 3. Restored, narrowed, as `DBND-040` (§6).**
+`ev-f18d4843`: an owner `edit` made to journalize under a `create`'s kind —
+`Kind::SectionModify` → `Kind::SectionAdd` at `bundle.rs:975`, **the finding's
+own first worked example, applied unaltered** — leaves the feature gate
+**green, 51/51**.
+
+*Why the refutation was incomplete.* It answered the finding's **second** worked
+example — a `target` naming a different node, rejected at write time in
+`gamma_append` — and generalised from it. The first worked example was never
+tested. `check_form` does read `kind`, which is what killed the finding's
+over-stated *"none of them is read"*; but reading `kind` validates the entry's
+shape and never binds it to the operation that produced it, so a well-formed
+entry of the wrong kind passes. **The refutation is right about the sub-claim and
+wrong about the finding.**
+
+*What is kept refuted.* *"None of them is read"* stays false — `check_form`
+reads four of the seven fields — and the `target` worked example stays refuted.
+`DBND-040` states neither. The boundary matters and is worth keeping in view:
 `check_form` reads `kind`, `target`, `payload`, `body_enc` and **not**
-`authorized_by` or `authorized_via`, which is why `DBND-018` is unaffected by
-this refutation and remains P1 and confirmed. The two findings looked adjacent
-and are not.
+`authorized_by` or `authorized_via`, which is why `DBND-018` was never touched by
+this refutation and remains P1 and confirmed.
 
 ### `DBND-505` — removed — *"the three `Then`s are redundant; deleting two changes nothing"*
 
@@ -2391,10 +2618,33 @@ the finding called redundant is the only thing in the suite tying *"every
 mutation is journalized"* to anything real. Verified by this pass against the
 current tree at `cucumber.rs:11533-11541`.
 
+**STAYS REMOVED — and after round 3 it is the best-evidenced removal in this
+note.** `ev-ef839413` builds the joint drift the refutation names and shows the
+step doing exactly the work the finding said it did not do: production drifted so
+that a `list` journalizes, **and** the vector drifted to agree, so the helper's
+comparison against `case["journalized"]` passes and only the `Then`'s hardcoded
+`matches!` on the operation name can object. It objects. **RED — 51 scenarios,
+48 passed, 3 failed; all three failures are the three `list` rows, one per zone,
+and all three fail on `And every mutation is journalized without consuming
+mandate counters`** — the step the finding called redundant. It caught a joint
+regression the helper let through. The counterfactual the finding denied is the
+one the transcript demonstrates.
+
+*Two failed attempts, named rather than hidden.* `ev-1be2a7f4` ran the mutant
+**as the finding first specified it** — delete the assertion from otherwise
+correct code — and came back **green, 51/51, and worthless**: deleting an
+assertion in the absence of the regression it would catch tests nothing, because
+green is guaranteed by construction. `ev-1d4725c7` is a compile failure on the
+first build of the real mutant (`E0425: cannot find value 'entropy'`,
+`bundle.rs:464`, plus an `E0308`), recorded because a red transcript that is a
+build error is not a result and must not be mistaken for one. The rule these two
+earned is §8.5.2, rule 2.
+
 *What survives.* Nothing that this note carries, and the removal is a net gain in
 accuracy: the refutation establishes a **positive** fact about the suite that no
-Pass A auditor had, namely that `:68`'s journalization half is doubly sourced.
-The mandate-counter half of the same step is `DBND-018` and is untouched.
+Pass A auditor had, namely that `:68`'s journalization half is doubly sourced —
+and `ev-ef839413` measures that both sources are needed. The mandate-counter half
+of the same step is `DBND-018` and is untouched.
 
 ### `DBND-705` — removed — *"the six-way mismatch enumeration is proved by two identical sessions"*
 
@@ -2565,25 +2815,42 @@ store root and reconciles it against the active generation **before**
 `reopened_snapshot` is taken, so a stray in the root mirror is copied into the
 canonical view and the comparison sees it.
 
-*Where this pass disagrees with the refutation, and why the finding falls
-anyway.* I verified all three sites. **Route one is weaker than it reads.**
-`canonical_base()`'s first branch fires only while `self.transaction` is `Some`,
-and all three snapshots of `core_atomic_failure_fs` are taken with no
-transaction active — under the proposed mutant as much as under correct code,
-since the mutant's whole content is `self.transaction = None`. So the first
-branch is a true statement about `canonical_base()` that does not, by itself,
-put a leaked generation inside the comparison at the moment the assertion runs.
-**Routes two and three do**, and either alone is enough: the finding's central
-claim was a prediction — *the unit stays green under a staging leak* — and two
-independent mechanisms make it red. A finding whose only content is an unrun
-prediction, against which a refuter names two concrete mechanisms of failure,
-cannot stand. **Removed.** The prediction was never measured, and this note does
-not now measure it: the mutants remain unrun and are not re-proposed.
+**OVERTURNED IN ROUND 3. Restored whole, under its own number, as `DBND-026`
+(§6).** `ev-f7ee3968` runs the mutant pair the auditor named at the freeze as
+this finding's closure test — `RU-6.md` § M1 **and** § M3 together, so the
+staging generation leaks permanently and nothing sweeps it — and the feature gate
+is **green, 51/51, 299/299**. All three routes are dead:
 
-*What survives.* Nothing that this note carries. The two refuter corrections
-from round 1 — *three maps, not two*, and *1774 lines, not 1857* — are facts
-about the code and are kept in §8.4, where they can be checked, rather than
-disappearing with the finding that occasioned them.
+- **Route one** was already dead before the transcript. Round 2 of this note said
+  so against its own removal: `canonical_base()`'s first branch fires only while
+  `self.transaction` is `Some`, and all three snapshots are taken with it `None`.
+- **Route two** — `recover_transaction` reads the pointer on the reopen path and
+  its `Err` panics the step — **is the auditor's own conceded caveat, and the
+  auditor had already named its answer**: § M1, which is half of the pair this
+  transcript runs. It was never offered as independently sufficient.
+- **Route three** — `reconcile_compatibility_mirror` copies a stray back into the
+  canonical view — **is structurally blind, and the verification stopped one
+  function short of finding out.** It collects through `collect_from`
+  (`lib.rs:581`), whose loop at `:602-609` skips every top-level component whose
+  name `starts_with(".aithos-")` — which is exactly where a leaked generation
+  lives. The refutation was checked as far as *"it calls `collect_from`"* and no
+  further. `ev-f7ee3968` adds a blunter fact: under M1+M3 the compiler reports
+  `reconcile_compatibility_mirror` **never used** (transcript line 365), M1 having
+  removed its only caller.
+
+*Erratum, round 3.* Round 2 of this note wrote that routes two and three were
+each *"enough alone"*. **That is wrong**, and wrong in the direction that made
+the removal look better supported than it was: route two was never independent,
+and route three never carried at all. The sentence is replaced above. The
+`warden-3.md` record carried the same error and has been corrected at its three
+sites.
+
+*What survives here.* The removal itself does not. What stays in this section is
+the record of a refutation that failed and of the twenty unread lines it failed
+on — kept because a refutation that died on an unread helper is worth more as a
+record than as a silence. The two round-1 refuter corrections — *three maps, not
+two*, and *1774 lines, not 1857* — are facts about the code, are correct, and
+travel with the restored finding in §6 as well as being listed in §8.4.
 
 ### `DBND-701` — removed, round 2 — *"`Then "<observable_result>"` compares strings, not propositions"*
 
@@ -2801,6 +3068,11 @@ the correction.
 | *"the audited bytes and the current bytes are the same bytes"* → **false for the feature file** | the warden, breach (A) | §1 worktree row, and §5.2 |
 | *round 1's feature-file line citations, published against a file 99 lines longer* | the warden, breach (B) | §1 convention block and §5.2 |
 | *four findings "survived the adversarial panel"* → **none did** | the warden, then a second refuter on all four | §7, four new entries; the evidential state itself is struck in §6 |
+| *"the panel killed everything it examined … a P1 or P2 finding that met a serious adversary did not survive it"* → **wrong, and drawn from citations rather than transcripts** | round 3, `ev-f7ee3968` and `ev-f18d4843` | §3, replaced by a narrower claim; the rule that replaces the mood is §8.5.2 |
+| *`DBND-603` removed* → **restored whole as `DBND-026`** | `ev-f7ee3968` | §6 block and §7 entry, with the twenty unread lines of `collect_from` that the refutation died on |
+| *`DBND-504` removed* → **restored narrowed as `DBND-040`** | `ev-f18d4843` | §6 block and §7 entry; the refuted sub-claim stays refuted |
+| *§7 `DBND-603`, "either alone is enough"* → **neither route carries alone and neither carries together** | round 3 | §7 entry, as a dated erratum. The same error in `warden-3.md` is corrected at its three sites |
+| *§15, "Seven independent assessments"* → **six** | the warden's `VALID` errata | §15, below. Last residual of the seven-auditor miscount, in the one section whose job is to be trustworthy about method |
 
 Both `DBND-603` corrections were described by their refuter as not load-bearing,
 and they are not: the finding stands on either arithmetic. They are published
@@ -2873,6 +3145,62 @@ Neither correction changes an evidence identifier, a verdict, a counter or a
 finding. Both are published because this note's subject is claims that do not
 match what happened, and it does not get to hold its own authorities to a lower
 standard than it holds the feature.
+
+### 8.5.2 Two rules this cycle earned
+
+Written as rules, not as anecdote, because both were paid for.
+
+**Rule 1 — a refutation whose decisive fact is a claim about what the code does
+at runtime carries a transcript, not a citation.**
+
+Sort the ten refutations by the kind of fact they turn on.
+
+**Six turn purely on existence claims** that a reader settles by looking, and all
+six hold: an object with zero writers (`DBND-302`), a signature that does take
+bytes (`DBND-705`), a sibling row that drives the case (`DBND-708`), a fixture
+that plants its symlinks inside the snapshot's range (`DBND-710`), a `let`
+binding that evaluates the sentence (`DBND-701`), a JSON array that declares the
+scope (`DBND-709`), an executing test that asserts the absence (`DBND-503`) —
+seven statements across six findings, none of which moved.
+
+**Three turn on claims about runtime behaviour** — what a snapshot would contain,
+what a step would catch, what a check would reject. All three were put to the
+gate in round 3, and **two of them fell**: `DBND-603` and, on its generalising
+half, `DBND-504`. `DBND-505` was confirmed.
+
+**One is mixed, and it is the instructive one.** `DBND-504`'s refutation made an
+existence claim — `check_form` does read four of the seven fields — which is true
+and stands, and then generalised it into a runtime claim about what the suite
+would catch, which is false. **The existence half survived and the runtime half
+did not, inside a single refutation.** That is the rule in miniature.
+
+**State the rule as what it is: a filter, not a predictor.** It tells you which
+refutations to spend a transcript on; it does not tell you they are wrong. One of
+the two it selected here — `DBND-505` — was **confirmed** by its transcript, and
+confirmed more strongly than the citation had it. A reader who takes only the
+`DBND-026` story away will conclude that panels are unreliable, and that is the
+wrong lesson: the panel was right eight times out of ten and its two errors were
+both in the class this rule identifies in advance.
+
+**Rule 2 — a mutant that removes a check must be paired with an input the check
+would have rejected, or green is guaranteed by construction.**
+
+Deleting an assertion from a suite that is passing proves nothing: nothing was
+failing, so nothing stops failing. The mutant must first create the defect the
+check exists to catch, and only then remove the check. `ev-1be2a7f4` is the
+counter-example, run and recorded: the `DBND-505` assertion deleted from correct
+code, **green, 51/51, and worthless**. `ev-ef839413` is the same mutant done
+correctly — the joint drift first, the check second — and it is **red on three
+rows**.
+
+This repository already knew this rule and lost it for a round. §4.2 states it in
+one line — *"an audit that only runs mutants it expects to survive is measuring
+its own confidence"* — and `RU-6.md` names M3 and M4 as a **pair** precisely
+because M3 alone leaves `recover_transaction` standing as a defence. **A blind
+Pass A auditor had the discipline; the panel round did not.** Both mutants
+specified in round 3 violated the rule on first draft, and one of them would have
+produced a false restoration had its green been banked. The rule is written here
+so the next round does not have to rediscover it.
 
 ## 9. Recorded follow-ups this feature already owes
 
@@ -3000,12 +3328,15 @@ two and nowhere else. *(Round 1 chained `DBND-023` to `DBND-026`'s pre-mutation
 raw snapshot; `DBND-026` is removed, §7, and the chain with it.)*
 
 **Lot D — the remaining P2s.** `DBND-002`, `DBND-007`, `DBND-013`, `DBND-019`,
-`DBND-025`, `DBND-031`, `DBND-032`, `DBND-033`, `DBND-034` — **nine, not
-thirteen**: `DBND-020`, `DBND-026`, `DBND-030` and `DBND-035` were removed by
-the panel (§7). Every one of the nine carries its own closure criterion **and an
-already-run mutant that must go red**, which is now true of the whole lot rather
-than of eight of thirteen. The lot got smaller and its evidential quality went
-up.
+`DBND-025`, `DBND-026`, `DBND-031`, `DBND-032`, `DBND-033`, `DBND-034`,
+`DBND-040` — **eleven**: `DBND-020`, `DBND-030` and `DBND-035` were removed by
+the panel, and `DBND-026` and `DBND-040` came back from it with transcripts
+(§7). **Every one of the eleven carries its own closure criterion and an
+already-run mutant that must go red.**
+
+**The corrector's lot is seventeen findings — every P1 and every P2 — and all
+seventeen are confirmed by transcript.** That is the whole of the actionable
+content of this note, and it is the number to plan against.
 
 **Lot E — the twenty P3s.** They are on the record alone and none blocks a lot
 above. Two of them (`DBND-021`, `DBND-027`) are partly discharged as by-products
@@ -3043,25 +3374,30 @@ that killed the finding.*
 
 ## 13. Limits of this conclusion
 
-- **Twenty of the thirty-five findings rest on reading alone.** Every one says so
+- **Twenty of the thirty-seven findings rest on reading alone.** Every one says so
   in its own block. A P3 in this note is a claim about what the source says, not
   a measurement, and it has not survived an adversary.
-- **Nothing in this note survived an adversary, because nothing that met one
-  lived.** The panel examined ten findings and killed ten. The fifteen findings
-  that stand on a transcript were never attacked — the owner ruling scoped the
-  panel to findings without a confirmed mutant — and the twenty P3s were never
-  attacked either. **A reader should treat the fifteen mutant-confirmed findings
-  as the load-bearing content of this note and the twenty P3s as unaudited
-  claims about source text.**
-- **Round 1 of this note published four survivors that were not survivors.** The
-  first panel round used one refuter per finding where `c-headers` used three,
-  and did not apply the orchestrator's own escalation rule. The warden caught it;
-  the second refuter killed all four. **The general lesson is that a single
-  refuter's failure to refute is not evidence of anything**, and this note no
-  longer treats it as such anywhere.
-- **Sixteen mutants confirm what a scenario does *not* catch. None of them
-  confirms that a scenario catches what it should.** The two controls that do
-  that — `ev-5474b889` and `ev-f0125e0b` — cover two scenarios out of thirteen.
+- **No finding in this note survived an adversary. Two had their adversary
+  overturned, which is a different and weaker thing.** The panel examined ten
+  findings; eight removals stand and two were restored because a transcript
+  falsified the refutation, not because the finding withstood it. The seventeen
+  findings that stand on a transcript were never attacked — the owner ruling
+  scoped the panel to findings without a confirmed mutant — and the twenty P3s
+  were never attacked either. **A reader should treat the seventeen
+  mutant-confirmed findings as the load-bearing content of this note and the
+  twenty P3s as unaudited claims about source text.**
+- **This note's own count of findings moved three times, and twice it was
+  published wrong.** Round 1 gave four survivors that were not survivors — one
+  refuter per finding where `c-headers` used three, and the orchestrator's
+  escalation rule unapplied. Round 2 corrected that and drew a confident
+  inference from it that round 3's transcripts falsified. **The general lesson is
+  that a single refuter's failure to refute is not evidence, and neither is a
+  single refuter's success**: what settled all three positions in the end was
+  running the mutant.
+- **Nineteen mutants confirm what a scenario does *not* catch. Three confirm that
+  a scenario catches what it should**, and all three had to be argued for:
+  `ev-5474b889`, `ev-f0125e0b` and `ev-ef839413`, covering three scenarios out of
+  thirteen. A suite is not shown to work by showing that it fails to fail.
 - **`DBND-032`'s dead-code limb is not exhaustively established.** The
   unreachability of `binding.class != class` rests on Rust module privacy and on
   nine call sites in one file. No workspace-wide search for `mem::transmute` or a
@@ -3103,7 +3439,7 @@ This note moves to `REVIEW_ACCEPTED` when all of the following hold.
 6. The two decisions of §12 are recorded by their owners.
 
 **What this note does not establish, stated so that a green gate is not misread.**
-Thirty-five named defects in the *proof* of this feature are open. Closing all of
+Thirty-seven named defects in the *proof* of this feature are open. Closing all of
 them would establish that the 51 scenarios prove what they say. It would not
 establish that the feature's seven Rules cover the specification: §10 lists
 three production surfaces this feature does not traverse at all, and §7's
@@ -3155,10 +3491,12 @@ weakness **for which no fix exists**. Both halves must hold.
 
 ### What this episode establishes
 
-- **The barrier was exercised, not asserted.** Seven independent assessments, two
-  named candidates carried forward with pre-written redactions, one killed by the
-  panel, three re-judged here from the code rather than from the earlier
-  judgement.
+- **The barrier was exercised, not asserted.** **Six** independent assessments
+  across seven units, two named candidates carried forward with pre-written
+  redactions, one killed by the panel, three re-judged here from the code rather
+  than from the earlier judgement. *(Round 2 wrote "seven" here — the last
+  residual of the miscount corrected in §8.5.1, and it survived in the one
+  section whose job is to be trustworthy about method. Corrected in round 3.)*
 - **A retained statement must be closed by absorption, not by identifier.**
   `c-headers` learned this the hard way when retaining `CHDR-007` while
   publishing `CHDR-008`, whose statement was a strict subset. Checked here: no

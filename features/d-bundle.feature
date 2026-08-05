@@ -114,14 +114,16 @@ Feature: Bundle and editions
 
   Rule: Owner operations have durable parity across all three zones
 
-    @audit-partial @dbnd-018 @dbnd-019 @dbnd-021 @dbnd-022 @dbnd-023 @dbnd-024
-    # AUDIT DBND-018, DBND-019, DBND-021, DBND-022, DBND-023, DBND-024 — PARTIAL.
+    @audit-partial @dbnd-018 @dbnd-019 @dbnd-021 @dbnd-022 @dbnd-023 @dbnd-024 @dbnd-040
+    # AUDIT DBND-018, DBND-019, DBND-021, DBND-022, DBND-023, DBND-024, DBND-040 — PARTIAL.
     # P1 DBND-018: without consuming mandate counters is assert_eq!(0, 0) and all
     # fifteen rows stay green when every owner entry declares a mandate chain
-    # (ev-19a635cf). Three rows satisfy the capability clause on keyless paths
-    # (DBND-019, ev-b6a36f72). Also DBND-021 (vector fields with no consumer),
-    # DBND-022 (no resulting edition on six rows), DBND-023 (the Givens construct
-    # nothing), DBND-024 (parity is never checked comparatively).
+    # (ev-19a635cf). DBND-040: journalized is proved by cardinality alone -- an
+    # edit that logs under a create's Kind stays green (ev-f18d4843). Three rows
+    # satisfy the capability clause on keyless paths (DBND-019, ev-b6a36f72).
+    # Also DBND-021 (vector fields with no consumer), DBND-022 (no resulting
+    # edition on six rows), DBND-023 (the Givens construct nothing), DBND-024
+    # (parity is never checked comparatively).
     # Withdrawn from this scenario 2026-08-04: DBND-020, refuted by the panel.
     # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: The local owner performs every content operation without a mandate
@@ -152,17 +154,16 @@ Feature: Bundle and editions
 
   Rule: A local mutation commits state and Gamma as one transaction
 
-    @audit-partial @dbnd-023 @dbnd-027 @dbnd-028 @dbnd-036
-    # AUDIT DBND-023, DBND-027, DBND-028, DBND-036 — PARTIAL.
+    @audit-partial @dbnd-023 @dbnd-026 @dbnd-027 @dbnd-028 @dbnd-036
+    # AUDIT DBND-023, DBND-026, DBND-027, DBND-028, DBND-036 — PARTIAL.
     # The best-proved block in the feature: real fault injection, a three-way byte
-    # comparison, and a control that kills four rows (ev-f0125e0b). DBND-023 (the
-    # Given constructs nothing), DBND-027 (four Thens, one boolean), DBND-028 (six
-    # boundary names, at most four injection points -- two rows measurably
-    # indistinguishable under ev-f0125e0b), DBND-036 (one sentence, three
-    # comparators).
-    # Withdrawn from this scenario 2026-08-04: DBND-026, refuted by the panel --
-    # the staging orphan it said the snapshot cannot see is reachable on the
-    # reopen path. Line 99 is left with no finding of its own.
+    # comparison, and a control that kills four rows (ev-f0125e0b). DBND-026: the
+    # byte comparison stops at canonical_base(), so a permanently leaked staging
+    # generation is invisible to all 51 scenarios (ev-f7ee3968, the M1+M3 pair the
+    # auditor named as its own closure test). Also DBND-023 (the Given constructs
+    # nothing), DBND-027 (four Thens, one boolean), DBND-028 (six boundary names,
+    # at most four injection points -- two rows measurably indistinguishable under
+    # ev-f0125e0b), DBND-036 (one sentence, three comparators).
     # Detail: docs/audits/features/d-bundle.md
     Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
       Given a published "<store>" bundle snapshotted byte for byte

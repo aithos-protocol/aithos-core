@@ -1,0 +1,366 @@
+Feature: Bundle and editions
+Rule: Editions chain and verify offline
+    Scenario: Initialising a bundle publishes a verifiable first edition
+     ✔  Given a fresh identity
+     ✔  When I initialise its bundle
+     ✔  Then edition 1 verifies offline
+     ✔  And the manifest pins the DID document
+    Scenario: Every publication extends the chain
+     ✔  Given an initialised bundle
+     ✔  When I create circle folder "projets/perso" with a section "note1" tagged "toto"
+     ✔  And I publish the edition
+     ✔  Then edition 2 verifies and pins edition 1 as its predecessor
+    Scenario: A tampered file fails the edition
+     ✔  Given a published bundle
+     ✔  When one byte of a pinned file is altered
+     ✔  Then edition verification is rejected
+    Scenario: A broken chain fails closed
+     ✔  Given a bundle with two editions
+     ✔  When the newest manifest claims a wrong predecessor hash
+     ✔  Then edition verification is rejected
+Rule: Content round-trips through the sealed store
+    Scenario: The owner reads back what was written
+     ✔  Given a published bundle with section "note1" in circle "projets/perso"
+     ✔  When the owner reads "projets/perso/note1" from circle
+     ✔  Then the section body comes back intact
+    Scenario: Display paths resolve through names, keys through sids
+     ✔  Given a published bundle with section "note1" in circle "projets/perso"
+     ✔  When the folder "perso" is renamed to "intime"
+     ✔  And the edition is republished
+     ✔  Then the owner reads the same section at "projets/intime/note1"
+Rule: The public zone reads without any key
+    Scenario: A stranger reads public content with no key at all
+     ✔  Given a published bundle with a public section "bio" in folder "profil"
+     ✔  When a stranger with no key reads "profil/bio" from public
+     ✔  Then the section body is readable in clear
+     ✔  And its integrity checks against the signed edition
+Rule: The self zone leaks no structure
+    Scenario: Self is a flat sea of opaque blobs
+     ✔  Given a bundle with a self folder "enfance/cicatrices" containing section "blessure"
+     ✔  When I inspect every file of the self zone as a stranger
+     ✔  Then no folder name, section name, title or tag appears anywhere
+     ✔  And the owner still reconstructs the full tree from sealed descriptors
+Rule: Owner operations have durable parity across all three zones
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "public"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "list" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "public"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "read" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "public"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "create" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "public"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "edit" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "public"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "delete" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "circle"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "list" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "circle"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "read" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "circle"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "create" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "circle"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "edit" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "circle"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "delete" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "self"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "list" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "self"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "read" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "self"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "create" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "self"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "edit" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+    Scenario Outline: The local owner performs every content operation without a mandate
+     ✔  Given an owner-local bundle session for zone "self"
+     ✔  And a published existing folder and section in that zone
+     ✔  When the owner performs "delete" through the common bundle operation
+     ✔  Then the operation succeeds from the narrow owner capability without a mandate
+     ✔  And every mutation is journalized without consuming mandate counters
+     ✔  And the resulting edition reopens and verifies from a fresh local store
+Rule: A local mutation commits state and Gamma as one transaction
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "cryptography"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "MemStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "blob preparation"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "MemStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "index preparation"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "MemStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "header or wrap"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "MemStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "Gamma validation"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "MemStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "before state replacement"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "MemStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "cryptography"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "FsStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "blob preparation"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "FsStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "index preparation"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "FsStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "header or wrap"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "FsStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "Gamma validation"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "FsStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: Failure before the logical commit point preserves the old bundle byte for byte
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  And an injected failure at "before commit marker or reference"
+     ✔  When the owner attempts a valid mutation and publication
+     ✔  Then the mutation is refused before canonical effect
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+     ✔  And re-reading or reopening the "FsStore" observes the old manifest and Gamma head
+     ✔  And no failed-mutation blob, index, header, wrap or Gamma entry exists in the canonical bundle
+     ✔  And staging remains non-canonical and is cleaned or recoverably resolved with no local-mutation orphan
+    Scenario Outline: A successful local transaction publishes content and Gamma together
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  When the owner commits a valid circle edit
+     ✔  Then one deterministic write-set advances content, roots, manifest and Gamma
+     ✔  And normal completion exposes the complete new state at one logical commit point
+     ✔  And a crash or lost acknowledgement at that point resolves to the complete old or complete new state from the canonical manifest and Gamma head
+     ✔  And no reader or reopen observes an individual file replacement or partial edition
+    Scenario Outline: A successful local transaction publishes content and Gamma together
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  When the owner commits a valid circle edit
+     ✔  Then one deterministic write-set advances content, roots, manifest and Gamma
+     ✔  And normal completion exposes the complete new state at one logical commit point
+     ✔  And a crash or lost acknowledgement at that point resolves to the complete old or complete new state from the canonical manifest and Gamma head
+     ✔  And no reader or reopen observes an individual file replacement or partial edition
+Rule: Local capabilities and paths stay narrow
+    Scenario Outline: A bundle operation uses only its narrow opaque cryptographic capability
+     ✔  Given one Ethos-and-actor session backed by a purpose-bound opaque "sign" capability
+     ✔  When Bundle submits the typed "domain-tagged edition manifest" that needs "sign"
+     ✔  Then "the signature verifies against the public key"
+     ✔  And using that capability for "Gamma entry" is refused
+     ✔  And arbitrary bytes or a mismatched Ethos, actor, purpose, node, version or recipient are refused
+     ✔  And a capability for another protocol artifact class cannot substitute
+     ✔  And no universal sign, open or wrap capability is exposed
+     ✔  And no seed or private key is accepted or returned by the bundle operation
+    Scenario Outline: A bundle operation uses only its narrow opaque cryptographic capability
+     ✔  Given one Ethos-and-actor session backed by a purpose-bound opaque "sign" capability
+     ✔  When Bundle submits the typed "domain-tagged Gamma entry" that needs "sign"
+     ✔  Then "the signature verifies against the public key"
+     ✔  And using that capability for "edition manifest" is refused
+     ✔  And arbitrary bytes or a mismatched Ethos, actor, purpose, node, version or recipient are refused
+     ✔  And a capability for another protocol artifact class cannot substitute
+     ✔  And no universal sign, open or wrap capability is exposed
+     ✔  And no seed or private key is accepted or returned by the bundle operation
+    Scenario Outline: A bundle operation uses only its narrow opaque cryptographic capability
+     ✔  Given one Ethos-and-actor session backed by a purpose-bound opaque "open" capability
+     ✔  When Bundle submits the typed "node-and-version-bound sealed body" that needs "open"
+     ✔  Then "the expected plaintext is recovered only locally"
+     ✔  And using that capability for "body from a sibling node or version" is refused
+     ✔  And arbitrary bytes or a mismatched Ethos, actor, purpose, node, version or recipient are refused
+     ✔  And a capability for another protocol artifact class cannot substitute
+     ✔  And no universal sign, open or wrap capability is exposed
+     ✔  And no seed or private key is accepted or returned by the bundle operation
+    Scenario Outline: A bundle operation uses only its narrow opaque cryptographic capability
+     ✔  Given one Ethos-and-actor session backed by a purpose-bound opaque "wrap" capability
+     ✔  When Bundle submits the typed "node-version-and-recipient header line" that needs "wrap"
+     ✔  Then "only the intended recipient opens the wrapped key"
+     ✔  And using that capability for "line for another node or recipient" is refused
+     ✔  And arbitrary bytes or a mismatched Ethos, actor, purpose, node, version or recipient are refused
+     ✔  And a capability for another protocol artifact class cannot substitute
+     ✔  And no universal sign, open or wrap capability is exposed
+     ✔  And no seed or private key is accepted or returned by the bundle operation
+    Scenario Outline: An untrusted path or Store key can never escape its selected root
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  When a caller supplies "../circle/secret" as a "display path" under "no filesystem indirection"
+     ✔  Then the operation is rejected before any out-of-root store access
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+    Scenario Outline: An untrusted path or Store key can never escape its selected root
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  When a caller supplies "/absolute/section" as a "display path" under "no filesystem indirection"
+     ✔  Then the operation is rejected before any out-of-root store access
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+    Scenario Outline: An untrusted path or Store key can never escape its selected root
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  When a caller supplies "folder/./section" as a "display path" under "no filesystem indirection"
+     ✔  Then the operation is rejected before any out-of-root store access
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+    Scenario Outline: An untrusted path or Store key can never escape its selected root
+     ✔  Given a published "MemStore" bundle snapshotted byte for byte
+     ✔  When a caller supplies "folder//section" as a "display path" under "no filesystem indirection"
+     ✔  Then the operation is rejected before any out-of-root store access
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+    Scenario Outline: An untrusted path or Store key can never escape its selected root
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  When a caller supplies "folder/link-out/section" as a "display path" under "link-out is a symlink outside the zone"
+     ✔  Then the operation is rejected before any out-of-root store access
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+    Scenario Outline: An untrusted path or Store key can never escape its selected root
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  When a caller supplies "../../outside" as a "Store key" under "no filesystem indirection"
+     ✔  Then the operation is rejected before any out-of-root store access
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+    Scenario Outline: An untrusted path or Store key can never escape its selected root
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  When a caller supplies "e/circle/unlisted-object.json" as a "Store key" under "no filesystem indirection"
+     ✔  Then the operation is rejected before any out-of-root store access
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+    Scenario Outline: An untrusted path or Store key can never escape its selected root
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  When a caller supplies "e/circle/link-out/index.json" as a "Store key" under "intermediate link-out targets outside root"
+     ✔  Then the operation is rejected before any out-of-root store access
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+    Scenario Outline: An untrusted path or Store key can never escape its selected root
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  When a caller supplies "e/circle/index.json" as a "Store key" under "final index component links outside root"
+     ✔  Then the operation is rejected before any out-of-root store access
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+    Scenario Outline: An untrusted path or Store key can never escape its selected root
+     ✔  Given a published "FsStore" bundle snapshotted byte for byte
+     ✔  When a caller supplies "manifest.json" as a "cold-load key" under "signed manifest component links outside root"
+     ✔  Then the operation is rejected before any out-of-root store access
+     ✔  And the canonical bundle is byte-for-byte identical to the snapshot
+[Summary]
+1 feature
+7 rules
+51 scenarios (51 passed)
+299 steps (299 passed)
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 17.29s
+     Running tests/cucumber.rs (rust/target/debug/deps/cucumber-be4ecf3a035cbebd)

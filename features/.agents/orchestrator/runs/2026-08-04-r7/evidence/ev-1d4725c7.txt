@@ -1,0 +1,51 @@
+   Compiling aithos-bundle v0.1.0-alpha.1 (/root/work/aithos-core/rust/crates/aithos-bundle)
+error[E0425]: cannot find value `entropy` in this scope
+   --> crates/aithos-bundle/src/bundle.rs:464:21
+    |
+464 |                     entropy,
+    |                     ^^^^^^^ not found in this scope
+
+error[E0308]: arguments to this method are incorrect
+   --> crates/aithos-bundle/src/bundle.rs:458:22
+    |
+458 |                   self.log_owner_mutation(
+    |                        ^^^^^^^^^^^^^^^^^^
+459 |                       zone,
+    |                       ---- unexpected argument #1 of type `Zone`
+460 |                       display_path,
+    |                       ------------
+    |                       |
+    |  _____________________unexpected argument #2 of type `&str`
+    | |
+461 | |                     &body,
+    | |                     ----- unexpected argument #3 of type `&std::string::String`
+462 | |                     owner,
+    | |_________________________- three arguments of type `Kind`, `&NodePath`, and `Value` are missing
+    |
+note: method defined here
+   --> crates/aithos-bundle/src/log.rs:190:19
+    |
+190 |     pub(crate) fn log_owner_mutation(
+    |                   ^^^^^^^^^^^^^^^^^^
+...
+193 |         kind: Kind,
+    |         ----------
+194 |         node: &NodePath,
+    |         ---------------
+195 |         payload: serde_json::Value,
+    |         --------------------------
+help: did you mean
+    |
+458 ~                 self.log_owner_mutation(
+459 +                     owner,
+460 +                     /* Kind */,
+461 +                     /* &NodePath */,
+462 +                     /* Value */,
+463 +                     "2026-07-18T11:06:00Z",
+464 +                     entropy,
+465 ~                 )?;
+    |
+
+Some errors have detailed explanations: E0308, E0425.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `aithos-bundle` (lib) due to 2 previous errors
