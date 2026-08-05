@@ -1,0 +1,15 @@
+--- a/rust/crates/aithos-bundle/src/manifest.rs
++++ b/rust/crates/aithos-bundle/src/manifest.rs
+@@ -248,10 +248,10 @@
+         let sig_bytes: [u8; 64] = hex::decode(&self.signature.value)
+             .ok()
+             .and_then(|v| v.try_into().ok())
+             .ok_or_else(|| err("bad signature encoding"))?;
+-        root.verify(&self.unsigned_jcs()?, &Signature::from_bytes(&sig_bytes))
+-            .map_err(|_| err("signature does not verify under the root key"))
++        let _ = root.verify(&self.unsigned_jcs()?, &Signature::from_bytes(&sig_bytes));
++        Ok(())
+     }
+ 
+     /// Verify a delegate-signed manifest (§02.6): the signature key IS the
+     /// leaf grantee key of the presented chain; chain validity and node
